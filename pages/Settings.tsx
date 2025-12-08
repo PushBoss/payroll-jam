@@ -12,7 +12,7 @@ import { useAuth } from '../context/AuthContext';
 import { downloadFile } from '../utils/exportHelpers';
 
 interface SettingsProps {
-  companyData: CompanySettings;
+  companyData?: CompanySettings;
   onUpdateCompany: (data: CompanySettings) => void;
   taxConfig: TaxConfig;
   onUpdateTaxConfig: (data: TaxConfig) => void;
@@ -161,6 +161,11 @@ export const Settings: React.FC<SettingsProps> = ({
   const [upgradeTarget, setUpgradeTarget] = useState<PricingPlan | null>(null);
   const [invoices, setInvoices] = useState<PaymentRecord[]>([]);
 
+  // Early return if companyData is not available
+  if (!companyData) {
+    return <div className="p-8 text-center">Loading company settings...</div>;
+  }
+
   useEffect(() => {
       const storedUsers = storage.getCompanyUsers();
       if (storedUsers) {
@@ -185,8 +190,8 @@ export const Settings: React.FC<SettingsProps> = ({
       const mockPayments: PaymentRecord[] = [
           { id: 'inv-101', date: '2025-01-01', amount: 2000, plan: 'Starter', method: 'Card', status: 'COMPLETED', referenceId: 'TXN-001' }
       ];
-      if (companyData.plan !== 'Free') setInvoices(mockPayments);
-  }, [companyData.plan]);
+      if (companyData?.plan !== 'Free') setInvoices(mockPayments);
+  }, [companyData?.plan]);
 
   const handleCheckDb = async () => {
       setIsCheckingDb(true);
@@ -237,7 +242,7 @@ export const Settings: React.FC<SettingsProps> = ({
   };
 
   const handleDownloadInvoice = (inv: PaymentRecord) => {
-      const content = `TAX INVOICE\n\nInvoice ID: ${inv.id}\nDate: ${inv.date}\nBilled To: ${companyData.name}\nAmount: JMD $${inv.amount}`;
+      const content = `TAX INVOICE\n\nInvoice ID: ${inv.id}\nDate: ${inv.date}\nBilled To: ${companyData?.name || 'N/A'}\nAmount: JMD $${inv.amount}`;
       downloadFile(`Invoice_${inv.id}.txt`, content, 'text/plain');
   };
 
@@ -359,14 +364,14 @@ export const Settings: React.FC<SettingsProps> = ({
               <div className="bg-jam-black rounded-xl p-8 text-white shadow-lg flex flex-col md:flex-row justify-between items-center">
                   <div>
                       <p className="text-sm text-gray-400 uppercase font-bold">Current Plan</p>
-                      <h3 className="text-3xl font-bold mt-2">{companyData.plan}</h3>
+                      <h3 className="text-3xl font-bold mt-2">{companyData?.plan || 'Free'}</h3>
                       <div className="mt-3 flex items-center space-x-4 text-sm text-gray-300">
-                          <span>Status: <span className="text-green-400 font-bold">{companyData.subscriptionStatus}</span></span>
-                          {companyData.plan !== 'Free' && <span>• Billing: Monthly</span>}
-                          {companyData.plan !== 'Free' && <span>• Next Invoice: Feb 25, 2025</span>}
+                          <span>Status: <span className="text-green-400 font-bold">{companyData?.subscriptionStatus || 'ACTIVE'}</span></span>
+                          {companyData?.plan !== 'Free' && <span>• Billing: Monthly</span>}
+                          {companyData?.plan !== 'Free' && <span>• Next Invoice: Feb 25, 2025</span>}
                       </div>
                   </div>
-                  {companyData.plan === 'Free' && <button onClick={() => handleUpgradeClick('Starter')} className="mt-4 md:mt-0 bg-jam-orange text-jam-black px-6 py-2.5 rounded-lg font-bold text-sm hover:bg-yellow-500 transition-colors">Upgrade to Starter</button>}
+                  {companyData?.plan === 'Free' && <button onClick={() => handleUpgradeClick('Starter')} className="mt-4 md:mt-0 bg-jam-orange text-jam-black px-6 py-2.5 rounded-lg font-bold text-sm hover:bg-yellow-500 transition-colors">Upgrade to Starter</button>}
               </div>
               <div className="bg-white p-6 rounded-xl border border-gray-200">
                    <h3 className="text-lg font-bold mb-4">Payment History</h3>

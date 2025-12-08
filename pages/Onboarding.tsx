@@ -3,6 +3,7 @@ import Papa from 'papaparse';
 import { Icons } from '../components/Icons';
 import { CompanySettings, Employee, Role, PayType, PayFrequency, Department } from '../types';
 import { downloadFile } from '../utils/exportHelpers';
+import { generateUUID } from '../utils/uuid';
 
 interface OnboardingProps {
   onComplete: (data: CompanySettings, employees: Employee[]) => void;
