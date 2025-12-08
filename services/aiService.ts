@@ -1,6 +1,6 @@
 
 // TODO: Add your Google AI API key here or set VITE_GOOGLE_AI_KEY in .env
-const API_KEY = import.meta.env.VITE_GOOGLE_AI_KEY || '';
+const API_KEY = import.meta.env?.VITE_GOOGLE_AI_KEY || '';
 
 export const getAIResponse = async (
   prompt: string,

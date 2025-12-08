@@ -58,14 +58,14 @@ function AppContent() {
     if (globalConfig?.dataSource === 'SUPABASE') return true;
     
     // Auto-detect if Supabase is configured via env vars
-    const hasSupabaseEnv = import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const hasSupabaseEnv = import.meta.env?.VITE_SUPABASE_URL && import.meta.env?.VITE_SUPABASE_ANON_KEY;
     if (hasSupabaseEnv && !globalConfig) {
       // Initialize global config with Supabase enabled
       storage.saveGlobalConfig({ dataSource: 'SUPABASE' } as any);
       return true;
     }
     
-    return globalConfig?.dataSource === 'SUPABASE';
+    return false;
   })();
 
   const getInitialPath = () => {
@@ -124,7 +124,7 @@ function AppContent() {
                      name: `${invitee.firstName} ${invitee.lastName}`,
                      email: invitee.email,
                      role: invitee.role,
-                     companyId: invitee.companyId || user?.companyId || '',
+                     companyId: user?.companyId || '',
                      isOnboarded: false
                  };
                  login(tempUser);
@@ -231,7 +231,7 @@ function AppContent() {
   
   const handleImpersonation = (client: any) => {
       impersonate(client);
-      if (!isSupabaseMode) setCompanyData({ ...companyData, name: client.companyName });
+      if (!isSupabaseMode && companyData) setCompanyData({ ...companyData, name: client.companyName });
       navigateTo('dashboard');
   };
   const handleCompanyOnboardComplete = async (data: CompanySettings, importedEmployees: Employee[]) => {
@@ -296,19 +296,19 @@ function AppContent() {
 
     switch (currentPath) {
       case 'dashboard': return <Dashboard employees={employees} leaveRequests={leaveRequests} payRunHistory={payRunHistory} onNavigate={navigateTo} />;
-      case 'employees': return <Employees employees={employees} payRunHistory={payRunHistory} companyData={companyData} onAddEmployee={handleAddEmployee} onUpdateEmployee={handleUpdateEmployee} onSimulateOnboarding={e => alert(`Link: ${window.location.origin}/?token=${e.onboardingToken}`)} departments={departments} designations={designations} assets={assets} onUpdateAssets={setAssets} reviews={reviews} onUpdateReviews={setReviews} />;
-      case 'payrun': return <PayRun employees={employees} timesheets={timesheets} leaveRequests={leaveRequests} onSave={handleSavePayRun} companyData={companyData} integrationConfig={integrationConfig} payRunHistory={payRunHistory} />;
+      case 'employees': return <Employees employees={employees} payRunHistory={payRunHistory} companyData={companyData!} onAddEmployee={handleAddEmployee} onUpdateEmployee={handleUpdateEmployee} onSimulateOnboarding={e => alert(`Link: ${window.location.origin}/?token=${e.onboardingToken}`)} departments={departments} designations={designations} assets={assets} onUpdateAssets={setAssets} reviews={reviews} onUpdateReviews={setReviews} />;
+      case 'payrun': return <PayRun employees={employees} timesheets={timesheets} leaveRequests={leaveRequests} onSave={handleSavePayRun} companyData={companyData!} integrationConfig={integrationConfig} payRunHistory={payRunHistory} />;
       case 'leave': return <Leave requests={leaveRequests} employees={employees} onStatusChange={handleUpdateLeaveStatus} onAddRequest={handleSaveLeaveRequest} onUpdateEmployee={handleUpdateEmployee} />;
-      case 'documents': return <Documents templates={templates} employees={employees} companyData={companyData} onUpdateTemplates={setTemplates} />;
-      case 'reports': return <Reports history={payRunHistory} companyData={companyData} />;
-      case 'compliance': return <Compliance payRunHistory={payRunHistory} companyData={companyData} />;
+      case 'documents': return <Documents templates={templates} employees={employees} companyData={companyData!} onUpdateTemplates={setTemplates} />;
+      case 'reports': return <Reports history={payRunHistory} companyData={companyData!} />;
+      case 'compliance': return <Compliance payRunHistory={payRunHistory} companyData={companyData!} />;
       case 'ai-assistant': return <AiAssistant employees={employees} />;
-      case 'settings': return <Settings companyData={companyData} onUpdateCompany={handleUpdateCompany} taxConfig={taxConfig} onUpdateTaxConfig={setTaxConfig} integrationConfig={integrationConfig} onUpdateIntegration={setIntegrationConfig} departments={departments} onUpdateDepartments={setDepartments} designations={designations} onUpdateDesignations={setDesignations} plans={plans} />;
+      case 'settings': return <Settings companyData={companyData || undefined} onUpdateCompany={handleUpdateCompany} taxConfig={taxConfig} onUpdateTaxConfig={setTaxConfig} integrationConfig={integrationConfig} onUpdateIntegration={setIntegrationConfig} departments={departments} onUpdateDepartments={setDepartments} designations={designations} onUpdateDesignations={setDesignations} plans={plans} />;
       case 'timesheets': return <TimeSheets timesheets={timesheets} onUpdate={ts => setTimesheets(timesheets.map(t => t.id === ts.id ? ts : t))} />;
-      case 'portal-home': return <EmployeePortal user={user} employee={employees.find(e => e.email === user.email)} view="home" leaveRequests={leaveRequests} onRequestLeave={handleSaveLeaveRequest} payRunHistory={payRunHistory} companyData={companyData} />;
+      case 'portal-home': return <EmployeePortal user={user} employee={employees.find(e => e.email === user.email)} view="home" leaveRequests={leaveRequests} onRequestLeave={handleSaveLeaveRequest} payRunHistory={payRunHistory} companyData={companyData || undefined} />;
       case 'portal-timesheets': return <EmployeePortal user={user} employee={employees.find(e => e.email === user.email)} view="timesheets" leaveRequests={leaveRequests} onRequestLeave={handleSaveLeaveRequest} />;
       case 'portal-leave': return <EmployeePortal user={user} employee={employees.find(e => e.email === user.email)} view="leave" leaveRequests={leaveRequests} onRequestLeave={handleSaveLeaveRequest} />;
-      case 'portal-docs': return <EmployeePortal user={user} employee={employees.find(e => e.email === user.email)} view="documents" leaveRequests={leaveRequests} onRequestLeave={handleSaveLeaveRequest} payRunHistory={payRunHistory} companyData={companyData} />;
+      case 'portal-docs': return <EmployeePortal user={user} employee={employees.find(e => e.email === user.email)} view="documents" leaveRequests={leaveRequests} onRequestLeave={handleSaveLeaveRequest} payRunHistory={payRunHistory} companyData={companyData || undefined} />;
       case 'portal-profile': return <EmployeePortal user={user} employee={employees.find(e => e.email === user.email)} view="profile" leaveRequests={leaveRequests} onRequestLeave={handleSaveLeaveRequest} />;
       case 'sa-overview': case 'sa-tenants': case 'sa-billing': case 'sa-health': case 'sa-users': case 'sa-logs': case 'sa-settings': case 'sa-plans':
           return <SuperAdmin plans={plans} onUpdatePlans={setPlans} onImpersonate={handleImpersonation} initialTab={currentPath.replace('sa-', '')} />;

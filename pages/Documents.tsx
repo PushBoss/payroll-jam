@@ -36,7 +36,7 @@ export const Documents: React.FC<DocumentsProps> = ({ templates, employees, comp
   };
 
   const handleRejectRequest = (requestId: string) => {
-    const reason = prompt('Rejection reason (optional):');
+    prompt('Rejection reason (optional):');
     setPendingRequests(prev => prev.map(req => 
       req.id === requestId ? { ...req, status: 'REJECTED' as const } : req
     ));

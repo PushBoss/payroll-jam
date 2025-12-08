@@ -8,6 +8,7 @@ import { emailService } from '../services/emailService';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { isValidTRN, isValidNIS, isValidEmail, formatTRN } from '../utils/validators';
+import { generateUUID } from '../utils/uuid';
 
 interface EmployeesProps {
   employees: Employee[];

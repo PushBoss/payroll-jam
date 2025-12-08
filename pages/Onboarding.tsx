@@ -87,7 +87,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments 
             return;
         }
 
-        rows.forEach((row, i) => {
+        rows.forEach((row) => {
             const email = row[emailKey]?.trim();
             if (!email) return;
 
