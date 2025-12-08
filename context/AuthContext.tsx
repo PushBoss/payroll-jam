@@ -52,6 +52,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           trn: '',
           address: '',
           phone: '',
+          bankName: '',
+          accountNumber: '',
+          branchCode: '',
           payFrequency: 'Monthly',
           subscriptionStatus: 'ACTIVE' as const,
           plan: userData.plan || 'Free'
