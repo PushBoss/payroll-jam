@@ -47,8 +47,14 @@ export const supabaseService = {
   },
 
   saveUser: async (user: User) => {
-    if (!supabase) return;
-    const { error } = await supabase
+    if (!supabase) {
+      console.error("❌ Supabase client not available");
+      throw new Error("Supabase client not initialized");
+    }
+    
+    console.log("💾 Saving user to Supabase:", { id: user.id, email: user.email, companyId: user.companyId });
+    
+    const { data, error } = await supabase
       .from('app_users')
       .upsert({
         id: user.id,
@@ -57,9 +63,15 @@ export const supabaseService = {
         role: user.role,
         company_id: user.companyId,
         is_onboarded: user.isOnboarded
-      });
+      })
+      .select();
     
-    if (error) console.error("Error saving user:", error);
+    if (error) {
+      console.error("❌ Error saving user:", error);
+      throw error;
+    }
+    
+    console.log("✅ User saved successfully:", data);
   },
 
   // --- Companies (Tenants) ---

@@ -1,5 +1,3 @@
-declare const process: any;
-
 import { createClient } from '@supabase/supabase-js';
 
 // Helper to check localStorage (Manual Override)
@@ -17,14 +15,8 @@ const getEnvVar = (key: string) => {
   if (local) return local;
 
   // 2. Vite Import Meta (Modern Frontend)
-  const metaEnv = (import.meta as any).env;
-  if (metaEnv && metaEnv[key]) {
-    return metaEnv[key];
-  }
-
-  // 3. Process Env (Node/Vercel Backend Compat)
-  if (typeof process !== 'undefined' && process.env && process.env[key]) {
-    return process.env[key];
+  if (import.meta.env && import.meta.env[key]) {
+    return import.meta.env[key];
   }
 
   return '';
@@ -34,10 +26,22 @@ const getEnvVar = (key: string) => {
 const supabaseUrl = getEnvVar('VITE_SUPABASE_URL');
 const supabaseAnonKey = getEnvVar('VITE_SUPABASE_ANON_KEY');
 
+console.log('🔧 Supabase Config:', {
+  hasUrl: !!supabaseUrl,
+  hasKey: !!supabaseAnonKey,
+  url: supabaseUrl?.slice(0, 30) + '...'
+});
+
 // Only initialize if keys are present
 export const supabase = (supabaseUrl && supabaseAnonKey) 
   ? createClient(supabaseUrl, supabaseAnonKey) 
   : null;
+
+if (!supabase) {
+  console.error('❌ Supabase client not initialized - missing credentials');
+} else {
+  console.log('✅ Supabase client initialized successfully');
+}
 
 /**
  * Saves manual credentials to LocalStorage and reloads to apply them.

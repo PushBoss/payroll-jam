@@ -35,13 +35,31 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     storage.saveUser(userData);
   };
 
-  const signup = async (userData: User) => {
+  const signup = async (userData: User & { companyName?: string; plan?: string }) => {
     setUser(userData);
     storage.saveUser(userData);
+    
     // Persist to Supabase immediately
     try {
+      // Save user
       await supabaseService.saveUser(userData);
       console.log("✅ User saved to Supabase successfully:", userData.email);
+      
+      // If this is a company owner, create the company record
+      if (userData.companyName && userData.companyId) {
+        const companyData = {
+          name: userData.companyName,
+          trn: '',
+          address: '',
+          phone: '',
+          payFrequency: 'Monthly',
+          subscriptionStatus: 'ACTIVE' as const,
+          plan: userData.plan || 'Free'
+        };
+        
+        await supabaseService.saveCompany(userData.companyId, companyData);
+        console.log("✅ Company saved to Supabase successfully:", userData.companyName);
+      }
     } catch (error) {
       console.error("❌ AuthContext: Failed to persist signup to DB", error);
       throw error; // Re-throw so signup page can show error
