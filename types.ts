@@ -179,6 +179,14 @@ export interface StatutoryDeductions {
   netPay: number;
 }
 
+export interface EmployerContributions {
+  employerNIS: number;
+  employerNHT: number;
+  employerEdTax: number;
+  employerHEART: number;
+  totalEmployerCost: number;
+}
+
 export interface PayrollItemDetail {
   id: string;
   name: string;
@@ -205,8 +213,18 @@ export interface PayRunLineItem extends StatutoryDeductions {
       originalGross: number;
   };
 
-  // Tax Override Flag
+  // Tax Override Flags (for editable calculations)
   isTaxOverridden?: boolean;
+  isGrossOverridden?: boolean;
+  originalCalculatedGross?: number;
+  taxOverrideReason?: string;
+  
+  // Employer contributions (for S01/S02 reporting)
+  employerContributions?: EmployerContributions;
+  
+  // Bank details for payment file generation
+  bankName?: string;
+  accountNumber?: string;
 }
 
 export interface PayRun {
@@ -380,7 +398,10 @@ export enum TemplateCategory {
   CONTRACT = 'Contract',
   LETTER = 'Letter',
   NOTICE = 'Notice',
-  FORM = 'Form'
+  FORM = 'Form',
+  JOB_LETTER = 'JOB_LETTER',
+  SALARY_CERTIFICATE = 'SALARY_CERTIFICATE',
+  TERMINATION = 'TERMINATION'
 }
 
 export interface DocumentTemplate {
@@ -389,6 +410,39 @@ export interface DocumentTemplate {
   category: TemplateCategory;
   content: string; // HTML or Markdown content
   lastModified: string;
+  requiresApproval?: boolean;
+}
+
+export interface DocumentRequest {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  templateId: string;
+  documentType: string;
+  purpose: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'GENERATED' | 'DELIVERED';
+  requestedAt: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  rejectionReason?: string;
+  generatedContent?: string;
+  fileUrl?: string;
+}
+
+export interface ExpertReferral {
+  id: string;
+  companyId: string;
+  userId: string;
+  userName: string;
+  question: string;
+  category: 'TAX' | 'LABOUR_LAW' | 'PAYROLL' | 'COMPLIANCE';
+  urgency: 'LOW' | 'NORMAL' | 'HIGH';
+  status: 'PENDING' | 'ASSIGNED' | 'RESPONDED' | 'CLOSED';
+  assignedResellerId?: string;
+  assignedExpertId?: string;
+  expertResponse?: string;
+  createdAt: string;
+  respondedAt?: string;
 }
 
 // Audit & Security Types

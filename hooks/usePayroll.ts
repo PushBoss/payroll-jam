@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Employee, PayRunLineItem, PayFrequency, PayType, WeeklyTimesheet, LeaveRequest, LeaveType, PayrollItemDetail, StatutoryDeductions, PayRun } from '../types';
-import { calculateTaxes, calculateProration, calculateCumulativePAYE } from '../utils/taxUtils';
+import { calculateTaxes, calculateProration, calculateCumulativePAYE, calculateEmployerContributions } from '../utils/taxUtils';
 
 const isTimesheetInPeriod = (ts: WeeklyTimesheet, period: string) => {
     return ts.weekEndDate.startsWith(period);
@@ -176,6 +176,9 @@ export const usePayroll = (
         const totalDeductions = standardTaxes.nis + standardTaxes.nht + standardTaxes.edTax + finalPAYE + customDeductions;
         const netPay = (grossPay + allAdditions) - totalDeductions;
 
+        // Calculate employer contributions
+        const employerContributions = calculateEmployerContributions(currentGross, emp.payFrequency);
+
         return {
             employeeId: emp.id,
             employeeName: `${emp.firstName} ${emp.lastName}`,
@@ -192,7 +195,11 @@ export const usePayroll = (
             totalDeductions: totalDeductions,
             netPay: netPay,
             prorationDetails,
-            isTaxOverridden: false
+            isTaxOverridden: false,
+            isGrossOverridden: false,
+            employerContributions,
+            bankName: emp.bankDetails?.bankName,
+            accountNumber: emp.bankDetails?.accountNumber
         };
     };
 

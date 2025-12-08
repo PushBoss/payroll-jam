@@ -7,7 +7,10 @@ import {
   AuditLogEntry, 
   ResellerClient, 
   WeeklyTimesheet,
-  User 
+  User,
+  DocumentRequest,
+  ExpertReferral,
+  DocumentTemplate
 } from '../types';
 
 export const supabaseService = {
@@ -311,16 +314,342 @@ export const supabaseService = {
     if (error) console.error("Error saving leave request:", error);
   },
 
-  // --- Timesheets (Optional Table - usually needed for Hourly) ---
+  // --- Timesheets ---
   
-  getTimesheets: async (_companyId: string): Promise<WeeklyTimesheet[]> => {
-      // Placeholder: If you create a 'timesheets' table later
-      // For now, return empty to prevent errors if table missing
+  getTimesheets: async (companyId: string): Promise<WeeklyTimesheet[]> => {
+    if (!supabase) return [];
+    try {
+      const { data, error } = await supabase
+        .from('timesheets')
+        .select('*')
+        .eq('company_id', companyId)
+        .order('week_start_date', { ascending: false });
+
+      if (error) {
+        console.error("Error fetching timesheets:", error);
+        return [];
+      }
+
+      return (data || []).map((ts: any) => ({
+        id: ts.id,
+        employeeId: ts.employee_id,
+        employeeName: ts.employee_name || '',
+        weekStartDate: ts.week_start_date,
+        weekEndDate: ts.week_end_date,
+        status: ts.status,
+        totalRegularHours: ts.total_regular_hours || 0,
+        totalOvertimeHours: ts.total_overtime_hours || 0,
+        entries: ts.entries || []
+      }));
+    } catch (e) {
+      console.error("Error fetching timesheets:", e);
       return [];
+    }
   },
 
-  saveTimesheet: async (_ts: WeeklyTimesheet, _companyId: string) => {
-      // Placeholder
+  saveTimesheet: async (ts: WeeklyTimesheet, companyId: string) => {
+    if (!supabase) return;
+    try {
+      const { error } = await supabase
+        .from('timesheets')
+        .upsert({
+          id: ts.id,
+          company_id: companyId,
+          employee_id: ts.employeeId,
+          employee_name: ts.employeeName,
+          week_start_date: ts.weekStartDate,
+          week_end_date: ts.weekEndDate,
+          status: ts.status,
+          total_regular_hours: ts.totalRegularHours,
+          total_overtime_hours: ts.totalOvertimeHours,
+          entries: ts.entries,
+          submitted_at: ts.status === 'SUBMITTED' ? new Date().toISOString() : null
+        });
+
+      if (error) console.error("Error saving timesheet:", error);
+    } catch (e) {
+      console.error("Error saving timesheet:", e);
+    }
+  },
+
+  approveTimesheet: async (timesheetId: string, reviewerId: string) => {
+    if (!supabase) return;
+    const { error } = await supabase
+      .from('timesheets')
+      .update({
+        status: 'APPROVED',
+        reviewed_by: reviewerId,
+        reviewed_at: new Date().toISOString()
+      })
+      .eq('id', timesheetId);
+
+    if (error) console.error("Error approving timesheet:", error);
+  },
+
+  rejectTimesheet: async (timesheetId: string, reviewerId: string, reason: string) => {
+    if (!supabase) return;
+    const { error } = await supabase
+      .from('timesheets')
+      .update({
+        status: 'REJECTED',
+        reviewed_by: reviewerId,
+        reviewed_at: new Date().toISOString(),
+        rejection_reason: reason
+      })
+      .eq('id', timesheetId);
+
+    if (error) console.error("Error rejecting timesheet:", error);
+  },
+
+  // --- Document Requests ---
+  
+  getDocumentRequests: async (companyId: string): Promise<DocumentRequest[]> => {
+    if (!supabase) return [];
+    try {
+      const { data, error } = await supabase
+        .from('document_requests')
+        .select('*')
+        .eq('company_id', companyId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error("Error fetching document requests:", error);
+        return [];
+      }
+
+      return (data || []).map((req: any) => ({
+        id: req.id,
+        employeeId: req.employee_id,
+        employeeName: req.employee_name || '',
+        templateId: req.template_id,
+        documentType: req.document_type,
+        purpose: req.purpose || '',
+        status: req.status,
+        requestedAt: req.created_at,
+        reviewedBy: req.reviewed_by,
+        reviewedAt: req.reviewed_at,
+        rejectionReason: req.rejection_reason,
+        generatedContent: req.generated_content,
+        fileUrl: req.file_url
+      }));
+    } catch (e) {
+      console.error("Error fetching document requests:", e);
+      return [];
+    }
+  },
+
+  saveDocumentRequest: async (request: DocumentRequest, companyId: string) => {
+    if (!supabase) return;
+    try {
+      const { error } = await supabase
+        .from('document_requests')
+        .upsert({
+          id: request.id,
+          company_id: companyId,
+          employee_id: request.employeeId,
+          template_id: request.templateId,
+          document_type: request.documentType,
+          purpose: request.purpose,
+          status: request.status,
+          reviewed_by: request.reviewedBy,
+          reviewed_at: request.reviewedAt,
+          rejection_reason: request.rejectionReason,
+          generated_content: request.generatedContent,
+          file_url: request.fileUrl
+        });
+
+      if (error) console.error("Error saving document request:", error);
+    } catch (e) {
+      console.error("Error saving document request:", e);
+    }
+  },
+
+  approveDocumentRequest: async (requestId: string, reviewerId: string, generatedContent: string) => {
+    if (!supabase) return;
+    const { error } = await supabase
+      .from('document_requests')
+      .update({
+        status: 'APPROVED',
+        reviewed_by: reviewerId,
+        reviewed_at: new Date().toISOString(),
+        generated_content: generatedContent,
+        generated_at: new Date().toISOString()
+      })
+      .eq('id', requestId);
+
+    if (error) console.error("Error approving document request:", error);
+  },
+
+  rejectDocumentRequest: async (requestId: string, reviewerId: string, reason: string) => {
+    if (!supabase) return;
+    const { error } = await supabase
+      .from('document_requests')
+      .update({
+        status: 'REJECTED',
+        reviewed_by: reviewerId,
+        reviewed_at: new Date().toISOString(),
+        rejection_reason: reason
+      })
+      .eq('id', requestId);
+
+    if (error) console.error("Error rejecting document request:", error);
+  },
+
+  // --- Document Templates ---
+  
+  getDocumentTemplates: async (companyId: string): Promise<DocumentTemplate[]> => {
+    if (!supabase) return [];
+    try {
+      const { data, error } = await supabase
+        .from('document_templates')
+        .select('*')
+        .or(`company_id.eq.${companyId},is_global.eq.true`)
+        .order('name');
+
+      if (error) {
+        console.error("Error fetching document templates:", error);
+        return [];
+      }
+
+      return (data || []).map((tpl: any) => ({
+        id: tpl.id,
+        name: tpl.name,
+        category: tpl.category,
+        content: tpl.content,
+        lastModified: tpl.updated_at,
+        requiresApproval: tpl.requires_approval
+      }));
+    } catch (e) {
+      console.error("Error fetching document templates:", e);
+      return [];
+    }
+  },
+
+  // --- Expert Referrals (Ask an Expert) ---
+  
+  getExpertReferrals: async (companyId: string): Promise<ExpertReferral[]> => {
+    if (!supabase) return [];
+    try {
+      const { data, error } = await supabase
+        .from('expert_referrals')
+        .select('*')
+        .eq('company_id', companyId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error("Error fetching expert referrals:", error);
+        return [];
+      }
+
+      return (data || []).map((ref: any) => ({
+        id: ref.id,
+        companyId: ref.company_id,
+        userId: ref.user_id,
+        userName: ref.user_name || '',
+        question: ref.question,
+        category: ref.category,
+        urgency: ref.urgency,
+        status: ref.status,
+        assignedResellerId: ref.assigned_reseller_id,
+        assignedExpertId: ref.assigned_expert_id,
+        expertResponse: ref.expert_response,
+        createdAt: ref.created_at,
+        respondedAt: ref.responded_at
+      }));
+    } catch (e) {
+      console.error("Error fetching expert referrals:", e);
+      return [];
+    }
+  },
+
+  saveExpertReferral: async (referral: ExpertReferral) => {
+    if (!supabase) return;
+    try {
+      const { error } = await supabase
+        .from('expert_referrals')
+        .upsert({
+          id: referral.id,
+          company_id: referral.companyId,
+          user_id: referral.userId,
+          question: referral.question,
+          category: referral.category,
+          urgency: referral.urgency,
+          status: referral.status,
+          assigned_reseller_id: referral.assignedResellerId,
+          assigned_expert_id: referral.assignedExpertId,
+          expert_response: referral.expertResponse,
+          responded_at: referral.respondedAt
+        });
+
+      if (error) console.error("Error saving expert referral:", error);
+    } catch (e) {
+      console.error("Error saving expert referral:", e);
+    }
+  },
+
+  // --- YTD (Year-to-Date) Tracking ---
+  
+  getEmployeeYTD: async (employeeId: string, taxYear: number) => {
+    if (!supabase) return null;
+    try {
+      const { data, error } = await supabase
+        .from('employee_ytd')
+        .select('*')
+        .eq('employee_id', employeeId)
+        .eq('tax_year', taxYear)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Error fetching YTD:", error);
+        return null;
+      }
+
+      return data ? {
+        ytdGross: data.ytd_gross || 0,
+        ytdTaxableGross: data.ytd_taxable_gross || 0,
+        ytdNIS: data.ytd_nis || 0,
+        ytdNHT: data.ytd_nht || 0,
+        ytdEdTax: data.ytd_education_tax || 0,
+        ytdPAYE: data.ytd_paye || 0,
+        ytdEmployerNIS: data.ytd_employer_nis || 0,
+        ytdEmployerNHT: data.ytd_employer_nht || 0,
+        ytdEmployerEdTax: data.ytd_employer_education_tax || 0,
+        ytdEmployerHEART: data.ytd_employer_heart || 0,
+        periodsPaid: data.periods_paid || 0
+      } : null;
+    } catch (e) {
+      console.error("Error fetching YTD:", e);
+      return null;
+    }
+  },
+
+  updateEmployeeYTD: async (employeeId: string, companyId: string, taxYear: number, ytdData: any) => {
+    if (!supabase) return;
+    try {
+      const { error } = await supabase
+        .from('employee_ytd')
+        .upsert({
+          employee_id: employeeId,
+          company_id: companyId,
+          tax_year: taxYear,
+          ytd_gross: ytdData.ytdGross,
+          ytd_taxable_gross: ytdData.ytdTaxableGross,
+          ytd_nis: ytdData.ytdNIS,
+          ytd_nht: ytdData.ytdNHT,
+          ytd_education_tax: ytdData.ytdEdTax,
+          ytd_paye: ytdData.ytdPAYE,
+          ytd_employer_nis: ytdData.ytdEmployerNIS,
+          ytd_employer_nht: ytdData.ytdEmployerNHT,
+          ytd_employer_education_tax: ytdData.ytdEmployerEdTax,
+          ytd_employer_heart: ytdData.ytdEmployerHEART,
+          periods_paid: ytdData.periodsPaid,
+          last_pay_date: ytdData.lastPayDate
+        });
+
+      if (error) console.error("Error updating YTD:", error);
+    } catch (e) {
+      console.error("Error updating YTD:", e);
+    }
   },
 
   // --- Audit Logs ---

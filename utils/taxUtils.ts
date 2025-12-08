@@ -1,15 +1,29 @@
 import { PayFrequency, StatutoryDeductions } from '../types';
 
 // --- Constants for Jamaican Tax Year 2025 ---
+// Based on official Tax Administration Jamaica (TAJ) rates
 export const TAX_CONSTANTS = {
-  NIS_RATE: 0.03, // 3%
-  NIS_CAP_ANNUAL: 5000000, // 5M Cap
-  NHT_RATE: 0.02, // 2%
+  // Employee Contributions
+  NIS_RATE_EMPLOYEE: 0.03, // 3%
+  NHT_RATE_EMPLOYEE: 0.02, // 2%
   ED_TAX_RATE: 0.0225, // 2.25%
-  PAYE_THRESHOLD: 1500096, // 1.5M Tax Free Threshold
+  
+  // Employer Contributions
+  NIS_RATE_EMPLOYER: 0.025, // 2.5% (CORRECTED from 3%)
+  NHT_RATE_EMPLOYER: 0.03, // 3%
+  ED_TAX_RATE_EMPLOYER: 0.0225, // 2.25% on emoluments
+  HEART_RATE_EMPLOYER: 0.03, // 3% (HEART/NTF contribution)
+  
+  // Caps and Thresholds
+  NIS_CAP_ANNUAL: 5000000, // JMD 5M Annual Cap
+  PAYE_THRESHOLD: 1500096, // JMD 1.5M Tax Free Threshold
   PAYE_RATE_STD: 0.25, // 25%
   PAYE_RATE_HIGH: 0.30, // 30% for income > 6M
-  PAYE_THRESHOLD_HIGH: 6000000
+  PAYE_THRESHOLD_HIGH: 6000000,
+  
+  // Legacy compatibility
+  NIS_RATE: 0.03, // Kept for backward compatibility
+  NHT_RATE: 0.02 // Kept for backward compatibility
 };
 
 export const getPeriodsPerYear = (freq: PayFrequency): number => {
@@ -22,17 +36,18 @@ export const getPeriodsPerYear = (freq: PayFrequency): number => {
 
 /**
  * Calculates standard statutory deductions for a single period (Non-cumulative)
+ * Note: This calculates EMPLOYEE deductions only
  */
 export const calculateTaxes = (gross: number, frequency: PayFrequency = PayFrequency.MONTHLY): StatutoryDeductions => {
   const periods = getPeriodsPerYear(frequency);
   
-  // 1. NIS (3%) - Capped Annually
+  // 1. NIS (3% Employee) - Capped Annually
   const nisPeriodCap = TAX_CONSTANTS.NIS_CAP_ANNUAL / periods;
   const insurableWage = Math.min(gross, nisPeriodCap);
-  const nis = insurableWage * TAX_CONSTANTS.NIS_RATE;
+  const nis = insurableWage * TAX_CONSTANTS.NIS_RATE_EMPLOYEE;
 
-  // 2. NHT (2%)
-  const nht = gross * TAX_CONSTANTS.NHT_RATE;
+  // 2. NHT (2% Employee)
+  const nht = gross * TAX_CONSTANTS.NHT_RATE_EMPLOYEE;
 
   // 3. Education Tax (2.25%) - on Statutory Income (Gross - NIS)
   const edTax = (gross - nis) * TAX_CONSTANTS.ED_TAX_RATE;
@@ -69,6 +84,49 @@ export const calculateTaxes = (gross: number, frequency: PayFrequency = PayFrequ
     paye: parseFloat(paye.toFixed(2)),
     totalDeductions: parseFloat(totalDeductions.toFixed(2)),
     netPay: parseFloat(netPay.toFixed(2))
+  };
+};
+
+/**
+ * Calculates employer statutory contributions
+ * These are additional costs to the employer beyond gross salary
+ */
+export const calculateEmployerContributions = (
+  gross: number, 
+  frequency: PayFrequency = PayFrequency.MONTHLY
+): {
+  employerNIS: number;
+  employerNHT: number;
+  employerEdTax: number;
+  employerHEART: number;
+  totalEmployerCost: number;
+} => {
+  const periods = getPeriodsPerYear(frequency);
+  
+  // 1. Employer NIS (2.5%) - Capped at same threshold as employee
+  const nisPeriodCap = TAX_CONSTANTS.NIS_CAP_ANNUAL / periods;
+  const insurableWage = Math.min(gross, nisPeriodCap);
+  const employerNIS = insurableWage * TAX_CONSTANTS.NIS_RATE_EMPLOYER;
+  
+  // 2. Employer NHT (3%)
+  const employerNHT = gross * TAX_CONSTANTS.NHT_RATE_EMPLOYER;
+  
+  // 3. Employer Education Tax (2.25% on statutory income)
+  const employeeNIS = insurableWage * TAX_CONSTANTS.NIS_RATE_EMPLOYEE;
+  const statutoryIncome = gross - employeeNIS;
+  const employerEdTax = statutoryIncome * TAX_CONSTANTS.ED_TAX_RATE_EMPLOYER;
+  
+  // 4. HEART/NTF (3% employer only)
+  const employerHEART = gross * TAX_CONSTANTS.HEART_RATE_EMPLOYER;
+  
+  const totalEmployerCost = employerNIS + employerNHT + employerEdTax + employerHEART;
+  
+  return {
+    employerNIS: parseFloat(employerNIS.toFixed(2)),
+    employerNHT: parseFloat(employerNHT.toFixed(2)),
+    employerEdTax: parseFloat(employerEdTax.toFixed(2)),
+    employerHEART: parseFloat(employerHEART.toFixed(2)),
+    totalEmployerCost: parseFloat(totalEmployerCost.toFixed(2))
   };
 };
 
