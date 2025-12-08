@@ -41,11 +41,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     // Persist to Supabase immediately
     try {
-      // Save user
-      await supabaseService.saveUser(userData);
-      console.log("✅ User saved to Supabase successfully:", userData.email);
-      
-      // If this is a company owner, create the company record
+      // If this is a company owner, create the company record FIRST (foreign key requirement)
       if (userData.companyName && userData.companyId) {
         const companyData = {
           name: userData.companyName,
@@ -63,6 +59,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         await supabaseService.saveCompany(userData.companyId, companyData);
         console.log("✅ Company saved to Supabase successfully:", userData.companyName);
       }
+      
+      // Save user AFTER company exists
+      await supabaseService.saveUser(userData);
+      console.log("✅ User saved to Supabase successfully:", userData.email);
     } catch (error) {
       console.error("❌ AuthContext: Failed to persist signup to DB", error);
       throw error; // Re-throw so signup page can show error
