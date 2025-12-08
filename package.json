@@ -1,0 +1,34 @@
+{
+  "name": "payroll-jam",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "lucide-react": "^0.344.0",
+    "recharts": "^2.12.2",
+    "@google/genai": "latest",
+    "@paypal/react-paypal-js": "^8.1.3",
+    "@emailjs/browser": "^4.1.0",
+    "@supabase/supabase-js": "^2.39.0",
+    "sonner": "^1.4.3",
+    "react-hook-form": "^7.51.0",
+    "@hookform/resolvers": "^3.3.4",
+    "zod": "^3.22.4",
+    "papaparse": "^5.4.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.64",
+    "@types/react-dom": "^18.2.21",
+    "@vitejs/plugin-react": "^4.2.1",
+    "typescript": "^5.2.2",
+    "vite": "^5.1.6",
+    "@types/papaparse": "^5.3.14"
+  }
+}

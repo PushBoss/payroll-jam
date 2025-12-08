@@ -1,0 +1,349 @@
+
+import React, { useState, useEffect, useRef } from 'react';
+import { Icons } from '../components/Icons';
+import { Role, User, PricingPlan } from '../types';
+import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
+import { storage } from '../services/storage';
+import { dimePayService } from '../services/dimePayService';
+import { toast } from 'sonner';
+import { useAuth } from '../context/AuthContext';
+
+interface SignupProps {
+  onSignup?: (user: User) => void;
+  onSignupSuccess?: (user: User) => void; // Navigation callback
+  onLoginClick: () => void;
+  initialPlan?: string;
+  initialBillingCycle?: 'monthly' | 'annual';
+  plans: PricingPlan[]; 
+}
+
+export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onLoginClick, initialPlan = 'Starter', initialBillingCycle = 'monthly', plans }) => {
+  const { signup } = useAuth();
+  const [step, setStep] = useState<'account' | 'billing'>('account');
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [widgetStatus, setWidgetStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [legalConsent, setLegalConsent] = useState(false);
+  
+  // Timer Ref for cleanup
+  const timerRef = useRef<any>(null);
+  const isMountedRef = useRef(true);
+  
+  // Fetch Global Payment Configuration
+  const paymentConfig = storage.getGlobalConfig();
+  const payPalEnabled = paymentConfig?.paypal?.enabled ?? true;
+  const dimePayEnabled = paymentConfig?.dimepay?.enabled ?? false;
+
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    companyName: '',
+    password: '',
+    plan: initialPlan,
+    billingCycle: initialBillingCycle,
+    numEmployees: '', 
+    address: '',
+    city: 'Kingston',
+    parish: 'Kingston',
+  });
+
+  useEffect(() => {
+      isMountedRef.current = true;
+      return () => { isMountedRef.current = false; };
+  }, []);
+
+  // Pricing Logic 
+  const getPricing = () => {
+    const selectedPlan = plans.find(p => p.name === formData.plan);
+    let basePrice = 0;
+    let perEmpPrice = 0;
+    let type = 'flat';
+
+    if (selectedPlan) {
+        type = selectedPlan.priceConfig.type;
+        if (type === 'free') {
+             basePrice = 0;
+        } else {
+             basePrice = formData.billingCycle === 'monthly' ? selectedPlan.priceConfig.monthly : selectedPlan.priceConfig.annual;
+             if (type === 'per_emp') perEmpPrice = basePrice;
+        }
+    }
+
+    let subtotal = 0;
+    if (type === 'flat' || type === 'base') {
+        subtotal = basePrice;
+    } else if (type === 'per_emp') {
+        const count = parseInt(formData.numEmployees) || 26;
+        subtotal = count * perEmpPrice;
+    }
+    
+    const billableAmount = subtotal;
+    const gct = billableAmount * 0.15;
+    const total = billableAmount + gct;
+    const totalUSD = (total / 155).toFixed(2);
+
+    return { type, basePrice, perEmpPrice, subtotal, billableAmount, gct, total, totalUSD };
+  };
+
+  const pricing = getPricing();
+
+  const initDimePay = () => {
+      if (!isMountedRef.current) return;
+      setWidgetStatus('loading');
+      setPaymentError(null);
+      
+      if (timerRef.current) clearTimeout(timerRef.current);
+      
+      timerRef.current = setTimeout(() => {
+          if (!isMountedRef.current) return;
+          dimePayService.renderPaymentWidget({
+              mountId: 'dimepay-widget',
+              email: formData.email,
+              amount: pricing.total,
+              currency: 'JMD',
+              description: `${formData.plan} Plan (${formData.billingCycle})`,
+              frequency: formData.billingCycle, 
+              metadata: {
+                  name: formData.name,
+                  company: formData.companyName,
+                  plan: formData.plan
+              },
+              onSuccess: (data) => {
+                  if (!isMountedRef.current) return;
+                  console.log('DimePay Success:', data);
+                  setWidgetStatus('ready');
+                  toast.success('Payment successful!');
+                  handleSubmit();
+              },
+              onError: (err) => {
+                  if (!isMountedRef.current) return;
+                  console.error('DimePay Error:', err);
+                  setWidgetStatus('error');
+                  setPaymentError('Payment failed or SDK missing. Check configuration.');
+              }
+          });
+      }, 800);
+  };
+
+  // Initialize DimePay Widget when on billing step
+  useEffect(() => {
+      if (step === 'billing' && dimePayEnabled) {
+          initDimePay();
+      }
+      return () => {
+          if (timerRef.current) clearTimeout(timerRef.current);
+      };
+  }, [step, dimePayEnabled]);
+
+  const handleAccountSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      
+      if (!legalConsent) {
+          toast.error("Please agree to the Terms and Privacy Policy to continue.");
+          return;
+      }
+
+      if (formData.plan === 'Free' || pricing.total === 0) {
+          handleSubmit();
+      } else {
+          setStep('billing');
+      }
+  };
+
+  const handleSubmit = () => {
+    setTimeout(async () => {
+      const role = formData.plan === 'Reseller' ? Role.RESELLER : Role.OWNER;
+      const newUser: User = {
+        id: `u-${Math.random().toString(36).substr(2, 9)}`,
+        name: formData.name,
+        email: formData.email,
+        role: role,
+        companyId: `comp-${Math.random().toString(36).substr(2, 9)}`,
+        isOnboarded: false
+      };
+      
+      await signup({ ...newUser, companyName: formData.companyName, plan: formData.plan } as any);
+      if (onSignupSuccess) onSignupSuccess(newUser);
+    }, 1500);
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex">
+      {/* Left Side - Form */}
+      <div className="flex-1 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-20 xl:px-24 bg-white">
+         <div className="mx-auto w-full max-w-sm lg:w-96">
+            <div className="mb-10">
+                <h2 className="text-3xl font-extrabold text-jam-black cursor-pointer" onClick={onLoginClick}>
+                    Payroll<span className="text-jam-orange">-Jam</span>
+                </h2>
+                <h2 className="mt-6 text-2xl font-bold text-gray-900">
+                    {step === 'account' ? 'Create your account' : 'Payment Details'}
+                </h2>
+                <p className="mt-2 text-sm text-gray-600">
+                   {step === 'account' ? 'Start managing your payroll in minutes.' : 'Secure recurring billing.'}
+                </p>
+            </div>
+
+            <form className="space-y-6" onSubmit={step === 'account' ? handleAccountSubmit : (e) => { e.preventDefault(); }}>
+                {/* ... (Form Rendering Code unchanged, just handlers updated above) ... */}
+                {/* For brevity in response, keeping JSX same as original file but using updated handlers */}
+                {step === 'account' ? (
+                    <>
+                        <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 mb-6">
+                            <div className="flex justify-between items-center mb-3">
+                                <label className="block text-sm font-medium text-gray-700">Selected Plan</label>
+                                <div className="flex bg-gray-200 rounded-lg p-1">
+                                    <button 
+                                        type="button"
+                                        onClick={() => setFormData({...formData, billingCycle: 'monthly'})}
+                                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${formData.billingCycle === 'monthly' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}
+                                    >
+                                        Monthly
+                                    </button>
+                                    <button 
+                                        type="button"
+                                        onClick={() => setFormData({...formData, billingCycle: 'annual'})}
+                                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${formData.billingCycle === 'annual' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}
+                                    >
+                                        Annual
+                                    </button>
+                                </div>
+                            </div>
+                            <select
+                                value={formData.plan}
+                                onChange={(e) => setFormData({...formData, plan: e.target.value})}
+                                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-jam-orange focus:border-jam-orange sm:text-sm"
+                            >
+                                {plans.filter(p => p.isActive).map(p => (
+                                    <option key={p.id} value={p.name}>{p.name} ({p.limit})</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Full Name</label>
+                            <input required type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Work Email</label>
+                            <input required type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Company Name</label>
+                            <input required type="text" value={formData.companyName} onChange={(e) => setFormData({...formData, companyName: e.target.value})} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Password</label>
+                            <input required type="password" value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
+                        </div>
+
+                        <div className="flex items-start">
+                            <div className="flex items-center h-5">
+                                <input
+                                    id="consent"
+                                    name="consent"
+                                    type="checkbox"
+                                    required
+                                    checked={legalConsent}
+                                    onChange={(e) => setLegalConsent(e.target.checked)}
+                                    className="focus:ring-jam-orange h-4 w-4 text-jam-orange border-gray-300 rounded cursor-pointer"
+                                />
+                            </div>
+                            <div className="ml-3 text-sm">
+                                <label htmlFor="consent" className="font-medium text-gray-700 cursor-pointer">
+                                    I agree to the <span className="underline hover:text-jam-orange">Terms of Service</span> and <span className="underline hover:text-jam-orange">Privacy Policy</span>.
+                                </label>
+                                <p className="text-gray-500 text-xs mt-1">
+                                    I consent to the processing of my payroll data in accordance with the Data Protection Act.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div>
+                            <button type="submit" className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-jam-black hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-jam-orange transition-all">
+                                {formData.plan === 'Free' || pricing.total === 0 ? 'Create Free Account' : 'Continue to Payment'}
+                            </button>
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <div className="relative py-2">
+                            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-300" /></div>
+                            <div className="relative flex justify-center text-sm"><span className="bg-white px-2 text-gray-500">Secure Payment</span></div>
+                        </div>
+                        
+                        {dimePayEnabled && (
+                            <div className="mb-6">
+                                <div id="dimepay-widget" className="min-h-[400px] w-full rounded-lg border border-gray-100 shadow-sm bg-white overflow-hidden relative">
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400 z-0">
+                                        <Icons.Refresh className="w-6 h-6 animate-spin mr-2 mb-2" />
+                                        <span className="text-sm">Loading Payment Gateway...</span>
+                                    </div>
+                                    {widgetStatus === 'error' && (
+                                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10 p-6 text-center">
+                                            <Icons.Alert className="w-8 h-8 text-red-500 mb-2" />
+                                            <p className="text-red-600 font-medium mb-4">Failed to load payment widget.</p>
+                                            <button type="button" onClick={initDimePay} className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-sm">Retry Connection</button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {payPalEnabled && paymentConfig?.paypal?.clientId && !dimePayEnabled && (
+                            <div className="w-full min-h-[150px] mt-6">
+                                <div className="text-center text-xs text-gray-400 mb-2">PAY VIA PAYPAL (USD)</div>
+                                <PayPalScriptProvider options={{ clientId: paymentConfig.paypal.clientId, currency: "USD" }}>
+                                    <PayPalButtons 
+                                        style={{ layout: "vertical", color: "gold", shape: "rect", label: "pay" }}
+                                        createOrder={(_data, actions) => {
+                                            return actions.order.create({
+                                                intent: "CAPTURE",
+                                                purchase_units: [{ amount: { currency_code: "USD", value: pricing.totalUSD } }],
+                                            });
+                                        }}
+                                        onApprove={async (_data, actions) => {
+                                            if (actions.order) {
+                                                await actions.order.capture();
+                                                handleSubmit();
+                                            }
+                                        }}
+                                    />
+                                </PayPalScriptProvider>
+                            </div>
+                        )}
+
+                        {paymentError && <p className="text-red-500 text-sm text-center mt-4">{paymentError}</p>}
+                        
+                        <button type="button" onClick={() => setStep('account')} className="w-full mt-4 text-sm text-gray-600 hover:text-gray-900">
+                            &larr; Back to Account Details
+                        </button>
+                    </>
+                )}
+            </form>
+         </div>
+      </div>
+
+      {/* Right Side - Order Summary */}
+      <div className="hidden lg:block relative flex-1 bg-gray-50 w-0 border-l border-gray-200">
+         <div className="absolute inset-0 flex flex-col justify-center px-12">
+             <div className="max-w-md mx-auto w-full bg-white p-8 rounded-2xl shadow-lg border border-gray-100">
+                <h3 className="text-lg font-medium text-gray-900 mb-6">Order Summary</h3>
+                <div className="flex items-start justify-between pb-6 border-b border-gray-100">
+                    <div>
+                        <p className="font-bold text-gray-900 text-lg">{formData.plan} Plan</p>
+                        <p className="text-sm text-gray-500 mt-1 capitalize">{formData.billingCycle} Subscription</p>
+                    </div>
+                    <div className="text-right">
+                        <span className="text-2xl font-bold text-jam-orange">${pricing.total.toLocaleString()}</span>
+                        <p className="text-xs text-gray-400">JMD / {formData.billingCycle === 'annual' ? 'Year' : 'Month'}</p>
+                    </div>
+                </div>
+                <div className="pt-6 text-xs text-gray-400 text-center">
+                    <p>Secure payment processing via {dimePayEnabled ? 'Dime Pay' : 'PayPal'}.</p>
+                </div>
+             </div>
+         </div>
+      </div>
+    </div>
+  );
+};
