@@ -24,6 +24,7 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onLoginClick, i
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [widgetStatus, setWidgetStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [legalConsent, setLegalConsent] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   
   // Timer Ref for cleanup
   const timerRef = useRef<any>(null);
@@ -252,7 +253,28 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onLoginClick, i
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700">Password</label>
-                            <input required type="password" value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
+                            <div className="relative mt-1">
+                                <input 
+                                    required 
+                                    type={showPassword ? 'text' : 'password'} 
+                                    value={formData.password} 
+                                    onChange={(e) => setFormData({...formData, password: e.target.value})} 
+                                    className="block w-full px-3 py-2 pr-12 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" 
+                                    placeholder="Minimum 6 characters"
+                                    minLength={6}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                >
+                                    {showPassword ? (
+                                        <Icons.EyeOff className="w-5 h-5" />
+                                    ) : (
+                                        <Icons.Eye className="w-5 h-5" />
+                                    )}
+                                </button>
+                            </div>
                         </div>
 
                         <div className="flex items-start">

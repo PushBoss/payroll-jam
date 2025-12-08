@@ -59,7 +59,9 @@ import {
   UserCheck,
   Fingerprint,
   FileCheck,
-  ShieldCheck
+  ShieldCheck,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 export const Icons = {
@@ -125,5 +127,7 @@ export const Icons = {
   UserCheck: UserCheck,
   Fingerprint: Fingerprint,
   FileCheck: FileCheck,
-  ShieldCheck: ShieldCheck
+  ShieldCheck: ShieldCheck,
+  Eye: Eye,
+  EyeOff: EyeOff
 };
