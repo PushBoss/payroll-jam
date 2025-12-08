@@ -44,6 +44,10 @@ export const generateNCBFile = (payRun: PayRun, company: CompanySettings, employ
             errors.push(`${line.employeeName}: Missing Bank Account`);
             return false;
         }
+        // Only include employees with NCB accounts
+        if (emp.bankDetails.bankName !== 'NCB') {
+            return false; // Skip non-NCB accounts
+        }
         const acct = cleanAccountNumber(emp.bankDetails.accountNumber);
         if (acct.length !== 9) {
             errors.push(`${line.employeeName}: Invalid NCB Account (Must be 9 digits)`);
@@ -51,6 +55,11 @@ export const generateNCBFile = (payRun: PayRun, company: CompanySettings, employ
         }
         return true;
     });
+
+    if (validLines.length === 0) {
+        toast.error("No NCB accounts found in this pay run");
+        return;
+    }
 
     if (errors.length > 0) {
         alert(`Cannot generate Bank File. Errors:\n${errors.join('\n')}`);
@@ -60,7 +69,8 @@ export const generateNCBFile = (payRun: PayRun, company: CompanySettings, employ
     // 2. Generate Content
     // Header: H,CompanyAcct,PayDate(YYYYMMDD),TotalAmount,TotalRecords
     const dateStr = payRun.payDate.replace(/-/g, ''); // YYYYMMDD
-    let content = `H,${companyAcct},${dateStr},${payRun.totalNet.toFixed(2)},${validLines.length}\n`;
+    const totalNCBAmount = validLines.reduce((sum, line) => sum + line.netPay, 0);
+    let content = `H,${companyAcct},${dateStr},${totalNCBAmount.toFixed(2)},${validLines.length}\n`;
     
     // Details: D,EmpAcct,Amount,EmpName,Ref
     validLines.forEach(line => {
@@ -73,7 +83,7 @@ export const generateNCBFile = (payRun: PayRun, company: CompanySettings, employ
     });
 
     downloadFile(`NCB_Payroll_${payRun.periodStart}.txt`, content, 'text/plain');
-    toast.success("NCB File Generated Successfully");
+    toast.success(`NCB File Generated - ${validLines.length} employees`);
 };
 
 /**
@@ -86,19 +96,29 @@ export const generateBNSFile = (payRun: PayRun, company: CompanySettings, employ
         return;
     }
 
+    const validLines = payRun.lineItems.filter(line => {
+        const emp = employees.find(e => e.id === line.employeeId);
+        return emp?.bankDetails?.accountNumber && emp?.bankDetails?.bankName === 'BNS';
+    });
+
+    if (validLines.length === 0) {
+        toast.error("No Scotiabank accounts found in this pay run");
+        return;
+    }
+
+    const totalBNSAmount = validLines.reduce((sum, line) => sum + line.netPay, 0);
+
     // Header
     let content = `Payment Date,Source Account,Amount,Currency,Reference\n`;
-    content += `${payRun.payDate},${cleanAccountNumber(company.accountNumber)},${payRun.totalNet.toFixed(2)},JMD,Payroll ${payRun.periodStart}\n\n`;
+    content += `${payRun.payDate},${cleanAccountNumber(company.accountNumber)},${totalBNSAmount.toFixed(2)},JMD,Payroll ${payRun.periodStart}\n\n`;
     
     // Details
     content += `Beneficiary Name,Bank Code,Transit,Account Number,Amount,Details\n`;
     
-    payRun.lineItems.forEach(line => {
+    validLines.forEach(line => {
         const emp = employees.find(e => e.id === line.employeeId);
-        // Bank Codes: BNS=020, NCB=040, JN=012 (Mock examples, real ones needed for prod)
-        let bankCode = '000';
-        if (emp?.bankDetails?.bankName === 'BNS') bankCode = '020';
-        else if (emp?.bankDetails?.bankName === 'NCB') bankCode = '040';
+        // Bank Code for BNS
+        const bankCode = '020';
         
         const transit = emp?.bankDetails?.branchCode || '00000';
         const acct = cleanAccountNumber(emp?.bankDetails?.accountNumber || '');
@@ -108,7 +128,7 @@ export const generateBNSFile = (payRun: PayRun, company: CompanySettings, employ
     });
 
     downloadFile(`BNS_Payroll_${payRun.periodStart}.csv`, content, 'text/csv');
-    toast.success("Scotiabank File Generated Successfully");
+    toast.success(`Scotiabank File Generated - ${validLines.length} employees`);
 };
 
 /**
@@ -130,15 +150,23 @@ export const generateGLCSV = (payRun: PayRun, config: IntegrationConfig) => {
         content += `${date},${ref},${grossMap.glCode},${grossMap.accountName},${totalGross.toFixed(2)},0,Gross Payroll Expense,${provider}\n`;
     }
 
-    // 2. Employer Taxes (Debit Expense)
-    const employerNIS = payRun.lineItems.reduce((acc, l) => acc + l.nis, 0); // Simplified
-    const employerNHT = payRun.lineItems.reduce((acc, l) => acc + l.nht, 0);
+    // 2. Employer Taxes (Debit Expense) - Use actual employer contributions from line items
+    const employerNIS = payRun.lineItems.reduce((acc, l) => acc + (l.employerContributions?.employerNIS || 0), 0);
+    const employerNHT = payRun.lineItems.reduce((acc, l) => acc + (l.employerContributions?.employerNHT || 0), 0);
+    const employerEdTax = payRun.lineItems.reduce((acc, l) => acc + (l.employerContributions?.employerEdTax || 0), 0);
+    const employerHEART = payRun.lineItems.reduce((acc, l) => acc + (l.employerContributions?.employerHEART || 0), 0);
     
     const nisMap = getGL('Employer NIS');
     if (nisMap && employerNIS > 0) content += `${date},${ref},${nisMap.glCode},${nisMap.accountName},${employerNIS.toFixed(2)},0,Employer NIS Expense,${provider}\n`;
     
     const nhtMap = getGL('Employer NHT');
     if (nhtMap && employerNHT > 0) content += `${date},${ref},${nhtMap.glCode},${nhtMap.accountName},${employerNHT.toFixed(2)},0,Employer NHT Expense,${provider}\n`;
+
+    const edTaxMap = getGL('Employer Ed Tax');
+    if (edTaxMap && employerEdTax > 0) content += `${date},${ref},${edTaxMap.glCode},${edTaxMap.accountName},${employerEdTax.toFixed(2)},0,Employer Education Tax,${provider}\n`;
+
+    const heartMap = getGL('Employer HEART');
+    if (heartMap && employerHEART > 0) content += `${date},${ref},${heartMap.glCode},${heartMap.accountName},${employerHEART.toFixed(2)},0,Employer HEART/NTF,${provider}\n`;
 
     // 3. Liabilities (Credits)
     // PAYE

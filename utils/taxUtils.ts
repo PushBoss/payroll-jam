@@ -157,10 +157,24 @@ export const calculateCumulativePAYE = (
 
     if (cumulativeTaxableIncome === 0) return 0;
 
-    // 4. Calculate Total Tax Due to Date
-    // Note: Simplified High Rate check for cumulative (assuming standard rate for simplicity in MVP)
-    // Production apps would split this into bands cumulatively too.
-    const totalTaxDueToDate = cumulativeTaxableIncome * TAX_CONSTANTS.PAYE_RATE_STD;
+    // 4. Calculate Total Tax Due to Date with proper tax brackets
+    let totalTaxDueToDate = 0;
+    
+    // Calculate cumulative annual statutory income
+    const annualizedStatutoryIncome = (totalCumulativeStatutoryIncome / periodNumber) * periodsPerYear;
+    
+    if (annualizedStatutoryIncome > TAX_CONSTANTS.PAYE_THRESHOLD_HIGH) {
+        // High bracket: Split between 25% and 30%
+        const standardBand = TAX_CONSTANTS.PAYE_THRESHOLD_HIGH - TAX_CONSTANTS.PAYE_THRESHOLD;
+        const highBand = annualizedStatutoryIncome - TAX_CONSTANTS.PAYE_THRESHOLD_HIGH;
+        const annualTax = (standardBand * TAX_CONSTANTS.PAYE_RATE_STD) + (highBand * TAX_CONSTANTS.PAYE_RATE_HIGH);
+        totalTaxDueToDate = (annualTax / periodsPerYear) * periodNumber;
+    } else if (annualizedStatutoryIncome > TAX_CONSTANTS.PAYE_THRESHOLD) {
+        // Standard bracket: 25%
+        const taxableAmount = annualizedStatutoryIncome - TAX_CONSTANTS.PAYE_THRESHOLD;
+        const annualTax = taxableAmount * TAX_CONSTANTS.PAYE_RATE_STD;
+        totalTaxDueToDate = (annualTax / periodsPerYear) * periodNumber;
+    }
 
     // 5. Tax for this specific period
     const taxForPeriod = Math.max(0, totalTaxDueToDate - ytdTaxPaid);

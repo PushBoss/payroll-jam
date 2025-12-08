@@ -11,8 +11,10 @@ export const migrationService = {
    * Check if migration is needed
    */
   needsMigration: (): boolean => {
-    const hasLocalData = storage.getAllKeys().length > 0;
-    return hasLocalData;
+    const employees = storage.getEmployees();
+    const payRuns = storage.getPayRuns();
+    const hasLocalData = (employees && employees.length > 0) || (payRuns && payRuns.length > 0);
+    return !!hasLocalData;
   },
 
   /**
@@ -30,7 +32,7 @@ export const migrationService = {
       console.log('🔄 Starting migration from localStorage to Supabase...');
 
       // 1. Migrate Company Settings
-      const companySettings = storage.getCompanySettings();
+      const companySettings = storage.getCompanyData();
       if (companySettings && supabase) {
         const { error } = await supabase
           .from('companies')
@@ -61,6 +63,7 @@ export const migrationService = {
 
       // 2. Migrate Employees
       const employees = storage.getEmployees();
+      if (employees && employees.length > 0) {
       for (const emp of employees) {
         if (!supabase) continue;
         
@@ -102,9 +105,11 @@ export const migrationService = {
         }
       }
       console.log(`✅ ${employees.length} employees migrated`);
+      }
 
       // 3. Migrate Pay Runs
       const payRuns = storage.getPayRuns();
+      if (payRuns && payRuns.length > 0) {
       for (const run of payRuns) {
         if (!supabase) continue;
         
@@ -131,9 +136,11 @@ export const migrationService = {
         }
       }
       console.log(`✅ ${payRuns.length} pay runs migrated`);
+      }
 
       // 4. Migrate Leave Requests
       const leaveRequests = storage.getLeaveRequests();
+      if (leaveRequests && leaveRequests.length > 0) {
       for (const leave of leaveRequests) {
         if (!supabase) continue;
         
@@ -161,9 +168,11 @@ export const migrationService = {
         }
       }
       console.log(`✅ ${leaveRequests.length} leave requests migrated`);
+      }
 
       // 5. Migrate Audit Logs
       const auditLogs = storage.getAuditLogs();
+      if (auditLogs && auditLogs.length > 0) {
       for (const log of auditLogs) {
         if (!supabase) continue;
         
@@ -188,6 +197,7 @@ export const migrationService = {
         }
       }
       console.log(`✅ ${auditLogs.length} audit logs migrated`);
+      }
 
       console.log(`\n✅ Migration complete! ${migratedCount} records migrated`);
       
@@ -219,7 +229,7 @@ export const migrationService = {
       timestamp: new Date().toISOString(),
       version: '1.0',
       data: {
-        companySettings: storage.getCompanySettings(),
+        companySettings: storage.getCompanyData(),
         employees: storage.getEmployees(),
         payRuns: storage.getPayRuns(),
         leaveRequests: storage.getLeaveRequests(),

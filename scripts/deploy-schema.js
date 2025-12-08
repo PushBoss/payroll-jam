@@ -9,13 +9,35 @@
 
 const fs = require('fs');
 const https = require('https');
+const path = require('path');
 
-// Load environment variables
-require('dotenv').config({ path: '.env.local' });
+// Load environment variables from .env.local manually
+function loadEnvFile() {
+  const envPath = path.join(__dirname, '..', '.env.local');
+  if (!fs.existsSync(envPath)) {
+    return {};
+  }
+  
+  const envContent = fs.readFileSync(envPath, 'utf8');
+  const env = {};
+  
+  envContent.split('\n').forEach(line => {
+    const match = line.match(/^([^=:#]+)=(.*)$/);
+    if (match) {
+      const key = match[1].trim();
+      const value = match[2].trim();
+      env[key] = value;
+    }
+  });
+  
+  return env;
+}
+
+const env = loadEnvFile();
 
 const SUPABASE_PROJECT_REF = 'arqbxlaudfbmiqvwwmnt';
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || `https://${SUPABASE_PROJECT_REF}.supabase.co`;
-const SUPABASE_SERVICE_KEY = process.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_URL = env.VITE_SUPABASE_URL || `https://${SUPABASE_PROJECT_REF}.supabase.co`;
+const SUPABASE_SERVICE_KEY = env.VITE_SUPABASE_SERVICE_ROLE_KEY;
 
 const SCHEMA_FILE = './supabase_schema_complete.sql';
 
