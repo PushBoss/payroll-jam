@@ -119,17 +119,20 @@ function AppContent() {
           const invitee = employees.find(e => e.onboardingToken === token);
           if (invitee) {
              if (!user || user.email !== invitee.email) {
-                 const tempUser: User = {
-                     id: invitee.id,
-                     name: `${invitee.firstName} ${invitee.lastName}`,
-                     email: invitee.email,
-                     role: invitee.role,
-                     companyId: user?.companyId || '',
-                     isOnboarded: false
-                 };
-                 login(tempUser);
-                 toast.success("Welcome! Please complete your onboarding.");
+                 // TODO: Implement employee invite flow with Supabase Auth
+                 // For now, employee invites are disabled until auth is set up
+                 toast.info("Employee invites coming soon! Please sign up normally.");
                  window.history.replaceState({}, '', '/');
+                 // const tempUser: User = {
+                 //     id: invitee.id,
+                 //     name: `${invitee.firstName} ${invitee.lastName}`,
+                 //     email: invitee.email,
+                 //     role: invitee.role,
+                 //     companyId: user?.companyId || '',
+                 //     isOnboarded: false
+                 // };
+                 // login(invitee.email, 'temp-password');
+                 // toast.success("Welcome! Please complete your onboarding.");
              }
           }
       }

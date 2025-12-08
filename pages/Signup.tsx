@@ -154,20 +154,33 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onLoginClick, i
     setTimeout(async () => {
       try {
         const role = formData.plan === 'Reseller' ? Role.RESELLER : Role.OWNER;
-        const newUser: User = {
+        const newUser = {
           id: generateUUID(),
           name: formData.name,
           email: formData.email,
+          password: formData.password,
           role: role,
           companyId: generateUUID(),
-          isOnboarded: false
+          isOnboarded: false,
+          companyName: formData.companyName,
+          plan: formData.plan
         };
         
-        await signup({ ...newUser, companyName: formData.companyName, plan: formData.plan } as any);
-        if (onSignupSuccess) onSignupSuccess(newUser);
-      } catch (error) {
-        console.error("Signup failed:", error);
-        alert(`Account created locally but failed to sync to database: ${error instanceof Error ? error.message : String(error)}\n\nYou can still use the app, but your data won't be persisted to the cloud.`);
+        await signup(newUser);
+        toast.success('Account created successfully! Check your email to verify.');
+        
+        // Call success callback with the user (without password)
+        const { password, ...userWithoutPassword } = newUser;
+        if (onSignupSuccess) onSignupSuccess(userWithoutPassword as User);
+      } catch (error: any) {
+        console.error('Signup failed:', error);
+        
+        // Check if email already exists
+        if (error.message?.includes('already registered') || error.code === '23505') {
+          toast.error('Email already exists. Please login instead.');
+        } else {
+          toast.error(error.message || 'Signup failed. Please try again.');
+        }
       }
     }, 1500);
   };

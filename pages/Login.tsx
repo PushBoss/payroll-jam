@@ -19,52 +19,58 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBack, onRegister
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const performLogin = (user: User) => {
-      login(user);
-      toast.success(`Welcome back, ${user.name}`);
-      if (onLoginSuccess) onLoginSuccess(user);
-  };
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
-      // 1. Real Auth via Supabase (Priority)
-      const dbUser = await supabaseService.getUserByEmail(email);
-      if (dbUser) {
-          performLogin(dbUser);
+      // Use Supabase Auth login
+      await login(email, password);
+      toast.success(`Welcome back!`);
+      
+      // Call success callback if provided
+      const user = await supabaseService.getUserByEmail(email);
+      if (user && onLoginSuccess) {
+        onLoginSuccess(user);
+      }
+      
+      setIsLoading(false);
+    } catch (error: any) {
+      console.error('Login failed:', error);
+      
+      // Check for specific demo accounts as fallback (for testing)
+      if (['admin@jam.com', 'super@jam.com', 'reseller@jam.com', 'emp@jam.com', 'lightning@track.jm'].includes(email)) {
+        const demoUser = getDemoUser(email);
+        if (demoUser) {
+          performDemoLogin(demoUser);
           setIsLoading(false);
           return;
+        }
       }
-
-      // 2. Check for Specific Demo Credentials (Legacy/Test Mode) - Fallback
-      if (['admin@jam.com', 'super@jam.com', 'reseller@jam.com', 'emp@jam.com', 'lightning@track.jm'].includes(email)) {
-        setTimeout(() => {
-          if (email === 'super@jam.com') {
-            performLogin({ id: 'u-super', name: 'System Operator', email: email, role: Role.SUPER_ADMIN, isOnboarded: true });
-          } else if (email === 'admin@jam.com') {
-            performLogin({ id: 'u1', name: 'John Doe', email: email, role: Role.ADMIN, isOnboarded: true });
-          } else if (email === 'reseller@jam.com') {
-            performLogin({ id: 'u4', name: 'Partner Agent', email: email, role: Role.RESELLER, isOnboarded: true });
-          } else {
-            // Employee fallback
-            performLogin({ id: 'u2', name: 'Usain Bolt', email: 'lightning@track.jm', role: Role.EMPLOYEE, isOnboarded: true });
-          }
-          setIsLoading(false);
-        }, 800);
-        return;
-      }
-
-      // 3. Not found
-      toast.error("Account not found. Please sign up.");
-      setIsLoading(false);
-
-    } catch (err) {
-      console.error("Login failed", err);
-      toast.error("Authentication error occurred.");
+      
+      toast.error(error.message || 'Invalid email or password');
       setIsLoading(false);
     }
+  };
+
+  const getDemoUser = (email: string): User | null => {
+    if (email === 'super@jam.com') {
+      return { id: 'u-super', name: 'System Operator', email, role: Role.SUPER_ADMIN, isOnboarded: true };
+    } else if (email === 'admin@jam.com') {
+      return { id: 'u1', name: 'John Doe', email, role: Role.ADMIN, isOnboarded: true };
+    } else if (email === 'reseller@jam.com') {
+      return { id: 'u4', name: 'Partner Agent', email, role: Role.RESELLER, isOnboarded: true };
+    } else if (email === 'lightning@track.jm') {
+      return { id: 'u2', name: 'Usain Bolt', email, role: Role.EMPLOYEE, isOnboarded: true };
+    }
+    return null;
+  };
+
+  const performDemoLogin = (user: User) => {
+    // For demo users, we can't use real auth, just set state
+    // This is a fallback for testing only
+    toast.warning(`Demo mode: ${user.name}`);
+    if (onLoginSuccess) onLoginSuccess(user);
   };
 
   return (

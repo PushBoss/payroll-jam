@@ -3,13 +3,14 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { User, Role, ResellerClient } from '../types';
 import { storage } from '../services/storage';
 import { supabaseService } from '../services/supabaseService';
+import { supabase } from '../services/supabaseClient';
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (user: User) => void;
-  signup: (user: User) => Promise<void>;
-  logout: () => void;
+  login: (email: string, password: string) => Promise<void>;
+  signup: (user: User & { password: string; companyName?: string; plan?: string }) => Promise<void>;
+  logout: () => Promise<void>;
   updateUser: (updates: Partial<User>) => void;
   impersonate: (client: ResellerClient) => void;
   stopImpersonation: () => void;
@@ -22,26 +23,107 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Initialize from storage on mount
-    const storedUser = storage.getUser();
-    if (storedUser) {
-      setUser(storedUser);
+    // Check for existing Supabase session
+    const initAuth = async () => {
+      if (!supabase) {
+        // Fallback to localStorage if Supabase not available
+        const storedUser = storage.getUser();
+        if (storedUser) {
+          setUser(storedUser);
+        }
+        setIsLoading(false);
+        return;
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session?.user) {
+        // Load user profile from app_users table
+        const appUser = await supabaseService.getUserByEmail(session.user.email!);
+        if (appUser) {
+          setUser(appUser);
+          storage.saveUser(appUser);
+        }
+      } else {
+        // Fallback to localStorage
+        const storedUser = storage.getUser();
+        if (storedUser) {
+          setUser(storedUser);
+        }
+      }
+      
+      setIsLoading(false);
+    };
+
+    initAuth();
+
+    // Listen for auth changes
+    if (supabase) {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+        if (session?.user) {
+          const appUser = await supabaseService.getUserByEmail(session.user.email!);
+          if (appUser) {
+            setUser(appUser);
+            storage.saveUser(appUser);
+          }
+        } else {
+          setUser(null);
+          storage.saveUser(null);
+        }
+      });
+
+      return () => subscription.unsubscribe();
     }
-    setIsLoading(false);
   }, []);
 
-  const login = (userData: User) => {
-    setUser(userData);
-    storage.saveUser(userData);
+  const login = async (email: string, password: string) => {
+    if (!supabase) {
+      throw new Error('Supabase not initialized');
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      console.error('Login error:', error);
+      throw error;
+    }
+
+    if (data.user) {
+      const appUser = await supabaseService.getUserByEmail(data.user.email!);
+      if (appUser) {
+        setUser(appUser);
+        storage.saveUser(appUser);
+      }
+    }
   };
 
-  const signup = async (userData: User & { companyName?: string; plan?: string }) => {
-    setUser(userData);
-    storage.saveUser(userData);
-    
-    // Persist to Supabase immediately
+  const signup = async (userData: User & { password: string; companyName?: string; plan?: string }) => {
+    if (!supabase) {
+      throw new Error('Supabase not initialized');
+    }
+
     try {
-      // If this is a company owner, create the company record FIRST (foreign key requirement)
+      // 1. Create auth user in Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: userData.email,
+        password: userData.password,
+      });
+
+      if (authError) {
+        console.error('❌ Auth signup error:', authError);
+        throw authError;
+      }
+
+      if (!authData.user) {
+        throw new Error('No user returned from signup');
+      }
+
+      console.log('✅ Supabase Auth user created:', authData.user.id);
+
+      // 2. Create company record first (if needed)
       if (userData.companyName && userData.companyId) {
         const companyData = {
           name: userData.companyName,
@@ -57,19 +139,36 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         };
         
         await supabaseService.saveCompany(userData.companyId, companyData);
-        console.log("✅ Company saved to Supabase successfully:", userData.companyName);
+        console.log('✅ Company saved to Supabase:', userData.companyName);
       }
-      
-      // Save user AFTER company exists
-      await supabaseService.saveUser(userData);
-      console.log("✅ User saved to Supabase successfully:", userData.email);
+
+      // 3. Create app_users profile (linked to auth user)
+      const appUser: User = {
+        id: authData.user.id, // Use Supabase Auth user ID
+        email: userData.email,
+        name: userData.name,
+        role: userData.role,
+        companyId: userData.companyId,
+        isOnboarded: userData.isOnboarded || false
+      };
+
+      await supabaseService.saveUser(appUser);
+      console.log('✅ User profile saved:', appUser.email);
+
+      // 4. Update local state
+      setUser(appUser);
+      storage.saveUser(appUser);
+
     } catch (error) {
-      console.error("❌ AuthContext: Failed to persist signup to DB", error);
-      throw error; // Re-throw so signup page can show error
+      console.error('❌ Signup failed:', error);
+      throw error;
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
     setUser(null);
     storage.saveUser(null);
   };
