@@ -28,7 +28,7 @@ const MOCK_TENANTS: ResellerClient[] = [
 ];
 
 const DEFAULT_PAYMENT_CONFIG: GlobalConfig = {
-    dataSource: 'LOCAL',
+    dataSource: 'LOCAL', // Changed to LOCAL for better initial experience
     currency: 'JMD',
     emailjs: {
         serviceId: '',
@@ -181,13 +181,26 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
               setIsLoadingTenants(true);
               try {
                   const dbTenants = await supabaseService.getAllCompanies();
-                  setTenants(dbTenants);
+                  if (dbTenants && dbTenants.length > 0) {
+                      setTenants(dbTenants);
+                  } else {
+                      // No companies found, use mock data for demo
+                      console.log('No companies in database, using mock data');
+                      setTenants(MOCK_TENANTS);
+                  }
               } catch (e) {
-                  console.error(e);
-                  toast.error("Failed to fetch tenants from Supabase");
+                  console.error('Error fetching tenants:', e);
+                  toast.error("Failed to fetch tenants from Supabase, using local data");
+                  // Fallback to mock data
+                  setTenants(MOCK_TENANTS);
               } finally {
                   setIsLoadingTenants(false);
               }
+          } else {
+              // LOCAL mode - use mock data
+              setIsLoadingTenants(false);
+              const localTenants = storage.getTenants() || MOCK_TENANTS;
+              setTenants(localTenants);
           }
       }
       fetchDBTenants();
