@@ -54,24 +54,51 @@ export const supabaseService = {
     
     console.log("💾 Saving user to Supabase:", { id: user.id, email: user.email, companyId: user.companyId });
     
-    const { data, error } = await supabase
+    // First check if user exists
+    const { data: existing } = await supabase
       .from('app_users')
-      .upsert({
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        company_id: user.companyId,
-        is_onboarded: user.isOnboarded
-      })
-      .select();
+      .select('id')
+      .eq('id', user.id)
+      .maybeSingle();
     
-    if (error) {
-      console.error("❌ Error saving user:", error);
-      throw error;
+    if (existing) {
+      // Update existing user
+      const { data, error } = await supabase
+        .from('app_users')
+        .update({
+          name: user.name,
+          role: user.role,
+          company_id: user.companyId,
+          is_onboarded: user.isOnboarded
+        })
+        .eq('id', user.id)
+        .select();
+      
+      if (error) {
+        console.error("❌ Error updating user:", error);
+        throw error;
+      }
+      console.log("✅ User updated successfully:", data);
+    } else {
+      // Insert new user
+      const { data, error } = await supabase
+        .from('app_users')
+        .insert({
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+          company_id: user.companyId,
+          is_onboarded: user.isOnboarded
+        })
+        .select();
+      
+      if (error) {
+        console.error("❌ Error inserting user:", error);
+        throw error;
+      }
+      console.log("✅ User inserted successfully:", data);
     }
-    
-    console.log("✅ User saved successfully:", data);
   },
 
   // --- Companies (Tenants) ---
