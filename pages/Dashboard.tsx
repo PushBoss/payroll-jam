@@ -1,7 +1,7 @@
 
 import React, { useMemo } from 'react';
 import { Icons } from '../components/Icons';
-import { Employee, LeaveRequest, PayRun, PayType } from '../types';
+import { Employee, LeaveRequest, PayRun, PayType, CompanySettings } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface DashboardProps {
@@ -9,9 +9,10 @@ interface DashboardProps {
   leaveRequests: LeaveRequest[];
   payRunHistory?: PayRun[];
   onNavigate: (path: string) => void;
+  companyData?: CompanySettings;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ employees, leaveRequests, payRunHistory = [], onNavigate }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ employees, leaveRequests, payRunHistory = [], onNavigate, companyData }) => {
   const pendingLeaveCount = leaveRequests.filter(r => r.status === 'PENDING').length;
 
   // Calculate Chart Data from Real History
@@ -72,7 +73,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ employees, leaveRequests, 
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
         <div>
           <h2 className="text-3xl font-bold text-gray-900">Dashboard</h2>
-          <p className="text-gray-500 mt-1">Welcome back, here's what's happening at JamCorp.</p>
+          <p className="text-gray-500 mt-1">Welcome back, here's what's happening{companyData?.name ? ` at ${companyData.name}` : ''}.</p>
         </div>
         <button 
             onClick={() => onNavigate('payrun')}

@@ -295,7 +295,7 @@ function AppContent() {
     }
 
     switch (currentPath) {
-      case 'dashboard': return <Dashboard employees={employees} leaveRequests={leaveRequests} payRunHistory={payRunHistory} onNavigate={navigateTo} />;
+      case 'dashboard': return <Dashboard employees={employees} leaveRequests={leaveRequests} payRunHistory={payRunHistory} onNavigate={navigateTo} companyData={companyData || undefined} />;
       case 'employees': return <Employees employees={employees} payRunHistory={payRunHistory} companyData={companyData!} onAddEmployee={handleAddEmployee} onUpdateEmployee={handleUpdateEmployee} onSimulateOnboarding={e => alert(`Link: ${window.location.origin}/?token=${e.onboardingToken}`)} departments={departments} designations={designations} assets={assets} onUpdateAssets={setAssets} reviews={reviews} onUpdateReviews={setReviews} />;
       case 'payrun': return <PayRun employees={employees} timesheets={timesheets} leaveRequests={leaveRequests} onSave={handleSavePayRun} companyData={companyData!} integrationConfig={integrationConfig} payRunHistory={payRunHistory} />;
       case 'leave': return <Leave requests={leaveRequests} employees={employees} onStatusChange={handleUpdateLeaveStatus} onAddRequest={handleSaveLeaveRequest} onUpdateEmployee={handleUpdateEmployee} />;

@@ -168,15 +168,8 @@ export const Settings: React.FC<SettingsProps> = ({
 
   useEffect(() => {
       const storedUsers = storage.getCompanyUsers();
-      if (storedUsers) {
+      if (storedUsers && storedUsers.length > 0) {
           setUsers(storedUsers);
-      } else {
-          const defaults: User[] = [
-              { id: 'u-admin', name: 'Admin User', email: 'admin@jam.com', role: Role.ADMIN, isOnboarded: true },
-              { id: 'u-manager', name: 'Sarah Finance', email: 'finance@jam.com', role: Role.MANAGER, isOnboarded: true }
-          ];
-          setUsers(defaults);
-          storage.saveCompanyUsers(defaults);
       }
   }, []);
 

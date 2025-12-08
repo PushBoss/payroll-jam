@@ -13,10 +13,7 @@ interface DocumentsProps {
 export const Documents: React.FC<DocumentsProps> = ({ templates, employees, companyData, onUpdateTemplates }) => {
   const [activeTab, setActiveTab] = useState<'list' | 'create' | 'generate'>('list');
   const [currentTemplate, setCurrentTemplate] = useState<DocumentTemplate | null>(null);
-  const [pendingRequests, setPendingRequests] = useState<Array<{id: string, employeeName: string, documentType: string, requestDate: string, status: 'PENDING' | 'APPROVED' | 'REJECTED'}>>([
-    { id: 'REQ-001', employeeName: 'John Doe', documentType: 'Job Letter', requestDate: '2025-01-15', status: 'PENDING' },
-    { id: 'REQ-002', employeeName: 'Jane Smith', documentType: 'Salary Certificate', requestDate: '2025-01-14', status: 'PENDING' }
-  ]);
+  const [pendingRequests, setPendingRequests] = useState<Array<{id: string, employeeName: string, documentType: string, requestDate: string, status: 'PENDING' | 'APPROVED' | 'REJECTED'}>>([]);
   
   // Generation State
   const [selectedEmpId, setSelectedEmpId] = useState('');
