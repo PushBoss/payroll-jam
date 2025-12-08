@@ -17,18 +17,8 @@ interface SuperAdminProps {
   initialTab?: string;
 }
 
-// Mock Data
-const MOCK_TENANTS: ResellerClient[] = [
-    { id: 'c1', companyName: 'JamCorp Ltd.', contactName: 'John Doe', email: 'admin@jam.com', employeeCount: 12, plan: 'Starter', status: 'ACTIVE', mrr: 2000 },
-    { id: 'c2', companyName: 'Kingston Logistics', contactName: 'James Brown', email: 'james@klog.jm', employeeCount: 45, plan: 'Pro', status: 'ACTIVE', mrr: 22500 },
-    { id: 'c3', companyName: 'Montego Bay Resorts', contactName: 'Sarah Lee', email: 'sarah@mobay.jm', employeeCount: 120, plan: 'Enterprise', status: 'ACTIVE', mrr: 60000 },
-    { id: 'c4', companyName: 'Small Biz Hub', contactName: 'Lisa Chen', email: 'lisa@hub.jm', employeeCount: 3, plan: 'Free', status: 'ACTIVE', mrr: 0 },
-    { id: 'c5', companyName: 'Ocho Rios Tours', contactName: 'Mike Davis', email: 'mike@tours.jm', employeeCount: 8, plan: 'Pro', status: 'SUSPENDED', mrr: 4000 },
-    { id: 'c6', companyName: 'Tech Solutions Ja', contactName: 'Paul Wright', email: 'paul@techja.com', employeeCount: 15, plan: 'Starter', status: 'ACTIVE', mrr: 2000 },
-];
-
 const DEFAULT_PAYMENT_CONFIG: GlobalConfig = {
-    dataSource: 'LOCAL', // Changed to LOCAL for better initial experience
+    dataSource: 'SUPABASE', // Always use Supabase - no mock data
     currency: 'JMD',
     emailjs: {
         serviceId: '',
@@ -88,14 +78,10 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
       }
   }, [initialTab]);
 
-  // Tenant State
-  const [tenants, setTenants] = useState<ResellerClient[]>(() => {
-      // If we are in local mode, default to mock/storage. If Supabase, we'll fetch in useEffect.
-      if (paymentConfig.dataSource === 'SUPABASE') return [];
-      return storage.getTenants() || MOCK_TENANTS;
-  });
+  // Tenant State - Always fetch from Supabase
+  const [tenants, setTenants] = useState<ResellerClient[]>([]);
   
-  const [isLoadingTenants, setIsLoadingTenants] = useState(false);
+  const [isLoadingTenants, setIsLoadingTenants] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'ACTIVE' | 'SUSPENDED'>('ALL');
   
@@ -177,34 +163,23 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
   // --- Fetch Tenants from Supabase ---
   useEffect(() => {
       async function fetchDBTenants() {
-          if (paymentConfig.dataSource === 'SUPABASE') {
-              setIsLoadingTenants(true);
-              try {
-                  const dbTenants = await supabaseService.getAllCompanies();
-                  if (dbTenants && dbTenants.length > 0) {
-                      setTenants(dbTenants);
-                  } else {
-                      // No companies found, use mock data for demo
-                      console.log('No companies in database, using mock data');
-                      setTenants(MOCK_TENANTS);
-                  }
-              } catch (e) {
-                  console.error('Error fetching tenants:', e);
-                  toast.error("Failed to fetch tenants from Supabase, using local data");
-                  // Fallback to mock data
-                  setTenants(MOCK_TENANTS);
-              } finally {
-                  setIsLoadingTenants(false);
+          setIsLoadingTenants(true);
+          try {
+              const dbTenants = await supabaseService.getAllCompanies();
+              setTenants(dbTenants || []);
+              if (!dbTenants || dbTenants.length === 0) {
+                  console.log('No companies found in database');
               }
-          } else {
-              // LOCAL mode - use mock data
+          } catch (e) {
+              console.error('Error fetching tenants:', e);
+              toast.error("Failed to fetch companies from Supabase");
+              setTenants([]);
+          } finally {
               setIsLoadingTenants(false);
-              const localTenants = storage.getTenants() || MOCK_TENANTS;
-              setTenants(localTenants);
           }
       }
       fetchDBTenants();
-  }, [paymentConfig.dataSource, activeTab]); // Re-fetch on tab change or mode switch
+  }, [activeTab]); // Re-fetch on tab change
 
   // --- Handlers ---
   const handleSuspend = (id: string) => {
@@ -253,26 +228,10 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
       toast.info(`Maintenance mode ${enabled ? 'enabled' : 'disabled'}`);
   };
 
-  const handleDataSourceChange = async (source: 'LOCAL' | 'SUPABASE') => {
-      if (source === 'LOCAL') {
-          setPaymentConfig(prev => ({ ...prev, dataSource: source }));
-          toast.success("Switched to Local Demo Mode.");
-          return;
-      }
-
-      // If switching to SUPABASE, verify connection first
-      const loadingToast = toast.loading("Verifying Supabase connection...");
-      const status = await handleCheckDb();
-      toast.dismiss(loadingToast);
-
-      if (status.connected) {
-          setPaymentConfig(prev => ({ ...prev, dataSource: source }));
-          auditService.log({id: 'sys', name: 'Super Admin', email: 'sys', role: Role.SUPER_ADMIN}, 'SETTINGS', 'System', `Data Source changed to ${source}`);
-          toast.success(`Successfully connected to Supabase Live.`);
-      } else {
-          // Open Wizard if connection failed
-          setConnectWizard({ open: true, step: 1 });
-      }
+  const handleDataSourceChange = async () => {
+      // Always using Supabase - this option is disabled
+      toast.info("Data source is set to Supabase only");
+      return;
   };
 
   const handleWizardRetry = async () => {
@@ -897,22 +856,15 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                   </p>
                   <div className="flex space-x-2">
                       <button 
-                        onClick={() => handleDataSourceChange('LOCAL')}
-                        className={`flex-1 py-2 text-sm font-medium rounded-lg border transition-colors ${
-                            paymentConfig.dataSource === 'LOCAL' || !paymentConfig.dataSource
-                            ? 'bg-blue-600 text-white border-blue-600' 
-                            : 'bg-white text-blue-600 border-blue-300 hover:bg-blue-50'
-                        }`}
+                        onClick={() => handleDataSourceChange()}
+                        disabled
+                        className="flex-1 py-2 text-sm font-medium rounded-lg border transition-colors opacity-50 cursor-not-allowed bg-white text-blue-600 border-blue-300"
                       >
-                          Browser (Demo)
+                          Browser (Demo) - Disabled
                       </button>
                       <button 
-                        onClick={() => handleDataSourceChange('SUPABASE')}
-                        className={`flex-1 py-2 text-sm font-medium rounded-lg border transition-colors ${
-                            paymentConfig.dataSource === 'SUPABASE'
-                            ? 'bg-green-600 text-white border-green-600' 
-                            : 'bg-white text-green-600 border-green-300 hover:bg-green-50'
-                        }`}
+                        onClick={() => handleDataSourceChange()}
+                        className="flex-1 py-2 text-sm font-medium rounded-lg border transition-colors bg-green-600 text-white border-green-600"
                       >
                           Supabase (Live)
                       </button>

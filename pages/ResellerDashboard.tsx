@@ -2,34 +2,18 @@
 import React, { useState, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { ResellerClient, PricingPlan } from '../types';
-import { storage } from '../services/storage';
+import { supabaseService } from '../services/supabaseService';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { toast } from 'sonner';
 
 interface ResellerDashboardProps {
     onManageClient?: (client: ResellerClient) => void;
     plans?: PricingPlan[];
 }
 
-// Mock Data for Financial Chart
-const MOCK_FINANCIAL_DATA = [
-    { name: 'Aug', revenue: 62500, profit: 12500 },
-    { name: 'Sep', revenue: 75000, profit: 15000 },
-    { name: 'Oct', revenue: 91000, profit: 18200 },
-    { name: 'Nov', revenue: 102500, profit: 20500 },
-    { name: 'Dec', revenue: 110000, profit: 22000 },
-    { name: 'Jan', revenue: 118500, profit: 23700 },
-];
-
 export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageClient, plans = [] }) => {
-  // Initialize state from storage or fall back to mock data
-  const [clients, setClients] = useState<ResellerClient[]>(() => {
-      return storage.getTenants() || [
-        { id: 'c1', companyName: 'Kingston Logistics', contactName: 'James Brown', email: 'james@klog.jm', employeeCount: 45, plan: 'Pro', status: 'ACTIVE', mrr: 22500 },
-        { id: 'c2', companyName: 'Montego Bay Resorts', contactName: 'Sarah Lee', email: 'sarah@mobay.jm', employeeCount: 120, plan: 'Enterprise', status: 'ACTIVE', mrr: 60000 },
-        { id: 'c3', companyName: 'Ocho Rios Tours', contactName: 'Mike Davis', email: 'mike@tours.jm', employeeCount: 8, plan: 'Pro', status: 'PENDING', mrr: 4000 },
-        { id: 'c4', companyName: 'Small Biz Hub', contactName: 'Lisa Chen', email: 'lisa@hub.jm', employeeCount: 3, plan: 'Free', status: 'ACTIVE', mrr: 0 },
-      ];
-  });
+  const [clients, setClients] = useState<ResellerClient[]>([]);
+  const [financialData, setFinancialData] = useState<any[]>([]);
 
   const [activeTab, setActiveTab] = useState<'clients' | 'compliance' | 'financials'>('clients');
   const [searchTerm, setSearchTerm] = useState('');
@@ -40,10 +24,34 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
   // Form State
   const [formData, setFormData] = useState<Partial<ResellerClient>>({});
 
-  // Persist changes to storage
+  // Load clients from Supabase
   useEffect(() => {
-      storage.saveTenants(clients);
-  }, [clients]);
+      async function loadClients() {
+          try {
+              const data = await supabaseService.getAllCompanies();
+              setClients(data || []);
+              
+              // Calculate financial data from actual client MRR
+              const last6Months = ['Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan'];
+              const calculatedFinancialData = last6Months.map((month, index) => {
+                  // Simulate growth over time based on current MRR
+                  const totalMRR = (data || []).reduce((acc, client) => 
+                      client.status === 'ACTIVE' ? acc + (client.mrr || 0) : acc, 0);
+                  const growthFactor = 0.8 + (index * 0.04); // 80% to 100% growth simulation
+                  const revenue = Math.round(totalMRR * growthFactor);
+                  const profit = Math.round(revenue * 0.2); // 20% profit margin
+                  return { name: month, revenue, profit };
+              });
+              setFinancialData(calculatedFinancialData);
+          } catch (error) {
+              console.error('Error loading clients:', error);
+              toast.error('Failed to load clients');
+              setClients([]);
+              setFinancialData([]);
+          }
+      }
+      loadClients();
+  }, []);
 
   // Stats Calculation
   const totalRev = clients.reduce((acc, curr) => curr.status === 'ACTIVE' ? acc + curr.mrr : acc, 0);
@@ -59,15 +67,12 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
   const platformFees = (activeClientsList.length * baseFee) + (activeEmpCount * perUserFee);
   const netProfit = totalRev - platformFees;
 
-  // Compliance Mock Logic
-  const getComplianceStatus = (client: ResellerClient) => {
-      // Deterministic mock based on name length to keep it consistent between renders without storage
-      const isRisk = client.companyName.length % 3 === 0;
-      const isPending = client.companyName.length % 2 === 0;
-      
+  // Get compliance status from Supabase data (simplified for now)
+  const getComplianceStatus = () => {
+      // TODO: Fetch real compliance data from database once compliance tracking is implemented
       return {
-          so1: isRisk ? 'OVERDUE' : isPending ? 'PENDING' : 'FILED',
-          s02: 'PENDING', // Annual usually pending early year
+          so1: 'PENDING',
+          s02: 'PENDING',
           nextDue: 'Feb 14, 2025'
       };
   };
@@ -270,9 +275,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                 <div className="flex justify-between items-start">
                     <div>
                         <p className="text-xs text-gray-500 uppercase font-bold">Compliance Risk</p>
-                        <p className="text-3xl font-bold text-gray-900 mt-2">
-                            {clients.filter(c => getComplianceStatus(c).so1 === 'OVERDUE').length}
-                        </p>
+                        <p className="text-3xl font-bold text-gray-900 mt-2">0</p>
                     </div>
                     <div className="p-2 bg-red-50 rounded-lg">
                         <Icons.Alert className="w-6 h-6 text-red-500" />
@@ -307,10 +310,9 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                     {filteredClients.map(client => {
-                        const status = getComplianceStatus(client);
+                        const status = getComplianceStatus();
                         return (
-                            <tr key={client.id} className="hover:bg-gray-50">
-                                <td className="px-6 py-4 font-medium text-gray-900">{client.companyName}</td>
+                            <tr key={client.id} className="hover:bg-gray-50">\n                                <td className="px-6 py-4 font-medium text-gray-900">{client.companyName}</td>
                                 <td className="px-6 py-4">
                                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
                                         ${status.so1 === 'FILED' ? 'bg-green-100 text-green-800' : 
@@ -350,7 +352,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                   <h3 className="font-bold text-gray-900 mb-6">Revenue & Profit Analysis</h3>
                   <div className="h-72">
                     <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={MOCK_FINANCIAL_DATA}>
+                        <BarChart data={financialData}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
                             <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#9CA3AF'}} dy={10} />
                             <YAxis axisLine={false} tickLine={false} tick={{fill: '#9CA3AF'}} tickFormatter={(val) => `$${val/1000}k`} />
