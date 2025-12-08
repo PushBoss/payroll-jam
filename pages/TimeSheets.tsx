@@ -12,6 +12,14 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
   onUpdate 
 }) => {
   const [filter, setFilter] = useState<'ALL' | 'PENDING' | 'APPROVED'>('ALL');
+  const [currentWeekStart, setCurrentWeekStart] = useState<string>(() => {
+    // Get Monday of current week
+    const today = new Date();
+    const dayOfWeek = today.getDay();
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+    return monday.toISOString().split('T')[0];
+  });
 
   const handleApprove = (ts: WeeklyTimesheet) => {
     if (onUpdate) {
@@ -30,6 +38,24 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
     if (filter === 'PENDING') return ts.status === 'SUBMITTED';
     return ts.status === filter;
   });
+
+  const navigateWeek = (direction: 'prev' | 'next') => {
+    const date = new Date(currentWeekStart);
+    date.setDate(date.getDate() + (direction === 'next' ? 7 : -7));
+    setCurrentWeekStart(date.toISOString().split('T')[0]);
+  };
+
+  const goToToday = () => {
+    const today = new Date();
+    const dayOfWeek = today.getDay();
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+    setCurrentWeekStart(monday.toISOString().split('T')[0]);
+  };
+
+  const weekEnd = new Date(currentWeekStart);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  const weekDisplay = `${new Date(currentWeekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
 
   const pendingCount = timesheets.filter(t => t.status === 'SUBMITTED').length;
   const totalOvertime = timesheets.reduce((acc, t) => acc + t.totalOvertimeHours, 0);
@@ -89,7 +115,34 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
       {/* Main List */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between space-y-4 sm:space-y-0">
-          <h3 className="font-bold text-gray-900">Weekly Timesheets</h3>
+          <div className="flex items-center space-x-4">
+            <h3 className="font-bold text-gray-900">Weekly Timesheets</h3>
+            <div className="flex items-center space-x-2 bg-gray-100 px-3 py-1.5 rounded-lg">
+              <button 
+                onClick={() => navigateWeek('prev')}
+                className="p-1 hover:bg-white rounded transition-colors"
+                title="Previous Week"
+              >
+                <Icons.ChevronLeft className="w-4 h-4 text-gray-600" />
+              </button>
+              <span className="text-sm font-medium text-gray-700 min-w-[180px] text-center">
+                {weekDisplay}
+              </span>
+              <button 
+                onClick={() => navigateWeek('next')}
+                className="p-1 hover:bg-white rounded transition-colors"
+                title="Next Week"
+              >
+                <Icons.ChevronRight className="w-4 h-4 text-gray-600" />
+              </button>
+              <button
+                onClick={goToToday}
+                className="ml-2 px-2 py-1 text-xs bg-jam-orange text-jam-black rounded hover:bg-yellow-500 font-medium"
+              >
+                Today
+              </button>
+            </div>
+          </div>
           <div className="flex space-x-2">
             {(['ALL', 'PENDING', 'APPROVED'] as const).map(f => (
               <button

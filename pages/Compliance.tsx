@@ -113,10 +113,15 @@ export const Compliance: React.FC<ComplianceProps> = ({ payRunHistory = [], comp
             <h2 className="text-3xl font-bold text-gray-900">Compliance Center</h2>
             <p className="text-gray-500 mt-1">Tax Administration Jamaica (TAJ) Reporting & Health</p>
         </div>
-        <button className="text-sm text-jam-orange font-bold hover:underline flex items-center">
+        <a 
+          href="https://www.jamaicatax.gov.jm/" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="text-sm text-jam-orange font-bold hover:underline flex items-center"
+        >
             <Icons.Link className="w-4 h-4 mr-1" />
             Visit TAJ Portal
-        </button>
+        </a>
       </div>
       
       {/* Top Stats */}

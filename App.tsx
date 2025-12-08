@@ -6,7 +6,6 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { storage } from './services/storage';
 import { supabaseService } from './services/supabaseService';
 import { User, Role, Employee, PayRun as PayRunType, LeaveRequest, WeeklyTimesheet, CompanySettings, IntegrationConfig, TaxConfig, DocumentTemplate, PricingPlan, Department, Designation, Asset, PerformanceReview } from './types';
-import { INITIAL_EMPLOYEES, INITIAL_DEPARTMENTS, INITIAL_DESIGNATIONS, INITIAL_ASSETS, INITIAL_REVIEWS } from './services/mockBackend';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { useSubscription } from './hooks/useSubscription';
 
@@ -33,17 +32,7 @@ const SuperAdmin = lazy(() => import('./pages/SuperAdmin').then(m => ({ default:
 const ResellerDashboard = lazy(() => import('./pages/ResellerDashboard').then(m => ({ default: m.ResellerDashboard })));
 const EmployeeOnboardingWizard = lazy(() => import('./pages/EmployeeOnboardingWizard').then(m => ({ default: m.EmployeeOnboardingWizard })));
 
-const INITIAL_COMPANY_DATA: CompanySettings = {
-  name: 'JamCorp Ltd.',
-  trn: '123-456-789',
-  address: '123 Knutsford Blvd, Kingston 5',
-  phone: '(876) 555-0199',
-  bankName: 'NCB',
-  accountNumber: '404123456',
-  branchCode: '52431',
-  plan: 'Free',
-  subscriptionStatus: 'ACTIVE'
-};
+
 
 const INITIAL_TAX_CONFIG: TaxConfig = {
   nisRate: 0.03, nisCap: 5000000,
@@ -61,9 +50,23 @@ const INITIAL_PLANS: PricingPlan[] = [
 ];
 
 function AppContent() {
-  const { user, impersonate, login } = useAuth(); 
+  const { user, impersonate, login, updateUser, isLoading } = useAuth(); 
   const globalConfig = storage.getGlobalConfig();
-  const isSupabaseMode = globalConfig?.dataSource === 'SUPABASE';
+  
+  // Auto-enable Supabase mode if credentials are available
+  const isSupabaseMode = (() => {
+    if (globalConfig?.dataSource === 'SUPABASE') return true;
+    
+    // Auto-detect if Supabase is configured via env vars
+    const hasSupabaseEnv = import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY;
+    if (hasSupabaseEnv && !globalConfig) {
+      // Initialize global config with Supabase enabled
+      storage.saveGlobalConfig({ dataSource: 'SUPABASE' } as any);
+      return true;
+    }
+    
+    return globalConfig?.dataSource === 'SUPABASE';
+  })();
 
   const getInitialPath = () => {
     if (typeof window !== 'undefined') {
@@ -75,27 +78,27 @@ function AppContent() {
   };
 
   const [currentPath, setCurrentPath] = useState(getInitialPath());
-  const [isLoading, setIsLoading] = useState(false);
+  const [dataLoading, setDataLoading] = useState(false);
   
   // Data State
-  const [employees, setEmployees] = useState<Employee[]>(storage.getEmployees() || INITIAL_EMPLOYEES);
+  const [employees, setEmployees] = useState<Employee[]>(storage.getEmployees() || []);
   const [payRunHistory, setPayRunHistory] = useState<PayRunType[]>(storage.getPayRuns() || []);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(storage.getLeaveRequests() || []);
   const [timesheets, setTimesheets] = useState<WeeklyTimesheet[]>(storage.getTimesheets() || []);
   
   // Config State
-  const [companyData, setCompanyData] = useState<CompanySettings>(storage.getCompanyData() || INITIAL_COMPANY_DATA);
+  const [companyData, setCompanyData] = useState<CompanySettings | null>(storage.getCompanyData());
   const [taxConfig, setTaxConfig] = useState<TaxConfig>(storage.getTaxConfig() || INITIAL_TAX_CONFIG);
   const [integrationConfig, setIntegrationConfig] = useState<IntegrationConfig>(storage.getIntegrationConfig() || { provider: 'CSV', mappings: [] });
   const [templates, setTemplates] = useState<DocumentTemplate[]>(storage.getTemplates() || []);
   const [plans, setPlans] = useState<PricingPlan[]>(storage.getPricingPlans() || INITIAL_PLANS);
-  const [departments, setDepartments] = useState<Department[]>(storage.getDepartments() || INITIAL_DEPARTMENTS);
-  const [designations, setDesignations] = useState<Designation[]>(storage.getDesignations() || INITIAL_DESIGNATIONS);
-  const [assets, setAssets] = useState<Asset[]>(storage.getAssets() || INITIAL_ASSETS);
-  const [reviews, setReviews] = useState<PerformanceReview[]>(storage.getReviews() || INITIAL_REVIEWS);
+  const [departments, setDepartments] = useState<Department[]>(storage.getDepartments() || []);
+  const [designations, setDesignations] = useState<Designation[]>(storage.getDesignations() || []);
+  const [assets, setAssets] = useState<Asset[]>(storage.getAssets() || []);
+  const [reviews, setReviews] = useState<PerformanceReview[]>(storage.getReviews() || []);
 
   // --- SUBSCRIPTION LOGIC ---
-  const subscription = useSubscription(employees, companyData, plans);
+  const subscription = useSubscription(employees, companyData || { plan: 'Free' } as CompanySettings, plans);
 
   const navigateTo = (path: string) => {
     setCurrentPath(path);
@@ -121,7 +124,7 @@ function AppContent() {
                      name: `${invitee.firstName} ${invitee.lastName}`,
                      email: invitee.email,
                      role: invitee.role,
-                     companyId: 'comp-123',
+                     companyId: invitee.companyId || user?.companyId || '',
                      isOnboarded: false
                  };
                  login(tempUser);
@@ -135,7 +138,7 @@ function AppContent() {
   useEffect(() => {
     async function loadData() {
       if (isSupabaseMode && user?.companyId) {
-        setIsLoading(true);
+        setDataLoading(true);
         try {
           const [dbCompany, dbEmps, dbRuns, dbLeaves] = await Promise.all([
             supabaseService.getCompany(user.companyId),
@@ -153,7 +156,7 @@ function AppContent() {
           console.error("Failed to load cloud data", error);
           toast.error("Failed to sync with database. Using local cache.");
         } finally {
-          setIsLoading(false);
+          setDataLoading(false);
         }
       }
     }
@@ -234,6 +237,21 @@ function AppContent() {
   const handleCompanyOnboardComplete = async (data: CompanySettings, importedEmployees: Employee[]) => {
       setCompanyData(data);
       setEmployees(prev => [...prev, ...importedEmployees]);
+      storage.saveCompanyData(data);
+      // Only save to Supabase if we have a valid UUID companyId
+      if (isSupabaseMode && user?.companyId && user.companyId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+          try {
+              await supabaseService.saveCompany(user.companyId, data);
+              for (const emp of importedEmployees) {
+                  await supabaseService.saveEmployee(emp, user.companyId);
+              }
+          } catch (error) {
+              console.warn('Failed to sync to Supabase (using local storage):', error);
+          }
+      }
+      // Mark user as onboarded
+      updateUser({ isOnboarded: true });
+      toast.success('Company setup complete!');
       navigateTo('dashboard');
   };
   const handleEmployeeWizardComplete = () => { navigateTo('portal-home'); };
@@ -246,6 +264,11 @@ function AppContent() {
       </div>
     </div>
   );
+
+  // Show loading state while checking for stored user session
+  if (isLoading) {
+    return <LoadingFallback />;
+  }
 
   if (!user) {
     return (
@@ -264,10 +287,10 @@ function AppContent() {
   }
 
   const renderPage = () => {
-    if (isLoading) return <LoadingFallback />;
+    if (dataLoading) return <LoadingFallback />;
 
     if (!user.isOnboarded) {
-        if (user.role === Role.EMPLOYEE) return <EmployeeOnboardingWizard companyName={companyData.name} onComplete={handleEmployeeWizardComplete} />;
+        if (user.role === Role.EMPLOYEE) return <EmployeeOnboardingWizard companyName={companyData?.name || 'Company'} onComplete={handleEmployeeWizardComplete} />;
         return <Onboarding departments={departments} onComplete={handleCompanyOnboardComplete} />;
     }
 
@@ -301,14 +324,13 @@ function AppContent() {
 
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <Layout 
+      <Layout 
             currentPath={currentPath} 
             onNavigate={navigateTo} 
             variant={layoutVariant}
-            managingCompanyName={companyData.name}
+            managingCompanyName={companyData?.name || 'Your Company'}
             systemBanner={globalConfig?.systemBanner}
-            subscriptionStatus={companyData.subscriptionStatus}
+            subscriptionStatus={companyData?.subscriptionStatus}
             isOverLimit={subscription.isOverLimit} // NEW: Pass soft lock state
         >
           <Toaster richColors position="top-right" />
@@ -317,7 +339,6 @@ function AppContent() {
           </Suspense>
           <CookieConsent />
         </Layout>
-      </AuthProvider>
     </ErrorBoundary>
   );
 }

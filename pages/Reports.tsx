@@ -18,6 +18,7 @@ export const Reports: React.FC<ReportsProps> = ({ history = [], companyData }) =
   const [viewingPayslip, setViewingPayslip] = useState<PayRunLineItem | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [auditFilter, setAuditFilter] = useState('ALL');
+  const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM format
 
   useEffect(() => {
       setAuditLogs(auditService.getLogs());
@@ -65,7 +66,19 @@ export const Reports: React.FC<ReportsProps> = ({ history = [], companyData }) =
 
   const handleExportS01 = () => {
       if (companyData && displayHistory.length > 0) {
-          generateS01CSV(companyData, displayHistory);
+          // Filter pay runs by selected month
+          const [year, month] = selectedMonth.split('-').map(Number);
+          const filteredRuns = displayHistory.filter(run => {
+              const runDate = new Date(run.periodStart);
+              return runDate.getFullYear() === year && (runDate.getMonth() + 1) === month;
+          });
+          
+          if (filteredRuns.length === 0) {
+              alert(`No payroll data found for ${new Date(year, month - 1).toLocaleString('default', { month: 'long', year: 'numeric' })}`);
+              return;
+          }
+          
+          generateS01CSV(companyData, filteredRuns);
       } else {
           alert("No data available to generate S01.");
       }
@@ -297,14 +310,6 @@ export const Reports: React.FC<ReportsProps> = ({ history = [], companyData }) =
                         </PieChart>
                     </ResponsiveContainer>
                 </div>
-                <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                    {statData.filter(d => d.name !== 'No Data').map((item) => (
-                        <div key={item.name} className="p-3 rounded-lg bg-gray-50">
-                            <p className="text-xs text-gray-500 uppercase font-bold">{item.name}</p>
-                            <p className="text-lg font-bold text-gray-900">${item.value.toLocaleString()}</p>
-                        </div>
-                    ))}
-                </div>
             </div>
             
             <div className="bg-jam-black text-white p-6 rounded-xl shadow-lg flex flex-col justify-center">
@@ -314,6 +319,16 @@ export const Reports: React.FC<ReportsProps> = ({ history = [], companyData }) =
                     <p className="text-xs text-jam-yellow mt-2">Accumulated YTD</p>
                 </div>
                 <div className="space-y-3">
+                    <div>
+                        <label className="block text-xs text-gray-300 mb-2 font-medium">Select Month for S01</label>
+                        <input
+                            type="month"
+                            value={selectedMonth}
+                            onChange={(e) => setSelectedMonth(e.target.value)}
+                            max={new Date().toISOString().slice(0, 7)}
+                            className="w-full px-3 py-2 bg-gray-800 text-white border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-jam-orange text-sm"
+                        />
+                    </div>
                     <button 
                         onClick={handleExportS01}
                         className="w-full py-3 bg-white text-jam-black font-bold rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center"

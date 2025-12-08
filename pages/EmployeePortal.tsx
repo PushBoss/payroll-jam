@@ -452,7 +452,7 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                 {/* Tax Forms */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                     <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-                        <h3 className="font-bold text-gray-900">Tax Documents (P24/P45)</h3>
+                        <h3 className="font-bold text-gray-900">Tax Documents</h3>
                     </div>
                     <div className="divide-y divide-gray-100">
                          <div className="px-6 py-4 flex items-center justify-between">
@@ -460,15 +460,26 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                                 <Icons.Compliance className="w-5 h-5 text-gray-400 mr-3" />
                                 <div>
                                     <p className="text-sm font-medium text-gray-900">P24 - Annual Income Certificate</p>
-                                    <p className="text-xs text-gray-500">Tax Year 2024</p>
+                                    <p className="text-xs text-gray-500">Tax Year 2024 • Required for tax filing</p>
                                 </div>
                             </div>
                             <button 
                                 onClick={handleDownloadP24}
-                                className="text-jam-orange hover:text-yellow-600 text-sm font-medium"
+                                className="text-jam-orange hover:text-yellow-600 text-sm font-medium flex items-center"
                             >
+                                <Icons.Download className="w-4 h-4 mr-1" />
                                 Download
                             </button>
+                        </div>
+                         <div className="px-6 py-4 flex items-center justify-between">
+                            <div className="flex items-center">
+                                <Icons.Compliance className="w-5 h-5 text-gray-400 mr-3" />
+                                <div>
+                                    <p className="text-sm font-medium text-gray-900">P45 - Termination Certificate</p>
+                                    <p className="text-xs text-gray-500">Issued upon employment termination</p>
+                                </div>
+                            </div>
+                            <span className="text-xs text-gray-400 italic">Not applicable</span>
                         </div>
                     </div>
                 </div>

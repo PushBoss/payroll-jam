@@ -41,8 +41,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // Persist to Supabase immediately
     try {
       await supabaseService.saveUser(userData);
+      console.log("✅ User saved to Supabase successfully:", userData.email);
     } catch (error) {
-      console.error("AuthContext: Failed to persist signup to DB", error);
+      console.error("❌ AuthContext: Failed to persist signup to DB", error);
+      throw error; // Re-throw so signup page can show error
     }
   };
 

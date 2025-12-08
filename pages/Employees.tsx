@@ -130,7 +130,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       }
 
       setIsSendingInvite(true);
-      const onboardingToken = Math.random().toString(36).substring(7);
+      const onboardingToken = generateUUID();
       const inviteLink = `${window.location.origin}/?token=${onboardingToken}`;
 
       const newEmp: Employee = {

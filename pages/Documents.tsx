@@ -13,6 +13,10 @@ interface DocumentsProps {
 export const Documents: React.FC<DocumentsProps> = ({ templates, employees, companyData, onUpdateTemplates }) => {
   const [activeTab, setActiveTab] = useState<'list' | 'create' | 'generate'>('list');
   const [currentTemplate, setCurrentTemplate] = useState<DocumentTemplate | null>(null);
+  const [pendingRequests, setPendingRequests] = useState<Array<{id: string, employeeName: string, documentType: string, requestDate: string, status: 'PENDING' | 'APPROVED' | 'REJECTED'}>>([
+    { id: 'REQ-001', employeeName: 'John Doe', documentType: 'Job Letter', requestDate: '2025-01-15', status: 'PENDING' },
+    { id: 'REQ-002', employeeName: 'Jane Smith', documentType: 'Salary Certificate', requestDate: '2025-01-14', status: 'PENDING' }
+  ]);
   
   // Generation State
   const [selectedEmpId, setSelectedEmpId] = useState('');
@@ -23,6 +27,21 @@ export const Documents: React.FC<DocumentsProps> = ({ templates, employees, comp
   const [editorName, setEditorName] = useState('');
   const [editorCategory, setEditorCategory] = useState<TemplateCategory>(TemplateCategory.LETTER);
   const [editorContent, setEditorContent] = useState('');
+
+  const handleApproveRequest = (requestId: string) => {
+    setPendingRequests(prev => prev.map(req => 
+      req.id === requestId ? { ...req, status: 'APPROVED' as const } : req
+    ));
+    alert('Document request approved. Employee will be notified.');
+  };
+
+  const handleRejectRequest = (requestId: string) => {
+    const reason = prompt('Rejection reason (optional):');
+    setPendingRequests(prev => prev.map(req => 
+      req.id === requestId ? { ...req, status: 'REJECTED' as const } : req
+    ));
+    alert('Document request rejected.');
+  };
 
   const handleStartCreate = () => {
     setCurrentTemplate(null);
@@ -99,6 +118,16 @@ export const Documents: React.FC<DocumentsProps> = ({ templates, employees, comp
     });
 
     setGeneratedContent(content);
+  };
+
+  const downloadDocument = () => {
+    const element = document.createElement('a');
+    const file = new Blob([generatedContent], {type: 'text/plain'});
+    element.href = URL.createObjectURL(file);
+    element.download = `document-${Date.now()}.txt`;
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
   };
 
   const printDocument = () => {
@@ -278,6 +307,13 @@ export const Documents: React.FC<DocumentsProps> = ({ templates, employees, comp
                      Discard
                    </button>
                    <button 
+                    onClick={downloadDocument}
+                    className="px-6 py-2 bg-green-600 text-white font-bold rounded-full shadow-lg hover:bg-green-700 flex items-center"
+                   >
+                     <Icons.Download className="w-4 h-4 mr-2" />
+                     Download TXT
+                   </button>
+                   <button 
                     onClick={printDocument}
                     className="px-6 py-2 bg-jam-orange text-jam-black font-bold rounded-full shadow-lg hover:bg-yellow-500 flex items-center"
                    >
@@ -322,6 +358,47 @@ export const Documents: React.FC<DocumentsProps> = ({ templates, employees, comp
           </button>
         </div>
       </div>
+
+      {/* Pending Requests Section */}
+      {pendingRequests.some(r => r.status === 'PENDING') && (
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 rounded-lg p-6">
+          <div className="flex items-center mb-4">
+            <Icons.Alert className="w-5 h-5 text-yellow-600 mr-2" />
+            <h3 className="font-bold text-gray-900">Pending Document Requests</h3>
+            <span className="ml-2 bg-yellow-200 text-yellow-800 text-xs font-bold px-2 py-0.5 rounded-full">
+              {pendingRequests.filter(r => r.status === 'PENDING').length}
+            </span>
+          </div>
+          <div className="space-y-3">
+            {pendingRequests.filter(r => r.status === 'PENDING').map(req => (
+              <div key={req.id} className="bg-white p-4 rounded-lg flex items-center justify-between shadow-sm">
+                <div className="flex items-center">
+                  <Icons.Document className="w-5 h-5 text-gray-400 mr-3" />
+                  <div>
+                    <p className="font-medium text-gray-900">{req.employeeName}</p>
+                    <p className="text-sm text-gray-500">{req.documentType} • Requested {req.requestDate}</p>
+                  </div>
+                </div>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => handleApproveRequest(req.id)}
+                    className="px-3 py-1.5 bg-green-100 text-green-700 rounded hover:bg-green-200 text-sm font-medium flex items-center"
+                  >
+                    <Icons.CheckMark className="w-4 h-4 mr-1" />
+                    Approve
+                  </button>
+                  <button
+                    onClick={() => handleRejectRequest(req.id)}
+                    className="px-3 py-1.5 bg-red-100 text-red-700 rounded hover:bg-red-200 text-sm font-medium"
+                  >
+                    Reject
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
          {templates.map(template => (

@@ -719,104 +719,106 @@ CREATE TABLE IF NOT EXISTS expert_referrals (
 -- =====================================================
 
 -- Companies
-CREATE INDEX idx_companies_status ON companies(status);
-CREATE INDEX idx_companies_reseller ON companies(reseller_id);
+CREATE INDEX IF NOT EXISTS idx_companies_status ON companies(status);
+CREATE INDEX IF NOT EXISTS idx_companies_reseller ON companies(reseller_id);
 
 -- Users
-CREATE INDEX idx_users_company ON app_users(company_id);
-CREATE INDEX idx_users_role ON app_users(role);
-CREATE INDEX idx_users_email ON app_users(email);
+CREATE INDEX IF NOT EXISTS idx_users_company ON app_users(company_id);
+CREATE INDEX IF NOT EXISTS idx_users_role ON app_users(role);
+CREATE INDEX IF NOT EXISTS idx_users_email ON app_users(email);
 
 -- Employees
-CREATE INDEX idx_employees_company ON employees(company_id);
-CREATE INDEX idx_employees_status ON employees(status);
-CREATE INDEX idx_employees_trn ON employees(trn);
-CREATE INDEX idx_employees_nis ON employees(nis);
-CREATE INDEX idx_employees_hire_date ON employees(hire_date);
+CREATE INDEX IF NOT EXISTS idx_employees_company ON employees(company_id);
+CREATE INDEX IF NOT EXISTS idx_employees_status ON employees(status);
+CREATE INDEX IF NOT EXISTS idx_employees_trn ON employees(trn);
+CREATE INDEX IF NOT EXISTS idx_employees_nis ON employees(nis);
+CREATE INDEX IF NOT EXISTS idx_employees_hire_date ON employees(hire_date);
 
 -- Pay Runs
-CREATE INDEX idx_pay_runs_company ON pay_runs(company_id);
-CREATE INDEX idx_pay_runs_status ON pay_runs(status);
-CREATE INDEX idx_pay_runs_period ON pay_runs(period_start, period_end);
-CREATE INDEX idx_pay_runs_pay_date ON pay_runs(pay_date);
+CREATE INDEX IF NOT EXISTS idx_pay_runs_company ON pay_runs(company_id);
+CREATE INDEX IF NOT EXISTS idx_pay_runs_status ON pay_runs(status);
+CREATE INDEX IF NOT EXISTS idx_pay_runs_period ON pay_runs(period_start, period_end);
+CREATE INDEX IF NOT EXISTS idx_pay_runs_pay_date ON pay_runs(pay_date);
 
 -- Pay Run Line Items
-CREATE INDEX idx_line_items_pay_run ON pay_run_line_items(pay_run_id);
-CREATE INDEX idx_line_items_employee ON pay_run_line_items(employee_id);
+CREATE INDEX IF NOT EXISTS idx_line_items_pay_run ON pay_run_line_items(pay_run_id);
+CREATE INDEX IF NOT EXISTS idx_line_items_employee ON pay_run_line_items(employee_id);
 
 -- YTD
-CREATE INDEX idx_ytd_employee_year ON employee_ytd(employee_id, tax_year);
+CREATE INDEX IF NOT EXISTS idx_ytd_employee_year ON employee_ytd(employee_id, tax_year);
 
 -- Timesheets
-CREATE INDEX idx_timesheets_employee ON timesheets(employee_id);
-CREATE INDEX idx_timesheets_status ON timesheets(status);
-CREATE INDEX idx_timesheets_week ON timesheets(week_start_date);
+CREATE INDEX IF NOT EXISTS idx_timesheets_employee ON timesheets(employee_id);
+CREATE INDEX IF NOT EXISTS idx_timesheets_status ON timesheets(status);
+CREATE INDEX IF NOT EXISTS idx_timesheets_week ON timesheets(week_start_date);
 
 -- Leave Requests
-CREATE INDEX idx_leave_company ON leave_requests(company_id);
-CREATE INDEX idx_leave_employee ON leave_requests(employee_id);
-CREATE INDEX idx_leave_status ON leave_requests(status);
-CREATE INDEX idx_leave_dates ON leave_requests(start_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_leave_company ON leave_requests(company_id);
+CREATE INDEX IF NOT EXISTS idx_leave_employee ON leave_requests(employee_id);
+CREATE INDEX IF NOT EXISTS idx_leave_status ON leave_requests(status);
+CREATE INDEX IF NOT EXISTS idx_leave_dates ON leave_requests(start_date, end_date);
 
 -- Audit Logs
-CREATE INDEX idx_audit_company ON audit_logs(company_id);
-CREATE INDEX idx_audit_actor ON audit_logs(actor_id);
-CREATE INDEX idx_audit_timestamp ON audit_logs(timestamp DESC);
-CREATE INDEX idx_audit_action ON audit_logs(action);
+CREATE INDEX IF NOT EXISTS idx_audit_company ON audit_logs(company_id);
+CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_logs(actor_id);
+CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action);
 
 -- Notifications
-CREATE INDEX idx_notifications_user ON notifications(user_id);
-CREATE INDEX idx_notifications_unread ON notifications(is_read, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(is_read, created_at DESC);
 
 -- Reseller Clients
-CREATE INDEX idx_reseller_clients_reseller ON reseller_clients(reseller_id);
-CREATE INDEX idx_reseller_clients_client ON reseller_clients(client_company_id);
+CREATE INDEX IF NOT EXISTS idx_reseller_clients_reseller ON reseller_clients(reseller_id);
+CREATE INDEX IF NOT EXISTS idx_reseller_clients_client ON reseller_clients(client_company_id);
 
 -- =====================================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
 -- =====================================================
 
--- Enable RLS on all tables
-ALTER TABLE companies ENABLE ROW LEVEL SECURITY;
-ALTER TABLE app_users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
-ALTER TABLE departments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE pay_runs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE pay_run_line_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE employee_ytd ENABLE ROW LEVEL SECURITY;
-ALTER TABLE timesheets ENABLE ROW LEVEL SECURITY;
-ALTER TABLE leave_requests ENABLE ROW LEVEL SECURITY;
-ALTER TABLE statutory_reports ENABLE ROW LEVEL SECURITY;
-ALTER TABLE document_templates ENABLE ROW LEVEL SECURITY;
-ALTER TABLE document_requests ENABLE ROW LEVEL SECURITY;
-ALTER TABLE reseller_clients ENABLE ROW LEVEL SECURITY;
-ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
-ALTER TABLE employee_assets ENABLE ROW LEVEL SECURITY;
-ALTER TABLE performance_reviews ENABLE ROW LEVEL SECURITY;
+-- NOTE: RLS is disabled for custom authentication approach
+-- The app uses service role key for backend operations
+-- For production with Supabase Auth, enable RLS and link app_users.id to auth.users.id
 
--- Example RLS Policy for employees table
--- Users can only see employees in their own company
-CREATE POLICY employees_company_isolation ON employees
-  FOR ALL
-  USING (
-    company_id IN (
-      SELECT company_id FROM app_users WHERE id = auth.uid()
-    )
-  );
+-- OPTIONAL: Enable RLS on all tables (currently commented out)
+-- ALTER TABLE companies ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE app_users ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE departments ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE pay_runs ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE pay_run_line_items ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE employee_ytd ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE timesheets ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE leave_requests ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE statutory_reports ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE document_templates ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE document_requests ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE reseller_clients ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE employee_assets ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE performance_reviews ENABLE ROW LEVEL SECURITY;
 
--- Resellers can see their client companies
-CREATE POLICY reseller_client_access ON companies
-  FOR SELECT
-  USING (
-    id IN (
-      SELECT client_company_id FROM reseller_clients 
-      WHERE reseller_id IN (SELECT company_id FROM app_users WHERE id = auth.uid())
-    )
-    OR
-    id IN (SELECT company_id FROM app_users WHERE id = auth.uid())
-  );
+-- Example RLS Policies (for future Supabase Auth integration):
+-- CREATE POLICY employees_company_isolation ON employees
+--   FOR ALL
+--   USING (
+--     company_id IN (
+--       SELECT company_id FROM app_users WHERE id = auth.uid()
+--     )
+--   );
+
+-- CREATE POLICY reseller_client_access ON companies
+--   FOR SELECT
+--   USING (
+--     id IN (
+--       SELECT client_company_id FROM reseller_clients 
+--       WHERE reseller_id IN (SELECT company_id FROM app_users WHERE id = auth.uid())
+--     )
+--     OR
+--     id IN (SELECT company_id FROM app_users WHERE id = auth.uid())
+--   );
 
 -- =====================================================
 -- TRIGGERS FOR AUTO-UPDATES
@@ -832,21 +834,27 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Apply trigger to tables with updated_at
+DROP TRIGGER IF EXISTS update_companies_updated_at ON companies;
 CREATE TRIGGER update_companies_updated_at BEFORE UPDATE ON companies
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_app_users_updated_at ON app_users;
 CREATE TRIGGER update_app_users_updated_at BEFORE UPDATE ON app_users
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_employees_updated_at ON employees;
 CREATE TRIGGER update_employees_updated_at BEFORE UPDATE ON employees
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_pay_runs_updated_at ON pay_runs;
 CREATE TRIGGER update_pay_runs_updated_at BEFORE UPDATE ON pay_runs
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_timesheets_updated_at ON timesheets;
 CREATE TRIGGER update_timesheets_updated_at BEFORE UPDATE ON timesheets
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_leave_requests_updated_at ON leave_requests;
 CREATE TRIGGER update_leave_requests_updated_at BEFORE UPDATE ON leave_requests
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
@@ -886,6 +894,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS check_employee_limit_trigger ON employees;
 CREATE TRIGGER check_employee_limit_trigger
   BEFORE INSERT ON employees
   FOR EACH ROW
@@ -895,7 +904,7 @@ CREATE TRIGGER check_employee_limit_trigger
 -- INITIAL DATA / SEED DATA
 -- =====================================================
 
--- Insert default document templates
+-- Insert default document templates (skip if already exists)
 INSERT INTO document_templates (name, category, content, is_global, requires_approval)
 VALUES 
   ('Standard Job Letter', 'JOB_LETTER', 
@@ -903,7 +912,8 @@ VALUES
    TRUE, TRUE),
   ('Salary Certificate', 'SALARY_CERTIFICATE',
    '<h1>Salary Verification</h1><p>Employee: {{employeeName}}<br>Position: {{jobTitle}}<br>Monthly Gross Salary: {{grossSalary}}<br>Employment Status: {{status}}</p>',
-   TRUE, TRUE);
+   TRUE, TRUE)
+ON CONFLICT DO NOTHING;
 
 -- =====================================================
 -- END OF SCHEMA

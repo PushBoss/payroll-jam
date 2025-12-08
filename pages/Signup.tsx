@@ -7,6 +7,7 @@ import { storage } from '../services/storage';
 import { dimePayService } from '../services/dimePayService';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
+import { generateUUID } from '../utils/uuid';
 
 interface SignupProps {
   onSignup?: (user: User) => void;
@@ -151,18 +152,23 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onLoginClick, i
 
   const handleSubmit = () => {
     setTimeout(async () => {
-      const role = formData.plan === 'Reseller' ? Role.RESELLER : Role.OWNER;
-      const newUser: User = {
-        id: `u-${Math.random().toString(36).substr(2, 9)}`,
-        name: formData.name,
-        email: formData.email,
-        role: role,
-        companyId: `comp-${Math.random().toString(36).substr(2, 9)}`,
-        isOnboarded: false
-      };
-      
-      await signup({ ...newUser, companyName: formData.companyName, plan: formData.plan } as any);
-      if (onSignupSuccess) onSignupSuccess(newUser);
+      try {
+        const role = formData.plan === 'Reseller' ? Role.RESELLER : Role.OWNER;
+        const newUser: User = {
+          id: generateUUID(),
+          name: formData.name,
+          email: formData.email,
+          role: role,
+          companyId: generateUUID(),
+          isOnboarded: false
+        };
+        
+        await signup({ ...newUser, companyName: formData.companyName, plan: formData.plan } as any);
+        if (onSignupSuccess) onSignupSuccess(newUser);
+      } catch (error) {
+        console.error("Signup failed:", error);
+        alert(`Account created locally but failed to sync to database: ${error instanceof Error ? error.message : String(error)}\n\nYou can still use the app, but your data won't be persisted to the cloud.`);
+      }
     }, 1500);
   };
 

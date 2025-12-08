@@ -3,7 +3,6 @@ import Papa from 'papaparse';
 import { Icons } from '../components/Icons';
 import { CompanySettings, Employee, Role, PayType, PayFrequency, Department } from '../types';
 import { downloadFile } from '../utils/exportHelpers';
-import { toast } from 'sonner';
 
 interface OnboardingProps {
   onComplete: (data: CompanySettings, employees: Employee[]) => void;
@@ -13,6 +12,7 @@ interface OnboardingProps {
 export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments = [] }) => {
   const [step, setStep] = useState(1);
   const [importedEmployees, setImportedEmployees] = useState<Employee[]>([]);
+  const [importStatus, setImportStatus] = useState<{type: 'success' | 'error', message: string} | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState<CompanySettings>({
@@ -44,10 +44,11 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments 
       const sample = "John,Doe,john.doe@example.com,123-456-789,250000,Employee,Operations,Driver";
       downloadFile('Employee_Import_Template.csv', `${headers}\n${sample}`, 'text/csv');
   };
-
   const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    setImportStatus(null);
 
     Papa.parse(file, {
       header: true,
@@ -55,13 +56,13 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments 
       complete: (results) => {
         if (results.errors.length > 0) {
           console.error("CSV Errors:", results.errors);
-          toast.error("Error parsing CSV. Please check file format.");
+          setImportStatus({type: 'error', message: 'Error parsing CSV. Please check file format.'});
           return;
         }
 
         const rows = results.data as any[];
         if (rows.length === 0) {
-            toast.error("CSV is empty.");
+            setImportStatus({type: 'error', message: 'CSV is empty.'});
             return;
         }
 
@@ -82,7 +83,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments 
         const titleKey = findKey('title') || findKey('job');
 
         if (!emailKey) {
-            toast.error("CSV must contain an 'Email' column.");
+            setImportStatus({type: 'error', message: 'CSV must contain an "Email" column.'});
             return;
         }
 
@@ -91,7 +92,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments 
             if (!email) return;
 
             const newEmp: Employee = {
-                id: `EMP-${Date.now()}-${i}`,
+                id: generateUUID(),
                 firstName: firstKey ? row[firstKey]?.trim() : 'Unknown',
                 lastName: lastKey ? row[lastKey]?.trim() : '',
                 email: email,
@@ -134,12 +135,12 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments 
         });
 
         setImportedEmployees(newEmps);
-        toast.success(`Successfully imported ${newEmps.length} employees`);
+        setImportStatus({type: 'success', message: `Successfully imported ${newEmps.length} employees`});
         e.target.value = ''; // Reset input
       },
       error: (err) => {
         console.error(err);
-        toast.error("Failed to read CSV file.");
+        setImportStatus({type: 'error', message: 'Failed to read CSV file.'});
       }
     });
   };
@@ -235,6 +236,26 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments 
                             <h3 className="text-xl font-bold text-gray-900">Import Employees</h3>
                             <p className="text-sm text-gray-500">Upload a CSV or skip to add manually later.</p>
                         </div>
+                        
+                        {importStatus && (
+                            <div className={`p-4 rounded-lg border flex items-center justify-between mb-4 ${
+                                importStatus.type === 'success' 
+                                    ? 'bg-green-50 border-green-200' 
+                                    : 'bg-red-50 border-red-200'
+                            }`}>
+                                <span className={`font-medium ${
+                                    importStatus.type === 'success' ? 'text-green-800' : 'text-red-800'
+                                }`}>
+                                    {importStatus.message}
+                                </span>
+                                <button 
+                                    onClick={() => setImportStatus(null)}
+                                    className="text-gray-400 hover:text-gray-600"
+                                >
+                                    <Icons.Close className="w-4 h-4" />
+                                </button>
+                            </div>
+                        )}
                         
                         <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:bg-gray-50 transition-colors">
                             <Icons.Upload className="w-12 h-12 text-gray-300 mx-auto mb-3" />

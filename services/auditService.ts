@@ -1,6 +1,7 @@
 
 import { storage } from './storage';
 import { User, AuditLogEntry } from '../types';
+import { generateUUID } from '../utils/uuid';
 
 export const auditService = {
   log: (
@@ -12,7 +13,7 @@ export const auditService = {
     if (!user) return;
     
     const newLog: AuditLogEntry = {
-      id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      id: generateUUID(),
       timestamp: new Date().toISOString(),
       actorId: user.id,
       actorName: user.name,
