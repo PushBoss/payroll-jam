@@ -11,14 +11,14 @@ import { generateUUID } from '../utils/uuid';
 
 interface SignupProps {
   onSignup?: (user: User) => void;
-  onSignupSuccess?: (user: User) => void; // Navigation callback
+  onSignupSuccess?: (user: User) => void;
   onLoginClick: () => void;
   initialPlan?: string;
   initialBillingCycle?: 'monthly' | 'annual';
   plans: PricingPlan[]; 
 }
 
-export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onLoginClick, initialPlan = 'Starter', initialBillingCycle = 'monthly', plans }) => {
+export const Signup: React.FC<SignupProps> = ({ onLoginClick, initialPlan = 'Starter', initialBillingCycle = 'monthly', plans }) => {
   const { signup } = useAuth();
   const [step, setStep] = useState<'account' | 'billing'>('account');
   const [paymentError, setPaymentError] = useState<string | null>(null);
@@ -168,11 +168,15 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onLoginClick, i
         };
         
         await signup(newUser);
-        toast.success('Account created successfully! Check your email to verify.');
+        toast.success('Account created! Please check your email to verify your account before signing in.', {
+          duration: 6000,
+        });
         
-        // Call success callback with the user (without password)
-        const { password, ...userWithoutPassword } = newUser;
-        if (onSignupSuccess) onSignupSuccess(userWithoutPassword as User);
+        // Don't auto-login, redirect to login page
+        // User must verify email first
+        setTimeout(() => {
+          onLoginClick(); // Redirect to login page
+        }, 2000);
       } catch (error: any) {
         console.error('Signup failed:', error);
         
