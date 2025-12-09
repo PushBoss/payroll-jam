@@ -92,7 +92,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBack, onRegister
       }
 
       const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-        redirectTo: `${window.location.origin}/?page=reset-password`,
+        redirectTo: `https://www.payrolljam.com/?page=reset-password`,
       });
 
       if (error) throw error;

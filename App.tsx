@@ -279,6 +279,7 @@ function AppContent() {
   if (currentPath === 'reset-password') {
     return (
       <Suspense fallback={<LoadingFallback />}>
+        <Toaster richColors position="top-right" />
         <ResetPassword />
       </Suspense>
     );
@@ -287,6 +288,7 @@ function AppContent() {
   if (!user) {
     return (
       <Suspense fallback={<LoadingFallback />}>
+        <Toaster richColors position="top-right" />
         <CookieConsent />
         {currentPath === 'login' && <Login onLoginSuccess={onLoginSuccess} onBack={() => navigateTo('home')} onRegisterClick={() => navigateTo('signup')} />}
         {currentPath === 'signup' && <Signup onSignupSuccess={onSignupSuccess} onLoginClick={() => navigateTo('login')} plans={plans} />}
