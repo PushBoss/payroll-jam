@@ -25,6 +25,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, initialPlan = 'Sta
   const [widgetStatus, setWidgetStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [legalConsent, setLegalConsent] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'card' | 'direct-deposit'>('card');
   
   // Timer Ref for cleanup
   const timerRef = useRef<any>(null);
@@ -168,15 +169,14 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, initialPlan = 'Sta
         };
         
         await signup(newUser);
-        toast.success('Account created! Please check your email to verify your account before signing in.', {
-          duration: 6000,
+        toast.success('Account created successfully! Redirecting to setup...', {
+          duration: 3000,
         });
         
-        // Don't auto-login, redirect to login page
-        // User must verify email first
-        setTimeout(() => {
-          onLoginClick(); // Redirect to login page
-        }, 2000);
+        // Call onSignupSuccess to trigger onboarding flow
+        if (onSignupSuccess) {
+          onSignupSuccess(newUser);
+        }
       } catch (error: any) {
         console.error('Signup failed:', error);
         
@@ -315,8 +315,41 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, initialPlan = 'Sta
                             <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-300" /></div>
                             <div className="relative flex justify-center text-sm"><span className="bg-white px-2 text-gray-500">Secure Payment</span></div>
                         </div>
+
+                        {/* Payment Method Selection */}
+                        <div className="mb-6">
+                            <label className="block text-sm font-medium text-gray-700 mb-3">Select Payment Method</label>
+                            <div className="grid grid-cols-2 gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setPaymentMethod('card')}
+                                    className={`flex flex-col items-center justify-center p-4 border-2 rounded-lg transition-all ${
+                                        paymentMethod === 'card'
+                                            ? 'border-jam-orange bg-orange-50'
+                                            : 'border-gray-200 hover:border-gray-300'
+                                    }`}
+                                >
+                                    <Icons.CreditCard className="w-6 h-6 mb-2" />
+                                    <span className="text-sm font-medium">Card Payment</span>
+                                    <span className="text-xs text-gray-500 mt-1">Visa, Mastercard</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setPaymentMethod('direct-deposit')}
+                                    className={`flex flex-col items-center justify-center p-4 border-2 rounded-lg transition-all ${
+                                        paymentMethod === 'direct-deposit'
+                                            ? 'border-jam-orange bg-orange-50'
+                                            : 'border-gray-200 hover:border-gray-300'
+                                    }`}
+                                >
+                                    <Icons.Building className="w-6 h-6 mb-2" />
+                                    <span className="text-sm font-medium">Direct Deposit</span>
+                                    <span className="text-xs text-gray-500 mt-1">Bank Transfer</span>
+                                </button>
+                            </div>
+                        </div>
                         
-                        {dimePayEnabled && (
+                        {paymentMethod === 'card' && dimePayEnabled && (
                             <div className="mb-6">
                                 <div id="dimepay-widget" className="min-h-[400px] w-full rounded-lg border border-gray-100 shadow-sm bg-white overflow-hidden relative">
                                     <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400 z-0">
@@ -334,7 +367,49 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, initialPlan = 'Sta
                             </div>
                         )}
 
-                        {payPalEnabled && paymentConfig?.paypal?.clientId && !dimePayEnabled && (
+                        {paymentMethod === 'direct-deposit' && (
+                            <div className="mb-6 p-6 bg-blue-50 border border-blue-200 rounded-lg">
+                                <h3 className="font-semibold text-gray-900 mb-4 flex items-center">
+                                    <Icons.Building className="w-5 h-5 mr-2 text-blue-600" />
+                                    Direct Deposit Payment Instructions
+                                </h3>
+                                <div className="space-y-3 text-sm text-gray-700">
+                                    <div>
+                                        <span className="font-medium">Bank Name:</span> NCB Jamaica
+                                    </div>
+                                    <div>
+                                        <span className="font-medium">Account Name:</span> Payroll-Jam Ltd
+                                    </div>
+                                    <div>
+                                        <span className="font-medium">Account Number:</span> 123456789
+                                    </div>
+                                    <div>
+                                        <span className="font-medium">Branch Code:</span> 001
+                                    </div>
+                                    <div>
+                                        <span className="font-medium">Amount:</span> JMD ${pricing.total.toLocaleString()}
+                                    </div>
+                                    <div className="pt-2 border-t border-blue-200">
+                                        <span className="font-medium">Reference:</span> {formData.email}
+                                    </div>
+                                </div>
+                                <div className="mt-4 p-3 bg-white rounded border border-blue-100">
+                                    <p className="text-xs text-gray-600">
+                                        <strong>Note:</strong> After making the deposit, your account will be activated within 24 hours. 
+                                        You'll receive a confirmation email once payment is verified.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleSubmit}
+                                    className="w-full mt-4 py-3 px-4 bg-jam-black text-white rounded-lg hover:bg-gray-800 transition-all font-medium"
+                                >
+                                    I've Made the Payment - Create Account
+                                </button>
+                            </div>
+                        )}
+
+                        {payPalEnabled && paymentConfig?.paypal?.clientId && !dimePayEnabled && paymentMethod === 'card' && (
                             <div className="w-full min-h-[150px] mt-6">
                                 <div className="text-center text-xs text-gray-400 mb-2">PAY VIA PAYPAL (USD)</div>
                                 <PayPalScriptProvider options={{ clientId: paymentConfig.paypal.clientId, currency: "USD" }}>
