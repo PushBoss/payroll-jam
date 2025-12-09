@@ -10,20 +10,43 @@ export const ResetPassword: React.FC = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isValidSession, setIsValidSession] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
 
   useEffect(() => {
     // Check if user came from a valid password reset link
     const checkSession = async () => {
-      if (!supabase) return;
+      if (!supabase) {
+        setIsCheckingSession(false);
+        return;
+      }
       
-      const { data: { session }, error } = await supabase.auth.getSession();
-      if (error || !session) {
-        toast.error('Invalid or expired reset link. Please request a new one.');
-        setTimeout(() => {
-          window.location.href = '/?page=login';
-        }, 2000);
-      } else {
-        setIsValidSession(true);
+      try {
+        // First, check if there's a hash fragment with tokens (from email link)
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        const accessToken = hashParams.get('access_token');
+        const type = hashParams.get('type');
+
+        if (accessToken && type === 'recovery') {
+          // Session will be automatically set by Supabase
+          // Wait a moment for it to process
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error || !session) {
+          toast.error('Invalid or expired reset link. Please request a new one.');
+          setTimeout(() => {
+            window.location.href = '/?page=login';
+          }, 2000);
+        } else {
+          setIsValidSession(true);
+        }
+      } catch (err) {
+        console.error('Session check error:', err);
+        toast.error('Error verifying reset link');
+      } finally {
+        setIsCheckingSession(false);
       }
     };
     
@@ -70,6 +93,17 @@ export const ResetPassword: React.FC = () => {
       setIsLoading(false);
     }
   };
+
+  if (isCheckingSession) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <Icons.Refresh className="w-8 h-8 animate-spin mx-auto text-jam-orange" />
+          <p className="mt-4 text-gray-600">Verifying reset link...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!isValidSession) {
     return (
