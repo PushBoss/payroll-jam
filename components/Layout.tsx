@@ -14,7 +14,7 @@ interface LayoutProps {
     message: string;
     type: 'INFO' | 'WARNING' | 'ERROR';
   };
-  subscriptionStatus?: 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED';
+  subscriptionStatus?: 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'PENDING_PAYMENT';
   isOverLimit?: boolean; // Soft Lock Prop
 }
 

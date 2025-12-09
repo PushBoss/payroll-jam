@@ -26,6 +26,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, initialPlan = 'Sta
   const [legalConsent, setLegalConsent] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'direct-deposit'>('card');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Timer Ref for cleanup
   const timerRef = useRef<any>(null);
@@ -152,58 +153,67 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, initialPlan = 'Sta
       }
   };
 
-  const handleSubmit = () => {
-    setTimeout(async () => {
-      try {
-        const role = formData.plan === 'Reseller' ? Role.RESELLER : Role.OWNER;
-        const isPaidPlan = formData.plan !== 'Free' && pricing.total > 0;
-        const requiresApproval = isPaidPlan && paymentMethod === 'direct-deposit';
+  const handleSubmit = async () => {
+    if (isSubmitting) return; // Prevent double submission
+    setIsSubmitting(true);
+    
+    try {
+      const role = formData.plan === 'Reseller' ? Role.RESELLER : Role.OWNER;
+      const isPaidPlan = formData.plan !== 'Free' && pricing.total > 0;
+      const requiresApproval = isPaidPlan && paymentMethod === 'direct-deposit';
+      
+      const newUser = {
+        id: generateUUID(),
+        name: formData.name,
+        email: formData.email,
+        password: formData.password,
+        role: role,
+        companyId: generateUUID(),
+        isOnboarded: false,
+        companyName: formData.companyName,
+        plan: formData.plan,
+        paymentMethod: paymentMethod
+      };
+      
+      await signup(newUser);
+      console.log('✅ Signup completed, calling onSignupSuccess');
+      
+      if (requiresApproval) {
+        toast.success('Account created! You will be able to login once payment is received and verified by our team.', {
+          duration: 8000,
+        });
         
-        const newUser = {
-          id: generateUUID(),
-          name: formData.name,
-          email: formData.email,
-          password: formData.password,
-          role: role,
-          companyId: generateUUID(),
-          isOnboarded: false,
-          companyName: formData.companyName,
-          plan: formData.plan,
-          paymentMethod: paymentMethod
-        };
+        // Redirect to login after showing message
+        setTimeout(() => {
+          onLoginClick();
+        }, 3000);
+      } else {
+        toast.success('Account created successfully! Redirecting to setup...', {
+          duration: 3000,
+        });
         
-        await signup(newUser);
-        
-        if (requiresApproval) {
-          toast.success('Account created! You will be able to login once payment is received and verified by our team.', {
-            duration: 8000,
-          });
-          
-          // Redirect to login after showing message
-          setTimeout(() => {
-            onLoginClick();
-          }, 3000);
-        } else {
-          toast.success('Account created successfully! Redirecting to setup...', {
-            duration: 3000,
-          });
-          
-          // Call onSignupSuccess to trigger onboarding flow
+        // Call onSignupSuccess to trigger onboarding flow
+        setTimeout(() => {
           if (onSignupSuccess) {
+            console.log('✅ Calling onSignupSuccess with user:', newUser);
             onSignupSuccess(newUser);
+          } else {
+            console.warn('⚠️ onSignupSuccess is undefined');
           }
-        }
-      } catch (error: any) {
-        console.error('Signup failed:', error);
-        
-        // Check if email already exists
-        if (error.message?.includes('already registered') || error.code === '23505') {
-          toast.error('Email already exists. Please login instead.');
-        } else {
-          toast.error(error.message || 'Signup failed. Please try again.');
-        }
+        }, 500);
       }
-    }, 1500);
+    } catch (error: any) {
+      console.error('Signup failed:', error);
+      
+      // Check if email already exists
+      if (error.message?.includes('already registered') || error.code === '23505') {
+        toast.error('Email already exists. Please login instead.');
+      } else {
+        toast.error(error.message || 'Signup failed. Please try again.');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -320,8 +330,19 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, initialPlan = 'Sta
                         </div>
 
                         <div>
-                            <button type="submit" className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-jam-black hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-jam-orange transition-all">
-                                {formData.plan === 'Free' || pricing.total === 0 ? 'Create Free Account' : 'Continue to Payment'}
+                            <button 
+                                type="submit" 
+                                disabled={isSubmitting}
+                                className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-jam-black hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-jam-orange transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {isSubmitting ? (
+                                    <>
+                                        <Icons.Refresh className="w-5 h-5 animate-spin mr-2" />
+                                        Creating Account...
+                                    </>
+                                ) : (
+                                    formData.plan === 'Free' || pricing.total === 0 ? 'Create Free Account' : 'Continue to Payment'
+                                )}
                             </button>
                         </div>
                     </>
@@ -418,9 +439,17 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, initialPlan = 'Sta
                                 <button
                                     type="button"
                                     onClick={handleSubmit}
-                                    className="w-full mt-4 py-3 px-4 bg-jam-black text-white rounded-lg hover:bg-gray-800 transition-all font-medium"
+                                    disabled={isSubmitting}
+                                    className="w-full mt-4 py-3 px-4 bg-jam-black text-white rounded-lg hover:bg-gray-800 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                                 >
-                                    I've Made the Payment - Create Account
+                                    {isSubmitting ? (
+                                        <>
+                                            <Icons.Refresh className="w-5 h-5 animate-spin mr-2" />
+                                            Creating Account...
+                                        </>
+                                    ) : (
+                                        "I've Made the Payment - Create Account"
+                                    )}
                                 </button>
                             </div>
                         )}

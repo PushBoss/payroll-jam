@@ -79,13 +79,15 @@ export const ResetPassword: React.FC = () => {
 
       if (error) throw error;
 
-      toast.success('Password updated successfully! Redirecting to login...');
+      toast.success('Password updated successfully! Redirecting to login...', {
+        duration: 3000,
+      });
       
       // Sign out and redirect to login
       await supabase.auth.signOut();
       setTimeout(() => {
         window.location.href = '/?page=login';
-      }, 2000);
+      }, 3000);
     } catch (error: any) {
       console.error('Password reset failed:', error);
       toast.error(error.message || 'Failed to reset password');
