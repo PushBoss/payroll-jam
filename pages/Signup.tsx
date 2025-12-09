@@ -156,6 +156,9 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, initialPlan = 'Sta
     setTimeout(async () => {
       try {
         const role = formData.plan === 'Reseller' ? Role.RESELLER : Role.OWNER;
+        const isPaidPlan = formData.plan !== 'Free' && pricing.total > 0;
+        const requiresApproval = isPaidPlan && paymentMethod === 'direct-deposit';
+        
         const newUser = {
           id: generateUUID(),
           name: formData.name,
@@ -165,17 +168,30 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, initialPlan = 'Sta
           companyId: generateUUID(),
           isOnboarded: false,
           companyName: formData.companyName,
-          plan: formData.plan
+          plan: formData.plan,
+          paymentMethod: paymentMethod
         };
         
         await signup(newUser);
-        toast.success('Account created successfully! Redirecting to setup...', {
-          duration: 3000,
-        });
         
-        // Call onSignupSuccess to trigger onboarding flow
-        if (onSignupSuccess) {
-          onSignupSuccess(newUser);
+        if (requiresApproval) {
+          toast.success('Account created! You will be able to login once payment is received and verified by our team.', {
+            duration: 8000,
+          });
+          
+          // Redirect to login after showing message
+          setTimeout(() => {
+            onLoginClick();
+          }, 3000);
+        } else {
+          toast.success('Account created successfully! Redirecting to setup...', {
+            duration: 3000,
+          });
+          
+          // Call onSignupSuccess to trigger onboarding flow
+          if (onSignupSuccess) {
+            onSignupSuccess(newUser);
+          }
         }
       } catch (error: any) {
         console.error('Signup failed:', error);

@@ -30,9 +30,24 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBack, onRegister
 
     try {
       await login(email, password);
-      toast.success('Welcome back!');
       
       const user = await supabaseService.getUserByEmail(email);
+      
+      // Check if user's company has pending payment
+      if (user?.companyId) {
+        const company = await supabaseService.getCompanyById(user.companyId);
+        if (company?.subscriptionStatus === 'PENDING_PAYMENT') {
+          toast.error('Your account is pending payment verification. You will be able to login once your payment is confirmed.', {
+            duration: 8000,
+          });
+          await supabase?.auth.signOut();
+          setIsLoading(false);
+          return;
+        }
+      }
+      
+      toast.success('Welcome back!');
+      
       if (user && onLoginSuccess) {
         onLoginSuccess(user);
       }

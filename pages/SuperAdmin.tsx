@@ -66,7 +66,7 @@ const MOCK_REVENUE_DATA = [
 ];
 
 export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, onImpersonate, initialTab }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'tenants' | 'users' | 'plans' | 'logs' | 'settings' | 'health' | 'billing'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'tenants' | 'users' | 'plans' | 'logs' | 'settings' | 'health' | 'billing' | 'pending-payments'>('overview');
   
   // Payment Settings State
   const [paymentConfig, setPaymentConfig] = useState<GlobalConfig>(() => storage.getGlobalConfig() || DEFAULT_PAYMENT_CONFIG);
@@ -779,6 +779,111 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
       </div>
   );
 
+  const renderPendingPayments = () => {
+    const pendingCompanies = tenants.filter(c => c.status === 'PENDING_PAYMENT');
+    
+    const handleApprovePayment = async (companyId: string) => {
+      try {
+        await supabaseService.updateCompanyStatus(companyId, 'ACTIVE');
+        toast.success('Payment approved! Company account activated.');
+        // Refresh tenants list
+        const updatedTenants = await supabaseService.getAllCompanies();
+        setTenants(updatedTenants || []);
+      } catch (error) {
+        console.error('Error approving payment:', error);
+        toast.error('Failed to approve payment');
+      }
+    };
+
+    const handleRejectPayment = async (companyId: string) => {
+      try {
+        await supabaseService.updateCompanyStatus(companyId, 'SUSPENDED');
+        toast.info('Payment rejected. Company account suspended.');
+        // Refresh tenants list
+        const updatedTenants = await supabaseService.getAllCompanies();
+        setTenants(updatedTenants || []);
+      } catch (error) {
+        console.error('Error rejecting payment:', error);
+        toast.error('Failed to reject payment');
+      }
+    };
+
+    return (
+      <div className="animate-fade-in">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="p-6 border-b border-gray-200">
+            <h3 className="text-lg font-bold text-gray-900">Pending Payment Approvals</h3>
+            <p className="text-sm text-gray-500 mt-1">
+              Companies awaiting direct deposit payment verification
+            </p>
+          </div>
+          
+          {pendingCompanies.length === 0 ? (
+            <div className="p-12 text-center">
+              <Icons.CheckCircle className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-500">No pending payments to approve</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Company</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Plan</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">MRR</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Employees</th>
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {pendingCompanies.map((company) => (
+                    <tr key={company.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4">
+                        <div>
+                          <p className="font-medium text-gray-900">{company.companyName}</p>
+                          <p className="text-sm text-gray-500">{company.email}</p>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          {company.plan}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-900">
+                        ${company.mrr?.toLocaleString() || 0}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-500">
+                        {company.employeeCount}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex justify-end space-x-2">
+                          <button
+                            onClick={() => handleApprovePayment(company.id)}
+                            className="inline-flex items-center px-3 py-1.5 bg-green-600 text-white text-sm font-medium rounded hover:bg-green-700 transition-colors"
+                          >
+                            <Icons.CheckCircle className="w-4 h-4 mr-1" />
+                            Approve
+                          </button>
+                          <button
+                            onClick={() => handleRejectPayment(company.id)}
+                            className="inline-flex items-center px-3 py-1.5 bg-red-600 text-white text-sm font-medium rounded hover:bg-red-700 transition-colors"
+                          >
+                            <Icons.Close className="w-4 h-4 mr-1" />
+                            Reject
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const renderSettings = () => (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in">
           <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-200">
@@ -1172,7 +1277,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
       {/* Navigation */}
       <div className="border-b border-gray-200">
         <nav className="-mb-px flex space-x-8">
-            {['overview', 'tenants', 'billing', 'health', 'users', 'logs', 'plans', 'settings'].map((tab) => (
+            {['overview', 'tenants', 'pending-payments', 'billing', 'health', 'users', 'logs', 'plans', 'settings'].map((tab) => (
                 <button
                     key={tab}
                     onClick={() => setActiveTab(tab as any)}
@@ -1182,7 +1287,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                     }`}
                 >
-                    {tab}
+                    {tab === 'pending-payments' ? 'Pending Payments' : tab}
                 </button>
             ))}
         </nav>
@@ -1192,6 +1297,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
       <div className="min-h-[600px]">
          {activeTab === 'overview' && renderOverview()}
          {activeTab === 'tenants' && renderTenants()}
+         {activeTab === 'pending-payments' && renderPendingPayments()}
          {activeTab === 'users' && renderAdmins()}
          {activeTab === 'logs' && renderLogs()}
          {activeTab === 'settings' && renderSettings()}

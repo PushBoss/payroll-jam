@@ -180,6 +180,49 @@ export const supabaseService = {
     }));
   },
 
+  getCompanyById: async (companyId: string): Promise<CompanySettings | null> => {
+    if (!supabase) return null;
+    const { data, error } = await supabase
+      .from('companies')
+      .select('*')
+      .eq('id', companyId)
+      .single();
+
+    if (error || !data) {
+        console.error("Error fetching company:", error);
+        return null;
+    }
+
+    return {
+      name: data.name,
+      trn: data.trn || '',
+      address: data.address || '',
+      phone: data.settings?.phone || '',
+      bankName: data.settings?.bankName || '',
+      accountNumber: data.settings?.accountNumber || '',
+      branchCode: data.settings?.branchCode || '',
+      payFrequency: data.settings?.payFrequency || 'Monthly',
+      defaultPayDate: data.settings?.defaultPayDate,
+      subscriptionStatus: data.status,
+      plan: data.plan,
+      paymentMethod: data.settings?.paymentMethod
+    };
+  },
+
+  updateCompanyStatus: async (companyId: string, status: 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'PENDING_PAYMENT'): Promise<void> => {
+    if (!supabase) return;
+    
+    const { error } = await supabase
+      .from('companies')
+      .update({ status: status })
+      .eq('id', companyId);
+
+    if (error) {
+      console.error("Error updating company status:", error);
+      throw error;
+    }
+  },
+
   // --- Employees ---
 
   getEmployees: async (companyId: string): Promise<Employee[]> => {

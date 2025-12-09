@@ -125,6 +125,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       // 2. Create company record first (if needed)
       if (userData.companyName && userData.companyId) {
+        const isPaidPlan = userData.plan && userData.plan !== 'Free';
         const companyData = {
           name: userData.companyName,
           trn: '',
@@ -134,8 +135,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           accountNumber: '',
           branchCode: '',
           payFrequency: 'Monthly',
-          subscriptionStatus: 'ACTIVE' as const,
-          plan: userData.plan || 'Free'
+          subscriptionStatus: (isPaidPlan && (userData as any).paymentMethod === 'direct-deposit' ? 'PENDING_PAYMENT' : 'ACTIVE') as const,
+          plan: userData.plan || 'Free',
+          paymentMethod: (userData as any).paymentMethod || 'card'
         };
         
         await supabaseService.saveCompany(userData.companyId, companyData);

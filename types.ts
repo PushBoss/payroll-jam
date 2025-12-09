@@ -340,8 +340,9 @@ export interface CompanySettings {
   branchCode: string;
   payFrequency?: string;
   defaultPayDate?: string;
-  subscriptionStatus?: 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED';
+  subscriptionStatus?: 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'PENDING_PAYMENT';
   plan?: string;
+  paymentMethod?: 'card' | 'direct-deposit';
 }
 
 export interface TaxConfig {
