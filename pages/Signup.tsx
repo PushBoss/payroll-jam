@@ -170,7 +170,7 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onLoginClick, i
         role: role,
         companyId: generateUUID(),
         isOnboarded: false,
-        companyName: formData.companyName,
+        companyName: formData.name + "'s Company", // Temporary name, will be set in onboarding
         plan: formData.plan,
         paymentMethod: paymentMethod
       };
@@ -276,10 +276,6 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onLoginClick, i
                         <div>
                             <label className="block text-sm font-medium text-gray-700">Work Email</label>
                             <input required type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">Company Name</label>
-                            <input required type="text" value={formData.companyName} onChange={(e) => setFormData({...formData, companyName: e.target.value})} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700">Password</label>
