@@ -18,7 +18,7 @@ interface SignupProps {
   plans: PricingPlan[]; 
 }
 
-export const Signup: React.FC<SignupProps> = ({ onLoginClick, initialPlan = 'Starter', initialBillingCycle = 'monthly', plans }) => {
+export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onLoginClick, initialPlan = 'Starter', initialBillingCycle = 'monthly', plans }) => {
   const { signup } = useAuth();
   const [step, setStep] = useState<'account' | 'billing'>('account');
   const [paymentError, setPaymentError] = useState<string | null>(null);

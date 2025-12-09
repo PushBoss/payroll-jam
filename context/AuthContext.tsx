@@ -135,7 +135,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           accountNumber: '',
           branchCode: '',
           payFrequency: 'Monthly',
-          subscriptionStatus: (isPaidPlan && (userData as any).paymentMethod === 'direct-deposit' ? 'PENDING_PAYMENT' : 'ACTIVE') as const,
+          subscriptionStatus: isPaidPlan && (userData as any).paymentMethod === 'direct-deposit' ? 'PENDING_PAYMENT' : 'ACTIVE',
           plan: userData.plan || 'Free',
           paymentMethod: (userData as any).paymentMethod || 'card'
         };

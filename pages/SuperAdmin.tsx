@@ -780,7 +780,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
   );
 
   const renderPendingPayments = () => {
-    const pendingCompanies = tenants.filter(c => c.status === 'PENDING_PAYMENT');
+    const pendingCompanies = tenants.filter(c => c.subscriptionStatus === 'PENDING_PAYMENT');
     
     const handleApprovePayment = async (companyId: string) => {
       try {
