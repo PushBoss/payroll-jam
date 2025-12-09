@@ -260,6 +260,7 @@ export interface ResellerClient {
   employeeCount: number;
   plan: 'Free' | 'Starter' | 'Pro' | 'Enterprise' | 'Reseller';
   status: 'ACTIVE' | 'PENDING' | 'SUSPENDED';
+  subscriptionStatus?: 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'PENDING_PAYMENT';
   mrr: number;
 }
 
