@@ -25,6 +25,7 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onLoginClick, i
   const [widgetStatus, setWidgetStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [legalConsent, setLegalConsent] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'direct-deposit'>('card');
   const [isSubmitting, setIsSubmitting] = useState(false);
   
@@ -42,6 +43,7 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onLoginClick, i
     email: '',
     companyName: '',
     password: '',
+    confirmPassword: '',
     plan: initialPlan,
     billingCycle: initialBillingCycle,
     numEmployees: '', 
@@ -143,6 +145,11 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onLoginClick, i
       
       if (!legalConsent) {
           toast.error("Please agree to the Terms and Privacy Policy to continue.");
+          return;
+      }
+
+      if (formData.password !== formData.confirmPassword) {
+          toast.error("Passwords do not match. Please try again.");
           return;
       }
 
@@ -295,6 +302,32 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onLoginClick, i
                                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                                 >
                                     {showPassword ? (
+                                        <Icons.EyeOff className="w-5 h-5" />
+                                    ) : (
+                                        <Icons.Eye className="w-5 h-5" />
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Confirm Password</label>
+                            <div className="relative mt-1">
+                                <input 
+                                    required 
+                                    type={showConfirmPassword ? 'text' : 'password'} 
+                                    value={formData.confirmPassword} 
+                                    onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})} 
+                                    className="block w-full px-3 py-2 pr-12 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" 
+                                    placeholder="Re-enter your password"
+                                    minLength={6}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                >
+                                    {showConfirmPassword ? (
                                         <Icons.EyeOff className="w-5 h-5" />
                                     ) : (
                                         <Icons.Eye className="w-5 h-5" />
