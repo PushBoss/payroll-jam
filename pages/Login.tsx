@@ -40,7 +40,16 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBack, onRegister
       setIsLoading(false);
     } catch (error: any) {
       console.error('Login failed:', error);
-      toast.error(error.message || 'Invalid email or password');
+      
+      // Provide specific error messages based on error type
+      if (error.message?.includes('Invalid login credentials')) {
+        toast.error('Wrong password or email. Please try again.');
+      } else if (error.message?.includes('Email not confirmed')) {
+        toast.error('Please verify your email before logging in. Check your inbox.');
+      } else {
+        toast.error(error.message || 'Login failed. Please try again.');
+      }
+      
       setIsLoading(false);
     }
   };
@@ -60,7 +69,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBack, onRegister
 
       if (error) throw error;
 
-      toast.success('Password reset email sent! Check your inbox.');
+      toast.success('Check your email for the link to reset your password.');
       setShowForgotPassword(false);
       setResetEmail('');
     } catch (error: any) {

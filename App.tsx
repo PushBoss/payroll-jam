@@ -22,6 +22,7 @@ const Compliance = lazy(() => import('./pages/Compliance').then(m => ({ default:
 const AiAssistant = lazy(() => import('./pages/AiAssistant').then(m => ({ default: m.AiAssistant })));
 const Login = lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
 const Signup = lazy(() => import('./pages/Signup').then(m => ({ default: m.Signup })));
+const ResetPassword = lazy(() => import('./pages/ResetPassword').then(m => ({ default: m.ResetPassword })));
 const LandingPage = lazy(() => import('./pages/LandingPage').then(m => ({ default: m.LandingPage })));
 const Pricing = lazy(() => import('./pages/Pricing').then(m => ({ default: m.Pricing })));
 const Features = lazy(() => import('./pages/Features').then(m => ({ default: m.Features })));
@@ -271,6 +272,15 @@ function AppContent() {
   // Show loading state while checking for stored user session
   if (isLoading) {
     return <LoadingFallback />;
+  }
+
+  // Handle reset-password route without requiring authentication
+  if (currentPath === 'reset-password') {
+    return (
+      <Suspense fallback={<LoadingFallback />}>
+        <ResetPassword />
+      </Suspense>
+    );
   }
 
   if (!user) {
