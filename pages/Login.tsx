@@ -55,14 +55,27 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBack, onRegister
       setIsLoading(false);
     } catch (error: any) {
       console.error('Login failed:', error);
+      console.log('Error message:', error.message);
+      console.log('Error code:', error.code);
+      console.log('Error status:', error.status);
       
       // Provide specific error messages based on error type
-      if (error.message?.includes('Invalid login credentials')) {
-        toast.error('Wrong password or email. Please try again.');
-      } else if (error.message?.includes('Email not confirmed')) {
-        toast.error('Please verify your email before logging in. Check your inbox.');
+      if (error.message?.toLowerCase().includes('invalid') || 
+          error.message?.toLowerCase().includes('credentials') ||
+          error.message?.toLowerCase().includes('password') ||
+          error.status === 400) {
+        toast.error('Wrong password or email. Please try again.', {
+          duration: 5000,
+        });
+      } else if (error.message?.toLowerCase().includes('email not confirmed') || 
+                 error.message?.toLowerCase().includes('not confirmed')) {
+        toast.error('Please verify your email before logging in. Check your inbox.', {
+          duration: 5000,
+        });
       } else {
-        toast.error(error.message || 'Login failed. Please try again.');
+        toast.error(error.message || 'Login failed. Please try again.', {
+          duration: 5000,
+        });
       }
       
       setIsLoading(false);
@@ -84,12 +97,16 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBack, onRegister
 
       if (error) throw error;
 
-      toast.success('Check your email for the link to reset your password.');
+      toast.success('Password reset email sent! Please check your email for the link to reset your password.', {
+        duration: 8000,
+      });
       setShowForgotPassword(false);
       setResetEmail('');
     } catch (error: any) {
       console.error('Password reset failed:', error);
-      toast.error(error.message || 'Failed to send reset email');
+      toast.error(error.message || 'Failed to send reset email. Please try again.', {
+        duration: 5000,
+      });
     } finally {
       setIsResetting(false);
     }
