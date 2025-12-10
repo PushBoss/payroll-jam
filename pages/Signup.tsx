@@ -35,8 +35,8 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onLoginClick, i
   
   // Fetch Global Payment Configuration
   const paymentConfig = storage.getGlobalConfig();
-  const payPalEnabled = paymentConfig?.paypal?.enabled ?? true;
-  const dimePayEnabled = paymentConfig?.dimepay?.enabled ?? false;
+  const payPalEnabled = false; // PayPal disabled - only using DimePay
+  const dimePayEnabled = paymentConfig?.dimepay?.enabled ?? true; // DimePay enabled by default
 
   const [formData, setFormData] = useState({
     name: '',
@@ -130,15 +130,15 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onLoginClick, i
       }, 800);
   };
 
-  // Initialize DimePay Widget when on billing step
+  // Initialize DimePay Widget when on billing step with card payment
   useEffect(() => {
-      if (step === 'billing' && dimePayEnabled) {
+      if (step === 'billing' && paymentMethod === 'card' && dimePayEnabled) {
           initDimePay();
       }
       return () => {
           if (timerRef.current) clearTimeout(timerRef.current);
       };
-  }, [step, dimePayEnabled]);
+  }, [step, paymentMethod, dimePayEnabled, formData.email, pricing.total]);
 
   const handleAccountSubmit = (e: React.FormEvent) => {
       e.preventDefault();

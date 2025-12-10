@@ -81,22 +81,35 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       throw new Error('Supabase not initialized');
     }
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    if (error) {
-      console.error('Login error:', error);
-      throw error;
-    }
-
-    if (data.user) {
-      const appUser = await supabaseService.getUserByEmail(data.user.email!);
-      if (appUser) {
-        setUser(appUser);
-        storage.saveUser(appUser);
+      if (error) {
+        console.error('Login error:', error);
+        throw error;
       }
+
+      if (!data.user) {
+        throw new Error('No user data returned from login');
+      }
+
+      console.log('✅ Auth login successful, fetching user profile...');
+      
+      const appUser = await supabaseService.getUserByEmail(data.user.email!);
+      
+      if (!appUser) {
+        throw new Error('User profile not found in database');
+      }
+      
+      console.log('✅ User profile loaded:', appUser.email);
+      setUser(appUser);
+      storage.saveUser(appUser);
+    } catch (error) {
+      console.error('❌ Login failed:', error);
+      throw error;
     }
   };
 
