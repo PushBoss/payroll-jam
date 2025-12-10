@@ -61,14 +61,13 @@ export const dimePayService = {
         };
 
         try {
-            // --- SECURITY CHANGE ---
-            // Instead of signing locally, we simulate a fetch to a backend endpoint.
+            // --- CLIENT-SIDE SIGNING FOR SANDBOX ONLY ---
+            // WARNING: In production, JWT MUST be signed by backend server
+            // This is ONLY acceptable in sandbox/test environment
             
-            console.log("[Secure Mode] Requesting signature for:", payloadData);
+            console.log("[Sandbox Mode] Signing payload client-side:", payloadData);
             
-            // Mocking the signed JWT for the demo environment since we don't have a running backend in this context.
-            // In a real scenario, DO NOT DO THIS CLIENT SIDE.
-            const jwt = await mockBackendSigning(payloadData);
+            const jwt = await signPayloadWithHMAC(payloadData, config.secretKey);
 
             // Access the global SDK
             const dimepay = (window as any).dimepay || (window as any).DimePay;
@@ -115,15 +114,42 @@ export const dimePayService = {
     }
 };
 
-// Temporary Mock for Demo purposes only - to be replaced by backend API
-const mockBackendSigning = async (payload: any) => {
+// Sign JWT with HMAC-SHA256 using Web Crypto API
+const signPayloadWithHMAC = async (payload: any, secretKey: string): Promise<string> => {
     const header = { alg: "HS256", typ: "JWT" };
     
-    const base64url = (source: string) => btoa(source).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+    const base64url = (source: string) => {
+        return btoa(source)
+            .replace(/=/g, '')
+            .replace(/\+/g, '-')
+            .replace(/\//g, '_');
+    };
     
     const encodedHeader = base64url(JSON.stringify(header));
     const encodedPayload = base64url(JSON.stringify(payload));
+    const signatureInput = `${encodedHeader}.${encodedPayload}`;
     
-    // Fake signature for demo
-    return `${encodedHeader}.${encodedPayload}.mock_signature_for_demo`;
+    // Use Web Crypto API to sign with HMAC-SHA256
+    const encoder = new TextEncoder();
+    const keyData = encoder.encode(secretKey);
+    const dataToSign = encoder.encode(signatureInput);
+    
+    const cryptoKey = await crypto.subtle.importKey(
+        'raw',
+        keyData,
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign']
+    );
+    
+    const signature = await crypto.subtle.sign('HMAC', cryptoKey, dataToSign);
+    
+    // Convert signature to base64url
+    const signatureArray = Array.from(new Uint8Array(signature));
+    const signatureBase64 = btoa(String.fromCharCode(...signatureArray))
+        .replace(/=/g, '')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_');
+    
+    return `${encodedHeader}.${encodedPayload}.${signatureBase64}`;
 };
