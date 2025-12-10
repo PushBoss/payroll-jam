@@ -88,11 +88,11 @@ export const Layout: React.FC<LayoutProps> = ({
   const isImpersonating = !!user?.originalRole;
   const isSuperAdminImpersonating = user?.originalRole === Role.SUPER_ADMIN;
 
-  const handleLogout = (e: React.MouseEvent) => {
+  const handleLogout = async (e: React.MouseEvent) => {
       e.preventDefault();
-      logout();
-      // Hard reload ensuring full state flush
-      window.location.href = '/';
+      await logout();
+      // Clear all storage and redirect
+      window.location.href = '/?page=login';
   };
 
   return (
