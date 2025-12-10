@@ -29,6 +29,7 @@
     "@types/papaparse": "^5.3.14",
     "@types/react": "^18.2.64",
     "@types/react-dom": "^18.2.21",
+    "@vercel/node": "^5.5.15",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.22",
     "postcss": "^8.5.6",

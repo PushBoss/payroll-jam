@@ -4,6 +4,7 @@ import { User, Role, ResellerClient } from '../types';
 import { storage } from '../services/storage';
 import { supabaseService } from '../services/supabaseService';
 import { supabase } from '../services/supabaseClient';
+import { toast } from 'sonner';
 
 interface AuthContextType {
   user: User | null;

@@ -26,6 +26,8 @@ export interface User {
   role: Role;
   companyId?: string;
   isOnboarded?: boolean;
+  avatarUrl?: string;
+  phone?: string;
   // Used for Reseller Impersonation
   originalRole?: Role; 
   isResellerView?: boolean;

@@ -178,10 +178,21 @@ export const Layout: React.FC<LayoutProps> = ({
           ))}
         </nav>
         <div className="p-4 border-t border-gray-800 flex-shrink-0">
-          <div className="flex items-center mb-4">
-            <div className="w-8 h-8 rounded-full bg-jam-yellow text-jam-black flex items-center justify-center font-bold text-sm flex-shrink-0">
-              {user?.name.split(' ').map(n => n[0]).join('').substring(0, 2) || 'JD'}
-            </div>
+          <div 
+            onClick={() => onNavigate('profile')}
+            className="flex items-center mb-4 cursor-pointer hover:bg-gray-700 rounded-lg p-2 -mx-2 transition-colors"
+          >
+            {user?.avatarUrl ? (
+              <img 
+                src={user.avatarUrl} 
+                alt={user.name} 
+                className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+              />
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-jam-yellow text-jam-black flex items-center justify-center font-bold text-sm flex-shrink-0">
+                {user?.name.split(' ').map(n => n[0]).join('').substring(0, 2) || 'JD'}
+              </div>
+            )}
             <div className="ml-3 overflow-hidden">
               <p className="text-sm font-medium text-white truncate">{user?.name || 'User'}</p>
               <p className="text-xs text-gray-500">{user?.role}</p>
