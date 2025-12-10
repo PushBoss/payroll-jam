@@ -42,6 +42,10 @@ export const dimePayService = {
              return;
         }
 
+        console.log('🔧 DimePay Environment:', config.environment);
+        console.log('🔧 DimePay Domain:', config.domain);
+        console.log('🔧 DimePay Test Mode:', config.environment === 'sandbox');
+
         const recurringFreq = props.frequency === 'annual' ? 'YEARLY' : 'MONTHLY';
 
         // Prepare Payload to send to backend for signing
