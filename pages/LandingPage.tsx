@@ -8,9 +8,11 @@ interface LandingPageProps {
   onPricingClick: () => void;
   onFeaturesClick: () => void;
   onFaqClick: () => void;
+  onPrivacyClick?: () => void;
+  onTermsClick?: () => void;
 }
 
-export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onSignup, onPricingClick, onFeaturesClick, onFaqClick }) => {
+export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onSignup, onPricingClick, onFeaturesClick, onFaqClick, onPrivacyClick, onTermsClick }) => {
   const faqs = [
     {
       q: `Is this compliant with the latest 2025 tax laws?`,
@@ -318,8 +320,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onSignup, onP
             <div>
               <h4 className="text-sm font-bold uppercase tracking-wider text-gray-500 mb-4">Legal</h4>
               <ul className="space-y-2 text-gray-400">
-                <li><a href="#" className="hover:text-white">Privacy Policy</a></li>
-                <li><a href="#" className="hover:text-white">Terms of Service</a></li>
+                <li><button onClick={onPrivacyClick} className="hover:text-white">Privacy Policy</button></li>
+                <li><button onClick={onTermsClick} className="hover:text-white">Terms of Service</button></li>
               </ul>
             </div>
           </div>

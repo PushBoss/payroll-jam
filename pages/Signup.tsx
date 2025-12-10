@@ -183,18 +183,21 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onLoginClick, i
       };
       
       await signup(newUser);
-      console.log('✅ Signup completed, calling onSignupSuccess');
+      console.log('✅ Signup completed successfully');
       
       if (requiresApproval) {
+        console.log('📝 Direct deposit - redirecting to login');
         toast.success('Account created! You will be able to login once payment is received and verified by our team.', {
           duration: 8000,
         });
         
         // Redirect to login after showing message
         setTimeout(() => {
+          console.log('🔄 Redirecting to login...');
           onLoginClick();
         }, 3000);
       } else {
+        console.log('✅ Regular signup - calling onSignupSuccess');
         toast.success('Account created successfully! Redirecting to setup...', {
           duration: 3000,
         });
@@ -205,12 +208,17 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onLoginClick, i
             console.log('✅ Calling onSignupSuccess with user:', newUser);
             onSignupSuccess(newUser);
           } else {
-            console.warn('⚠️ onSignupSuccess is undefined');
+            console.error('⚠️ onSignupSuccess is undefined');
           }
         }, 500);
       }
     } catch (error: any) {
-      console.error('Signup failed:', error);
+      console.error('❌ Signup failed:', error);
+      console.error('Error details:', {
+        message: error.message,
+        code: error.code,
+        status: error.status
+      });
       
       // Check if email already exists
       if (error.message?.includes('already registered') || error.code === '23505') {
