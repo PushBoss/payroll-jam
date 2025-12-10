@@ -6,6 +6,7 @@ import { supabaseService } from '../services/supabaseService';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 import { supabase } from '../services/supabaseClient';
+import { storage } from '../services/storage';
 
 interface LoginProps {
   onLogin?: (user: User) => void;
@@ -31,7 +32,8 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBack, onRegister
     try {
       await login(email, password);
       
-      const user = await supabaseService.getUserByEmail(email);
+      // Get user from storage (already set by login function)
+      const user = storage.getUser();
       
       // Check if user's company has pending payment
       if (user?.companyId) {
@@ -48,11 +50,12 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBack, onRegister
       
       toast.success('Welcome back!');
       
+      // Set loading to false BEFORE navigation
+      setIsLoading(false);
+      
       if (user && onLoginSuccess) {
         onLoginSuccess(user);
       }
-      
-      setIsLoading(false);
     } catch (error: any) {
       console.error('Login failed:', error);
       console.log('Error message:', error.message);

@@ -83,15 +83,17 @@ export const ResetPassword: React.FC = () => {
         duration: 3000,
       });
       
+      // Keep loading state true during redirect
       // Sign out and redirect to login
       await supabase.auth.signOut();
+      
+      // Redirect after toast is visible
       setTimeout(() => {
         window.location.href = '/?page=login';
-      }, 3000);
+      }, 2000);
     } catch (error: any) {
       console.error('Password reset failed:', error);
       toast.error(error.message || 'Failed to reset password');
-    } finally {
       setIsLoading(false);
     }
   };

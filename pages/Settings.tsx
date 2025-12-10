@@ -202,14 +202,6 @@ export const Settings: React.FC<SettingsProps> = ({
         toast.success("Default tax rates restored");
     }
   };
-  
-  const handleResetDemo = () => {
-    if (confirm("Are you sure you want to reset all demo data?")) {
-        auditService.log(currentUser, 'DELETE', 'System', 'Performed factory reset');
-        storage.clearAll();
-        window.location.reload();
-    }
-  };
 
   const handleCompanyUpdate = (newData: CompanySettings) => { onUpdateCompany(newData); };
 
@@ -339,7 +331,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
       <div className="flex justify-between items-center">
         <h2 className="text-3xl font-bold text-gray-900">Settings</h2>
-        <button onClick={handleResetDemo} className="text-xs text-red-500 hover:text-red-700 underline">Reset Demo Data</button>
+
       </div>
 
       <div className="border-b border-gray-200">
