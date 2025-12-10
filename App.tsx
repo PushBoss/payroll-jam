@@ -115,6 +115,35 @@ function AppContent() {
     }
   };
 
+  // Handle browser back/forward buttons and URL changes
+  useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const page = params.get('page');
+      if (page) {
+        setCurrentPath(page);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Redirect authenticated users away from auth pages
+  useEffect(() => {
+    if (user && !isLoading && (currentPath === 'login' || currentPath === 'signup')) {
+      if (user.role === Role.EMPLOYEE) {
+        navigateTo('portal-home');
+      } else if (user.role === Role.RESELLER) {
+        navigateTo('reseller-dashboard');
+      } else if (user.role === Role.SUPER_ADMIN) {
+        navigateTo('sa-overview');
+      } else {
+        navigateTo('dashboard');
+      }
+    }
+  }, [user, isLoading, currentPath]);
+
   // ... (Invite Handler & Data Sync unchanged) ...
   useEffect(() => {
       const params = new URLSearchParams(window.location.search);
