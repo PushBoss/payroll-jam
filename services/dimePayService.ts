@@ -61,13 +61,37 @@ export const dimePayService = {
         };
 
         try {
-            // --- CLIENT-SIDE SIGNING FOR SANDBOX ONLY ---
-            // WARNING: In production, JWT MUST be signed by backend server
-            // This is ONLY acceptable in sandbox/test environment
+            // Try to use backend signing API (production-ready)
+            let jwt: string;
             
-            console.log("[Sandbox Mode] Signing payload client-side:", payloadData);
-            
-            const jwt = await signPayloadWithHMAC(payloadData, config.secretKey);
+            try {
+                console.log("[Secure Mode] Requesting backend signature...");
+                const response = await fetch('/api/sign-payment', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        payload: payloadData,
+                        environment: config.environment
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    jwt = data.jwt;
+                    console.log("✅ Backend signing successful");
+                } else {
+                    throw new Error('Backend signing failed');
+                }
+            } catch (backendError) {
+                // Fallback to client-side signing for sandbox only
+                if (config.environment === 'sandbox') {
+                    console.warn("⚠️ Backend unavailable, using client-side signing (sandbox only)");
+                    jwt = await signPayloadWithHMAC(payloadData, config.secretKey);
+                } else {
+                    console.error("❌ Backend signing required for production");
+                    throw new Error('Secure payment signing unavailable');
+                }
+            }
 
             // Access the global SDK
             const dimepay = (window as any).dimepay || (window as any).DimePay;
