@@ -33,11 +33,11 @@ const DEFAULT_PAYMENT_CONFIG: GlobalConfig = {
     },
     dimepay: {
         enabled: true,
-        environment: 'production',
+        environment: 'sandbox',
         apiKey: 'ck_LGKMlNpFiRr63ce0s621VuGLjYdey',
         secretKey: 'sk_rYoMG45jVM2gvhE-pm4to9EZoW9tD',
         merchantId: 'mQn_iBSUd-KNq3K',
-        domain: 'https://api.dimepay.app',
+        domain: 'https://staging.api.dimepay.app',
         passFeesTo: 'MERCHANT'
     },
     stripe: {
