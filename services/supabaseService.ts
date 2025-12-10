@@ -38,7 +38,9 @@ export const supabaseService = {
         email: data.email,
         role: data.role as any,
         companyId: data.company_id,
-        isOnboarded: data.is_onboarded
+        isOnboarded: data.is_onboarded,
+        avatarUrl: data.avatar_url || undefined,
+        phone: data.phone || undefined
       };
     } catch (e) {
       console.error("Supabase connection error:", e);
@@ -69,7 +71,9 @@ export const supabaseService = {
           name: user.name,
           role: user.role,
           company_id: user.companyId,
-          is_onboarded: user.isOnboarded
+          is_onboarded: user.isOnboarded,
+          avatar_url: user.avatarUrl || null,
+          phone: user.phone || null
         })
         .eq('id', user.id)
         .select();
@@ -89,7 +93,9 @@ export const supabaseService = {
           name: user.name,
           role: user.role,
           company_id: user.companyId,
-          is_onboarded: user.isOnboarded
+          is_onboarded: user.isOnboarded,
+          avatar_url: user.avatarUrl || null,
+          phone: user.phone || null
         })
         .select();
       
