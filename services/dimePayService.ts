@@ -12,12 +12,13 @@ interface PaymentWidgetProps {
     onError: (err: any) => void;
 }
 
-// Fallback config for demo purposes so widget doesn't fail if settings are empty
+// Production DimePay configuration
 const DEMO_CONFIG = {
     apiKey: 'ck_LGKMlNpFiRr63ce0s621VuGLjYdey',
     secretKey: 'sk_rYoMG45jVM2gvhE-pm4to9EZoW9tD',
-    domain: 'https://staging.api.dimepay.app',
-    environment: 'sandbox'
+    merchantId: 'mQn_iBSUd-KNq3K',
+    domain: 'https://api.dimepay.app',
+    environment: 'production'
 };
 
 export const dimePayService = {
@@ -29,9 +30,9 @@ export const dimePayService = {
         const globalConfig = storage.getGlobalConfig();
         let config = globalConfig?.dimepay;
         
-        // Fallback to demo config if not set
+        // Fallback to production config if not set
         if (!config || !config.enabled) {
-            console.warn("Dime Pay config missing, using Demo Sandbox defaults.");
+            console.warn("Dime Pay config missing, using production defaults.");
             config = { enabled: true, ...DEMO_CONFIG, passFeesTo: 'MERCHANT' } as any;
         }
 

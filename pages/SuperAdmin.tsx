@@ -33,10 +33,11 @@ const DEFAULT_PAYMENT_CONFIG: GlobalConfig = {
     },
     dimepay: {
         enabled: true,
-        environment: 'sandbox',
-        apiKey: 'ck_LGKMlNpFiRr63ce0s621VuGLjYdey', // Sandbox Client Key
-        secretKey: 'sk_rYoMG45jVM2gvhE-pm4to9EZoW9tD', // Sandbox Secret Key
-        domain: 'https://staging.api.dimepay.app', // Updated to match Plugin Staging URL
+        environment: 'production',
+        apiKey: 'ck_LGKMlNpFiRr63ce0s621VuGLjYdey',
+        secretKey: 'sk_rYoMG45jVM2gvhE-pm4to9EZoW9tD',
+        merchantId: 'mQn_iBSUd-KNq3K',
+        domain: 'https://api.dimepay.app',
         passFeesTo: 'MERCHANT'
     },
     stripe: {
@@ -1063,6 +1064,17 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                     placeholder="sk_test_..." 
                                     value={paymentConfig.dimepay.secretKey}
                                     onChange={(e) => setPaymentConfig({...paymentConfig, dimepay: {...paymentConfig.dimepay!, secretKey: e.target.value}})}
+                                    className="w-full border border-gray-300 rounded p-2 text-sm font-mono"
+                                  />
+                              </div>
+
+                              <div>
+                                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Merchant ID</label>
+                                  <input 
+                                    type="text" 
+                                    placeholder="mQn_..." 
+                                    value={paymentConfig.dimepay.merchantId || ''}
+                                    onChange={(e) => setPaymentConfig({...paymentConfig, dimepay: {...paymentConfig.dimepay!, merchantId: e.target.value}})}
                                     className="w-full border border-gray-300 rounded p-2 text-sm font-mono"
                                   />
                               </div>

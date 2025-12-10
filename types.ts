@@ -375,6 +375,7 @@ export interface GlobalConfig {
     environment: 'sandbox' | 'production';
     apiKey: string;
     secretKey: string;
+    merchantId: string;
     domain: string; // e.g. sandbox.dimepay.net
     passFeesTo: 'MERCHANT' | 'CUSTOMER';
   };
