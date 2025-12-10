@@ -449,16 +449,19 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onLoginClick, i
                                 </h3>
                                 <div className="space-y-3 text-sm text-gray-700">
                                     <div>
-                                        <span className="font-medium">Bank Name:</span> NCB Jamaica
+                                        <span className="font-medium">Bank Name:</span> NCB (National Commercial Bank)
                                     </div>
                                     <div>
-                                        <span className="font-medium">Account Name:</span> Payroll-Jam Ltd
+                                        <span className="font-medium">Account Name:</span> Balance Investments Limited
                                     </div>
                                     <div>
-                                        <span className="font-medium">Account Number:</span> 123456789
+                                        <span className="font-medium">Account Number:</span> 404286331
                                     </div>
                                     <div>
-                                        <span className="font-medium">Branch Code:</span> 001
+                                        <span className="font-medium">Account Type:</span> Savings Account
+                                    </div>
+                                    <div>
+                                        <span className="font-medium">Branch:</span> UWI Branch
                                     </div>
                                     <div>
                                         <span className="font-medium">Amount:</span> JMD ${pricing.total.toLocaleString()}

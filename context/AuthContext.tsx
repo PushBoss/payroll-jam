@@ -59,14 +59,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     // Listen for auth changes
     if (supabase) {
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-        if (session?.user) {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        console.log('🔄 Auth event:', event);
+        
+        // Handle email confirmation
+        if (event === 'SIGNED_IN' && session?.user) {
           const appUser = await supabaseService.getUserByEmail(session.user.email!);
           if (appUser) {
             setUser(appUser);
             storage.saveUser(appUser);
+            
+            // Redirect to login page after email confirmation
+            const hashParams = new URLSearchParams(window.location.hash.substring(1));
+            const type = hashParams.get('type');
+            if (type === 'signup') {
+              console.log('✅ Email confirmed, redirecting to login...');
+              toast.success('Email confirmed! Please login to continue.');
+              setTimeout(() => {
+                window.location.href = '/?page=login';
+              }, 2000);
+            }
           }
-        } else {
+        } else if (event === 'SIGNED_OUT') {
           setUser(null);
           storage.saveUser(null);
         }
