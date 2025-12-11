@@ -320,8 +320,10 @@ export const Settings: React.FC<SettingsProps> = ({
       if (plan === 'Starter') maxUsers = 25;
       if (plan === 'Pro' || plan === 'Professional') maxUsers = 99999; // Unlimited
       
-      // Count includes the main account owner
-      const currentUserCount = users.length + 1; // +1 for the account owner
+          // Count includes the main account owner
+          // Filter out currentUser from users list to avoid duplicates
+          const filteredUsers = users.filter(u => u.id !== currentUser?.id && u.email !== currentUser?.email);
+          const currentUserCount = filteredUsers.length + 1; // +1 for the account owner
       
       if (currentUserCount >= maxUsers) {
           toast.error(`User limit reached. You have ${currentUserCount} users (including account owner). Upgrade to ${plan === 'Free' ? 'Starter' : 'Pro'} to add more users.`);
@@ -704,7 +706,9 @@ export const Settings: React.FC<SettingsProps> = ({
           if (plan === 'Pro' || plan === 'Professional') maxUsers = 99999; // Unlimited
           
           // Count includes the main account owner (currentUser)
-          const currentUserCount = users.length + 1; // +1 for the account owner
+          // Filter out currentUser from users list to avoid duplicates
+          const filteredUsers = users.filter(u => u.id !== currentUser?.id && u.email !== currentUser?.email);
+          const currentUserCount = filteredUsers.length + 1; // +1 for the account owner
           const canAddMore = currentUserCount < maxUsers;
           const remainingSeats = maxUsers - currentUserCount;
           
@@ -761,7 +765,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                    <td className="py-3 text-right text-xs text-gray-400">Account Owner</td>
                                </tr>
                            )}
-                           {users.map(u => (
+                           {users.filter(u => u.id !== currentUser?.id && u.email !== currentUser?.email).map(u => (
                                <tr key={u.id} className="border-b border-gray-50 last:border-0">
                                    <td className="py-3 text-sm">{u.name}</td>
                                    <td className="py-3 text-sm text-gray-500">{u.email}</td>
@@ -776,7 +780,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                    </td>
                                </tr>
                            ))}
-                           {users.length === 0 && (
+                           {filteredUsers.length === 0 && (
                                <tr>
                                    <td colSpan={4} className="py-8 text-center text-sm text-gray-500">
                                        No additional users. Invite team members to collaborate.
