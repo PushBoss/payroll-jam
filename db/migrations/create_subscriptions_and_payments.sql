@@ -1,7 +1,7 @@
 -- Create subscriptions table to track user plans
 CREATE TABLE IF NOT EXISTS subscriptions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
     plan_name TEXT NOT NULL,
     plan_type TEXT NOT NULL CHECK (plan_type IN ('free', 'starter', 'professional', 'enterprise')),
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'cancelled', 'expired', 'past_due')),
@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 -- Create payment_history table to track all payments
 CREATE TABLE IF NOT EXISTS payment_history (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
     subscription_id UUID REFERENCES subscriptions(id) ON DELETE SET NULL,
     amount DECIMAL(10,2) NOT NULL,
     currency TEXT NOT NULL DEFAULT 'JMD',
