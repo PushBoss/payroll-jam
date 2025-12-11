@@ -647,7 +647,16 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
       </div>
   );
 
-  const renderPlans = () => (
+  const renderPlans = () => {
+    if (!plans || plans.length === 0) {
+      return (
+        <div className="text-center py-12 text-gray-500">
+          <p>No plans configured</p>
+        </div>
+      );
+    }
+    
+    return (
       <div className="space-y-6 animate-fade-in">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               {plans.map(plan => (
@@ -778,7 +787,8 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
               </div>
           )}
       </div>
-  );
+    );
+  };
 
   const renderPendingPayments = () => {
     const pendingCompanies = tenants.filter(c => c.subscriptionStatus === 'PENDING_PAYMENT');

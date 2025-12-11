@@ -126,9 +126,16 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
       };
 
       await supabaseService.saveUser(updatedUser);
-      onUpdate(updatedUser);
-
-      toast.success('Profile updated successfully!');
+      
+      // Reload user from Supabase to confirm save
+      const savedUser = await supabaseService.getUserByEmail(updatedUser.email);
+      if (savedUser) {
+        onUpdate(savedUser);
+        toast.success('Profile updated successfully!');
+      } else {
+        onUpdate(updatedUser);
+        toast.success('Profile updated locally!');
+      }
     } catch (error: any) {
       console.error('Error updating profile:', error);
       toast.error(error.message || 'Failed to update profile');
