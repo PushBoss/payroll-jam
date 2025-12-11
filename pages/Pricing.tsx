@@ -12,22 +12,36 @@ interface PricingProps {
   plans: PricingPlan[];
 }
 
-export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onFeaturesClick, onFaqClick, plans }) => {
+export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onFeaturesClick, onFaqClick, plans = [] }) => {
   const [cycle, setCycle] = useState<'monthly' | 'annual'>('monthly');
 
   // Filter only active plans
   const displayPlans = plans.filter(p => p.isActive);
+  
+  // If no plans, show a message (shouldn't happen with INITIAL_PLANS fallback)
+  if (displayPlans.length === 0) {
+    return (
+      <div className="min-h-screen bg-white font-sans text-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-500 mb-4">No pricing plans available.</p>
+          <button onClick={onBack} className="text-jam-orange hover:underline">Go back</button>
+        </div>
+      </div>
+    );
+  }
 
   const renderPrice = (plan: PricingPlan) => {
     if (plan.priceConfig.type === 'free') return <span className="text-4xl font-bold">$0</span>;
     
     const amount = cycle === 'monthly' ? plan.priceConfig.monthly : plan.priceConfig.annual;
+    const period = cycle === 'monthly' ? '/mo' : '/yr';
+    const empPeriod = cycle === 'monthly' ? '/emp/mo' : '/emp/yr';
     
     if (plan.priceConfig.type === 'flat') {
       return (
         <div className="flex items-baseline">
           <span className="text-4xl font-bold">${amount.toLocaleString()}</span>
-          <span className={`ml-1 text-sm ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>/mo</span>
+          <span className={`ml-1 text-sm ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>{period}</span>
         </div>
       );
     }
@@ -35,7 +49,7 @@ export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onF
       return (
         <div className="flex items-baseline">
            <span className="text-4xl font-bold">${amount}</span>
-           <span className={`ml-1 text-sm ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>/emp/mo</span>
+           <span className={`ml-1 text-sm ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>{empPeriod}</span>
         </div>
       );
     }
@@ -43,7 +57,7 @@ export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onF
        return (
         <div className="flex items-baseline">
            <span className="text-4xl font-bold">${amount.toLocaleString()}</span>
-           <span className={`ml-1 text-sm ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>/mo base</span>
+           <span className={`ml-1 text-sm ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>{period} base</span>
         </div>
       );
     }

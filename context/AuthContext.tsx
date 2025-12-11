@@ -61,7 +61,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           } else if (!appUser && isMounted) {
             // User authenticated but no profile - sign out
             console.warn('User authenticated but no profile found');
-            await supabase.auth.signOut();
+            try {
+              await supabase.auth.signOut();
+            } catch (error) {
+              console.warn('Sign out failed during profile check:', error);
+            }
+            // Force clear Supabase session from localStorage
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('sb-arqbxlaudfbmiqvwwmnt-auth-token');
+            }
             setUser(null);
             storage.saveUser(null);
           }
@@ -239,8 +247,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = async () => {
-    if (supabase) {
-      await supabase.auth.signOut();
+    try {
+      if (supabase) {
+        await supabase.auth.signOut();
+      }
+    } catch (error) {
+      console.warn('Sign out failed (possibly session already expired):', error);
+    }
+    // Force clear Supabase session from localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('sb-arqbxlaudfbmiqvwwmnt-auth-token');
     }
     setUser(null);
     storage.saveUser(null);

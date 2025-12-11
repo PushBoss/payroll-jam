@@ -4,11 +4,13 @@ import { Layout } from './components/Layout';
 import { CookieConsent } from './components/CookieConsent';
 import { ErrorBoundary } from './components/ErrorBoundary'; 
 import { storage } from './services/storage';
+import { updateGlobalConfig } from './services/updateGlobalConfig';
 import { supabaseService } from './services/supabaseService';
 import { initializeCacheValidation } from './utils/cacheUtils';
 import { User, Role, Employee, PayRun as PayRunType, LeaveRequest, WeeklyTimesheet, CompanySettings, IntegrationConfig, TaxConfig, DocumentTemplate, PricingPlan, Department, Designation, Asset, PerformanceReview } from './types';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { useSubscription } from './hooks/useSubscription';
+import { hasFeatureAccess, getFeatureUpgradeMessage } from './utils/featureAccess';
 
 // ... (Imports and Lazy Loads remain same) ...
 const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
@@ -103,7 +105,12 @@ function AppContent() {
   const [taxConfig, setTaxConfig] = useState<TaxConfig>(storage.getTaxConfig() || INITIAL_TAX_CONFIG);
   const [integrationConfig, setIntegrationConfig] = useState<IntegrationConfig>(storage.getIntegrationConfig() || { provider: 'CSV', mappings: [] });
   const [templates, setTemplates] = useState<DocumentTemplate[]>(storage.getTemplates() || []);
-  const [plans, setPlans] = useState<PricingPlan[]>(storage.getPricingPlans() || INITIAL_PLANS);
+  // Initialize plans - ensure we always have at least INITIAL_PLANS
+  const getInitialPlans = (): PricingPlan[] => {
+    const stored = storage.getPricingPlans();
+    return (stored && stored.length > 0) ? stored : INITIAL_PLANS;
+  };
+  const [plans, setPlans] = useState<PricingPlan[]>(getInitialPlans());
   const [departments, setDepartments] = useState<Department[]>(storage.getDepartments() || []);
   const [designations, setDesignations] = useState<Designation[]>(storage.getDesignations() || []);
   const [assets, setAssets] = useState<Asset[]>(storage.getAssets() || []);
@@ -215,11 +222,47 @@ function AppContent() {
   useEffect(() => storage.saveTaxConfig(taxConfig), [taxConfig]);
   useEffect(() => storage.saveIntegrationConfig(integrationConfig), [integrationConfig]);
   useEffect(() => storage.saveTemplates(templates), [templates]);
+  // Always load plans from Supabase/global config on app load
+  useEffect(() => {
+    function loadPlans() {
+      // Always ensure we have plans - use stored or initial
+      const storedPlans = storage.getPricingPlans();
+      const globalConfig = storage.getGlobalConfig();
+      
+      // Priority: globalConfig.pricingPlans > storedPlans > INITIAL_PLANS
+      if (globalConfig?.pricingPlans && Array.isArray(globalConfig.pricingPlans) && globalConfig.pricingPlans.length > 0) {
+        setPlans(globalConfig.pricingPlans);
+        storage.savePricingPlans(globalConfig.pricingPlans);
+      } else if (storedPlans && storedPlans.length > 0) {
+        setPlans(storedPlans);
+      } else if (plans.length === 0) {
+        // Only set INITIAL_PLANS if we don't have any plans yet
+        setPlans(INITIAL_PLANS);
+        storage.savePricingPlans(INITIAL_PLANS);
+      }
+    }
+    loadPlans();
+  }, []); // Run once on mount
   useEffect(() => storage.savePricingPlans(plans), [plans]);
   useEffect(() => storage.saveDepartments(departments), [departments]);
   useEffect(() => storage.saveDesignations(designations), [designations]);
   useEffect(() => storage.saveAssets(assets), [assets]);
   useEffect(() => storage.saveReviews(reviews), [reviews]);
+
+  // Handler to sync plan/pricing edits to backend/global config and local storage
+  const handleUpdatePlans = async (updatedPlans: PricingPlan[]) => {
+    setPlans(updatedPlans);
+    storage.savePricingPlans(updatedPlans);
+    // If Supabase mode, update global config in Supabase (if available)
+    if (isSupabaseMode) {
+      try {
+        await updateGlobalConfig({ pricingPlans: updatedPlans });
+      } catch (e) {
+        // Optionally show error to user
+        console.error('Failed to update global config:', e);
+      }
+    }
+  };
 
   // ... (Wrappers unchanged) ...
   const handleAddEmployee = async (emp: Employee) => {
@@ -336,7 +379,7 @@ function AppContent() {
         {currentPath === 'faq' && <FAQ onSignup={() => navigateTo('signup')} onLogin={() => navigateTo('login')} onBack={() => navigateTo('home')} onPricingClick={() => navigateTo('pricing')} onFeaturesClick={() => navigateTo('features')} />}
         {currentPath === 'privacy-policy' && <PrivacyPolicy onBack={() => navigateTo('home')} />}
         {currentPath === 'terms-of-service' && <TermsOfService onBack={() => navigateTo('home')} />}
-        {currentPath === 'home' && <LandingPage onLogin={() => navigateTo('login')} onSignup={() => navigateTo('signup')} onPricingClick={() => navigateTo('pricing')} onFeaturesClick={() => navigateTo('features')} onFaqClick={() => navigateTo('faq')} onPrivacyClick={() => navigateTo('privacy-policy')} onTermsClick={() => navigateTo('terms-of-service')} />}
+        {currentPath === 'home' && <LandingPage plans={plans} onLogin={() => navigateTo('login')} onSignup={() => navigateTo('signup')} onPricingClick={() => navigateTo('pricing')} onFeaturesClick={() => navigateTo('features')} onFaqClick={() => navigateTo('faq')} onPrivacyClick={() => navigateTo('privacy-policy')} onTermsClick={() => navigateTo('terms-of-service')} />}
         {!['login','signup','pricing','features','faq','home','privacy-policy','terms-of-service'].includes(currentPath) && 
           <NotFound onGoHome={() => navigateTo('home')} />
         }
@@ -349,7 +392,7 @@ function AppContent() {
 
     if (!user.isOnboarded) {
         if (user.role === Role.EMPLOYEE) return <EmployeeOnboardingWizard companyName={companyData?.name || 'Company'} onComplete={handleEmployeeWizardComplete} />;
-        return <Onboarding departments={departments} onComplete={handleCompanyOnboardComplete} />;
+        return <Onboarding departments={departments} onComplete={handleCompanyOnboardComplete} onUpdateDepartments={setDepartments} />;
     }
 
     switch (currentPath) {
@@ -357,10 +400,28 @@ function AppContent() {
       case 'employees': return <Employees employees={employees} payRunHistory={payRunHistory} companyData={companyData!} onAddEmployee={handleAddEmployee} onUpdateEmployee={handleUpdateEmployee} onSimulateOnboarding={e => alert(`Link: ${window.location.origin}/?token=${e.onboardingToken}`)} departments={departments} designations={designations} assets={assets} onUpdateAssets={setAssets} reviews={reviews} onUpdateReviews={setReviews} />;
       case 'payrun': return <PayRun employees={employees} timesheets={timesheets} leaveRequests={leaveRequests} onSave={handleSavePayRun} companyData={companyData!} integrationConfig={integrationConfig} payRunHistory={payRunHistory} />;
       case 'leave': return <Leave requests={leaveRequests} employees={employees} onStatusChange={handleUpdateLeaveStatus} onAddRequest={handleSaveLeaveRequest} onUpdateEmployee={handleUpdateEmployee} />;
-      case 'documents': return <Documents templates={templates} employees={employees} companyData={companyData!} onUpdateTemplates={setTemplates} />;
+      case 'documents': 
+        if (!hasFeatureAccess(companyData || undefined, 'Documents')) {
+          toast.error(getFeatureUpgradeMessage('Documents', companyData?.plan));
+          navigateTo('dashboard');
+          return <Dashboard employees={employees} leaveRequests={leaveRequests} payRunHistory={payRunHistory} onNavigate={navigateTo} companyData={companyData || undefined} />;
+        }
+        return <Documents templates={templates} employees={employees} companyData={companyData!} onUpdateTemplates={setTemplates} />;
       case 'reports': return <Reports history={payRunHistory} companyData={companyData!} />;
-      case 'compliance': return <Compliance payRunHistory={payRunHistory} companyData={companyData!} />;
-      case 'ai-assistant': return <AiAssistant employees={employees} />;
+      case 'compliance': 
+        if (!hasFeatureAccess(companyData || undefined, 'Compliance')) {
+          toast.error(getFeatureUpgradeMessage('Compliance', companyData?.plan));
+          navigateTo('dashboard');
+          return <Dashboard employees={employees} leaveRequests={leaveRequests} payRunHistory={payRunHistory} onNavigate={navigateTo} companyData={companyData || undefined} />;
+        }
+        return <Compliance payRunHistory={payRunHistory} companyData={companyData!} />;
+      case 'ai-assistant': 
+        if (!hasFeatureAccess(companyData || undefined, 'AI Assistant')) {
+          toast.error(getFeatureUpgradeMessage('AI Assistant', companyData?.plan));
+          navigateTo('dashboard');
+          return <Dashboard employees={employees} leaveRequests={leaveRequests} payRunHistory={payRunHistory} onNavigate={navigateTo} companyData={companyData || undefined} />;
+        }
+        return <AiAssistant employees={employees} />;
       case 'settings': return <Settings companyData={companyData ?? undefined} onUpdateCompany={handleUpdateCompany} taxConfig={taxConfig} onUpdateTaxConfig={setTaxConfig} integrationConfig={integrationConfig} onUpdateIntegration={setIntegrationConfig} departments={departments} onUpdateDepartments={setDepartments} designations={designations} onUpdateDesignations={setDesignations} plans={plans} />;
       case 'profile': return <Profile user={user} onUpdate={updateUser} />;
       case 'timesheets': return <TimeSheets timesheets={timesheets} onUpdate={ts => setTimesheets(timesheets.map(t => t.id === ts.id ? ts : t))} />;
@@ -369,8 +430,8 @@ function AppContent() {
       case 'portal-leave': return <EmployeePortal user={user} employee={employees.find(e => e.email === user.email)} view="leave" leaveRequests={leaveRequests} onRequestLeave={handleSaveLeaveRequest} />;
       case 'portal-docs': return <EmployeePortal user={user} employee={employees.find(e => e.email === user.email)} view="documents" leaveRequests={leaveRequests} onRequestLeave={handleSaveLeaveRequest} payRunHistory={payRunHistory} companyData={companyData || undefined} />;
       case 'portal-profile': return <EmployeePortal user={user} employee={employees.find(e => e.email === user.email)} view="profile" leaveRequests={leaveRequests} onRequestLeave={handleSaveLeaveRequest} />;
-      case 'sa-overview': case 'sa-tenants': case 'sa-billing': case 'sa-health': case 'sa-users': case 'sa-logs': case 'sa-settings': case 'sa-plans':
-          return <SuperAdmin plans={plans} onUpdatePlans={setPlans} onImpersonate={handleImpersonation} initialTab={currentPath.replace('sa-', '')} />;
+        case 'sa-overview': case 'sa-tenants': case 'sa-billing': case 'sa-health': case 'sa-users': case 'sa-logs': case 'sa-settings': case 'sa-plans':
+          return <SuperAdmin plans={plans} onUpdatePlans={handleUpdatePlans} onImpersonate={handleImpersonation} initialTab={currentPath.replace('sa-', '')} />;
       case 'reseller-dashboard': return <ResellerDashboard onManageClient={handleImpersonation} plans={plans} />;
       default: return <NotFound onGoHome={() => navigateTo('dashboard')} />;
     }
@@ -389,6 +450,7 @@ function AppContent() {
             variant={layoutVariant}
             managingCompanyName={companyData?.name || 'Your Company'}
             systemBanner={globalConfig?.systemBanner}
+            companyData={companyData || undefined}
             subscriptionStatus={companyData?.subscriptionStatus}
             isOverLimit={subscription.isOverLimit} // NEW: Pass soft lock state
         >
@@ -401,6 +463,7 @@ function AppContent() {
     </ErrorBoundary>
   );
 }
+
 
 const App = AppContent;
 export default function AppWrapper() {

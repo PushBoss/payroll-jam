@@ -8,9 +8,10 @@ import { generateUUID } from '../utils/uuid';
 interface OnboardingProps {
   onComplete: (data: CompanySettings, employees: Employee[]) => void;
   departments?: Department[];
+  onUpdateDepartments?: (departments: Department[]) => void;
 }
 
-export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments = [] }) => {
+export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments = [], onUpdateDepartments }) => {
   const [step, setStep] = useState(1);
   const [importedEmployees, setImportedEmployees] = useState<Employee[]>([]);
   const [importStatus, setImportStatus] = useState<{type: 'success' | 'error', message: string} | null>(null);
@@ -69,6 +70,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments 
 
         const newEmps: Employee[] = [];
         const freq = formData.payFrequency?.toUpperCase() as PayFrequency || PayFrequency.MONTHLY;
+        const newDepartments: Department[] = [...departments]; // Copy existing departments
 
         // Helper to find keys case-insensitively
         const keys = Object.keys(rows[0]);
@@ -86,6 +88,34 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments 
         if (!emailKey) {
             setImportStatus({type: 'error', message: 'CSV must contain an "Email" column.'});
             return;
+        }
+
+        // First pass: Collect all unique department names from CSV
+        const departmentNames = new Set<string>();
+        rows.forEach((row) => {
+            if (deptKey && row[deptKey]) {
+                const deptName = row[deptKey].trim();
+                if (deptName) {
+                    departmentNames.add(deptName);
+                }
+            }
+        });
+
+        // Create departments that don't exist
+        departmentNames.forEach((deptName) => {
+            const exists = newDepartments.some(d => d.name.toLowerCase() === deptName.toLowerCase());
+            if (!exists) {
+                const newDept: Department = {
+                    id: generateUUID(),
+                    name: deptName
+                };
+                newDepartments.push(newDept);
+            }
+        });
+
+        // Update departments if callback is provided
+        if (onUpdateDepartments && newDepartments.length > departments.length) {
+            onUpdateDepartments(newDepartments);
         }
 
         rows.forEach((row) => {
@@ -123,10 +153,10 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments 
                 else if (r.includes('MANAGER')) newEmp.role = Role.MANAGER;
             }
 
-            // Map Department Name to ID
+            // Map Department Name to ID (now using updated departments list)
             if (deptKey && row[deptKey]) {
                 const deptName = row[deptKey].trim();
-                const matchedDept = departments.find(d => d.name.toLowerCase() === deptName.toLowerCase());
+                const matchedDept = newDepartments.find(d => d.name.toLowerCase() === deptName.toLowerCase());
                 if (matchedDept) {
                     newEmp.department = matchedDept.id;
                 }
@@ -136,7 +166,9 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments 
         });
 
         setImportedEmployees(newEmps);
-        setImportStatus({type: 'success', message: `Successfully imported ${newEmps.length} employees`});
+        const deptCount = newDepartments.length - departments.length;
+        const deptMessage = deptCount > 0 ? ` and created ${deptCount} new department${deptCount > 1 ? 's' : ''}` : '';
+        setImportStatus({type: 'success', message: `Successfully imported ${newEmps.length} employee${newEmps.length > 1 ? 's' : ''}${deptMessage}`});
         e.target.value = ''; // Reset input
       },
       error: (err) => {

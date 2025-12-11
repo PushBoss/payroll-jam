@@ -266,14 +266,22 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
       }));
   };
 
-  const handleSavePlan = () => {
-    if (!editingPlan) return;
-    const updated = plans.map(p => p.id === editingPlan.id ? editingPlan : p);
-    onUpdatePlans(updated);
-    setEditingPlan(null);
-    auditService.log({id: 'sys', name: 'Super Admin', email: 'sys', role: Role.SUPER_ADMIN}, 'UPDATE', 'Plan', `Updated plan: ${editingPlan.name}`);
-    toast.success("Plan updated");
-  };
+    const handleSavePlan = () => {
+        if (!editingPlan) return;
+        let updated;
+        const exists = plans.some(p => p.id === editingPlan.id);
+        if (exists) {
+            updated = plans.map(p => p.id === editingPlan.id ? editingPlan : p);
+            auditService.log({id: 'sys', name: 'Super Admin', email: 'sys', role: Role.SUPER_ADMIN}, 'UPDATE', 'Plan', `Updated plan: ${editingPlan.name}`);
+            toast.success("Plan updated");
+        } else {
+            updated = [...plans, editingPlan];
+            auditService.log({id: 'sys', name: 'Super Admin', email: 'sys', role: Role.SUPER_ADMIN}, 'CREATE', 'Plan', `Created plan: ${editingPlan.name}`);
+            toast.success("Plan created");
+        }
+        onUpdatePlans(updated);
+        setEditingPlan(null);
+    };
 
   const removeFeature = (index: number) => {
     if (!editingPlan) return;
@@ -647,148 +655,89 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
       </div>
   );
 
-  const renderPlans = () => {
-    if (!plans || plans.length === 0) {
-      return (
-        <div className="text-center py-12 text-gray-500">
-          <p>No plans configured</p>
-        </div>
-      );
-    }
-    
-    return (
-      <div className="space-y-6 animate-fade-in">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {plans.map(plan => (
-                  <div key={plan.id} className={`p-6 rounded-xl border-2 transition-all ${plan.isActive ? 'bg-white border-gray-200' : 'bg-gray-50 border-gray-100 opacity-75'}`}>
-                      <div className="flex justify-between items-start mb-4">
-                          <h3 className="font-bold text-lg text-gray-900">{plan.name}</h3>
-                          <div className={`w-3 h-3 rounded-full ${plan.isActive ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-                      </div>
-                      <div className="mb-4">
-                          <p className="text-2xl font-bold text-gray-900">
-                              ${plan.priceConfig.monthly.toLocaleString()}
-                              <span className="text-sm font-normal text-gray-500">/mo</span>
-                          </p>
-                          <p className="text-xs text-gray-500 mt-1">{plan.description}</p>
-                      </div>
-                      <div className="space-y-2 mb-6">
-                          {plan.features.slice(0, 3).map((f, i) => (
-                              <div key={i} className="flex items-center text-xs text-gray-600">
-                                  <Icons.Check className="w-3 h-3 mr-2 text-green-500" />
-                                  {f}
-                              </div>
-                          ))}
-                      </div>
-                      <div className="flex space-x-2">
-                          <button 
-                              onClick={() => setEditingPlan(plan)}
-                              className="flex-1 py-2 border border-gray-300 rounded text-sm font-medium hover:bg-gray-50"
-                          >
-                              Edit
-                          </button>
-                          <button 
-                              onClick={() => toggleActiveStatus(plan)}
-                              className={`px-3 py-2 rounded border ${plan.isActive ? 'text-red-600 border-red-200 hover:bg-red-50' : 'text-green-600 border-green-200 hover:bg-green-50'}`}
-                          >
-                              <Icons.Zap className="w-4 h-4" />
-                          </button>
-                      </div>
-                  </div>
-              ))}
-          </div>
+    const renderPlans = () => {
+        const handleCreatePlan = () => {
+            console.log('Create Plan clicked');
+            setEditingPlan({
+                id: `plan-${Date.now()}`,
+                name: '',
+                priceConfig: { type: 'flat', monthly: 0, annual: 0 },
+                description: '',
+                limit: '5 Employees',
+                features: [],
+                cta: 'Get Started',
+                highlight: false,
+                color: 'bg-white',
+                textColor: 'text-gray-900',
+                isActive: true
+            });
+        };
+        if (!plans || plans.length === 0) {
+            return (
+                <div className="text-center py-12 text-gray-500">
+                    <p>No plans configured</p>
+                    <button
+                        onClick={handleCreatePlan}
+                        className="mt-6 px-6 py-2 bg-jam-orange text-white rounded-lg font-semibold shadow hover:bg-orange-500 transition"
+                    >
+                        Create Plan
+                    </button>
+                </div>
+            );
+        }
+        return (
+            <div className="space-y-6 animate-fade-in">
+                <div className="flex justify-end mb-4">
+                    <button
+                        onClick={handleCreatePlan}
+                        className="px-5 py-2 bg-jam-orange text-white rounded-lg font-semibold shadow hover:bg-orange-500 transition"
+                    >
+                        + Create Plan
+                    </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {plans.map(plan => (
+                        <div key={plan.id} className={`p-6 rounded-xl border-2 transition-all ${plan.isActive ? 'bg-white border-gray-200' : 'bg-gray-50 border-gray-100 opacity-75'}`}>
+                            <div className="flex justify-between items-start mb-4">
+                                <h3 className="font-bold text-lg text-gray-900">{plan.name}</h3>
+                                <div className={`w-3 h-3 rounded-full ${plan.isActive ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                            </div>
+                            <div className="mb-4">
+                                <p className="text-2xl font-bold text-gray-900">
+                                    ${plan.priceConfig.monthly.toLocaleString()}
+                                    <span className="text-sm font-normal text-gray-500">/mo</span>
+                                </p>
+                                <p className="text-xs text-gray-500 mt-1">{plan.description}</p>
+                            </div>
+                            <div className="space-y-2 mb-6">
+                                {plan.features.slice(0, 3).map((f, i) => (
+                                    <div key={i} className="flex items-center text-xs text-gray-600">
+                                        <Icons.Check className="w-3 h-3 mr-2 text-green-500" />
+                                        {f}
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="flex space-x-2">
+                                <button 
+                                    onClick={() => setEditingPlan(plan)}
+                                    className="flex-1 py-2 border border-gray-300 rounded text-sm font-medium hover:bg-gray-50"
+                                >
+                                    Edit
+                                </button>
+                                <button 
+                                    onClick={() => toggleActiveStatus(plan)}
+                                    className={`px-3 py-2 rounded border ${plan.isActive ? 'text-red-600 border-red-200 hover:bg-red-50' : 'text-green-600 border-green-200 hover:bg-green-50'}`}
+                                >
+                                    <Icons.Zap className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
 
-          {editingPlan && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                  <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in">
-                      <div className="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-                          <h3 className="text-xl font-bold text-gray-900">Edit {editingPlan.name} Plan</h3>
-                          <button onClick={() => setEditingPlan(null)} className="text-gray-400 hover:text-gray-600">
-                              <Icons.Close className="w-6 h-6" />
-                          </button>
-                      </div>
-                      <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
-                          <div>
-                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Plan Name</label>
-                              <input 
-                                  type="text" 
-                                  className="w-full border border-gray-300 rounded px-3 py-2"
-                                  value={editingPlan.name}
-                                  onChange={e => setEditingPlan({...editingPlan, name: e.target.value})}
-                              />
-                          </div>
-                          <div className="grid grid-cols-2 gap-4">
-                              <div>
-                                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Monthly Price</label>
-                                  <input 
-                                      type="number" 
-                                      className="w-full border border-gray-300 rounded px-3 py-2"
-                                      value={editingPlan.priceConfig.monthly}
-                                      onChange={e => setEditingPlan({
-                                          ...editingPlan, 
-                                          priceConfig: { ...editingPlan.priceConfig, monthly: parseFloat(e.target.value) }
-                                      })}
-                                  />
-                              </div>
-                              <div>
-                                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Annual Price</label>
-                                  <input 
-                                      type="number" 
-                                      className="w-full border border-gray-300 rounded px-3 py-2"
-                                      value={editingPlan.priceConfig.annual}
-                                      onChange={e => setEditingPlan({
-                                          ...editingPlan, 
-                                          priceConfig: { ...editingPlan.priceConfig, annual: parseFloat(e.target.value) }
-                                      })}
-                                  />
-                              </div>
-                          </div>
-                          <div>
-                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Description</label>
-                              <textarea 
-                                  rows={2}
-                                  className="w-full border border-gray-300 rounded px-3 py-2"
-                                  value={editingPlan.description}
-                                  onChange={e => setEditingPlan({...editingPlan, description: e.target.value})}
-                              />
-                          </div>
-                          <div>
-                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Features</label>
-                              <div className="space-y-2 mb-2">
-                                  {editingPlan.features.map((feature, idx) => (
-                                      <div key={idx} className="flex items-center space-x-2">
-                                          <div className="flex-1 bg-gray-50 px-3 py-2 rounded text-sm">{feature}</div>
-                                          <button onClick={() => removeFeature(idx)} className="text-red-400 hover:text-red-600">
-                                              <Icons.Close className="w-4 h-4" />
-                                          </button>
-                                      </div>
-                                  ))}
-                              </div>
-                              <div className="flex space-x-2">
-                                  <input 
-                                      type="text" 
-                                      placeholder="Add feature..." 
-                                      className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm"
-                                      value={newFeatureText}
-                                      onChange={e => setNewFeatureText(e.target.value)}
-                                      onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addFeature())}
-                                  />
-                                  <button onClick={addFeature} className="bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded text-gray-600">
-                                      <Icons.Plus className="w-4 h-4" />
-                                  </button>
-                              </div>
-                          </div>
-                      </div>
-                      <div className="p-6 border-t border-gray-100 flex justify-end space-x-3 bg-gray-50">
-                          <button onClick={() => setEditingPlan(null)} className="px-4 py-2 text-gray-500 hover:text-gray-700">Cancel</button>
-                          <button onClick={handleSavePlan} className="bg-jam-black text-white px-6 py-2 rounded font-bold hover:bg-gray-800">Save Changes</button>
-                      </div>
-                  </div>
-              </div>
-          )}
-      </div>
-    );
-  };
+            </div>
+        );
+    };
 
   const renderPendingPayments = () => {
     const pendingCompanies = tenants.filter(c => c.subscriptionStatus === 'PENDING_PAYMENT');
@@ -995,7 +944,28 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
               
               {/* Added Save Button */}
               <button 
-                onClick={() => { storage.saveGlobalConfig(paymentConfig); toast.success("Settings saved successfully"); }}
+                onClick={async () => { 
+                  storage.saveGlobalConfig(paymentConfig);
+                  
+                  // Save payment gateway settings to Supabase for all companies
+                  // We'll save the payment gateway config to each company's settings
+                  // This ensures payment gateway settings are persisted in Supabase
+                  try {
+                    const allCompanies = await supabaseService.getAllCompanies();
+                    for (const company of allCompanies) {
+                      await supabaseService.savePaymentGatewaySettings(company.id, {
+                        dimepay: paymentConfig.dimepay,
+                        paypal: paymentConfig.paypal,
+                        emailjs: paymentConfig.emailjs,
+                        stripe: paymentConfig.stripe
+                      });
+                    }
+                    toast.success("Settings saved successfully to Supabase");
+                  } catch (error) {
+                    console.error("Error saving to Supabase:", error);
+                    toast.success("Settings saved locally");
+                  }
+                }}
                 className="w-full py-3 bg-jam-black text-white rounded-lg font-bold hover:bg-gray-800 shadow-md"
               >
                   Save Global Settings
@@ -1010,8 +980,20 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                           <h4 className="font-bold text-gray-800">DimePay</h4>
                           <input 
                               type="checkbox" 
-                              checked={paymentConfig.dimepay?.enabled}
-                              onChange={(e) => setPaymentConfig({...paymentConfig, dimepay: {...paymentConfig.dimepay!, enabled: e.target.checked}})}
+                              checked={!!paymentConfig.dimepay?.enabled}
+                              onChange={(e) => setPaymentConfig({
+                                  ...paymentConfig, 
+                                  dimepay: {
+                                      ...(paymentConfig.dimepay || {}),
+                                      enabled: e.target.checked,
+                                      environment: paymentConfig.dimepay?.environment || 'sandbox',
+                                      apiKey: paymentConfig.dimepay?.apiKey || '',
+                                      secretKey: paymentConfig.dimepay?.secretKey || '',
+                                      merchantId: paymentConfig.dimepay?.merchantId || '',
+                                      domain: paymentConfig.dimepay?.domain || 'https://staging.api.dimepay.app',
+                                      passFeesTo: paymentConfig.dimepay?.passFeesTo || 'MERCHANT'
+                                  }
+                              })}
                               className="h-5 w-5 text-jam-orange focus:ring-jam-orange"
                           />
                       </div>
@@ -1022,7 +1004,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                   <div>
                                       <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Environment</label>
                                       <select 
-                                          value={paymentConfig.dimepay.environment || 'sandbox'}
+                                          value={paymentConfig.dimepay?.environment || 'sandbox'}
                                           onChange={(e) => handleDimeEnvChange(e.target.value as any)}
                                           className="w-full border border-gray-300 rounded p-2 text-sm bg-white"
                                       >
@@ -1033,10 +1015,13 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                   <div>
                                       <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Pass Fees To</label>
                                       <select 
-                                          value={paymentConfig.dimepay.passFeesTo || 'MERCHANT'}
+                                          value={paymentConfig.dimepay?.passFeesTo || 'MERCHANT'}
                                           onChange={(e) => setPaymentConfig({
                                               ...paymentConfig, 
-                                              dimepay: {...paymentConfig.dimepay, passFeesTo: e.target.value as any}
+                                              dimepay: {
+                                                  ...(paymentConfig.dimepay || {}),
+                                                  passFeesTo: e.target.value as any
+                                              }
                                           })}
                                           className="w-full border border-gray-300 rounded p-2 text-sm bg-white"
                                       >
@@ -1051,7 +1036,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                   <input 
                                     type="text" 
                                     readOnly
-                                    value={paymentConfig.dimepay.domain}
+                                    value={paymentConfig.dimepay?.domain || ''}
                                     className="w-full border border-gray-200 bg-gray-100 rounded p-2 text-sm text-gray-600 font-mono cursor-not-allowed"
                                   />
                               </div>
@@ -1061,8 +1046,14 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                   <input 
                                     type="text" 
                                     placeholder="ck_test_..." 
-                                    value={paymentConfig.dimepay.apiKey}
-                                    onChange={(e) => setPaymentConfig({...paymentConfig, dimepay: {...paymentConfig.dimepay!, apiKey: e.target.value}})}
+                                    value={paymentConfig.dimepay?.apiKey || ''}
+                                    onChange={(e) => setPaymentConfig({
+                                        ...paymentConfig, 
+                                        dimepay: {
+                                            ...(paymentConfig.dimepay || {}),
+                                            apiKey: e.target.value
+                                        }
+                                    })}
                                     className="w-full border border-gray-300 rounded p-2 text-sm font-mono"
                                   />
                               </div>
@@ -1072,8 +1063,14 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                   <input 
                                     type="password" 
                                     placeholder="sk_test_..." 
-                                    value={paymentConfig.dimepay.secretKey}
-                                    onChange={(e) => setPaymentConfig({...paymentConfig, dimepay: {...paymentConfig.dimepay!, secretKey: e.target.value}})}
+                                    value={paymentConfig.dimepay?.secretKey || ''}
+                                    onChange={(e) => setPaymentConfig({
+                                        ...paymentConfig, 
+                                        dimepay: {
+                                            ...(paymentConfig.dimepay || {}),
+                                            secretKey: e.target.value
+                                        }
+                                    })}
                                     className="w-full border border-gray-300 rounded p-2 text-sm font-mono"
                                   />
                               </div>
@@ -1083,8 +1080,14 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                   <input 
                                     type="text" 
                                     placeholder="mQn_..." 
-                                    value={paymentConfig.dimepay.merchantId || ''}
-                                    onChange={(e) => setPaymentConfig({...paymentConfig, dimepay: {...paymentConfig.dimepay!, merchantId: e.target.value}})}
+                                    value={paymentConfig.dimepay?.merchantId || ''}
+                                    onChange={(e) => setPaymentConfig({
+                                        ...paymentConfig, 
+                                        dimepay: {
+                                            ...(paymentConfig.dimepay || {}),
+                                            merchantId: e.target.value
+                                        }
+                                    })}
                                     className="w-full border border-gray-300 rounded p-2 text-sm font-mono"
                                   />
                               </div>
@@ -1098,12 +1101,18 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                           <h4 className="font-bold text-gray-800">PayPal</h4>
                           <input 
                               type="checkbox" 
-                              checked={paymentConfig.paypal.enabled}
-                              onChange={(e) => setPaymentConfig({...paymentConfig, paypal: {...paymentConfig.paypal, enabled: e.target.checked}})}
+                              checked={!!paymentConfig.paypal?.enabled}
+                              onChange={(e) => setPaymentConfig({
+                                  ...paymentConfig, 
+                                  paypal: {
+                                      ...(paymentConfig.paypal || {}),
+                                      enabled: e.target.checked
+                                  }
+                              })}
                               className="h-5 w-5 text-jam-orange focus:ring-jam-orange"
                           />
                       </div>
-                      {paymentConfig.paypal.enabled && (
+                      {paymentConfig.paypal?.enabled && (
                           <div>
                               <input 
                                 type="text" 
@@ -1327,6 +1336,94 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
          {activeTab === 'billing' && renderBilling()}
          {activeTab === 'plans' && renderPlans()}
       </div>
+      {editingPlan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in">
+            <div className="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+              <h3 className="text-xl font-bold text-gray-900">Edit {editingPlan.name} Plan</h3>
+              <button onClick={() => setEditingPlan(null)} className="text-gray-400 hover:text-gray-600">
+                <Icons.Close className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Plan Name</label>
+                <input 
+                  type="text" 
+                  className="w-full border border-gray-300 rounded px-3 py-2"
+                  value={editingPlan.name}
+                  onChange={e => setEditingPlan({...editingPlan, name: e.target.value})}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Monthly Price</label>
+                  <input 
+                    type="number" 
+                    className="w-full border border-gray-300 rounded px-3 py-2"
+                    value={editingPlan.priceConfig.monthly}
+                    onChange={e => setEditingPlan({
+                      ...editingPlan, 
+                      priceConfig: { ...editingPlan.priceConfig, monthly: parseFloat(e.target.value) }
+                    })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Annual Price</label>
+                  <input 
+                    type="number" 
+                    className="w-full border border-gray-300 rounded px-3 py-2"
+                    value={editingPlan.priceConfig.annual}
+                    onChange={e => setEditingPlan({
+                      ...editingPlan, 
+                      priceConfig: { ...editingPlan.priceConfig, annual: parseFloat(e.target.value) }
+                    })}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Description</label>
+                <textarea 
+                  rows={2}
+                  className="w-full border border-gray-300 rounded px-3 py-2"
+                  value={editingPlan.description}
+                  onChange={e => setEditingPlan({...editingPlan, description: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Features</label>
+                <div className="space-y-2 mb-2">
+                  {editingPlan.features.map((feature, idx) => (
+                    <div key={idx} className="flex items-center space-x-2">
+                      <div className="flex-1 bg-gray-50 px-3 py-2 rounded text-sm">{feature}</div>
+                      <button onClick={() => removeFeature(idx)} className="text-red-400 hover:text-red-600">
+                        <Icons.Close className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex space-x-2">
+                  <input 
+                    type="text" 
+                    placeholder="Add feature..." 
+                    className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm"
+                    value={newFeatureText}
+                    onChange={e => setNewFeatureText(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addFeature())}
+                  />
+                  <button onClick={addFeature} className="bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded text-gray-600">
+                    <Icons.Plus className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 border-t border-gray-100 flex justify-end space-x-3 bg-gray-50">
+              <button onClick={() => setEditingPlan(null)} className="px-4 py-2 text-gray-500 hover:text-gray-700">Cancel</button>
+              <button onClick={handleSavePlan} className="bg-jam-black text-white px-6 py-2 rounded font-bold hover:bg-gray-800">Save Changes</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

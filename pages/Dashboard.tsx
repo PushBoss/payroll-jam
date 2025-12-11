@@ -68,6 +68,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ employees, leaveRequests, 
     }, 0);
   }, [employees, payRunHistory]);
 
+  // Compliance audit data
+  const complianceAudit = useMemo(() => {
+    const activeEmployees = employees.filter(e => e.status === 'ACTIVE');
+    const missingTRN = activeEmployees.filter(e => !e.trn || e.trn.length < 9);
+    const missingNIS = activeEmployees.filter(e => !e.nis || e.nis.trim() === '');
+    const missingBank = activeEmployees.filter(e => !e.bankDetails?.accountNumber || e.bankDetails.accountNumber.trim() === '');
+    return { missingTRN, missingNIS, missingBank };
+  }, [employees]);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
@@ -138,6 +147,102 @@ export const Dashboard: React.FC<DashboardProps> = ({ employees, leaveRequests, 
                 </div>
             </div>
             <p className="text-xs text-gray-400 mt-3">Includes statutory deductions</p>
+        </div>
+      </div>
+
+      {/* Compliance Audit Card */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">Compliance Audit</h3>
+        <div className="space-y-4">
+          <div className={`p-4 rounded-lg border ${complianceAudit.missingTRN.length === 0 ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-start">
+                {complianceAudit.missingTRN.length === 0 ? (
+                  <Icons.Check className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                ) : (
+                  <Icons.Alert className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+                )}
+                <div className="ml-3">
+                  <h4 className={`text-sm font-semibold ${complianceAudit.missingTRN.length === 0 ? 'text-green-800' : 'text-red-800'}`}>
+                    Tax Registration Numbers (TRN)
+                  </h4>
+                  <p className={`text-xs mt-1 ${complianceAudit.missingTRN.length === 0 ? 'text-green-700' : 'text-red-700'}`}>
+                    {complianceAudit.missingTRN.length === 0 
+                      ? 'All Clear - Required for all active employees' 
+                      : `${complianceAudit.missingTRN.length} employee(s) missing TRN`}
+                  </p>
+                </div>
+              </div>
+              {complianceAudit.missingTRN.length > 0 && (
+                <button 
+                  onClick={() => onNavigate('employees')}
+                  className="text-xs text-red-600 hover:text-red-800 font-medium"
+                >
+                  Fix →
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className={`p-4 rounded-lg border ${complianceAudit.missingNIS.length === 0 ? 'bg-green-50 border-green-100' : 'bg-yellow-50 border-yellow-100'}`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-start">
+                {complianceAudit.missingNIS.length === 0 ? (
+                  <Icons.Check className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                ) : (
+                  <Icons.Alert className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                )}
+                <div className="ml-3">
+                  <h4 className={`text-sm font-semibold ${complianceAudit.missingNIS.length === 0 ? 'text-green-800' : 'text-yellow-800'}`}>
+                    National Insurance (NIS)
+                  </h4>
+                  <p className={`text-xs mt-1 ${complianceAudit.missingNIS.length === 0 ? 'text-green-700' : 'text-yellow-700'}`}>
+                    {complianceAudit.missingNIS.length === 0 
+                      ? 'All Clear - Required for S01 filing' 
+                      : `${complianceAudit.missingNIS.length} employee(s) missing NIS`}
+                  </p>
+                </div>
+              </div>
+              {complianceAudit.missingNIS.length > 0 && (
+                <button 
+                  onClick={() => onNavigate('employees')}
+                  className="text-xs text-yellow-600 hover:text-yellow-800 font-medium"
+                >
+                  Fix →
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className={`p-4 rounded-lg border ${complianceAudit.missingBank.length === 0 ? 'bg-green-50 border-green-100' : 'bg-orange-50 border-orange-100'}`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-start">
+                {complianceAudit.missingBank.length === 0 ? (
+                  <Icons.Check className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                ) : (
+                  <Icons.Alert className="w-5 h-5 text-orange-600 mt-0.5 flex-shrink-0" />
+                )}
+                <div className="ml-3">
+                  <h4 className={`text-sm font-semibold ${complianceAudit.missingBank.length === 0 ? 'text-green-800' : 'text-orange-800'}`}>
+                    Bank Account Details
+                  </h4>
+                  <p className={`text-xs mt-1 ${complianceAudit.missingBank.length === 0 ? 'text-green-700' : 'text-orange-700'}`}>
+                    {complianceAudit.missingBank.length === 0 
+                      ? 'All Clear - Required for ACH generation' 
+                      : `${complianceAudit.missingBank.length} employee(s) missing bank details`}
+                  </p>
+                </div>
+              </div>
+              {complianceAudit.missingBank.length > 0 && (
+                <button 
+                  onClick={() => onNavigate('employees')}
+                  className="text-xs text-orange-600 hover:text-orange-800 font-medium"
+                >
+                  Fix →
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 

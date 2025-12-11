@@ -156,8 +156,8 @@ export const Settings: React.FC<SettingsProps> = ({
   const [newDesigDept, setNewDesigDept] = useState('');
 
   // DB State
-  const [dbStatus, setDbStatus] = useState<{ connected: boolean; message: string; details?: string } | null>(null);
-  const [isCheckingDb, setIsCheckingDb] = useState(false);
+  const [, setDbStatus] = useState<{ connected: boolean; message: string; details?: string } | null>(null);
+  const [, setIsCheckingDb] = useState(false);
   
   const [upgradeTarget, setUpgradeTarget] = useState<PricingPlan | null>(null);
   const [invoices, setInvoices] = useState<PaymentRecord[]>([]);
@@ -170,11 +170,23 @@ export const Settings: React.FC<SettingsProps> = ({
   }
 
   useEffect(() => {
-      const storedUsers = storage.getCompanyUsers();
-      if (storedUsers && storedUsers.length > 0) {
-          setUsers(storedUsers);
-      }
-  }, []);
+      const loadUsers = async () => {
+          if (currentUser?.companyId) {
+              // Try to load from Supabase first
+              const dbUsers = await supabaseService.getCompanyUsers(currentUser.companyId);
+              if (dbUsers && dbUsers.length > 0) {
+                  setUsers(dbUsers);
+              } else {
+                  // Fallback to localStorage
+                  const storedUsers = storage.getCompanyUsers();
+                  if (storedUsers && storedUsers.length > 0) {
+                      setUsers(storedUsers);
+                  }
+              }
+          }
+      };
+      loadUsers();
+  }, [currentUser?.companyId]);
 
   useEffect(() => {
       if (activeTab === 'integrations') {
@@ -299,9 +311,41 @@ export const Settings: React.FC<SettingsProps> = ({
       downloadFile(`Invoice_${inv.id}.txt`, content, 'text/plain');
   };
 
-  const handleInviteSubmit = (e: React.FormEvent) => {
+  const handleInviteSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
-      const newUser: User = { id: `u-${Date.now()}`, name: inviteForm.name, email: inviteForm.email, role: inviteForm.role, isOnboarded: false };
+      
+      // Check user limit based on plan
+      const plan = companyData?.plan || 'Free';
+      let maxUsers = 5; // Free
+      if (plan === 'Starter') maxUsers = 25;
+      if (plan === 'Pro' || plan === 'Professional') maxUsers = 99999; // Unlimited
+      
+      // Count includes the main account owner
+      const currentUserCount = users.length + 1; // +1 for the account owner
+      
+      if (currentUserCount >= maxUsers) {
+          toast.error(`User limit reached. You have ${currentUserCount} users (including account owner). Upgrade to ${plan === 'Free' ? 'Starter' : 'Pro'} to add more users.`);
+          return;
+      }
+      
+      const newUser: User = { 
+          id: `u-${Date.now()}`, 
+          name: inviteForm.name, 
+          email: inviteForm.email, 
+          role: inviteForm.role, 
+          companyId: currentUser?.companyId,
+          isOnboarded: false 
+      };
+      
+      // Save to Supabase if available
+      if (currentUser?.companyId) {
+          try {
+              await supabaseService.saveUser(newUser);
+          } catch (error) {
+              console.error("Error saving user to Supabase:", error);
+          }
+      }
+      
       const updatedUsers = [...users, newUser];
       setUsers(updatedUsers);
       storage.saveCompanyUsers(updatedUsers);
@@ -593,23 +637,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
       {activeTab === 'integrations' && (
           <div className="space-y-6 animate-fade-in">
-             <div className="bg-white p-6 rounded-xl border border-gray-200">
-                <div className="flex justify-between items-center mb-4">
-                    <h3 className="font-bold">Database Connection</h3>
-                    <button onClick={handleCheckDb} className="text-xs bg-gray-100 px-2 py-1 rounded hover:bg-gray-200 flex items-center">
-                        {isCheckingDb ? <Icons.Refresh className="w-3 h-3 animate-spin mr-1"/> : <Icons.Refresh className="w-3 h-3 mr-1"/>} Check Status
-                    </button>
-                </div>
-                <div className={`p-4 rounded border ${dbStatus?.connected ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
-                    <div className="flex items-center font-bold mb-1">
-                        {dbStatus?.connected ? <Icons.CheckCircle className="w-4 h-4 mr-2"/> : <Icons.Alert className="w-4 h-4 mr-2"/>}
-                        {dbStatus?.message || 'Not Connected'}
-                    </div>
-                    <p className="text-xs ml-6">{dbStatus?.details || 'Click check status to verify connection.'}</p>
-                </div>
-            </div>
-
-            {/* Restored Accounting Mapping UI */}
+             {/* Restored Accounting Mapping UI */}
             <div className="bg-white p-6 rounded-xl border border-gray-200">
                 <div className="flex justify-between items-center mb-6">
                     <div>
@@ -669,27 +697,97 @@ export const Settings: React.FC<SettingsProps> = ({
           </div>
       )}
 
-      {activeTab === 'users' && (
-          <div className="bg-white p-6 rounded-xl border border-gray-200 animate-fade-in">
-               <div className="flex justify-between items-center mb-4">
-                   <h3 className="font-bold">User Management</h3>
-                   <button onClick={() => setIsInviteModalOpen(true)} className="bg-jam-black text-white px-3 py-1.5 rounded text-sm font-medium hover:bg-gray-800">Invite User</button>
-               </div>
-               <table className="w-full text-left">
-                   <thead><tr className="border-b"><th className="pb-2 text-xs text-gray-500">Name</th><th className="pb-2 text-xs text-gray-500">Email</th><th className="pb-2 text-xs text-gray-500">Role</th><th className="pb-2 text-xs text-gray-500 text-right">Action</th></tr></thead>
-                   <tbody>
-                       {users.map(u => (
-                           <tr key={u.id} className="border-b border-gray-50 last:border-0">
-                               <td className="py-3 text-sm">{u.name}</td>
-                               <td className="py-3 text-sm text-gray-500">{u.email}</td>
-                               <td className="py-3"><span className="text-xs bg-gray-100 px-2 py-1 rounded">{u.role}</span></td>
-                               <td className="py-3 text-right"><button onClick={() => handleDeleteUser(u.id)} className="text-red-500 hover:text-red-700"><Icons.Trash className="w-4 h-4"/></button></td>
+      {activeTab === 'users' && (() => {
+          const plan = companyData?.plan || 'Free';
+          let maxUsers = 5; // Free
+          if (plan === 'Starter') maxUsers = 25;
+          if (plan === 'Pro' || plan === 'Professional') maxUsers = 99999; // Unlimited
+          
+          // Count includes the main account owner (currentUser)
+          const currentUserCount = users.length + 1; // +1 for the account owner
+          const canAddMore = currentUserCount < maxUsers;
+          const remainingSeats = maxUsers - currentUserCount;
+          
+          return (
+              <div className="bg-white p-6 rounded-xl border border-gray-200 animate-fade-in">
+                   <div className="flex justify-between items-center mb-4">
+                       <div>
+                           <h3 className="font-bold">User Management</h3>
+                           <p className="text-xs text-gray-500 mt-1">
+                               {currentUserCount} of {maxUsers === 99999 ? 'Unlimited' : maxUsers} users ({remainingSeats > 0 ? `${remainingSeats} seats remaining` : 'Limit reached'})
+                           </p>
+                       </div>
+                       <button 
+                           onClick={() => setIsInviteModalOpen(true)} 
+                           disabled={!canAddMore}
+                           className={`px-3 py-1.5 rounded text-sm font-medium ${
+                               canAddMore 
+                                   ? 'bg-jam-black text-white hover:bg-gray-800' 
+                                   : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                           }`}
+                       >
+                           {canAddMore ? 'Invite User' : 'Upgrade to Add More'}
+                       </button>
+                   </div>
+                   {!canAddMore && (
+                       <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                           <p className="text-sm text-yellow-800">
+                               <strong>User limit reached.</strong> You have {currentUserCount} users (including the account owner). 
+                               {plan === 'Free' && ' Upgrade to Starter (25 users) or Pro (Unlimited) to add more users.'}
+                               {plan === 'Starter' && ' Upgrade to Pro for unlimited users.'}
+                           </p>
+                       </div>
+                   )}
+                   <table className="w-full text-left">
+                       <thead>
+                           <tr className="border-b">
+                               <th className="pb-2 text-xs text-gray-500">Name</th>
+                               <th className="pb-2 text-xs text-gray-500">Email</th>
+                               <th className="pb-2 text-xs text-gray-500">Role</th>
+                               <th className="pb-2 text-xs text-gray-500 text-right">Action</th>
                            </tr>
-                       ))}
-                   </tbody>
-               </table>
-          </div>
-      )}
+                       </thead>
+                       <tbody>
+                           {/* Show account owner */}
+                           {currentUser && (
+                               <tr className="border-b border-gray-50">
+                                   <td className="py-3 text-sm font-medium">{currentUser.name}</td>
+                                   <td className="py-3 text-sm text-gray-500">{currentUser.email}</td>
+                                   <td className="py-3">
+                                       <span className="text-xs bg-jam-orange/20 text-jam-black px-2 py-1 rounded font-medium">
+                                           {currentUser.role} (Owner)
+                                       </span>
+                                   </td>
+                                   <td className="py-3 text-right text-xs text-gray-400">Account Owner</td>
+                               </tr>
+                           )}
+                           {users.map(u => (
+                               <tr key={u.id} className="border-b border-gray-50 last:border-0">
+                                   <td className="py-3 text-sm">{u.name}</td>
+                                   <td className="py-3 text-sm text-gray-500">{u.email}</td>
+                                   <td className="py-3"><span className="text-xs bg-gray-100 px-2 py-1 rounded">{u.role}</span></td>
+                                   <td className="py-3 text-right">
+                                       <button 
+                                           onClick={() => handleDeleteUser(u.id)} 
+                                           className="text-red-500 hover:text-red-700"
+                                       >
+                                           <Icons.Trash className="w-4 h-4"/>
+                                       </button>
+                                   </td>
+                               </tr>
+                           ))}
+                           {users.length === 0 && (
+                               <tr>
+                                   <td colSpan={4} className="py-8 text-center text-sm text-gray-500">
+                                       No additional users. Invite team members to collaborate.
+                                   </td>
+                               </tr>
+                           )}
+                       </tbody>
+                   </table>
+              </div>
+          );
+      })()}
     </div>
   );
 };

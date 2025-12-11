@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Icons } from './Icons';
-import { Role } from '../types';
+import { Role, CompanySettings } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { hasFeatureAccess } from '../utils/featureAccess';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -16,6 +17,7 @@ interface LayoutProps {
   };
   subscriptionStatus?: 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'PENDING_PAYMENT';
   isOverLimit?: boolean; // Soft Lock Prop
+  companyData?: CompanySettings;
 }
 
 export const Layout: React.FC<LayoutProps> = ({ 
@@ -26,7 +28,8 @@ export const Layout: React.FC<LayoutProps> = ({
   managingCompanyName,
   systemBanner,
   subscriptionStatus = 'ACTIVE',
-  isOverLimit = false
+  isOverLimit = false,
+  companyData
 }) => {
   const { user, logout, stopImpersonation } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -35,40 +38,49 @@ export const Layout: React.FC<LayoutProps> = ({
     return <div className="min-h-screen bg-gray-50">{children}</div>;
   }
 
-  const adminNavItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: Icons.Dashboard },
-    { id: 'employees', label: 'Employees', icon: Icons.Users },
-    { id: 'timesheets', label: 'Time Sheets', icon: Icons.Clock },
-    { id: 'payrun', label: 'Pay Runs', icon: Icons.Payroll },
-    { id: 'leave', label: 'Time Off', icon: Icons.Plane },
-    { id: 'documents', label: 'Documents', icon: Icons.Document },
-    { id: 'reports', label: 'Reports', icon: Icons.Reports },
-    { id: 'compliance', label: 'Compliance', icon: Icons.Compliance },
-    { id: 'ai-assistant', label: 'AI Assistant', icon: Icons.AI },
-    { id: 'settings', label: 'Settings', icon: Icons.Settings },
-  ];
+  // Filter admin nav items based on feature access
+  const adminNavItems = useMemo(() => {
+    const allItems = [
+      { id: 'dashboard', label: 'Dashboard', icon: Icons.Dashboard, feature: null },
+      { id: 'employees', label: 'Employees', icon: Icons.Users, feature: null },
+      { id: 'timesheets', label: 'Time Sheets', icon: Icons.Clock, feature: null },
+      { id: 'payrun', label: 'Pay Runs', icon: Icons.Payroll, feature: null },
+      { id: 'leave', label: 'Time Off', icon: Icons.Plane, feature: null },
+      { id: 'documents', label: 'Documents', icon: Icons.Document, feature: 'Documents' },
+      { id: 'reports', label: 'Reports', icon: Icons.Reports, feature: null },
+      { id: 'compliance', label: 'Compliance', icon: Icons.Compliance, feature: 'Compliance' },
+      { id: 'ai-assistant', label: 'AI Assistant', icon: Icons.AI, feature: 'AI Assistant' },
+      { id: 'settings', label: 'Settings', icon: Icons.Settings, feature: null },
+    ];
+    
+    // Filter out items that require features the plan doesn't have
+    return allItems.filter(item => {
+      if (!item.feature) return true; // Always show items without feature requirements
+      return hasFeatureAccess(companyData, item.feature);
+    });
+  }, [companyData]);
 
   const portalNavItems = [
-    { id: 'portal-home', label: 'My Pay', icon: Icons.Payroll },
-    { id: 'portal-timesheets', label: 'My Hours', icon: Icons.Clock },
-    { id: 'portal-leave', label: 'Time Off', icon: Icons.Plane },
-    { id: 'portal-docs', label: 'Documents', icon: Icons.Compliance },
-    { id: 'portal-profile', label: 'My Profile', icon: Icons.Users },
+    { id: 'portal-home', label: 'My Pay', icon: Icons.Payroll, feature: null },
+    { id: 'portal-timesheets', label: 'My Hours', icon: Icons.Clock, feature: null },
+    { id: 'portal-leave', label: 'Time Off', icon: Icons.Plane, feature: null },
+    { id: 'portal-docs', label: 'Documents', icon: Icons.Compliance, feature: null },
+    { id: 'portal-profile', label: 'My Profile', icon: Icons.Users, feature: null },
   ];
 
   const superAdminNavItems = [
-    { id: 'sa-overview', label: 'Overview', icon: Icons.Dashboard },
-    { id: 'sa-tenants', label: 'Tenants', icon: Icons.Company },
-    { id: 'sa-billing', label: 'Billing', icon: Icons.Bank },
-    { id: 'sa-health', label: 'System Health', icon: Icons.Zap },
-    { id: 'sa-plans', label: 'Plan Config', icon: Icons.FileEdit },
-    { id: 'sa-users', label: 'Administrators', icon: Icons.Shield },
-    { id: 'sa-logs', label: 'Audit Logs', icon: Icons.Reports },
-    { id: 'sa-settings', label: 'Platform Settings', icon: Icons.Settings },
+    { id: 'sa-overview', label: 'Overview', icon: Icons.Dashboard, feature: null },
+    { id: 'sa-tenants', label: 'Tenants', icon: Icons.Company, feature: null },
+    { id: 'sa-billing', label: 'Billing', icon: Icons.Bank, feature: null },
+    { id: 'sa-health', label: 'System Health', icon: Icons.Zap, feature: null },
+    { id: 'sa-plans', label: 'Plan Config', icon: Icons.FileEdit, feature: null },
+    { id: 'sa-users', label: 'Administrators', icon: Icons.Shield, feature: null },
+    { id: 'sa-logs', label: 'Audit Logs', icon: Icons.Reports, feature: null },
+    { id: 'sa-settings', label: 'Platform Settings', icon: Icons.Settings, feature: null },
   ];
 
   const resellerNavItems = [
-    { id: 'reseller-dashboard', label: 'Partner Console', icon: Icons.Dashboard },
+    { id: 'reseller-dashboard', label: 'Partner Console', icon: Icons.Dashboard, feature: null },
   ];
 
   let navItems = adminNavItems;

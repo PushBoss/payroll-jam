@@ -165,6 +165,91 @@ export const supabaseService = {
     if (error) console.error("Error saving company:", error);
   },
 
+  // Save payment gateway settings to company settings JSONB
+  savePaymentGatewaySettings: async (companyId: string, paymentConfig: any) => {
+    if (!supabase) return;
+    try {
+      // Get current company settings
+      const { data: company, error: fetchError } = await supabase
+        .from('companies')
+        .select('settings')
+        .eq('id', companyId)
+        .single();
+
+      if (fetchError) {
+        console.error("Error fetching company for payment settings:", fetchError);
+        return;
+      }
+
+      const currentSettings = company?.settings || {};
+      const updatedSettings = {
+        ...currentSettings,
+        paymentGateway: paymentConfig
+      };
+
+      const { error } = await supabase
+        .from('companies')
+        .update({ settings: updatedSettings })
+        .eq('id', companyId);
+
+      if (error) {
+        console.error("Error saving payment gateway settings:", error);
+      } else {
+        console.log("✅ Payment gateway settings saved to Supabase");
+      }
+    } catch (e) {
+      console.error("Error saving payment gateway settings:", e);
+    }
+  },
+
+  // Get payment gateway settings from company settings
+  getPaymentGatewaySettings: async (companyId: string) => {
+    if (!supabase) return null;
+    try {
+      const { data, error } = await supabase
+        .from('companies')
+        .select('settings')
+        .eq('id', companyId)
+        .single();
+
+      if (error || !data) return null;
+      return data.settings?.paymentGateway || null;
+    } catch (e) {
+      console.error("Error fetching payment gateway settings:", e);
+      return null;
+    }
+  },
+
+  // Get all users for a company
+  getCompanyUsers: async (companyId: string): Promise<User[]> => {
+    if (!supabase) return [];
+    try {
+      const { data, error } = await supabase
+        .from('app_users')
+        .select('*')
+        .eq('company_id', companyId);
+
+      if (error) {
+        console.error("Error fetching company users:", error);
+        return [];
+      }
+
+      return (data || []).map(u => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role as any,
+        companyId: u.company_id,
+        isOnboarded: u.is_onboarded,
+        avatarUrl: u.avatar_url || undefined,
+        phone: u.phone || undefined
+      }));
+    } catch (e) {
+      console.error("Error fetching company users:", e);
+      return [];
+    }
+  },
+
   getAllCompanies: async (): Promise<ResellerClient[]> => {
     if (!supabase) return [];
     const { data, error } = await supabase.from('companies').select('*');

@@ -361,6 +361,7 @@ export interface TaxConfig {
 export interface GlobalConfig {
   dataSource?: 'LOCAL' | 'SUPABASE';
   currency: 'JMD' | 'USD';
+  pricingPlans?: PricingPlan[];
   emailjs: {
     serviceId: string;
     templateId: string;

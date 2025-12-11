@@ -2,7 +2,9 @@
 import React from 'react';
 import { Icons } from '../components/Icons';
 
+import { PricingPlan } from '../types';
 interface LandingPageProps {
+  plans?: PricingPlan[];
   onLogin: () => void;
   onSignup: (plan?: string) => void;
   onPricingClick: () => void;
@@ -32,6 +34,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onSignup, onP
     }
   ];
 
+  // Optionally show plans/pricing on the landing page if provided
   return (
     <div className="min-h-screen bg-white font-sans text-slate-900 scroll-smooth">
       {/* Navigation */}
