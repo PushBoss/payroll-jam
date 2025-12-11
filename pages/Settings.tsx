@@ -6,6 +6,7 @@ import { GLMapping, IntegrationConfig, CompanySettings, TaxConfig, User, Role, D
 import { storage } from '../services/storage';
 import { auditService } from '../services/auditService';
 import { checkDbConnection } from '../services/supabaseClient';
+import { supabaseService } from '../services/supabaseService';
 import { dimePayService } from '../services/dimePayService';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
@@ -160,6 +161,8 @@ export const Settings: React.FC<SettingsProps> = ({
   
   const [upgradeTarget, setUpgradeTarget] = useState<PricingPlan | null>(null);
   const [invoices, setInvoices] = useState<PaymentRecord[]>([]);
+  const [currentSubscription, setCurrentSubscription] = useState<any>(null);
+  const [isLoadingBilling, setIsLoadingBilling] = useState(false);
 
   // Early return if companyData is not available
   if (!companyData) {
@@ -180,11 +183,35 @@ export const Settings: React.FC<SettingsProps> = ({
   }, [activeTab]);
 
   useEffect(() => {
-      const mockPayments: PaymentRecord[] = [
-          { id: 'inv-101', date: '2025-01-01', amount: 2000, plan: 'Starter', method: 'Card', status: 'COMPLETED', referenceId: 'TXN-001' }
-      ];
-      if (companyData?.plan !== 'Free') setInvoices(mockPayments);
-  }, [companyData?.plan]);
+      const loadBillingData = async () => {
+          if (!currentUser?.companyId) return;
+          
+          setIsLoadingBilling(true);
+          
+          // Load current subscription
+          const subscription = await supabaseService.getSubscription(currentUser.companyId);
+          setCurrentSubscription(subscription);
+          
+          // Load payment history
+          const payments = await supabaseService.getPaymentHistory(currentUser.companyId);
+          const formattedPayments: PaymentRecord[] = payments.map(p => ({
+              id: p.invoiceNumber || p.id,
+              date: new Date(p.paymentDate).toLocaleDateString(),
+              amount: p.amount,
+              plan: p.description || 'Subscription',
+              method: (p.paymentMethod === 'card' ? 'Card' : 'Bank Transfer') as any,
+              status: p.status.toUpperCase() as any,
+              referenceId: p.transactionId || p.id
+          }));
+          setInvoices(formattedPayments);
+          
+          setIsLoadingBilling(false);
+      };
+      
+      if (activeTab === 'billing') {
+          loadBillingData();
+      }
+  }, [activeTab, currentUser?.companyId]);
 
   const handleCheckDb = async () => {
       setIsCheckingDb(true);
@@ -217,12 +244,53 @@ export const Settings: React.FC<SettingsProps> = ({
       if (targetPlan) setUpgradeTarget(targetPlan);
   };
   
-  const handleUpgradeSuccess = () => {
-      if (upgradeTarget) {
+  const handleUpgradeSuccess = async () => {
+      if (upgradeTarget && currentUser?.companyId) {
+          const planAmount = upgradeTarget.priceConfig.type === 'free' ? 0 : upgradeTarget.priceConfig.monthly;
+          
+          // Create subscription in Supabase
+          const subscription = await supabaseService.createSubscription({
+              companyId: currentUser.companyId,
+              planName: upgradeTarget.name,
+              planType: upgradeTarget.name.toLowerCase(),
+              billingFrequency: 'monthly',
+              amount: planAmount,
+              currency: 'JMD',
+              nextBillingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30 days from now
+          });
+          
+          // Create payment record if paid plan
+          if (planAmount > 0) {
+              await supabaseService.createPaymentRecord({
+                  companyId: currentUser.companyId,
+                  subscriptionId: subscription?.id,
+                  amount: planAmount,
+                  currency: 'JMD',
+                  status: 'completed',
+                  paymentMethod: 'card',
+                  description: `${upgradeTarget.name} Plan - Monthly Subscription`,
+                  invoiceNumber: `INV-${Date.now()}`
+              });
+          }
+          
+          // Update local company data
           handleCompanyUpdate({ ...companyData, plan: upgradeTarget.name as any, subscriptionStatus: 'ACTIVE' });
           auditService.log(currentUser, 'UPDATE', 'Billing', `Upgraded plan to ${upgradeTarget.name}`);
           toast.success(`Successfully switched to ${upgradeTarget.name}!`);
           setUpgradeTarget(null);
+          
+          // Reload billing data
+          const payments = await supabaseService.getPaymentHistory(currentUser.companyId);
+          const formattedPayments: PaymentRecord[] = payments.map(p => ({
+              id: p.invoiceNumber || p.id,
+              date: new Date(p.paymentDate).toLocaleDateString(),
+              amount: p.amount,
+              plan: p.description || 'Subscription',
+              method: (p.paymentMethod === 'card' ? 'Card' : 'Bank Transfer') as any,
+              status: p.status.toUpperCase() as any,
+              referenceId: p.transactionId || p.id
+          }));
+          setInvoices(formattedPayments);
       }
   };
 
@@ -349,18 +417,28 @@ export const Settings: React.FC<SettingsProps> = ({
               <div className="bg-jam-black rounded-xl p-8 text-white shadow-lg flex flex-col md:flex-row justify-between items-center">
                   <div>
                       <p className="text-sm text-gray-400 uppercase font-bold">Current Plan</p>
-                      <h3 className="text-3xl font-bold mt-2">{companyData?.plan || 'Free'}</h3>
+                      <h3 className="text-3xl font-bold mt-2">{currentSubscription?.planName || companyData?.plan || 'Free'}</h3>
                       <div className="mt-3 flex items-center space-x-4 text-sm text-gray-300">
-                          <span>Status: <span className="text-green-400 font-bold">{companyData?.subscriptionStatus || 'ACTIVE'}</span></span>
-                          {companyData?.plan !== 'Free' && <span>• Billing: Monthly</span>}
-                          {companyData?.plan !== 'Free' && <span>• Next Invoice: Feb 25, 2025</span>}
+                          <span>Status: <span className={`font-bold ${currentSubscription?.status === 'active' ? 'text-green-400' : 'text-yellow-400'}`}>{currentSubscription?.status?.toUpperCase() || companyData?.subscriptionStatus || 'ACTIVE'}</span></span>
+                          {currentSubscription && <span>• Billing: {currentSubscription.billingFrequency}</span>}
+                          {currentSubscription?.nextBillingDate && <span>• Next Invoice: {new Date(currentSubscription.nextBillingDate).toLocaleDateString()}</span>}
                       </div>
+                      {currentSubscription && currentSubscription.amount > 0 && (
+                          <div className="mt-2 text-sm text-gray-400">
+                              ${currentSubscription.amount.toLocaleString()} {currentSubscription.currency} / {currentSubscription.billingFrequency}
+                          </div>
+                      )}
                   </div>
                   {companyData?.plan === 'Free' && <button onClick={() => handleUpgradeClick('Starter')} className="mt-4 md:mt-0 bg-jam-orange text-jam-black px-6 py-2.5 rounded-lg font-bold text-sm hover:bg-yellow-500 transition-colors">Upgrade to Starter</button>}
               </div>
               <div className="bg-white p-6 rounded-xl border border-gray-200">
                    <h3 className="text-lg font-bold mb-4">Payment History</h3>
-                   {invoices.length === 0 ? <p className="text-gray-500 text-sm">No history available.</p> : (
+                   {isLoadingBilling ? (
+                       <div className="flex items-center justify-center py-8">
+                           <Icons.Refresh className="w-6 h-6 animate-spin text-jam-orange" />
+                           <span className="ml-2 text-gray-500">Loading payment history...</span>
+                       </div>
+                   ) : invoices.length === 0 ? <p className="text-gray-500 text-sm">No payment history available.</p> : (
                        <div className="space-y-2">
                            {invoices.map(inv => (
                                <div key={inv.id} className="flex justify-between text-sm border-b pb-2 last:border-0 items-center">

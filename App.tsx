@@ -5,6 +5,7 @@ import { CookieConsent } from './components/CookieConsent';
 import { ErrorBoundary } from './components/ErrorBoundary'; 
 import { storage } from './services/storage';
 import { supabaseService } from './services/supabaseService';
+import { initializeCacheValidation } from './utils/cacheUtils';
 import { User, Role, Employee, PayRun as PayRunType, LeaveRequest, WeeklyTimesheet, CompanySettings, IntegrationConfig, TaxConfig, DocumentTemplate, PricingPlan, Department, Designation, Asset, PerformanceReview } from './types';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { useSubscription } from './hooks/useSubscription';
@@ -56,6 +57,12 @@ const INITIAL_PLANS: PricingPlan[] = [
 
 function AppContent() {
   const { user, impersonate, login, updateUser, isLoading } = useAuth(); 
+  
+  // Initialize cache validation on mount
+  useEffect(() => {
+    initializeCacheValidation();
+  }, []);
+  
   const globalConfig = storage.getGlobalConfig();
   
   // Auto-enable Supabase mode if credentials are available

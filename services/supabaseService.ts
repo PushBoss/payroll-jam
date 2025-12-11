@@ -755,5 +755,237 @@ export const supabaseService = {
         timestamp: log.timestamp,
         ip_address: log.ipAddress
     });
+  },
+
+  // --- Subscriptions ---
+  
+  getSubscription: async (companyId: string) => {
+    if (!supabase) return null;
+    try {
+      const { data, error } = await supabase
+        .from('subscriptions')
+        .select('*')
+        .eq('company_id', companyId)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Error fetching subscription:", error);
+        return null;
+      }
+
+      if (!data) return null;
+
+      return {
+        id: data.id,
+        companyId: data.company_id,
+        planName: data.plan_name,
+        planType: data.plan_type,
+        status: data.status,
+        billingFrequency: data.billing_frequency,
+        amount: parseFloat(data.amount),
+        currency: data.currency,
+        startDate: data.start_date,
+        endDate: data.end_date,
+        nextBillingDate: data.next_billing_date,
+        autoRenew: data.auto_renew,
+        metadata: data.metadata || {},
+        createdAt: data.created_at,
+        updatedAt: data.updated_at
+      };
+    } catch (e) {
+      console.error("Error fetching subscription:", e);
+      return null;
+    }
+  },
+
+  createSubscription: async (subscriptionData: {
+    companyId: string;
+    planName: string;
+    planType: string;
+    billingFrequency: string;
+    amount: number;
+    currency?: string;
+    startDate?: string;
+    nextBillingDate?: string;
+    metadata?: any;
+  }) => {
+    if (!supabase) return null;
+    try {
+      const { data, error } = await supabase
+        .from('subscriptions')
+        .insert({
+          company_id: subscriptionData.companyId,
+          plan_name: subscriptionData.planName,
+          plan_type: subscriptionData.planType,
+          billing_frequency: subscriptionData.billingFrequency,
+          amount: subscriptionData.amount,
+          currency: subscriptionData.currency || 'JMD',
+          start_date: subscriptionData.startDate || new Date().toISOString(),
+          next_billing_date: subscriptionData.nextBillingDate,
+          metadata: subscriptionData.metadata || {}
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Error creating subscription:", error);
+        return null;
+      }
+
+      // Update company's current_subscription_id
+      await supabase
+        .from('companies')
+        .update({ current_subscription_id: data.id })
+        .eq('id', subscriptionData.companyId);
+
+      return data;
+    } catch (e) {
+      console.error("Error creating subscription:", e);
+      return null;
+    }
+  },
+
+  updateSubscription: async (subscriptionId: string, updates: {
+    status?: string;
+    planName?: string;
+    planType?: string;
+    amount?: number;
+    nextBillingDate?: string;
+    autoRenew?: boolean;
+    metadata?: any;
+  }) => {
+    if (!supabase) return null;
+    try {
+      const { data, error } = await supabase
+        .from('subscriptions')
+        .update({
+          ...(updates.status && { status: updates.status }),
+          ...(updates.planName && { plan_name: updates.planName }),
+          ...(updates.planType && { plan_type: updates.planType }),
+          ...(updates.amount !== undefined && { amount: updates.amount }),
+          ...(updates.nextBillingDate && { next_billing_date: updates.nextBillingDate }),
+          ...(updates.autoRenew !== undefined && { auto_renew: updates.autoRenew }),
+          ...(updates.metadata && { metadata: updates.metadata })
+        })
+        .eq('id', subscriptionId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Error updating subscription:", error);
+        return null;
+      }
+
+      return data;
+    } catch (e) {
+      console.error("Error updating subscription:", e);
+      return null;
+    }
+  },
+
+  // --- Payment History ---
+
+  getPaymentHistory: async (companyId: string, limit: number = 50) => {
+    if (!supabase) return [];
+    try {
+      const { data, error } = await supabase
+        .from('payment_history')
+        .select('*')
+        .eq('company_id', companyId)
+        .order('payment_date', { ascending: false })
+        .limit(limit);
+
+      if (error) {
+        console.error("Error fetching payment history:", error);
+        return [];
+      }
+
+      return data.map(payment => ({
+        id: payment.id,
+        companyId: payment.company_id,
+        subscriptionId: payment.subscription_id,
+        amount: parseFloat(payment.amount),
+        currency: payment.currency,
+        status: payment.status,
+        paymentMethod: payment.payment_method,
+        transactionId: payment.transaction_id,
+        invoiceNumber: payment.invoice_number,
+        description: payment.description,
+        paymentDate: payment.payment_date,
+        metadata: payment.metadata || {},
+        createdAt: payment.created_at
+      }));
+    } catch (e) {
+      console.error("Error fetching payment history:", e);
+      return [];
+    }
+  },
+
+  createPaymentRecord: async (paymentData: {
+    companyId: string;
+    subscriptionId?: string;
+    amount: number;
+    currency?: string;
+    status: string;
+    paymentMethod?: string;
+    transactionId?: string;
+    invoiceNumber?: string;
+    description?: string;
+    paymentDate?: string;
+    metadata?: any;
+  }) => {
+    if (!supabase) return null;
+    try {
+      const { data, error } = await supabase
+        .from('payment_history')
+        .insert({
+          company_id: paymentData.companyId,
+          subscription_id: paymentData.subscriptionId,
+          amount: paymentData.amount,
+          currency: paymentData.currency || 'JMD',
+          status: paymentData.status,
+          payment_method: paymentData.paymentMethod || 'card',
+          transaction_id: paymentData.transactionId,
+          invoice_number: paymentData.invoiceNumber,
+          description: paymentData.description,
+          payment_date: paymentData.paymentDate || new Date().toISOString(),
+          metadata: paymentData.metadata || {}
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Error creating payment record:", error);
+        return null;
+      }
+
+      return data;
+    } catch (e) {
+      console.error("Error creating payment record:", e);
+      return null;
+    }
+  },
+
+  getAllSubscriptions: async () => {
+    if (!supabase) return [];
+    try {
+      const { data, error } = await supabase
+        .from('subscriptions')
+        .select('*, companies(name)')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error("Error fetching all subscriptions:", error);
+        return [];
+      }
+
+      return data;
+    } catch (e) {
+      console.error("Error fetching all subscriptions:", e);
+      return [];
+    }
   }
 };

@@ -24,49 +24,85 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
+    
     // Check for existing Supabase session
     const initAuth = async () => {
-      if (!supabase) {
-        // Fallback to localStorage if Supabase not available
-        const storedUser = storage.getUser();
-        if (storedUser) {
-          setUser(storedUser);
+      try {
+        if (!supabase) {
+          // Fallback to localStorage if Supabase not available
+          const storedUser = storage.getUser();
+          if (storedUser && isMounted) {
+            setUser(storedUser);
+          }
+          if (isMounted) setIsLoading(false);
+          return;
         }
-        setIsLoading(false);
-        return;
-      }
 
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (session?.user) {
-        // Load user profile from app_users table
-        const appUser = await supabaseService.getUserByEmail(session.user.email!);
-        if (appUser) {
-          setUser(appUser);
-          storage.saveUser(appUser);
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.error('Session error:', sessionError);
+          // Try localStorage fallback
+          const storedUser = storage.getUser();
+          if (storedUser && isMounted) {
+            setUser(storedUser);
+          }
+          if (isMounted) setIsLoading(false);
+          return;
         }
-      } else {
-        // Fallback to localStorage
+        
+        if (session?.user) {
+          // Load user profile from app_users table
+          const appUser = await supabaseService.getUserByEmail(session.user.email!);
+          if (appUser && isMounted) {
+            setUser(appUser);
+            storage.saveUser(appUser);
+          } else if (!appUser && isMounted) {
+            // User authenticated but no profile - sign out
+            console.warn('User authenticated but no profile found');
+            await supabase.auth.signOut();
+            setUser(null);
+            storage.saveUser(null);
+          }
+        } else {
+          // Fallback to localStorage
+          const storedUser = storage.getUser();
+          if (storedUser && isMounted) {
+            setUser(storedUser);
+          }
+        }
+        
+        if (isMounted) setIsLoading(false);
+      } catch (error) {
+        console.error('Auth initialization error:', error);
+        // Fallback to localStorage on any error
         const storedUser = storage.getUser();
-        if (storedUser) {
+        if (storedUser && isMounted) {
           setUser(storedUser);
         }
+        if (isMounted) setIsLoading(false);
       }
-      
-      setIsLoading(false);
     };
 
     initAuth();
+    
+    return () => {
+      isMounted = false;
+    };
 
     // Listen for auth changes
+    let authSubscription: any = null;
     if (supabase) {
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      const { data: { subscription } } = supabase!.auth.onAuthStateChange(async (event, session) => {
+        if (!isMounted) return;
+        
         console.log('🔄 Auth event:', event);
         
         // Handle email confirmation
         if (event === 'SIGNED_IN' && session?.user) {
           const appUser = await supabaseService.getUserByEmail(session.user.email!);
-          if (appUser) {
+          if (appUser && isMounted) {
             setUser(appUser);
             storage.saveUser(appUser);
             
@@ -77,18 +113,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               console.log('✅ Email confirmed, redirecting to login...');
               toast.success('Email confirmed! Please login to continue.');
               setTimeout(() => {
-                window.location.href = '/?page=login';
+                if (isMounted) window.location.href = '/?page=login';
               }, 2000);
             }
           }
         } else if (event === 'SIGNED_OUT') {
-          setUser(null);
-          storage.saveUser(null);
+          if (isMounted) {
+            setUser(null);
+            storage.saveUser(null);
+          }
         }
       });
 
-      return () => subscription.unsubscribe();
+      authSubscription = subscription;
     }
+    
+    return () => {
+      isMounted = false;
+      if (authSubscription) authSubscription.unsubscribe();
+    };
   }, []);
 
   const login = async (email: string, password: string) => {
