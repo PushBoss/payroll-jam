@@ -6,19 +6,25 @@ import { PayRun, PayRunLineItem, CompanySettings, AuditLogEntry } from '../types
 import { generateFullRegisterCSV, generateS01CSV, generateS02CSV } from '../utils/exportHelpers';
 import { PayslipView } from '../components/PayslipView';
 import { auditService } from '../services/auditService';
+import { toast } from 'sonner';
 
 interface ReportsProps {
   history?: PayRun[];
   companyData?: CompanySettings;
+  onUpdatePayRun?: (run: PayRun) => void;
+  onDeletePayRun?: (runId: string) => void;
+  onNavigate?: (path: string, params?: { editRunId?: string }) => void;
 }
 
-export const Reports: React.FC<ReportsProps> = ({ history = [], companyData }) => {
+export const Reports: React.FC<ReportsProps> = ({ history = [], companyData, onDeletePayRun, onNavigate }) => {
   const [activeTab, setActiveTab] = useState<'register' | 'statutory' | 'audit'>('register');
   const [selectedRun, setSelectedRun] = useState<PayRun | null>(null);
+  // Removed editingRun state - edit functionality can be added later if needed
   const [viewingPayslip, setViewingPayslip] = useState<PayRunLineItem | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [auditFilter, setAuditFilter] = useState('ALL');
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM format
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'DRAFT' | 'APPROVED' | 'FINALIZED'>('ALL');
 
   useEffect(() => {
       setAuditLogs(auditService.getLogs());
@@ -26,6 +32,46 @@ export const Reports: React.FC<ReportsProps> = ({ history = [], companyData }) =
 
   // Use empty array fallback to prevent crashes if history undefined
   const displayHistory = history || [];
+  
+  // Group pay runs by status
+  const payRunsByStatus = useMemo(() => {
+    const grouped = {
+      DRAFT: [] as PayRun[],
+      APPROVED: [] as PayRun[],
+      FINALIZED: [] as PayRun[]
+    };
+    
+    displayHistory.forEach(run => {
+      if (run.status === 'DRAFT') grouped.DRAFT.push(run);
+      else if (run.status === 'APPROVED') grouped.APPROVED.push(run);
+      else if (run.status === 'FINALIZED') grouped.FINALIZED.push(run);
+    });
+    
+    return grouped;
+  }, [displayHistory]);
+  
+  // Filtered history based on status filter
+  const filteredHistory = useMemo(() => {
+    if (statusFilter === 'ALL') return displayHistory;
+    return displayHistory.filter(run => run.status === statusFilter);
+  }, [displayHistory, statusFilter]);
+  
+  // Handle delete with confirmation
+  const handleDelete = (run: PayRun) => {
+    if (run.status !== 'DRAFT') {
+      toast.error('Only draft pay runs can be deleted');
+      return;
+    }
+    
+    if (window.confirm(`Are you sure you want to delete this ${run.status} pay run for ${run.periodStart}? This action cannot be undone.`)) {
+      if (onDeletePayRun) {
+        onDeletePayRun(run.id);
+        toast.success('Pay run deleted successfully');
+      } else {
+        toast.error('Delete function not available');
+      }
+    }
+  };
 
   // Calculate Statutory Data dynamically from History
   const statData = useMemo(() => {
@@ -234,7 +280,27 @@ export const Reports: React.FC<ReportsProps> = ({ history = [], companyData }) =
       </div>
 
       {activeTab === 'register' && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-fade-in">
+        <div className="space-y-6 animate-fade-in">
+          {/* Status Filter */}
+          <div className="flex items-center space-x-2 bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+            <span className="text-sm font-medium text-gray-700">Filter by Status:</span>
+            {['ALL', 'DRAFT', 'APPROVED', 'FINALIZED'].map((status) => (
+              <button
+                key={status}
+                onClick={() => setStatusFilter(status as any)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  statusFilter === status
+                    ? 'bg-jam-orange text-jam-black'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {status} {status !== 'ALL' && `(${payRunsByStatus[status as keyof typeof payRunsByStatus]?.length || 0})`}
+              </button>
+            ))}
+          </div>
+
+          {/* Pay Runs Table */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
            <table className="w-full text-left border-collapse">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
@@ -244,11 +310,18 @@ export const Reports: React.FC<ReportsProps> = ({ history = [], companyData }) =
                 <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase text-right">Total Gross</th>
                 <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase text-right">Total Net</th>
                 <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase text-center">Status</th>
-                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase text-right">Actions</th>
+                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {displayHistory.map((run) => (
+                {filteredHistory.map((run) => {
+                  const statusColors = {
+                    DRAFT: 'bg-yellow-100 text-yellow-800',
+                    APPROVED: 'bg-blue-100 text-blue-800',
+                    FINALIZED: 'bg-green-100 text-green-800'
+                  };
+                  
+                  return (
                 <tr key={run.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-6 py-4 font-medium text-gray-900">{run.periodStart}</td>
                   <td className="px-6 py-4 text-gray-500">{run.payDate}</td>
@@ -256,29 +329,91 @@ export const Reports: React.FC<ReportsProps> = ({ history = [], companyData }) =
                   <td className="px-6 py-4 text-right font-medium text-gray-900">${run.totalGross.toLocaleString()}</td>
                   <td className="px-6 py-4 text-right font-medium text-jam-black">${run.totalNet.toLocaleString()}</td>
                   <td className="px-6 py-4 text-center">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColors[run.status] || 'bg-gray-100 text-gray-800'}`}>
                         {run.status}
                       </span>
                   </td>
-                  <td className="px-6 py-4 text-right">
-                    <button 
-                        onClick={() => setSelectedRun(run as PayRun)}
-                        className="text-jam-orange hover:text-yellow-600 text-sm font-medium"
-                    >
-                        View Details
-                    </button>
+                  <td className="px-6 py-4 text-center">
+                        <div className="flex items-center justify-center space-x-2">
+                          {/* DRAFT: Edit and Delete */}
+                          {run.status === 'DRAFT' && (
+                            <>
+                              {onNavigate && (
+                                <button 
+                                  onClick={() => onNavigate('payrun', { editRunId: run.id })}
+                                  className="text-blue-600 hover:text-blue-800 text-sm font-medium px-2 py-1 rounded hover:bg-blue-50 transition-colors"
+                                  title="Edit pay run"
+                                >
+                                  Edit
+                                </button>
+                              )}
+                              {onDeletePayRun && (
+                                <button 
+                                  onClick={() => handleDelete(run)}
+                                  className="text-red-600 hover:text-red-800 text-sm font-medium px-2 py-1 rounded hover:bg-red-50 transition-colors"
+                                  title="Delete pay run"
+                                >
+                                  Delete
+                                </button>
+                              )}
+                              <button 
+                                onClick={() => setSelectedRun(run as PayRun)}
+                                className="text-jam-orange hover:text-yellow-600 text-sm font-medium px-2 py-1 rounded hover:bg-orange-50 transition-colors"
+                                title="View details"
+                              >
+                                View
+                              </button>
+                            </>
+                          )}
+                          {/* APPROVED: Edit only */}
+                          {run.status === 'APPROVED' && (
+                            <>
+                              {onNavigate && (
+                                <button 
+                                  onClick={() => onNavigate('payrun', { editRunId: run.id })}
+                                  className="text-blue-600 hover:text-blue-800 text-sm font-medium px-2 py-1 rounded hover:bg-blue-50 transition-colors"
+                                  title="Edit pay run"
+                                >
+                                  Edit
+                                </button>
+                              )}
+                              <button 
+                                onClick={() => setSelectedRun(run as PayRun)}
+                                className="text-jam-orange hover:text-yellow-600 text-sm font-medium px-2 py-1 rounded hover:bg-orange-50 transition-colors"
+                                title="View details"
+                              >
+                                View
+                              </button>
+                            </>
+                          )}
+                          {/* FINALIZED: View only */}
+                          {run.status === 'FINALIZED' && (
+                            <button 
+                              onClick={() => setSelectedRun(run as PayRun)}
+                              className="text-jam-orange hover:text-yellow-600 text-sm font-medium px-2 py-1 rounded hover:bg-orange-50 transition-colors"
+                              title="View details"
+                            >
+                              View Details
+                            </button>
+                          )}
+                        </div>
                   </td>
                 </tr>
-              ))}
-              {displayHistory.length === 0 && (
+                  );
+                })}
+                {filteredHistory.length === 0 && (
                   <tr>
                       <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
-                          No payroll history found. Run a payroll to see data here.
+                      {statusFilter === 'ALL' 
+                        ? 'No payroll history found. Run a payroll to see data here.'
+                        : `No ${statusFilter} pay runs found.`
+                      }
                       </td>
                   </tr>
               )}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

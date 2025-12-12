@@ -58,7 +58,7 @@ const INITIAL_PLANS: PricingPlan[] = [
 ];
 
 function AppContent() {
-  const { user, impersonate, login, updateUser, isLoading } = useAuth(); 
+  const { user, impersonate, updateUser, isLoading } = useAuth(); 
   
   // Initialize cache validation on mount
   useEffect(() => {
@@ -93,6 +93,7 @@ function AppContent() {
 
   const [currentPath, setCurrentPath] = useState(getInitialPath());
   const [dataLoading, setDataLoading] = useState(false);
+  const [editRunId, setEditRunId] = useState<string | undefined>(undefined);
   
   // Data State
   const [employees, setEmployees] = useState<Employee[]>(storage.getEmployees() || []);
@@ -115,12 +116,19 @@ function AppContent() {
   const [designations, setDesignations] = useState<Designation[]>(storage.getDesignations() || []);
   const [assets, setAssets] = useState<Asset[]>(storage.getAssets() || []);
   const [reviews, setReviews] = useState<PerformanceReview[]>(storage.getReviews() || []);
+  const [employeeAccountSetup, setEmployeeAccountSetup] = useState<{ employee: Employee; companyName: string } | null>(null);
 
   // --- SUBSCRIPTION LOGIC ---
   const subscription = useSubscription(employees, companyData || { plan: 'Free' } as CompanySettings, plans);
 
-  const navigateTo = (path: string) => {
+  const navigateTo = (path: string, params?: { editRunId?: string }) => {
     setCurrentPath(path);
+    if (params?.editRunId) {
+      setEditRunId(params.editRunId);
+    } else if (path !== 'payrun') {
+      // Clear editRunId when navigating away from payrun page
+      setEditRunId(undefined);
+    }
     try {
         const newUrl = new URL(window.location.href);
         newUrl.searchParams.set('page', path);
@@ -159,32 +167,76 @@ function AppContent() {
     }
   }, [user, isLoading, currentPath]);
 
-  // ... (Invite Handler & Data Sync unchanged) ...
+  // Handle invite tokens (both employee and user invites)
   useEffect(() => {
       const params = new URLSearchParams(window.location.search);
       const token = params.get('token');
-      if (token && employees.length > 0) {
+      const email = params.get('email');
+      
+      if (!token) return;
+      
+      // If already on signup page with token, don't redirect
+      if (currentPath === 'signup' && token) {
+          return;
+      }
+      
+      // Check if user is already logged in with matching email
+      if (user && email && user.email === email) {
+          // User is already logged in, just clear the token from URL
+          window.history.replaceState({}, '', window.location.pathname);
+          toast.success('You are already logged in!');
+          return;
+      }
+      
+      // Handle reseller invites for existing users
+      const isResellerInvite = params.get('reseller') === 'true';
+      if (isResellerInvite && user && user.companyId && email === user.email && token) {
+          // User is already logged in with matching email - accept the invite
+          (async () => {
+              const accepted = await supabaseService.acceptResellerInvite(token, user.companyId || '');
+              if (accepted) {
+                  toast.success('Reseller invitation accepted! You can now be managed by your accountant.');
+                  window.history.replaceState({}, '', window.location.pathname);
+              } else {
+                  toast.error('Failed to accept reseller invitation. It may have expired.');
+              }
+          })();
+          return;
+      }
+      
+      // Handle employee invite tokens
+      if (employees.length > 0 && !isResellerInvite) {
           const invitee = employees.find(e => e.onboardingToken === token);
-          if (invitee) {
-             if (!user || user.email !== invitee.email) {
-                 // TODO: Implement employee invite flow with Supabase Auth
-                 // For now, employee invites are disabled until auth is set up
-                 toast.info("Employee invites coming soon! Please sign up normally.");
-                 window.history.replaceState({}, '', '/');
-                 // const tempUser: User = {
-                 //     id: invitee.id,
-                 //     name: `${invitee.firstName} ${invitee.lastName}`,
-                 //     email: invitee.email,
-                 //     role: invitee.role,
-                 //     companyId: user?.companyId || '',
-                 //     isOnboarded: false
-                 // };
-                 // login(invitee.email, 'temp-password');
-                 // toast.success("Welcome! Please complete your onboarding.");
-             }
+          if (invitee && (!user || user.email !== invitee.email)) {
+              // Show employee account setup page
+              setEmployeeAccountSetup({
+                  employee: invitee,
+                  companyName: companyData?.name || 'Your Company'
+              });
+              return;
           }
       }
-  }, [employees, user, login]);
+      
+      // Handle user invite tokens (check Supabase)
+      if (isSupabaseMode && token && !user && email) {
+          const checkUserInvite = async () => {
+              try {
+                  // Try to find user by email and token
+                  const foundUser = await supabaseService.getUserByEmail(email);
+                  if (foundUser && foundUser.onboardingToken === token) {
+                      // Navigate to signup with pre-filled email
+                      navigateTo(`signup?token=${token}&email=${encodeURIComponent(email)}&type=user`);
+                      toast.info(`Welcome! Please sign up to join ${companyData?.name || 'the team'}.`);
+                      return;
+                  }
+              } catch (error) {
+                  console.error('Error checking user invite:', error);
+              }
+          };
+          
+          checkUserInvite();
+      }
+  }, [employees, user, isSupabaseMode, companyData, currentPath]);
 
   useEffect(() => {
     async function loadData() {
@@ -227,12 +279,12 @@ function AppContent() {
     function loadPlans() {
       // Always ensure we have plans - use stored or initial
       const storedPlans = storage.getPricingPlans();
-      const globalConfig = storage.getGlobalConfig();
+          const globalConfig = storage.getGlobalConfig();
       
       // Priority: globalConfig.pricingPlans > storedPlans > INITIAL_PLANS
       if (globalConfig?.pricingPlans && Array.isArray(globalConfig.pricingPlans) && globalConfig.pricingPlans.length > 0) {
-        setPlans(globalConfig.pricingPlans);
-        storage.savePricingPlans(globalConfig.pricingPlans);
+            setPlans(globalConfig.pricingPlans);
+            storage.savePricingPlans(globalConfig.pricingPlans);
       } else if (storedPlans && storedPlans.length > 0) {
         setPlans(storedPlans);
       } else if (plans.length === 0) {
@@ -280,7 +332,19 @@ function AppContent() {
   };
   
   const handleSavePayRun = async (run: PayRunType) => {
-    setPayRunHistory(prev => [run, ...prev]);
+    setPayRunHistory(prev => {
+      // Check if run already exists (updating existing)
+      const existingIndex = prev.findIndex(r => r.id === run.id);
+      if (existingIndex >= 0) {
+        // Update existing run
+        const updated = [...prev];
+        updated[existingIndex] = run;
+        return updated;
+      } else {
+        // Add new run
+        return [run, ...prev];
+      }
+    });
     if (isSupabaseMode && user?.companyId) await supabaseService.savePayRun(run, user.companyId);
   };
   const handleSaveLeaveRequest = async (req: LeaveRequest) => {
@@ -322,18 +386,35 @@ function AppContent() {
       navigateTo('dashboard');
   };
   const handleCompanyOnboardComplete = async (data: CompanySettings, importedEmployees: Employee[]) => {
-      setCompanyData(data);
+      // Ensure subscriptionStatus is set (default to ACTIVE for Free tier)
+      const companyDataWithStatus: CompanySettings = {
+          ...data,
+          subscriptionStatus: data.subscriptionStatus || 'ACTIVE',
+          plan: data.plan || 'Free'
+      };
+      
+      setCompanyData(companyDataWithStatus);
       setEmployees(prev => [...prev, ...importedEmployees]);
-      storage.saveCompanyData(data);
+      storage.saveCompanyData(companyDataWithStatus);
+      
       // Only save to Supabase if we have a valid UUID companyId
       if (isSupabaseMode && user?.companyId && user.companyId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
           try {
-              await supabaseService.saveCompany(user.companyId, data);
+              await supabaseService.saveCompany(user.companyId, companyDataWithStatus);
+              console.log('✅ Company data saved to Supabase during onboarding');
+              
+              // Save employees to Supabase
               for (const emp of importedEmployees) {
+                  try {
                   await supabaseService.saveEmployee(emp, user.companyId);
+                  } catch (empError) {
+                      console.warn(`Failed to save employee ${emp.email}:`, empError);
+                  }
               }
+              console.log(`✅ Saved ${importedEmployees.length} employees to Supabase`);
           } catch (error) {
-              console.warn('Failed to sync to Supabase (using local storage):', error);
+              console.error('Failed to sync to Supabase:', error);
+              toast.error('Failed to save to database. Data saved locally.');
           }
       }
       // Mark user as onboarded
@@ -358,6 +439,61 @@ function AppContent() {
   }
 
   // Handle reset-password route without requiring authentication
+  // Handle employee account setup
+  const handleEmployeeAccountSetup = async (password: string) => {
+    if (!employeeAccountSetup) return;
+
+    try {
+      const { employee } = employeeAccountSetup;
+      
+      // Create Supabase auth user
+      const { signup } = useAuth();
+      const newUser = {
+        id: `EMP-${Date.now()}`,
+        email: employee.email,
+        name: `${employee.firstName} ${employee.lastName}`,
+        password: password,
+        role: employee.role,
+        companyId: user?.companyId || companyData?.id || '',
+        isOnboarded: false
+      };
+      
+      await signup(newUser);
+      
+      // Update employee status
+      const updatedEmployee = { ...employee, status: 'ACTIVE' as any };
+      await handleUpdateEmployee(updatedEmployee);
+      
+      toast.success('Account created successfully! Welcome aboard!');
+      setEmployeeAccountSetup(null);
+      
+      // Clear URL parameters
+      window.history.replaceState({}, '', window.location.pathname);
+      
+    } catch (error) {
+      console.error('Error setting up employee account:', error);
+      toast.error('Failed to create account. Please try again or contact your employer.');
+    }
+  };
+
+  // Show employee account setup if needed
+  if (employeeAccountSetup) {
+    const EmployeeAccountSetup = lazy(() => import('./pages/EmployeeAccountSetup').then(m => ({ default: m.EmployeeAccountSetup })));
+    return (
+      <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-jam-orange"></div></div>}>
+        <EmployeeAccountSetup
+          employee={employeeAccountSetup.employee}
+          companyName={employeeAccountSetup.companyName}
+          onComplete={handleEmployeeAccountSetup}
+          onCancel={() => {
+            setEmployeeAccountSetup(null);
+            window.history.replaceState({}, '', window.location.pathname);
+          }}
+        />
+      </Suspense>
+    );
+  }
+
   if (currentPath === 'reset-password') {
     return (
       <Suspense fallback={<LoadingFallback />}>
@@ -373,7 +509,7 @@ function AppContent() {
         <Toaster richColors position="top-right" />
         <CookieConsent />
         {currentPath === 'login' && <Login onLoginSuccess={onLoginSuccess} onBack={() => navigateTo('home')} onRegisterClick={() => navigateTo('signup')} />}
-        {currentPath === 'signup' && <Signup onSignupSuccess={onSignupSuccess} onLoginClick={() => navigateTo('login')} plans={plans} />}
+        {currentPath === 'signup' && <Signup onSignupSuccess={onSignupSuccess} onLoginClick={() => navigateTo('login')} onBack={() => navigateTo('home')} onNavigate={navigateTo} plans={plans} />}
         {currentPath === 'pricing' && <Pricing onSignup={() => navigateTo('signup')} onLogin={() => navigateTo('login')} onBack={() => navigateTo('home')} onFeaturesClick={() => navigateTo('features')} onFaqClick={() => navigateTo('faq')} plans={plans} />}
         {currentPath === 'features' && <Features onSignup={() => navigateTo('signup')} onLogin={() => navigateTo('login')} onBack={() => navigateTo('home')} onPricingClick={() => navigateTo('pricing')} onFaqClick={() => navigateTo('faq')} />}
         {currentPath === 'faq' && <FAQ onSignup={() => navigateTo('signup')} onLogin={() => navigateTo('login')} onBack={() => navigateTo('home')} onPricingClick={() => navigateTo('pricing')} onFeaturesClick={() => navigateTo('features')} />}
@@ -398,7 +534,7 @@ function AppContent() {
     switch (currentPath) {
       case 'dashboard': return <Dashboard employees={employees} leaveRequests={leaveRequests} payRunHistory={payRunHistory} onNavigate={navigateTo} companyData={companyData || undefined} />;
       case 'employees': return <Employees employees={employees} payRunHistory={payRunHistory} companyData={companyData!} onAddEmployee={handleAddEmployee} onUpdateEmployee={handleUpdateEmployee} onSimulateOnboarding={e => alert(`Link: ${window.location.origin}/?token=${e.onboardingToken}`)} departments={departments} designations={designations} assets={assets} onUpdateAssets={setAssets} reviews={reviews} onUpdateReviews={setReviews} />;
-      case 'payrun': return <PayRun employees={employees} timesheets={timesheets} leaveRequests={leaveRequests} onSave={handleSavePayRun} companyData={companyData!} integrationConfig={integrationConfig} payRunHistory={payRunHistory} />;
+      case 'payrun': return <PayRun employees={employees} timesheets={timesheets} leaveRequests={leaveRequests} onSave={handleSavePayRun} companyData={companyData!} integrationConfig={integrationConfig} payRunHistory={payRunHistory} editRunId={editRunId} onNavigate={navigateTo} />;
       case 'leave': return <Leave requests={leaveRequests} employees={employees} onStatusChange={handleUpdateLeaveStatus} onAddRequest={handleSaveLeaveRequest} onUpdateEmployee={handleUpdateEmployee} />;
       case 'documents': 
         if (!hasFeatureAccess(companyData || undefined, 'Documents')) {
@@ -407,7 +543,13 @@ function AppContent() {
           return <Dashboard employees={employees} leaveRequests={leaveRequests} payRunHistory={payRunHistory} onNavigate={navigateTo} companyData={companyData || undefined} />;
         }
         return <Documents templates={templates} employees={employees} companyData={companyData!} onUpdateTemplates={setTemplates} />;
-      case 'reports': return <Reports history={payRunHistory} companyData={companyData!} />;
+      case 'reports': return <Reports history={payRunHistory} companyData={companyData!} onUpdatePayRun={async (run) => {
+        setPayRunHistory(prev => prev.map(r => r.id === run.id ? run : r));
+        if (isSupabaseMode && user?.companyId) await supabaseService.savePayRun(run, user.companyId);
+      }} onDeletePayRun={async (runId) => {
+        setPayRunHistory(prev => prev.filter(r => r.id !== runId));
+        if (isSupabaseMode && user?.companyId) await supabaseService.deletePayRun(runId, user.companyId);
+      }} onNavigate={navigateTo} />;
       case 'compliance': 
         if (!hasFeatureAccess(companyData || undefined, 'Compliance')) {
           toast.error(getFeatureUpgradeMessage('Compliance', companyData?.plan));

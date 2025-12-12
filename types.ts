@@ -28,6 +28,7 @@ export interface User {
   isOnboarded?: boolean;
   avatarUrl?: string;
   phone?: string;
+  onboardingToken?: string; // For invite links
   // Used for Reseller Impersonation
   originalRole?: Role; 
   isResellerView?: boolean;
@@ -238,6 +239,7 @@ export interface PayRun {
   totalGross: number;
   totalNet: number;
   lineItems: PayRunLineItem[];
+  payFrequency?: 'WEEKLY' | 'FORTNIGHTLY' | 'MONTHLY'; // Optional for backward compatibility
 }
 
 export interface ChatMessage {
@@ -334,6 +336,7 @@ export interface IntegrationConfig {
 
 // Persistence Types
 export interface CompanySettings {
+  id?: string; // Optional company ID
   name: string;
   trn: string;
   address: string;

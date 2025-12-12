@@ -34,10 +34,6 @@ export const Layout: React.FC<LayoutProps> = ({
   const { user, logout, stopImpersonation } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  if (variant === 'blank') {
-    return <div className="min-h-screen bg-gray-50">{children}</div>;
-  }
-
   // Filter admin nav items based on feature access
   const adminNavItems = useMemo(() => {
     const allItems = [
@@ -59,6 +55,10 @@ export const Layout: React.FC<LayoutProps> = ({
       return hasFeatureAccess(companyData, item.feature);
     });
   }, [companyData]);
+
+  if (variant === 'blank') {
+    return <div className="min-h-screen bg-gray-50">{children}</div>;
+  }
 
   const portalNavItems = [
     { id: 'portal-home', label: 'My Pay', icon: Icons.Payroll, feature: null },

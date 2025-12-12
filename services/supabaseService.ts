@@ -10,7 +10,8 @@ import {
   User,
   DocumentRequest,
   ExpertReferral,
-  DocumentTemplate
+  DocumentTemplate,
+  GlobalConfig
 } from '../types';
 
 export const supabaseService = {
@@ -40,10 +41,55 @@ export const supabaseService = {
         companyId: data.company_id,
         isOnboarded: data.is_onboarded,
         avatarUrl: data.avatar_url || undefined,
-        phone: data.phone || undefined
+        phone: data.phone || undefined,
+        onboardingToken: data.preferences?.onboardingToken || undefined
       };
     } catch (e) {
       console.error("Supabase connection error:", e);
+      return null;
+    }
+  },
+
+  // Get company by email (finds company through user email)
+  getCompanyByEmail: async (email: string): Promise<CompanySettings | null> => {
+    if (!supabase) return null;
+    try {
+      // First find user by email
+      const { data: user, error: userError } = await supabase
+        .from('app_users')
+        .select('company_id')
+        .eq('email', email)
+        .maybeSingle();
+
+      if (userError || !user || !user.company_id) {
+        return null;
+      }
+
+      // Then get company
+      const { data: company, error: companyError } = await supabase
+        .from('companies')
+        .select('*')
+        .eq('id', user.company_id)
+        .maybeSingle();
+
+      if (companyError || !company) {
+        return null;
+      }
+
+      return {
+        id: company.id, // Include company ID
+        name: company.name,
+        trn: company.trn || '',
+        address: company.address || '',
+        phone: company.phone || '',
+        bankName: company.settings?.bankName || '',
+        accountNumber: company.settings?.accountNumber || '',
+        branchCode: company.settings?.branchCode || '',
+        plan: company.plan as any,
+        subscriptionStatus: company.status === 'ACTIVE' ? 'ACTIVE' : 'SUSPENDED' as any
+      };
+    } catch (e) {
+      console.error("Error fetching company by email:", e);
       return null;
     }
   },
@@ -56,14 +102,24 @@ export const supabaseService = {
     
     console.log("💾 Saving user to Supabase:", { id: user.id, email: user.email, companyId: user.companyId });
     
+    // Prepare preferences JSONB with onboardingToken if present
+    const preferences: any = {};
+    if (user.onboardingToken) {
+      preferences.onboardingToken = user.onboardingToken;
+    }
+    
     // First check if user exists
     const { data: existing } = await supabase
       .from('app_users')
-      .select('id')
+      .select('id, preferences')
       .eq('id', user.id)
       .maybeSingle();
     
     if (existing) {
+      // Merge existing preferences with new ones
+      const existingPrefs = existing.preferences || {};
+      const mergedPrefs = { ...existingPrefs, ...preferences };
+      
       // Update existing user
       const { data, error } = await supabase
         .from('app_users')
@@ -73,7 +129,8 @@ export const supabaseService = {
           company_id: user.companyId,
           is_onboarded: user.isOnboarded,
           avatar_url: user.avatarUrl || null,
-          phone: user.phone || null
+          phone: user.phone || null,
+          preferences: mergedPrefs
         })
         .eq('id', user.id)
         .select();
@@ -95,7 +152,8 @@ export const supabaseService = {
           company_id: user.companyId,
           is_onboarded: user.isOnboarded,
           avatar_url: user.avatarUrl || null,
-          phone: user.phone || null
+          phone: user.phone || null,
+          preferences: preferences
         })
         .select();
       
@@ -121,6 +179,18 @@ export const supabaseService = {
 
     // Map database fields + JSON settings to App types
     const settings = data.settings || {};
+    
+    // Map database plan format back to app format
+    const mapPlanFromDbFormat = (dbPlan: string | undefined): string => {
+      if (!dbPlan) return 'Free';
+      const planMap: Record<string, string> = {
+        'Free': 'Free',
+        'Starter': 'Starter',
+        'Professional': 'Pro',
+        'Enterprise': 'Enterprise'
+      };
+      return planMap[dbPlan] || 'Free';
+    };
 
     return {
       name: data.name,
@@ -133,12 +203,26 @@ export const supabaseService = {
       payFrequency: settings.payFrequency || 'Monthly',
       defaultPayDate: settings.defaultPayDate || '',
       subscriptionStatus: data.status || 'ACTIVE',
-      plan: data.plan || 'Free'
+      plan: mapPlanFromDbFormat(data.plan) as any
     };
   },
 
   saveCompany: async (companyId: string, settings: CompanySettings) => {
-    if (!supabase) return;
+    if (!supabase) return null;
+    
+    // Map plan names to match database constraint: ('Free', 'Starter', 'Professional', 'Enterprise')
+    const mapPlanToDbFormat = (plan: string | undefined): string => {
+      if (!plan) return 'Free';
+      const planMap: Record<string, string> = {
+        'Free': 'Free',
+        'Starter': 'Starter',
+        'Pro': 'Professional',
+        'Professional': 'Professional',
+        'Reseller': 'Enterprise', // Map Reseller to Enterprise for now
+        'Enterprise': 'Enterprise'
+      };
+      return planMap[plan] || 'Free';
+    };
     
     // Pack extra fields into settings JSONB
     const settingsJson = {
@@ -150,7 +234,9 @@ export const supabaseService = {
       defaultPayDate: settings.defaultPayDate
     };
 
-    const { error } = await supabase
+    const dbPlan = mapPlanToDbFormat(settings.plan);
+    
+    const { data, error } = await supabase
       .from('companies')
       .upsert({
         id: companyId,
@@ -159,10 +245,19 @@ export const supabaseService = {
         address: settings.address,
         settings: settingsJson,
         status: settings.subscriptionStatus,
-        plan: settings.plan // Ensure plan is saved to the 'plan' column
-      });
+        plan: dbPlan // Map to database format
+      }, {
+        onConflict: 'id'
+      })
+      .select()
+      .single();
 
-    if (error) console.error("Error saving company:", error);
+    if (error) {
+      console.error("Error saving company:", error);
+      return null;
+    }
+    
+    return data;
   },
 
   // Save payment gateway settings to company settings JSONB
@@ -220,6 +315,71 @@ export const supabaseService = {
     }
   },
 
+  // Get global config from Supabase (stored in a system company or first company)
+  getGlobalConfig: async (): Promise<GlobalConfig | null> => {
+    if (!supabase) return null;
+    try {
+      // Try to get from a system company first (if exists)
+      // Otherwise, get from the first company's settings
+      const { data, error } = await supabase
+        .from('companies')
+        .select('settings')
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .single();
+
+      if (error) {
+        console.error("Error fetching global config:", error);
+        return null;
+      }
+
+      // Global config is stored in settings.globalConfig
+      return data?.settings?.globalConfig || null;
+    } catch (e) {
+      console.error("Error fetching global config:", e);
+      return null;
+    }
+  },
+
+  // Save global config to Supabase (save to all companies or a system company)
+  saveGlobalConfig: async (config: GlobalConfig): Promise<boolean> => {
+    if (!supabase) return false;
+    try {
+      // Get all companies
+      const { data: companies, error: fetchError } = await supabase
+        .from('companies')
+        .select('id, settings');
+
+      if (fetchError) {
+        console.error("Error fetching companies for global config:", fetchError);
+        return false;
+      }
+
+      // Update all companies with global config
+      if (!supabase) return false;
+      const updates = (companies || []).map(company => {
+        const currentSettings = company.settings || {};
+        const updatedSettings = {
+          ...currentSettings,
+          globalConfig: config
+        };
+
+        if (!supabase) return Promise.resolve();
+        return supabase
+          .from('companies')
+          .update({ settings: updatedSettings })
+          .eq('id', company.id);
+      });
+
+      await Promise.all(updates);
+      console.log("✅ Global config saved to Supabase");
+      return true;
+    } catch (e) {
+      console.error("Error saving global config:", e);
+      return false;
+    }
+  },
+
   // Get all users for a company
   getCompanyUsers: async (companyId: string): Promise<User[]> => {
     if (!supabase) return [];
@@ -242,7 +402,8 @@ export const supabaseService = {
         companyId: u.company_id,
         isOnboarded: u.is_onboarded,
         avatarUrl: u.avatar_url || undefined,
-        phone: u.phone || undefined
+        phone: u.phone || undefined,
+        onboardingToken: u.preferences?.onboardingToken || undefined
       }));
     } catch (e) {
       console.error("Error fetching company users:", e);
@@ -259,13 +420,25 @@ export const supabaseService = {
         return [];
     }
 
+    // Map database plan format back to app format
+    const mapPlanFromDbFormat = (dbPlan: string | undefined): string => {
+      if (!dbPlan) return 'Free';
+      const planMap: Record<string, string> = {
+        'Free': 'Free',
+        'Starter': 'Starter',
+        'Professional': 'Pro',
+        'Enterprise': 'Enterprise'
+      };
+      return planMap[dbPlan] || 'Free';
+    };
+
     return data.map(c => ({
         id: c.id,
         companyName: c.name,
         contactName: c.settings?.contactName || 'Admin',
         email: c.settings?.email || '',
         employeeCount: c.settings?.employeeCount || 0,
-        plan: c.plan || 'Free',
+        plan: (mapPlanFromDbFormat(c.plan) || 'Free') as 'Free' | 'Starter' | 'Pro' | 'Enterprise' | 'Reseller',
         status: c.status || 'ACTIVE',
         mrr: c.settings?.mrr || 0
     }));
@@ -284,6 +457,18 @@ export const supabaseService = {
         return null;
     }
 
+    // Map database plan format back to app format
+    const mapPlanFromDbFormat = (dbPlan: string | undefined): string => {
+      if (!dbPlan) return 'Free';
+      const planMap: Record<string, string> = {
+        'Free': 'Free',
+        'Starter': 'Starter',
+        'Professional': 'Pro',
+        'Enterprise': 'Enterprise'
+      };
+      return planMap[dbPlan] || 'Free';
+    };
+
     return {
       name: data.name,
       trn: data.trn || '',
@@ -295,7 +480,7 @@ export const supabaseService = {
       payFrequency: data.settings?.payFrequency || 'Monthly',
       defaultPayDate: data.settings?.defaultPayDate,
       subscriptionStatus: data.status,
-      plan: data.plan,
+      plan: mapPlanFromDbFormat(data.plan) as any,
       paymentMethod: data.settings?.paymentMethod
     };
   },
@@ -406,14 +591,23 @@ export const supabaseService = {
       return [];
     }
 
+    // Normalize status: map database statuses to app statuses
+    const normalizeStatus = (dbStatus: string): 'DRAFT' | 'APPROVED' | 'FINALIZED' => {
+      if (dbStatus === 'FINALIZED' || dbStatus === 'CANCELLED') return 'FINALIZED';
+      if (dbStatus === 'APPROVED' || dbStatus === 'PROCESSING') return 'APPROVED';
+      // DRAFT, REVIEW, or any other status -> DRAFT
+      return 'DRAFT';
+    };
+
     return data.map((r: any) => ({
       id: r.id,
       periodStart: r.period_start,
       periodEnd: r.period_end,
       payDate: r.pay_date,
-      status: r.status,
-      totalGross: r.total_gross,
-      totalNet: r.total_net,
+      payFrequency: r.pay_frequency || 'MONTHLY',
+      status: normalizeStatus(r.status),
+      totalGross: r.total_gross || 0,
+      totalNet: r.total_net || 0,
       lineItems: r.line_items || []
     }));
   },
@@ -421,21 +615,96 @@ export const supabaseService = {
   savePayRun: async (run: PayRun, companyId: string) => {
     if (!supabase) return;
 
+    // Determine pay_frequency - default to MONTHLY if not specified
+    // If payFrequency is not set, we'll default to MONTHLY (most common)
+    const payFrequency = run.payFrequency || 'MONTHLY';
+
+    // Convert period_start to first day of month if in YYYY-MM format
+    let periodStart = run.periodStart;
+    if (periodStart.match(/^\d{4}-\d{2}$/)) {
+      periodStart = `${periodStart}-01`;
+    }
+
+    // Convert period_end to last day of month if in YYYY-MM format
+    let periodEnd = run.periodEnd;
+    if (periodEnd.match(/^\d{4}-\d{2}$/)) {
+      const [yearStr, monthStr] = periodEnd.split('-');
+      const year = parseInt(yearStr);
+      const month = parseInt(monthStr);
+      const lastDay = new Date(year, month, 0).getDate();
+      periodEnd = `${periodEnd}-${lastDay.toString().padStart(2, '0')}`;
+    }
+
+    // Check if a pay run exists for this period/frequency combination
+    const { data: existing } = await supabase
+      .from('pay_runs')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('period_start', periodStart)
+      .eq('period_end', periodEnd)
+      .eq('pay_frequency', payFrequency)
+      .maybeSingle();
+
+    const payRunData = {
+      company_id: companyId,
+      period_start: periodStart,
+      period_end: periodEnd,
+      pay_date: run.payDate,
+      pay_frequency: payFrequency,
+      status: run.status,
+      total_gross: run.totalGross,
+      total_net: run.totalNet,
+      employee_count: run.lineItems?.length || 0,
+      line_items: run.lineItems || [] // Stored as JSONB
+    };
+
+    let error;
+    if (existing && existing.id) {
+      // Update existing record
+      const result = await supabase
+        .from('pay_runs')
+        .update(payRunData)
+        .eq('id', existing.id);
+      error = result.error;
+    } else {
+      // Insert new record
+      const result = await supabase
+        .from('pay_runs')
+        .insert({
+          id: run.id,
+          ...payRunData
+        });
+      error = result.error;
+    }
+
+    if (error) {
+      console.error("Error saving pay run:", error);
+      console.error("Pay run data:", {
+        id: run.id,
+        period_start: periodStart,
+        period_end: periodEnd,
+        pay_date: run.payDate,
+        pay_frequency: payFrequency,
+        status: run.status
+      });
+    }
+  },
+
+  deletePayRun: async (runId: string, companyId: string): Promise<boolean> => {
+    if (!supabase) return false;
+
     const { error } = await supabase
       .from('pay_runs')
-      .upsert({
-        id: run.id,
-        company_id: companyId,
-        period_start: run.periodStart,
-        period_end: run.periodEnd,
-        pay_date: run.payDate,
-        status: run.status,
-        total_gross: run.totalGross,
-        total_net: run.totalNet,
-        line_items: run.lineItems // Stored as JSONB
-      });
+      .delete()
+      .eq('id', runId)
+      .eq('company_id', companyId);
 
-    if (error) console.error("Error saving pay run:", error);
+    if (error) {
+      console.error("Error deleting pay run:", error);
+      return false;
+    }
+
+    return true;
   },
 
   // --- Leave Requests ---
@@ -988,6 +1257,10 @@ export const supabaseService = {
         return [];
       }
 
+      if (!data || !Array.isArray(data)) {
+        return [];
+      }
+
       return data.map(payment => ({
         id: payment.id,
         companyId: payment.company_id,
@@ -1070,6 +1343,443 @@ export const supabaseService = {
       return data;
     } catch (e) {
       console.error("Error fetching all subscriptions:", e);
+      return [];
+    }
+  },
+
+  getAllPayments: async (limit: number = 1000) => {
+    if (!supabase) return [];
+    try {
+      const { data, error } = await supabase
+        .from('payment_history')
+        .select('*, companies(name)')
+        .eq('status', 'completed')
+        .order('payment_date', { ascending: false })
+        .limit(limit);
+
+      if (error) {
+        console.error("Error fetching all payments:", error);
+        return [];
+      }
+
+      return data;
+    } catch (e) {
+      console.error("Error fetching all payments:", e);
+      return [];
+    }
+  },
+
+  getAllSuperAdmins: async (): Promise<User[]> => {
+    if (!supabase) return [];
+    try {
+      const { data, error } = await supabase
+        .from('app_users')
+        .select('*')
+        .eq('role', 'SUPER_ADMIN')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error("Error fetching super admins:", error);
+        return [];
+      }
+
+      if (!data) return [];
+
+      return data.map(u => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role as any,
+        companyId: u.company_id,
+        isOnboarded: u.is_onboarded,
+        avatarUrl: u.avatar_url || undefined,
+        phone: u.phone || undefined
+      }));
+    } catch (e) {
+      console.error("Error fetching super admins:", e);
+      return [];
+    }
+  },
+
+  deleteUser: async (userId: string): Promise<boolean> => {
+    if (!supabase) return false;
+    try {
+      const { error } = await supabase
+        .from('app_users')
+        .delete()
+        .eq('id', userId);
+
+      if (error) {
+        console.error("Error deleting user:", error);
+        return false;
+      }
+
+      return true;
+    } catch (e) {
+      console.error("Error deleting user:", e);
+      return false;
+    }
+  },
+
+  // Delete user account and all associated data
+  deleteAccount: async (userId: string, userRole: string, companyId?: string): Promise<boolean> => {
+    if (!supabase) return false;
+    try {
+      // 1. Get user's auth_user_id before deletion
+      const { data: userData, error: fetchError } = await supabase
+        .from('app_users')
+        .select('auth_user_id, company_id')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (fetchError) {
+        console.error("Error fetching user for deletion:", fetchError);
+        return false;
+      }
+
+      const authUserId = userData?.auth_user_id;
+      const userCompanyId = companyId || userData?.company_id;
+
+      // 2. If user is OWNER, delete the company (cascade will delete employees, pay runs, etc.)
+      if (userRole === 'OWNER' && userCompanyId) {
+        const { error: companyError } = await supabase
+          .from('companies')
+          .delete()
+          .eq('id', userCompanyId);
+
+        if (companyError) {
+          console.error("Error deleting company:", companyError);
+          // Continue with user deletion even if company deletion fails
+        } else {
+          console.log("✅ Company deleted (cascade will handle related data)");
+        }
+      }
+
+      // 3. Delete app_users record
+      const { error: userError } = await supabase
+        .from('app_users')
+        .delete()
+        .eq('id', userId);
+
+      if (userError) {
+        console.error("Error deleting app_users record:", userError);
+        return false;
+      }
+
+      // 4. Delete auth user if auth_user_id exists (requires service role)
+      if (authUserId) {
+        try {
+          const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY;
+          const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
+          
+          if (serviceRoleKey && supabaseUrl) {
+            const { createClient } = await import('@supabase/supabase-js');
+            const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+              auth: {
+                autoRefreshToken: false,
+                persistSession: false
+              }
+            });
+
+            const { error: authError } = await adminClient.auth.admin.deleteUser(authUserId);
+            if (authError) {
+              console.warn("Could not delete auth user:", authError);
+              // Continue - user is already deleted from app_users
+            } else {
+              console.log("✅ Auth user deleted");
+            }
+          } else {
+            console.warn("Service role key not available - auth user may still exist");
+          }
+        } catch (authDeleteError) {
+          console.warn("Error deleting auth user:", authDeleteError);
+          // Continue - user is already deleted from app_users
+        }
+      }
+
+      return true;
+    } catch (e) {
+      console.error("Error deleting account:", e);
+      return false;
+    }
+  },
+
+  // --- Reseller Client Management ---
+
+  // Save a reseller invite (pending client)
+  saveResellerInvite: async (
+    resellerId: string,
+    email: string,
+    token: string,
+    contactName?: string,
+    companyName?: string
+  ): Promise<boolean> => {
+    if (!supabase) return false;
+    try {
+      const { error } = await supabase
+        .from('reseller_invites')
+        .upsert({
+          reseller_id: resellerId,
+          invite_email: email,
+          invite_token: token,
+          contact_name: contactName,
+          company_name: companyName,
+          status: 'PENDING',
+        }, {
+          onConflict: 'reseller_id,invite_email',
+        });
+
+      if (error) {
+        console.error('Error saving reseller invite:', error);
+        return false;
+      }
+
+      return true;
+    } catch (e) {
+      console.error('Exception in saveResellerInvite:', e);
+      return false;
+    }
+  },
+
+  // Get all reseller invites (pending clients)
+  getResellerInvites: async (resellerId: string): Promise<any[]> => {
+    if (!supabase) return [];
+    try {
+      const { data, error } = await supabase
+        .from('reseller_invites')
+        .select('*')
+        .eq('reseller_id', resellerId)
+        .eq('status', 'PENDING')
+        .order('invited_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching reseller invites:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (e) {
+      console.error('Exception in getResellerInvites:', e);
+      return [];
+    }
+  },
+
+  // Accept a reseller invite and create the client relationship
+  acceptResellerInvite: async (token: string, clientCompanyId: string): Promise<boolean> => {
+    if (!supabase) return false;
+    try {
+      // Get the invite
+      const { data: invite, error: fetchError } = await supabase
+        .from('reseller_invites')
+        .select('*')
+        .eq('invite_token', token)
+        .eq('status', 'PENDING')
+        .single();
+
+      if (fetchError || !invite) {
+        console.error('Invite not found or already accepted:', fetchError);
+        return false;
+      }
+
+      // Check if expired
+      if (new Date(invite.expires_at) < new Date()) {
+        console.error('Invite has expired');
+        return false;
+      }
+
+      // Create the reseller-client relationship
+      const { error: clientError } = await supabase
+        .from('reseller_clients')
+        .insert({
+          reseller_id: invite.reseller_id,
+          client_company_id: clientCompanyId,
+          status: 'ACTIVE',
+          access_level: 'FULL',
+        });
+
+      if (clientError) {
+        console.error('Error creating reseller-client relationship:', clientError);
+        return false;
+      }
+
+      // Mark invite as accepted
+      const { error: updateError } = await supabase
+        .from('reseller_invites')
+        .update({
+          status: 'ACCEPTED',
+          accepted_at: new Date().toISOString(),
+        })
+        .eq('id', invite.id);
+
+      if (updateError) {
+        console.error('Error updating invite status:', updateError);
+      }
+
+      return true;
+    } catch (e) {
+      console.error('Exception in acceptResellerInvite:', e);
+      return false;
+    }
+  },
+
+  // Create or update reseller-client relationship
+  saveResellerClient: async (resellerId: string, clientCompanyId: string, data?: {
+    status?: 'ACTIVE' | 'SUSPENDED' | 'TERMINATED' | 'PENDING';
+    accessLevel?: 'VIEW_ONLY' | 'MANAGE' | 'FULL';
+    monthlyBaseFee?: number;
+    perEmployeeFee?: number;
+    discountRate?: number;
+  }): Promise<boolean> => {
+    if (!supabase) return false;
+    try {
+      const { error } = await supabase
+        .from('reseller_clients')
+        .upsert({
+          reseller_id: resellerId,
+          client_company_id: clientCompanyId,
+          status: data?.status || 'ACTIVE',
+          access_level: data?.accessLevel || 'FULL',
+          monthly_base_fee: data?.monthlyBaseFee || 3000.00,
+          per_employee_fee: data?.perEmployeeFee || 100.00,
+          discount_rate: data?.discountRate || 0.00,
+          relationship_start_date: new Date().toISOString().split('T')[0],
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'reseller_id,client_company_id'
+        });
+
+      if (error) {
+        console.error("Error saving reseller-client relationship:", error);
+        return false;
+      }
+
+      // Also update the company's reseller_id field
+      const { error: updateError } = await supabase
+        .from('companies')
+        .update({ reseller_id: resellerId })
+        .eq('id', clientCompanyId);
+
+      if (updateError) {
+        console.error("Error updating company reseller_id:", updateError);
+        // Don't fail the whole operation if this fails
+      }
+
+      return true;
+    } catch (e) {
+      console.error("Error saving reseller-client relationship:", e);
+      return false;
+    }
+  },
+
+  // Save reseller client with service role (bypasses RLS)
+  saveResellerClientWithServiceRole: async (resellerId: string, clientCompanyId: string, data?: {
+    status?: 'ACTIVE' | 'SUSPENDED' | 'TERMINATED';
+    accessLevel?: 'VIEW_ONLY' | 'MANAGE' | 'FULL';
+    monthlyBaseFee?: number;
+    perEmployeeFee?: number;
+    discountRate?: number;
+  }): Promise<boolean> => {
+    // Try with service role key if available
+    const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
+    
+    if (serviceRoleKey && supabaseUrl) {
+      try {
+        const { createClient } = await import('@supabase/supabase-js');
+        const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+          auth: {
+            autoRefreshToken: false,
+            persistSession: false
+          }
+        });
+
+        const { error } = await adminClient
+          .from('reseller_clients')
+          .upsert({
+            reseller_id: resellerId,
+            client_company_id: clientCompanyId,
+            status: data?.status || 'ACTIVE',
+            access_level: data?.accessLevel || 'FULL',
+            monthly_base_fee: data?.monthlyBaseFee || 3000.00,
+            per_employee_fee: data?.perEmployeeFee || 100.00,
+            discount_rate: data?.discountRate || 0.00,
+            relationship_start_date: new Date().toISOString().split('T')[0],
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'reseller_id,client_company_id'
+          });
+
+        if (error) {
+          console.error("Error saving reseller-client relationship (service role):", error);
+          return false;
+        }
+
+        // Also update the company's reseller_id field
+        const { error: updateError } = await adminClient
+          .from('companies')
+          .update({ reseller_id: resellerId })
+          .eq('id', clientCompanyId);
+
+        if (updateError) {
+          console.error("Error updating company reseller_id:", updateError);
+          // Don't fail the whole operation if this fails
+        }
+
+        return true;
+      } catch (e) {
+        console.error("Error with service role client:", e);
+        // Fall through to regular client
+      }
+    }
+
+    // Fallback to regular client (may fail due to RLS)
+    return await supabaseService.saveResellerClient(resellerId, clientCompanyId, data);
+  },
+
+  // Get reseller clients
+  getResellerClients: async (resellerId: string): Promise<ResellerClient[]> => {
+    if (!supabase) return [];
+    try {
+      const { data, error } = await supabase
+        .from('reseller_clients')
+        .select(`
+          *,
+          client_company:companies!reseller_clients_client_company_id_fkey (
+            id,
+            name,
+            email,
+            plan,
+            status,
+            settings
+          )
+        `)
+        .eq('reseller_id', resellerId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error("Error fetching reseller clients:", error);
+        return [];
+      }
+
+      if (!data || !Array.isArray(data)) {
+        return [];
+      }
+
+      return data.map((rc: any) => {
+        const company = rc.client_company;
+        return {
+          id: company?.id || rc.client_company_id,
+          companyName: company?.name || 'Unknown Company',
+          contactName: company?.email || '',
+          email: company?.email || '',
+          plan: company?.plan || 'Free',
+          employeeCount: company?.settings?.employeeCount || 0,
+          status: rc.status || 'ACTIVE',
+          mrr: (rc.monthly_base_fee || 0) + ((rc.per_employee_fee || 0) * (company?.settings?.employeeCount || 0))
+        };
+      });
+    } catch (e) {
+      console.error("Error fetching reseller clients:", e);
       return [];
     }
   }

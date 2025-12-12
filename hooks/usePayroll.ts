@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Employee, PayRunLineItem, PayFrequency, PayType, WeeklyTimesheet, LeaveRequest, LeaveType, PayrollItemDetail, StatutoryDeductions, PayRun } from '../types';
 import { calculateTaxes, calculateProration, calculateCumulativePAYE, calculateEmployerContributions } from '../utils/taxUtils';
 
@@ -329,6 +329,10 @@ export const usePayroll = (
 
     const clearDraft = () => setDraftItems([]);
 
+    const loadDraftItems = useCallback((items: PayRunLineItem[]) => {
+        setDraftItems(items);
+    }, []);
+
     return {
         draftItems,
         totals,
@@ -339,6 +343,7 @@ export const usePayroll = (
         updateLineItemTaxes,
         addAdHocItem,
         removeAdHocItem,
-        clearDraft
+        clearDraft,
+        loadDraftItems
     };
 };

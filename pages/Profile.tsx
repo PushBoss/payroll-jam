@@ -4,6 +4,7 @@ import { Icons } from '../components/Icons';
 import { toast } from 'sonner';
 import { supabaseService } from '../services/supabaseService';
 import { supabase } from '../services/supabaseClient';
+import { useAuth } from '../context/AuthContext';
 
 interface ProfileProps {
   user: User;
@@ -11,6 +12,7 @@ interface ProfileProps {
 }
 
 export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
+  const { logout } = useAuth();
   const [formData, setFormData] = useState({
     name: user.name || '',
     email: user.email || '',
@@ -19,6 +21,9 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl || '');
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -151,6 +156,46 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
       .join('')
       .substring(0, 2)
       .toUpperCase() || 'U';
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText !== 'DELETE') {
+      toast.error('Please type "DELETE" to confirm');
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      const success = await supabaseService.deleteAccount(
+        user.id,
+        user.role,
+        user.companyId
+      );
+
+      if (success) {
+        toast.success('Account deleted successfully');
+        
+        // Clear local storage
+        if (typeof window !== 'undefined') {
+          localStorage.clear();
+        }
+        
+        // Logout and redirect
+        await logout();
+        
+        // Redirect to home page
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 1000);
+      } else {
+        toast.error('Failed to delete account. Please contact support.');
+        setIsDeleting(false);
+      }
+    } catch (error: any) {
+      console.error('Error deleting account:', error);
+      toast.error(error.message || 'Failed to delete account');
+      setIsDeleting(false);
+    }
   };
 
   return (
@@ -296,6 +341,90 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
             </button>
           </div>
         </form>
+
+        {/* Delete Account Section */}
+        <div className="mt-8 pt-8 border-t border-red-200">
+          <h2 className="text-lg font-semibold text-red-600 mb-2">Danger Zone</h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Once you delete your account, there is no going back. Please be certain.
+          </p>
+          
+          {!showDeleteConfirm ? (
+            <button
+              type="button"
+              onClick={() => setShowDeleteConfirm(true)}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center"
+            >
+              <Icons.Trash className="w-4 h-4 mr-2" />
+              Delete Account
+            </button>
+          ) : (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 space-y-4">
+              <div>
+                <p className="text-sm font-medium text-red-900 mb-2">
+                  This action cannot be undone. This will permanently delete:
+                </p>
+                <ul className="text-sm text-red-700 list-disc list-inside space-y-1 ml-2">
+                  <li>Your account and profile</li>
+                  {user.role === 'OWNER' && (
+                    <>
+                      <li>Your company and all company data</li>
+                      <li>All employees and their records</li>
+                      <li>All payroll history and pay runs</li>
+                      <li>All subscriptions and payment history</li>
+                    </>
+                  )}
+                  <li>All other associated data</li>
+                </ul>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-red-900 mb-2">
+                  Type <span className="font-mono font-bold">DELETE</span> to confirm:
+                </label>
+                <input
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder="DELETE"
+                  className="w-full px-4 py-2 border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                />
+              </div>
+              
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={handleDeleteAccount}
+                  disabled={isDeleting || deleteConfirmText !== 'DELETE'}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                >
+                  {isDeleting ? (
+                    <>
+                      <Icons.Refresh className="w-4 h-4 mr-2 animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <Icons.Trash className="w-4 h-4 mr-2" />
+                      Yes, Delete My Account
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDeleteConfirm(false);
+                    setDeleteConfirmText('');
+                  }}
+                  disabled={isDeleting}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

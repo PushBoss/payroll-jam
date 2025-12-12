@@ -179,7 +179,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const signup = async (userData: User & { password: string; companyName?: string; plan?: string }) => {
+  const signup = async (userData: User & { password: string; companyName?: string; plan?: string; resellerInviteToken?: string }) => {
     if (!supabase) {
       throw new Error('Supabase not initialized');
     }
@@ -205,6 +205,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // 2. Create company record first (if needed)
       if (userData.companyName && userData.companyId) {
         const isPaidPlan = userData.plan && userData.plan !== 'Free';
+        
+        // Map plan names to match database constraint: ('Free', 'Starter', 'Professional', 'Enterprise')
+        const mapPlanToDbFormat = (plan: string | undefined): string => {
+          if (!plan) return 'Free';
+          const planMap: Record<string, string> = {
+            'Free': 'Free',
+            'Starter': 'Starter',
+            'Pro': 'Professional',
+            'Professional': 'Professional',
+            'Reseller': 'Enterprise', // Map Reseller to Enterprise for now
+            'Enterprise': 'Enterprise'
+          };
+          return planMap[plan] || 'Free';
+        };
+        
+        const dbPlan = mapPlanToDbFormat(userData.plan);
+        
         const companyData = {
           name: userData.companyName,
           trn: '',
@@ -215,12 +232,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           branchCode: '',
           payFrequency: 'Monthly',
           subscriptionStatus: (isPaidPlan && (userData as any).paymentMethod === 'direct-deposit' ? 'PENDING_PAYMENT' : 'ACTIVE') as 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'PENDING_PAYMENT',
-          plan: userData.plan || 'Free',
+          plan: dbPlan as any,
           paymentMethod: (userData as any).paymentMethod || 'card'
         };
         
-        await supabaseService.saveCompany(userData.companyId, companyData);
+        const savedCompany = await supabaseService.saveCompany(userData.companyId, companyData);
+        if (!savedCompany) {
+          throw new Error('Failed to create company record');
+        }
         console.log('✅ Company saved to Supabase:', userData.companyName);
+        
+        // Wait a moment to ensure company is committed before creating user
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // If there's a reseller invite token, accept it
+        if (userData.resellerInviteToken) {
+          const accepted = await supabaseService.acceptResellerInvite(userData.resellerInviteToken, userData.companyId);
+          if (accepted) {
+            console.log('✅ Reseller invitation accepted during signup');
+          } else {
+            console.warn('⚠️ Failed to accept reseller invitation, but continuing with signup');
+          }
+        }
       }
 
       // 3. Create app_users profile (linked to auth user)

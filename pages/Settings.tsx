@@ -8,6 +8,8 @@ import { auditService } from '../services/auditService';
 import { checkDbConnection } from '../services/supabaseClient';
 import { supabaseService } from '../services/supabaseService';
 import { dimePayService } from '../services/dimePayService';
+import { emailService } from '../services/emailService';
+import { generateUUID } from '../utils/uuid';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { downloadFile } from '../utils/exportHelpers';
@@ -61,6 +63,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ plan, currentUser, onClos
                 currency: 'JMD',
                 description: `Upgrade to ${plan.name} Plan`,
                 frequency: 'monthly',
+                companyId: currentUser?.companyId, // Pass companyId to get company-specific gateway config
                 metadata: { planId: plan.id, planName: plan.name },
                 onSuccess: () => {
                     if (isMountedRef.current) {
@@ -144,11 +147,13 @@ export const Settings: React.FC<SettingsProps> = ({
 }) => {
   const { user: currentUser } = useAuth();
   const [activeTab, setActiveTab] = useState<'company' | 'billing' | 'organization' | 'taxes' | 'integrations' | 'users'>('organization');
+  const [isSavingCompany, setIsSavingCompany] = useState(false);
   
   // User Management State
   const [users, setUsers] = useState<User[]>([]);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [inviteForm, setInviteForm] = useState({ name: '', email: '', role: Role.MANAGER });
+  const [isSendingInvite, setIsSendingInvite] = useState(false);
 
   // Organization Management State
   const [newDept, setNewDept] = useState('');
@@ -178,10 +183,10 @@ export const Settings: React.FC<SettingsProps> = ({
                   setUsers(dbUsers);
               } else {
                   // Fallback to localStorage
-                  const storedUsers = storage.getCompanyUsers();
-                  if (storedUsers && storedUsers.length > 0) {
-                      setUsers(storedUsers);
-                  }
+      const storedUsers = storage.getCompanyUsers();
+      if (storedUsers && storedUsers.length > 0) {
+          setUsers(storedUsers);
+      }
               }
           }
       };
@@ -243,6 +248,25 @@ export const Settings: React.FC<SettingsProps> = ({
   };
 
   const handleCompanyUpdate = (newData: CompanySettings) => { onUpdateCompany(newData); };
+
+  const handleSaveCompany = async () => {
+      if (!currentUser?.companyId || !companyData) {
+          toast.error('Unable to save: Missing company information');
+          return;
+      }
+
+      setIsSavingCompany(true);
+      try {
+          await supabaseService.saveCompany(currentUser.companyId, companyData);
+          auditService.log(currentUser, 'UPDATE', 'Company', 'Updated company settings');
+          toast.success('Company settings saved successfully');
+      } catch (error: any) {
+          console.error('Error saving company:', error);
+          toast.error(error.message || 'Failed to save company settings');
+      } finally {
+          setIsSavingCompany(false);
+      }
+  };
 
   const handleTaxChange = (field: keyof TaxConfig, value: string) => {
       const num = parseFloat(value);
@@ -314,21 +338,34 @@ export const Settings: React.FC<SettingsProps> = ({
   const handleInviteSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
       
+      // Validate email
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(inviteForm.email)) {
+          toast.error("Please enter a valid email address.");
+          return;
+      }
+      
       // Check user limit based on plan
       const plan = companyData?.plan || 'Free';
       let maxUsers = 5; // Free
       if (plan === 'Starter') maxUsers = 25;
       if (plan === 'Pro' || plan === 'Professional') maxUsers = 99999; // Unlimited
       
-          // Count includes the main account owner
-          // Filter out currentUser from users list to avoid duplicates
-          const filteredUsers = users.filter(u => u.id !== currentUser?.id && u.email !== currentUser?.email);
-          const currentUserCount = filteredUsers.length + 1; // +1 for the account owner
+      // Count includes the main account owner
+      // Filter out currentUser from users list to avoid duplicates
+      const filteredUsers = users.filter(u => u.id !== currentUser?.id && u.email !== currentUser?.email);
+      const currentUserCount = filteredUsers.length + 1; // +1 for the account owner
       
       if (currentUserCount >= maxUsers) {
           toast.error(`User limit reached. You have ${currentUserCount} users (including account owner). Upgrade to ${plan === 'Free' ? 'Starter' : 'Pro'} to add more users.`);
           return;
       }
+      
+      setIsSendingInvite(true);
+      
+      // Generate invite token and link
+      const onboardingToken = generateUUID();
+      const inviteLink = `${window.location.origin}/?page=signup&token=${onboardingToken}&email=${encodeURIComponent(inviteForm.email)}`;
       
       const newUser: User = { 
           id: `u-${Date.now()}`, 
@@ -336,8 +373,22 @@ export const Settings: React.FC<SettingsProps> = ({
           email: inviteForm.email, 
           role: inviteForm.role, 
           companyId: currentUser?.companyId,
-          isOnboarded: false 
+          isOnboarded: false,
+          onboardingToken: onboardingToken
       };
+      
+      // Send invitation email
+      const emailResult = await emailService.sendInvite(
+          inviteForm.email, 
+          inviteForm.name.split(' ')[0] || inviteForm.name, 
+          inviteLink
+      );
+      
+      if (!emailResult.success) {
+          toast.error('Failed to send invitation email. User not created.');
+          setIsSendingInvite(false);
+          return;
+      }
       
       // Save to Supabase if available
       if (currentUser?.companyId) {
@@ -345,6 +396,9 @@ export const Settings: React.FC<SettingsProps> = ({
               await supabaseService.saveUser(newUser);
           } catch (error) {
               console.error("Error saving user to Supabase:", error);
+              toast.error("Failed to save user to database.");
+              setIsSendingInvite(false);
+              return;
           }
       }
       
@@ -354,7 +408,14 @@ export const Settings: React.FC<SettingsProps> = ({
       auditService.log(currentUser, 'CREATE', 'User', `Invited user ${newUser.email}`);
       setIsInviteModalOpen(false);
       setInviteForm({ name: '', email: '', role: Role.MANAGER });
-      toast.success("User invited");
+      
+      if (!emailResult.message?.includes('Simulation')) {
+          toast.success("Invitation email sent successfully!");
+      } else {
+          toast.info("User invited (email simulation mode - check console for link)");
+      }
+      
+      setIsSendingInvite(false);
   };
 
   const handleDeleteUser = (id: string) => {
@@ -435,8 +496,17 @@ export const Settings: React.FC<SettingsProps> = ({
                           <option value={Role.EMPLOYEE}>Employee</option>
                       </select>
                       <div className="flex justify-end space-x-2">
-                          <button type="button" onClick={() => setIsInviteModalOpen(false)} className="px-4 py-2 text-gray-500">Cancel</button>
-                          <button type="submit" className="px-4 py-2 bg-jam-black text-white rounded font-bold">Invite</button>
+                          <button type="button" onClick={() => setIsInviteModalOpen(false)} className="px-4 py-2 text-gray-500" disabled={isSendingInvite}>Cancel</button>
+                          <button type="submit" className="px-4 py-2 bg-jam-black text-white rounded font-bold disabled:opacity-50 disabled:cursor-not-allowed flex items-center" disabled={isSendingInvite}>
+                              {isSendingInvite ? (
+                                  <>
+                                      <Icons.Refresh className="w-4 h-4 mr-2 animate-spin" />
+                                      Sending...
+                                  </>
+                              ) : (
+                                  'Send Invite'
+                              )}
+                          </button>
                       </div>
                   </form>
               </div>
@@ -475,8 +545,77 @@ export const Settings: React.FC<SettingsProps> = ({
                           </div>
                       )}
                   </div>
-                  {companyData?.plan === 'Free' && <button onClick={() => handleUpgradeClick('Starter')} className="mt-4 md:mt-0 bg-jam-orange text-jam-black px-6 py-2.5 rounded-lg font-bold text-sm hover:bg-yellow-500 transition-colors">Upgrade to Starter</button>}
+                  {companyData?.plan !== 'Pro' && companyData?.plan !== 'Professional' && (
+                      <div className="mt-4 md:mt-0">
+                          <button 
+                              onClick={() => {
+                                  // Show plan selection
+                                  const availablePlans = plans.filter(p => {
+                                      const currentPlan = companyData?.plan || 'Free';
+                                      if (currentPlan === 'Free') return p.name === 'Starter' || p.name === 'Pro';
+                                      if (currentPlan === 'Starter') return p.name === 'Pro';
+                                      return false;
+                                  });
+                                  if (availablePlans.length === 1) {
+                                      handleUpgradeClick(availablePlans[0].name);
+                                  } else if (availablePlans.length > 1) {
+                                      // Show plan selector
+                                      const selected = window.confirm(`Choose upgrade plan:\n\n1. Click OK for ${availablePlans[0].name}\n2. Click Cancel to see all options`);
+                                      if (selected) {
+                                          handleUpgradeClick(availablePlans[0].name);
+                                      } else {
+                                          // Show all available plans
+                                          const planNames = availablePlans.map(p => p.name).join(', ');
+                                          const choice = window.prompt(`Available plans: ${planNames}\n\nEnter plan name to upgrade:`);
+                                          if (choice && availablePlans.find(p => p.name === choice)) {
+                                              handleUpgradeClick(choice);
+                                          }
+                                      }
+                                  }
+                              }}
+                              className="bg-jam-orange text-jam-black px-6 py-2.5 rounded-lg font-bold text-sm hover:bg-yellow-500 transition-colors"
+                          >
+                              Upgrade Plan
+                          </button>
+                      </div>
+                  )}
               </div>
+              
+              {/* Plan Selection Section */}
+              {companyData?.plan !== 'Pro' && companyData?.plan !== 'Professional' && plans.length > 0 && (
+                  <div className="bg-white p-6 rounded-xl border border-gray-200">
+                      <h3 className="text-lg font-bold mb-4">Available Plans</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          {plans
+                              .filter(p => {
+                                  const currentPlan = companyData?.plan || 'Free';
+                                  if (currentPlan === 'Free') return p.name === 'Starter' || p.name === 'Pro';
+                                  if (currentPlan === 'Starter') return p.name === 'Pro';
+                                  return false;
+                              })
+                              .map(plan => (
+                                  <div key={plan.id} className="border border-gray-200 rounded-lg p-4 hover:border-jam-orange transition-colors">
+                                      <h4 className="font-bold text-lg mb-2">{plan.name}</h4>
+                                      <div className="text-2xl font-bold mb-2">
+                                          ${plan.priceConfig.type === 'free' ? '0' : plan.priceConfig.monthly.toLocaleString()}
+                                          <span className="text-sm text-gray-500 font-normal">/mo</span>
+                                      </div>
+                                      <ul className="text-sm text-gray-600 mb-4 space-y-1">
+                                          {plan.features.slice(0, 3).map((feature, idx) => (
+                                              <li key={idx}>• {feature}</li>
+                                          ))}
+                                      </ul>
+                                      <button
+                                          onClick={() => handleUpgradeClick(plan.name)}
+                                          className="w-full bg-jam-black text-white py-2 rounded font-semibold hover:bg-gray-800 transition-colors"
+                                      >
+                                          Upgrade to {plan.name}
+                                      </button>
+                                  </div>
+                              ))}
+                      </div>
+                  </div>
+              )}
               <div className="bg-white p-6 rounded-xl border border-gray-200">
                    <h3 className="text-lg font-bold mb-4">Payment History</h3>
                    {isLoadingBilling ? (
@@ -548,6 +687,26 @@ export const Settings: React.FC<SettingsProps> = ({
 
       {activeTab === 'company' && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 animate-fade-in">
+               <div className="flex justify-between items-center mb-6">
+                   <h3 className="text-lg font-bold">Company Settings</h3>
+                   <button
+                       onClick={handleSaveCompany}
+                       disabled={isSavingCompany}
+                       className="bg-jam-orange text-jam-black px-6 py-2 rounded-lg font-bold hover:bg-yellow-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                   >
+                       {isSavingCompany ? (
+                           <>
+                               <Icons.Refresh className="w-4 h-4 mr-2 animate-spin" />
+                               Saving...
+                           </>
+                       ) : (
+                           <>
+                               <Icons.Save className="w-4 h-4 mr-2" />
+                               Save Changes
+                           </>
+                       )}
+                   </button>
+               </div>
                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                    <div className="space-y-4">
                       <h4 className="font-semibold border-b pb-2">Legal Details</h4>
@@ -713,10 +872,10 @@ export const Settings: React.FC<SettingsProps> = ({
           const remainingSeats = maxUsers - currentUserCount;
           
           return (
-              <div className="bg-white p-6 rounded-xl border border-gray-200 animate-fade-in">
-                   <div className="flex justify-between items-center mb-4">
+          <div className="bg-white p-6 rounded-xl border border-gray-200 animate-fade-in">
+               <div className="flex justify-between items-center mb-4">
                        <div>
-                           <h3 className="font-bold">User Management</h3>
+                   <h3 className="font-bold">User Management</h3>
                            <p className="text-xs text-gray-500 mt-1">
                                {currentUserCount} of {maxUsers === 99999 ? 'Unlimited' : maxUsers} users ({remainingSeats > 0 ? `${remainingSeats} seats remaining` : 'Limit reached'})
                            </p>
@@ -740,9 +899,9 @@ export const Settings: React.FC<SettingsProps> = ({
                                {plan === 'Free' && ' Upgrade to Starter (25 users) or Pro (Unlimited) to add more users.'}
                                {plan === 'Starter' && ' Upgrade to Pro for unlimited users.'}
                            </p>
-                       </div>
+               </div>
                    )}
-                   <table className="w-full text-left">
+               <table className="w-full text-left">
                        <thead>
                            <tr className="border-b">
                                <th className="pb-2 text-xs text-gray-500">Name</th>
@@ -751,7 +910,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                <th className="pb-2 text-xs text-gray-500 text-right">Action</th>
                            </tr>
                        </thead>
-                       <tbody>
+                   <tbody>
                            {/* Show account owner */}
                            {currentUser && (
                                <tr className="border-b border-gray-50">
@@ -766,10 +925,10 @@ export const Settings: React.FC<SettingsProps> = ({
                                </tr>
                            )}
                            {users.filter(u => u.id !== currentUser?.id && u.email !== currentUser?.email).map(u => (
-                               <tr key={u.id} className="border-b border-gray-50 last:border-0">
-                                   <td className="py-3 text-sm">{u.name}</td>
-                                   <td className="py-3 text-sm text-gray-500">{u.email}</td>
-                                   <td className="py-3"><span className="text-xs bg-gray-100 px-2 py-1 rounded">{u.role}</span></td>
+                           <tr key={u.id} className="border-b border-gray-50 last:border-0">
+                               <td className="py-3 text-sm">{u.name}</td>
+                               <td className="py-3 text-sm text-gray-500">{u.email}</td>
+                               <td className="py-3"><span className="text-xs bg-gray-100 px-2 py-1 rounded">{u.role}</span></td>
                                    <td className="py-3 text-right">
                                        <button 
                                            onClick={() => handleDeleteUser(u.id)} 
@@ -778,8 +937,8 @@ export const Settings: React.FC<SettingsProps> = ({
                                            <Icons.Trash className="w-4 h-4"/>
                                        </button>
                                    </td>
-                               </tr>
-                           ))}
+                           </tr>
+                       ))}
                            {filteredUsers.length === 0 && (
                                <tr>
                                    <td colSpan={4} className="py-8 text-center text-sm text-gray-500">
@@ -787,9 +946,9 @@ export const Settings: React.FC<SettingsProps> = ({
                                    </td>
                                </tr>
                            )}
-                       </tbody>
-                   </table>
-              </div>
+                   </tbody>
+               </table>
+          </div>
           );
       })()}
     </div>

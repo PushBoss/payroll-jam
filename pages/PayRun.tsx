@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { Employee, WeeklyTimesheet, LeaveRequest, PayRun as PayRunType, CompanySettings, IntegrationConfig, PayFrequency, PayRunLineItem, StatutoryDeductions } from '../types';
 import { usePayroll } from '../hooks/usePayroll';
@@ -8,6 +8,7 @@ import { emailService } from '../services/emailService';
 import { PayslipView } from '../components/PayslipView';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
+import { generateUUID } from '../utils/uuid';
 
 interface PayRunProps {
     employees: Employee[];
@@ -17,6 +18,8 @@ interface PayRunProps {
     companyData: CompanySettings;
     integrationConfig: IntegrationConfig;
     payRunHistory: PayRunType[];
+    editRunId?: string; // ID of pay run to edit
+    onNavigate?: (path: string) => void; // For navigation after save
 }
 
 // Extracted row component to isolate logic and avoid parser ambiguity
@@ -122,12 +125,16 @@ export const PayRun: React.FC<PayRunProps> = ({
     onSave,
     companyData,
     integrationConfig,
-    payRunHistory
+    payRunHistory,
+    editRunId,
+    onNavigate
 }) => {
     const { user: currentUser } = useAuth();
     const [step, setStep] = useState<'SETUP' | 'DRAFT' | 'APPROVE' | 'FINALIZE'>('SETUP');
     const [payCycle, setPayCycle] = useState<PayFrequency | 'ALL'>('ALL');
     const [payPeriod, setPayPeriod] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+    const [editingRun, setEditingRun] = useState<PayRunType | null>(null);
+    const [hasLoadedEdit, setHasLoadedEdit] = useState(false);
     
     // Modal States
     const [adHocModal, setAdHocModal] = useState<{
@@ -163,10 +170,49 @@ export const PayRun: React.FC<PayRunProps> = ({
         addAdHocItem, 
         addEmployeeToRun, 
         removeEmployeeFromRun, 
-        clearDraft 
+        clearDraft,
+        loadDraftItems
     } = usePayroll(employees, timesheets, leaveRequests, payRunHistory);
 
     const isSuspended = companyData.subscriptionStatus === 'SUSPENDED';
+
+    // Load run for editing - only once when editRunId changes
+    useEffect(() => {
+        // Only load if we have an editRunId and haven't loaded yet
+        if (editRunId && !hasLoadedEdit && payRunHistory.length > 0) {
+            const runToEdit = payRunHistory.find(r => r.id === editRunId);
+            if (runToEdit && (runToEdit.status === 'DRAFT' || runToEdit.status === 'APPROVED')) {
+                setEditingRun(runToEdit);
+                // Convert periodStart to YYYY-MM format if it's in YYYY-MM-DD format
+                let period = runToEdit.periodStart;
+                if (period.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                    period = period.substring(0, 7); // Extract YYYY-MM from YYYY-MM-DD
+                }
+                setPayPeriod(period);
+                setCurrentRun(runToEdit);
+                // Load the line items into draft
+                if (runToEdit.lineItems && runToEdit.lineItems.length > 0) {
+                    loadDraftItems(runToEdit.lineItems);
+                }
+                setStep(runToEdit.status === 'APPROVED' ? 'APPROVE' : 'DRAFT');
+                setHasLoadedEdit(true); // Mark as loaded
+                toast.success(`Loaded ${runToEdit.status} pay run for editing`);
+            } else if (runToEdit && runToEdit.status === 'FINALIZED') {
+                toast.error('Cannot edit finalized pay runs');
+                setHasLoadedEdit(true);
+            }
+        } else if (editRunId && !hasLoadedEdit && payRunHistory.length === 0) {
+            toast.error('Pay run not found');
+            setHasLoadedEdit(true);
+        }
+        
+        // Reset hasLoadedEdit when editRunId changes
+        if (!editRunId && hasLoadedEdit) {
+            setHasLoadedEdit(false);
+        }
+    // Only depend on editRunId and hasLoadedEdit to prevent re-triggering on payRunHistory updates
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editRunId, hasLoadedEdit]);
 
     // Generate Pay Period Options
     const payPeriodOptions = useMemo(() => {
@@ -223,18 +269,97 @@ export const PayRun: React.FC<PayRunProps> = ({
     };
 
     const handleMoveToApproval = () => {
+        if (draftItems.length === 0) {
+            toast.error("No employees in pay run. Add employees first.");
+            return;
+        }
+
+        // Save draft before moving to approval
+        const draftRun: PayRunType = {
+            id: editingRun?.id || generateUUID(),
+            periodStart: payPeriod,
+            periodEnd: payPeriod,
+            payDate: new Date().toISOString().split('T')[0],
+            payFrequency: editingRun?.payFrequency || getPayFrequency(),
+            status: 'DRAFT',
+            totalGross: totals.gross,
+            totalNet: totals.net,
+            lineItems: draftItems
+        };
+
+        // Update editingRun state
+        setEditingRun(draftRun);
+        onSave(draftRun);
         setStep('APPROVE');
         toast.success("Pay run ready for approval");
+    };
+
+    // Determine pay frequency from payCycle
+    const getPayFrequency = (): 'WEEKLY' | 'FORTNIGHTLY' | 'MONTHLY' => {
+        if (payCycle === 'WEEKLY') return 'WEEKLY';
+        if (payCycle === 'FORTNIGHTLY') return 'FORTNIGHTLY';
+        // Default to MONTHLY for 'ALL' or 'MONTHLY'
+        return 'MONTHLY';
+    };
+
+    const handleSaveDraft = () => {
+        if (draftItems.length === 0) {
+            toast.error("No employees in pay run. Add employees first.");
+            return;
+        }
+
+        const draftRun: PayRunType = {
+            id: editingRun?.id || generateUUID(),
+            periodStart: payPeriod,
+            periodEnd: payPeriod,
+            payDate: new Date().toISOString().split('T')[0],
+            payFrequency: editingRun?.payFrequency || getPayFrequency(),
+            status: 'DRAFT',
+            totalGross: totals.gross,
+            totalNet: totals.net,
+            lineItems: draftItems
+        };
+
+        // Update editingRun state so subsequent saves use the same ID
+        setEditingRun(draftRun);
+        onSave(draftRun);
+        toast.success("Draft saved successfully! You can continue editing.");
+    };
+
+    const handleSaveAsApproved = () => {
+        if (draftItems.length === 0) {
+            toast.error("No employees in pay run. Add employees first.");
+            return;
+        }
+
+        const approvedRun: PayRunType = {
+            id: editingRun?.id || generateUUID(),
+            periodStart: payPeriod,
+            periodEnd: payPeriod,
+            payDate: new Date().toISOString().split('T')[0],
+            payFrequency: editingRun?.payFrequency || getPayFrequency(),
+            status: 'APPROVED',
+            totalGross: totals.gross,
+            totalNet: totals.net,
+            lineItems: draftItems
+        };
+
+        onSave(approvedRun);
+        toast.success("Pay run saved as approved!");
+        if (onNavigate) {
+            onNavigate('reports');
+        }
     };
 
     const handleFinalize = async () => {
         setIsFinalizing(true);
         
         const newRun: PayRunType = {
-            id: `RUN-${Date.now()}`,
+            id: editingRun?.id || generateUUID(),
             periodStart: payPeriod,
             periodEnd: payPeriod, 
             payDate: new Date().toISOString().split('T')[0],
+            payFrequency: editingRun?.payFrequency || getPayFrequency(),
             status: 'FINALIZED',
             totalGross: totals.gross,
             totalNet: totals.net,
@@ -590,17 +715,34 @@ export const PayRun: React.FC<PayRunProps> = ({
                                 <Icons.Plus className="w-4 h-4 mr-2" /> Add Employee
                             </button>
                         )}
-                        <button onClick={() => { setStep('SETUP'); clearDraft(); }} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm font-medium">
+                        <button onClick={() => { 
+                            if (window.confirm('Are you sure you want to cancel? Any unsaved changes will be lost.')) {
+                                setStep('SETUP'); 
+                                clearDraft(); 
+                                setEditingRun(null);
+                                if (onNavigate) {
+                                    onNavigate('reports');
+                                }
+                            }
+                        }} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm font-medium">
                             Cancel
                         </button>
                         {isDraftMode ? (
-                            <button onClick={handleMoveToApproval} className="bg-jam-orange text-jam-black px-6 py-2 font-bold rounded-lg hover:bg-yellow-500 shadow-lg flex items-center text-sm">
-                                <Icons.ChevronRight className="w-4 h-4 mr-1" /> Continue to Approve
-                            </button>
+                            <>
+                                <button onClick={handleSaveDraft} className="bg-gray-600 text-white px-4 py-2 font-medium rounded-lg hover:bg-gray-700 shadow-sm flex items-center text-sm">
+                                    <Icons.Save className="w-4 h-4 mr-1" /> Save Draft
+                                </button>
+                                <button onClick={handleMoveToApproval} className="bg-jam-orange text-jam-black px-6 py-2 font-bold rounded-lg hover:bg-yellow-500 shadow-lg flex items-center text-sm">
+                                    <Icons.ChevronRight className="w-4 h-4 mr-1" /> Continue to Approve
+                                </button>
+                            </>
                         ) : (
                             <>
                                 <button onClick={() => setStep('DRAFT')} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium flex items-center">
                                     <Icons.ChevronLeft className="w-4 h-4 mr-1" /> Back to Draft
+                                </button>
+                                <button onClick={handleSaveAsApproved} className="bg-blue-600 text-white px-4 py-2 font-medium rounded-lg hover:bg-blue-700 shadow-sm flex items-center text-sm">
+                                    <Icons.Save className="w-4 h-4 mr-1" /> Save as Approved
                                 </button>
                                 <button onClick={handleFinalize} disabled={isFinalizing} className="bg-green-600 text-white px-6 py-2 font-bold rounded-lg hover:bg-green-700 shadow-lg flex items-center disabled:opacity-50 disabled:cursor-not-allowed text-sm">
                                     {isFinalizing ? (

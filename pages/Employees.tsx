@@ -149,7 +149,12 @@ export const Employees: React.FC<EmployeesProps> = ({
           allowances: [], deductions: []
       };
 
-      const emailResult = await emailService.sendInvite(inviteData.email, inviteData.firstName, inviteLink);
+      const emailResult = await emailService.sendEmployeeInvite(
+          inviteData.email, 
+          inviteData.firstName, 
+          companyData?.name || 'Your Company',
+          inviteLink
+      );
 
       if (emailResult.success) {
           onAddEmployee(newEmp);

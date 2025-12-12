@@ -13,12 +13,14 @@ interface SignupProps {
   onSignup?: (user: User) => void;
   onSignupSuccess?: (user: User) => void;
   onLoginClick: () => void;
+  onBack?: () => void; // Optional back button handler
+  onNavigate?: (path: string) => void; // Optional navigation handler for Terms/Privacy
   initialPlan?: string;
   initialBillingCycle?: 'monthly' | 'annual';
   plans: PricingPlan[]; 
 }
 
-export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onLoginClick, initialPlan = 'Starter', initialBillingCycle = 'monthly', plans }) => {
+export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onLoginClick, onBack, onNavigate, initialPlan = 'Starter', initialBillingCycle = 'monthly', plans }) => {
   const { signup } = useAuth();
   const [step, setStep] = useState<'account' | 'billing'>('account');
   const [paymentError, setPaymentError] = useState<string | null>(null);
@@ -54,6 +56,16 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onLoginClick, i
 
   useEffect(() => {
       isMountedRef.current = true;
+      
+      // Check for invite token and pre-fill email
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('token');
+      const email = params.get('email');
+      
+      if (email && token) {
+          setFormData(prev => ({ ...prev, email: decodeURIComponent(email) }));
+      }
+      
       return () => { isMountedRef.current = false; };
   }, []);
 
@@ -237,6 +249,16 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onLoginClick, i
       <div className="flex-1 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-20 xl:px-24 bg-white">
          <div className="mx-auto w-full max-w-sm lg:w-96">
             <div className="mb-10">
+                {/* Back Button */}
+                {onBack && (
+                    <button
+                        onClick={onBack}
+                        className="flex items-center text-gray-600 hover:text-jam-orange mb-4 transition-colors"
+                    >
+                        <Icons.ArrowLeft className="w-5 h-5 mr-2" />
+                        Back
+                    </button>
+                )}
                 <h2 className="text-3xl font-extrabold text-jam-black cursor-pointer" onClick={onLoginClick}>
                     Payroll<span className="text-jam-orange">-Jam</span>
                 </h2>
@@ -358,7 +380,37 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onLoginClick, i
                             </div>
                             <div className="ml-3 text-sm">
                                 <label htmlFor="consent" className="font-medium text-gray-700 cursor-pointer">
-                                    I agree to the <span className="underline hover:text-jam-orange">Terms of Service</span> and <span className="underline hover:text-jam-orange">Privacy Policy</span>.
+                                    I agree to the{' '}
+                                    {onNavigate ? (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    onNavigate('terms-of-service');
+                                                }}
+                                                className="underline hover:text-jam-orange text-jam-orange"
+                                            >
+                                                Terms of Service
+                                            </button>
+                                            {' '}and{' '}
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    onNavigate('privacy-policy');
+                                                }}
+                                                className="underline hover:text-jam-orange text-jam-orange"
+                                            >
+                                                Privacy Policy
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <span className="underline hover:text-jam-orange">Terms of Service</span> and <span className="underline hover:text-jam-orange">Privacy Policy</span>
+                                        </>
+                                    )}
+                                    .
                                 </label>
                                 <p className="text-gray-500 text-xs mt-1">
                                     I consent to the processing of my payroll data in accordance with the Data Protection Act.

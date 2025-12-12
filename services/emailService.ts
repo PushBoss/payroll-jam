@@ -40,6 +40,44 @@ export const emailService = {
   },
 
   /**
+   * Sends an employee account setup invitation email.
+   */
+  sendEmployeeInvite: async (email: string, firstName: string, companyName: string, link: string) => {
+    const config = storage.getGlobalConfig();
+    
+    if (!config?.emailjs?.publicKey) {
+      console.log(`[Email Simulation] Employee Invite`);
+      console.log(`To: ${email}`);
+      console.log(`Company: ${companyName}`);
+      console.log(`Link: ${link}`);
+      return { success: true, message: 'Simulation: Email logged to console.' };
+    }
+
+    try {
+      const templateParams = {
+        to_email: email,
+        to_name: firstName,
+        message: `Welcome to ${companyName}! Your employer has added you to their payroll system. Click the link below to set up your account and complete your employee onboarding. You'll be able to view your payslips, update your information, and more.`,
+        link: link,
+        company_name: companyName,
+        action_type: 'EMPLOYEE_INVITE'
+      };
+
+      await emailjs.send(
+        config.emailjs.serviceId,
+        config.emailjs.templateId,
+        templateParams,
+        config.emailjs.publicKey
+      );
+
+      return { success: true, message: 'Email sent successfully.' };
+    } catch (error) {
+      console.error('EmailJS Error:', error);
+      return { success: false, message: 'Failed to send email.' };
+    }
+  },
+
+  /**
    * Sends a notification that a payslip is ready.
    */
   sendPayslipNotification: async (email: string, firstName: string, period: string, netPay: string) => {

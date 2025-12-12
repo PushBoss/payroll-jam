@@ -27,7 +27,8 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments 
       branchCode: '',
       payFrequency: 'Monthly',
       defaultPayDate: '25th of the month',
-      plan: 'Free'
+      plan: 'Free',
+      subscriptionStatus: 'ACTIVE'
   });
 
   const updateField = (field: keyof CompanySettings, value: string) => {

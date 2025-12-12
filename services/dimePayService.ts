@@ -7,7 +7,8 @@ interface PaymentWidgetProps {
     currency: 'JMD' | 'USD';
     description: string;
     metadata?: any;
-    frequency?: 'monthly' | 'annual'; 
+    frequency?: 'monthly' | 'annual';
+    companyId?: string; // Optional company ID for company-specific gateway config
     onSuccess: (data: any) => void;
     onError: (err: any) => void;
 }
@@ -31,11 +32,38 @@ export const dimePayService = {
      */
     renderPaymentWidget: async (props: PaymentWidgetProps) => {
 
-        // Always use global config if available, fallback to sandbox
-        const globalConfig = storage.getGlobalConfig();
-        let config = (globalConfig && globalConfig.dimepay && globalConfig.dimepay.enabled)
-            ? globalConfig.dimepay
-            : DEMO_CONFIG;
+        // Try to get from Supabase first (backend), then fallback to localStorage
+        let globalConfig: any = null;
+        let companyConfig: any = null;
+        
+        // Try Supabase if available - get global config from backend
+        try {
+            const { supabaseService } = await import('./supabaseService');
+            globalConfig = await supabaseService.getGlobalConfig();
+            
+            // Also try to get company-specific payment gateway settings if companyId is available
+            // This allows per-company gateway configuration
+            if (props.companyId) {
+                companyConfig = await supabaseService.getPaymentGatewaySettings(props.companyId);
+            }
+        } catch (e) {
+            console.log('Supabase not available, using localStorage');
+        }
+        
+        // Fallback to localStorage if Supabase didn't return config
+        if (!globalConfig) {
+            globalConfig = storage.getGlobalConfig();
+        }
+        
+        // Priority: company-specific config > global config > demo config
+        let config = null;
+        if (companyConfig?.dimepay && companyConfig.dimepay.enabled) {
+            config = companyConfig.dimepay;
+        } else if (globalConfig && globalConfig.dimepay && globalConfig.dimepay.enabled) {
+            config = globalConfig.dimepay;
+        } else {
+            config = DEMO_CONFIG;
+        }
 
         // SAFETY CHECK: If still undefined (should be impossible due to fallback), exit early
         if (!config) {

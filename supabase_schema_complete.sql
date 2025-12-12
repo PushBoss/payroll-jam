@@ -445,6 +445,31 @@ CREATE TABLE IF NOT EXISTS document_requests (
 -- RESELLER & BILLING TABLES
 -- =====================================================
 
+-- Reseller Client Invites (Pending invitations)
+CREATE TABLE IF NOT EXISTS reseller_invites (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  reseller_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  
+  -- Invite Details
+  invite_email TEXT NOT NULL,
+  invite_token TEXT NOT NULL UNIQUE,
+  contact_name TEXT,
+  company_name TEXT,
+  
+  -- Status
+  status TEXT DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'ACCEPTED', 'REJECTED', 'EXPIRED')),
+  
+  -- Metadata
+  invited_at TIMESTAMPTZ DEFAULT NOW(),
+  accepted_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '30 days'),
+  
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  
+  CONSTRAINT unique_reseller_invite_email UNIQUE (reseller_id, invite_email)
+);
+
 -- Reseller Clients (Accountants managing multiple companies)
 CREATE TABLE IF NOT EXISTS reseller_clients (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -454,7 +479,7 @@ CREATE TABLE IF NOT EXISTS reseller_clients (
   -- Relationship
   relationship_start_date DATE DEFAULT CURRENT_DATE,
   relationship_end_date DATE,
-  status TEXT DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'SUSPENDED', 'TERMINATED')),
+  status TEXT DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'SUSPENDED', 'TERMINATED', 'PENDING')),
   
   -- Billing
   monthly_base_fee NUMERIC(10,2) DEFAULT 3000.00, -- JMD

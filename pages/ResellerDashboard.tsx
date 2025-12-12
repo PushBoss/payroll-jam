@@ -3,6 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { ResellerClient, PricingPlan } from '../types';
 import { supabaseService } from '../services/supabaseService';
+import { emailService } from '../services/emailService';
+import { useAuth } from '../context/AuthContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { toast } from 'sonner';
 
@@ -12,8 +14,12 @@ interface ResellerDashboardProps {
 }
 
 export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageClient, plans = [] }) => {
+  const { user } = useAuth();
   const [clients, setClients] = useState<ResellerClient[]>([]);
+  const [pendingInvites, setPendingInvites] = useState<any[]>([]);
   const [financialData, setFinancialData] = useState<any[]>([]);
+  const [billingHistory, setBillingHistory] = useState<any[]>([]);
+  const [isLoadingData, setIsLoadingData] = useState(true);
 
   const [activeTab, setActiveTab] = useState<'clients' | 'compliance' | 'financials'>('clients');
   const [searchTerm, setSearchTerm] = useState('');
@@ -24,34 +30,82 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
   // Form State
   const [formData, setFormData] = useState<Partial<ResellerClient>>({});
 
-  // Load clients from Supabase
+  // Load clients and financial data from Supabase
   useEffect(() => {
-      async function loadClients() {
+      async function loadData() {
+          setIsLoadingData(true);
           try {
-              const data = await supabaseService.getAllCompanies();
-              setClients(data || []);
-              
-              // Calculate financial data from actual client MRR
-              const last6Months = ['Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan'];
-              const calculatedFinancialData = last6Months.map((month, index) => {
-                  // Simulate growth over time based on current MRR
-                  const totalMRR = (data || []).reduce((acc, client) => 
-                      client.status === 'ACTIVE' ? acc + (client.mrr || 0) : acc, 0);
-                  const growthFactor = 0.8 + (index * 0.04); // 80% to 100% growth simulation
-                  const revenue = Math.round(totalMRR * growthFactor);
-                  const profit = Math.round(revenue * 0.2); // 20% profit margin
-                  return { name: month, revenue, profit };
-              });
-              setFinancialData(calculatedFinancialData);
+              // If user has companyId, load reseller clients from reseller_clients table
+              if (user?.companyId) {
+                  const resellerClients = await supabaseService.getResellerClients(user.companyId);
+                  setClients(Array.isArray(resellerClients) ? resellerClients : []);
+                  
+                  // Load pending invites
+                  const invites = await supabaseService.getResellerInvites(user.companyId);
+                  setPendingInvites(Array.isArray(invites) ? invites : []);
+                  
+                  // Load reseller's own billing history (payments made by reseller)
+                  const paymentsData = await supabaseService.getPaymentHistory(user.companyId, 100);
+                  // Ensure payments is always an array
+                  const payments = Array.isArray(paymentsData) ? paymentsData : [];
+                  setBillingHistory(payments);
+                  
+                  // Calculate financial data from actual payments (last 6 months)
+                  const now = new Date();
+                  const last6Months: Array<{ name: string; month: number; year: number }> = [];
+                  for (let i = 5; i >= 0; i--) {
+                      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                      last6Months.push({
+                          name: date.toLocaleString('default', { month: 'short' }),
+                          month: date.getMonth(),
+                          year: date.getFullYear()
+                      });
+                  }
+                  
+                  // Get baseFee and perUserFee for calculations
+                  const resellerPlan = plans.find(p => p.priceConfig.type === 'base' || p.name === 'Reseller');
+                  const baseFee = resellerPlan?.priceConfig.baseFee ?? 3000;
+                  const perUserFee = resellerPlan?.priceConfig.perUserFee ?? 100;
+                  
+                  const calculatedFinancialData = last6Months.map(({ name, month, year }) => {
+                      // Get payments for this month - ensure payments is an array
+                      const monthPayments = Array.isArray(payments) ? payments.filter(p => {
+                          if (!p || !p.paymentDate) return false;
+                          const paymentDate = new Date(p.paymentDate);
+                          return paymentDate.getMonth() === month && paymentDate.getFullYear() === year && p.status === 'completed';
+                      }) : [];
+                      
+                      const revenue = monthPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+                      // Calculate profit (revenue - platform fees for that month)
+                      const activeClientsInMonth = Array.isArray(resellerClients) ? resellerClients.filter(c => c.status === 'ACTIVE').length : 0;
+                      const activeEmpInMonth = Array.isArray(resellerClients) ? resellerClients
+                          .filter(c => c.status === 'ACTIVE')
+                          .reduce((sum, c) => sum + (c.employeeCount || 0), 0) : 0;
+                      const platformFeesForMonth = (activeClientsInMonth * baseFee) + (activeEmpInMonth * perUserFee);
+                      const profit = Math.max(0, revenue - platformFeesForMonth);
+                      
+                      return { name, revenue, profit };
+                  });
+                  setFinancialData(calculatedFinancialData);
+              } else {
+                  // Fallback to all companies if no reseller relationship
+                  const data = await supabaseService.getAllCompanies();
+                  setClients(Array.isArray(data) ? data : []);
+                  setFinancialData([]);
+                  setBillingHistory([]);
+              }
           } catch (error) {
-              console.error('Error loading clients:', error);
-              toast.error('Failed to load clients');
+              console.error('Error loading data:', error);
+              toast.error('Failed to load data');
               setClients([]);
               setFinancialData([]);
+              setBillingHistory([]);
+          } finally {
+              setIsLoadingData(false);
           }
       }
-      loadClients();
-  }, []);
+      loadData();
+  }, [user?.companyId, plans]);
 
   // Stats Calculation
   const totalRev = clients.reduce((acc, curr) => curr.status === 'ACTIVE' ? acc + curr.mrr : acc, 0);
@@ -67,13 +121,16 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
   const platformFees = (activeClientsList.length * baseFee) + (activeEmpCount * perUserFee);
   const netProfit = totalRev - platformFees;
 
-  // Get compliance status from Supabase data (simplified for now)
+  // Get compliance status from backend (placeholder - compliance tracking not yet implemented)
   const getComplianceStatus = () => {
       // TODO: Fetch real compliance data from database once compliance tracking is implemented
+      // For now, return placeholder data
+      const nextMonth = new Date();
+      nextMonth.setMonth(nextMonth.getMonth() + 1);
       return {
           so1: 'PENDING',
           s02: 'PENDING',
-          nextDue: 'Feb 14, 2025'
+          nextDue: nextMonth.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
       };
   };
 
@@ -119,24 +176,50 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
       }
   };
 
-  const saveNewClient = (e: React.FormEvent) => {
+  const saveNewClient = async (e: React.FormEvent) => {
       e.preventDefault();
-      const plan = formData.plan as string;
-      const count = formData.employeeCount || 0;
-      
-      const newClient: ResellerClient = {
-          id: `cl-${Date.now()}`,
-          companyName: formData.companyName || 'New Company',
-          contactName: formData.contactName || 'Admin',
-          email: formData.email || '',
-          plan: plan as any,
-          employeeCount: count,
-          status: (formData.status as any) || 'ACTIVE',
-          mrr: calculateMRR(plan, count)
-      };
+      if (!user?.companyId) {
+          toast.error('Reseller company ID not found');
+          return;
+      }
 
-      setClients([...clients, newClient]);
+      // Generate invite token
+      const inviteToken = `reseller-invite-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const inviteLink = `${window.location.origin}/?token=${inviteToken}&email=${encodeURIComponent(formData.email || '')}&reseller=true`;
+      
+      // Save the invite to database
+      const inviteSaved = await supabaseService.saveResellerInvite(
+          user.companyId,
+          formData.email || '',
+          inviteToken,
+          formData.contactName,
+          formData.companyName
+      );
+      
+      if (!inviteSaved) {
+          toast.error('Failed to create invitation');
+          return;
+      }
+      
+      // Send invite email
+      const emailResult = await emailService.sendInvite(
+          formData.email || '',
+          formData.contactName || 'Admin',
+          inviteLink
+      );
+      
+      if (emailResult.success) {
+          toast.success(`Invitation sent to ${formData.email}. They will appear in your portfolio once they accept.`);
+          
+          // Reload pending invites
+          const invites = await supabaseService.getResellerInvites(user.companyId);
+          setPendingInvites(Array.isArray(invites) ? invites : []);
+      } else {
+          toast.error('Failed to send invitation email');
+      }
+      
       setIsAddModalOpen(false);
+      setFormData({});
   };
 
   const updateClient = (e: React.FormEvent) => {
@@ -164,7 +247,40 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
   );
 
   const renderClientsTab = () => (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-fade-in">
+      <>
+        {/* Pending Invites Section */}
+        {pendingInvites.length > 0 && (
+            <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <div className="flex items-center mb-3">
+                    <Icons.Clock className="w-5 h-5 text-yellow-600 mr-2" />
+                    <h3 className="text-sm font-semibold text-yellow-800">
+                        Pending Invitations ({pendingInvites.length})
+                    </h3>
+                </div>
+                <div className="space-y-2">
+                    {pendingInvites.map((invite) => (
+                        <div key={invite.id} className="flex items-center justify-between bg-white p-3 rounded border border-yellow-200">
+                            <div className="flex-1">
+                                <p className="text-sm font-medium text-gray-900">
+                                    {invite.company_name || 'Company'}
+                                </p>
+                                <p className="text-xs text-gray-600">
+                                    {invite.invite_email} • {invite.contact_name || 'Contact'}
+                                </p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Invited {new Date(invite.invited_at).toLocaleDateString()}
+                                </p>
+                            </div>
+                            <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
+                                Pending
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        )}
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-fade-in">
         <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
             <h3 className="font-semibold text-gray-800">Client Portfolio</h3>
             <div className="flex space-x-2 w-1/3">
@@ -254,6 +370,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
           </tbody>
         </table>
       </div>
+      </>
   );
 
   const renderComplianceTab = () => (
@@ -269,7 +386,9 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                         <Icons.CalendarDays className="w-6 h-6 text-jam-orange" />
                     </div>
                 </div>
-                <p className="text-xs text-gray-500 mt-2">Due Feb 14, 2025</p>
+                        <p className="text-xs text-gray-500 mt-2">
+                            {clients.length > 0 ? `${clients.length} client${clients.length !== 1 ? 's' : ''} to review` : 'No clients'}
+                        </p>
              </div>
              <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-red-500">
                 <div className="flex justify-between items-start">
@@ -293,7 +412,9 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                         <Icons.Shield className="w-6 h-6 text-green-500" />
                     </div>
                 </div>
-                <p className="text-xs text-gray-500 mt-2">Aggregated portfolio score</p>
+                        <p className="text-xs text-gray-500 mt-2">
+                            {clients.length > 0 ? 'Based on client compliance' : 'No data available'}
+                        </p>
              </div>
           </div>
 
@@ -370,7 +491,9 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col">
                   <h3 className="font-bold text-gray-900 mb-2">Est. Platform Bill</h3>
                   <h1 className="text-4xl font-extrabold text-red-600 mb-1">${platformFees.toLocaleString()}</h1>
-                  <p className="text-sm text-gray-500 mb-8">Due Date: Jan 31, 2025</p>
+                  <p className="text-sm text-gray-500 mb-8">
+                    Due: {new Date(new Date().setMonth(new Date().getMonth() + 1)).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                  </p>
                   
                   <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 text-sm text-gray-600 mb-6">
                       <div className="flex justify-between mb-2">
@@ -409,28 +532,40 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                    <tr className="hover:bg-gray-50">
-                        <td className="px-6 py-4 text-sm text-gray-900">Dec 31, 2024</td>
-                        <td className="px-6 py-4 text-sm text-gray-500 font-mono">INV-2024-12</td>
-                        <td className="px-6 py-4 text-sm text-gray-500">Card •••• 4242</td>
-                        <td className="px-6 py-4 text-sm font-bold text-gray-900">$88,000.00</td>
-                        <td className="px-6 py-4 text-right">
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                PAID
-                            </span>
-                        </td>
-                    </tr>
-                    <tr className="hover:bg-gray-50">
-                        <td className="px-6 py-4 text-sm text-gray-900">Nov 30, 2024</td>
-                        <td className="px-6 py-4 text-sm text-gray-500 font-mono">INV-2024-11</td>
-                        <td className="px-6 py-4 text-sm text-gray-500">Card •••• 4242</td>
-                        <td className="px-6 py-4 text-sm font-bold text-gray-900">$82,000.00</td>
-                        <td className="px-6 py-4 text-right">
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                PAID
-                            </span>
-                        </td>
-                    </tr>
+                    {billingHistory.length > 0 ? (
+                        billingHistory.map((payment) => (
+                            <tr key={payment.id} className="hover:bg-gray-50">
+                                <td className="px-6 py-4 text-sm text-gray-900">
+                                    {new Date(payment.paymentDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-500 font-mono">
+                                    {payment.invoiceNumber || payment.id.substring(0, 8)}
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-500">
+                                    {payment.paymentMethod === 'card' ? 'Card' : payment.paymentMethod === 'bank_transfer' ? 'Bank Transfer' : payment.paymentMethod || 'N/A'}
+                                </td>
+                                <td className="px-6 py-4 text-sm font-bold text-gray-900">
+                                    ${payment.amount.toLocaleString()}
+                                </td>
+                                <td className="px-6 py-4 text-right">
+                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                        payment.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                        payment.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                        payment.status === 'failed' ? 'bg-red-100 text-red-800' :
+                                        'bg-gray-100 text-gray-800'
+                                    }`}>
+                                        {payment.status?.toUpperCase() || 'PENDING'}
+                                    </span>
+                                </td>
+                            </tr>
+                        ))
+                    ) : (
+                        <tr>
+                            <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                                {isLoadingData ? 'Loading billing history...' : 'No billing history found.'}
+                            </td>
+                        </tr>
+                    )}
                 </tbody>
               </table>
           </div>

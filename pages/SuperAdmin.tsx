@@ -7,7 +7,7 @@ import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, A
 import { storage } from '../services/storage';
 import { auditService } from '../services/auditService';
 import { supabaseService } from '../services/supabaseService';
-import { checkDbConnection, testManualConnection, saveManualConfig, isUsingLocalOverrides } from '../services/supabaseClient';
+import { checkDbConnection, testManualConnection, saveManualConfig, isUsingLocalOverrides, supabase } from '../services/supabaseClient';
 import { toast } from 'sonner';
 
 interface SuperAdminProps {
@@ -92,10 +92,21 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
       return existing || [{ id: 'u-super', name: 'System Operator', email: 'super@jam.com', role: Role.SUPER_ADMIN, isOnboarded: true }];
   });
   const [isAddAdminOpen, setIsAddAdminOpen] = useState(false);
-  const [newAdminForm, setNewAdminForm] = useState({ name: '', email: '' });
+  const [newAdminForm, setNewAdminForm] = useState({ name: '', email: '', password: '' });
 
   // Logs State
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
+  
+  // Billing State
+  const [revenueData, setRevenueData] = useState<{ name: string; revenue: number }[]>([]);
+  const [isLoadingBilling, setIsLoadingBilling] = useState(false);
+  const [billingStats, setBillingStats] = useState({
+    totalRevenue: 0,
+    monthlyRecurringRevenue: 0,
+    totalSubscriptions: 0,
+    activeSubscriptions: 0,
+    totalPayments: 0
+  });
   
   // Plan Editing State
   const [editingPlan, setEditingPlan] = useState<PricingPlan | null>(null);
@@ -122,10 +133,135 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
       }
   }, [tenants, paymentConfig.dataSource]);
 
-  useEffect(() => { storage.saveGlobalConfig(paymentConfig); }, [paymentConfig]);
+  // Load global config from Supabase on mount
+  useEffect(() => {
+    const loadGlobalConfig = async () => {
+      try {
+        const config = await supabaseService.getGlobalConfig();
+        if (config) {
+          setPaymentConfig(config);
+        }
+      } catch (e) {
+        console.error("Error loading global config from Supabase:", e);
+      }
+    };
+    loadGlobalConfig();
+  }, []);
+
+  // Save global config to both localStorage and Supabase
+  useEffect(() => { 
+    storage.saveGlobalConfig(paymentConfig);
+    // Also save to Supabase
+    supabaseService.saveGlobalConfig(paymentConfig).catch(e => {
+      console.error("Error saving global config to Supabase:", e);
+    });
+  }, [paymentConfig]);
   useEffect(() => { storage.saveSuperAdmins(admins); }, [admins]);
   useEffect(() => {
       if (activeTab === 'overview' || activeTab === 'logs') setLogs(auditService.getLogs());
+  }, [activeTab]);
+
+  // Load super admins from Supabase when users tab is active
+  useEffect(() => {
+      const loadSuperAdmins = async () => {
+          if (activeTab !== 'users') return;
+          
+          try {
+              const dbAdmins = await supabaseService.getAllSuperAdmins();
+              if (dbAdmins && dbAdmins.length > 0) {
+                  setAdmins(dbAdmins);
+                  // Also save to localStorage as backup
+                  storage.saveSuperAdmins(dbAdmins);
+              } else {
+                  // Fallback to localStorage if no admins in DB
+                  const storedAdmins = storage.getSuperAdmins();
+                  if (storedAdmins && storedAdmins.length > 0) {
+                      setAdmins(storedAdmins);
+                  }
+              }
+          } catch (error) {
+              console.error('Error loading super admins:', error);
+              // Fallback to localStorage on error
+              const storedAdmins = storage.getSuperAdmins();
+              if (storedAdmins && storedAdmins.length > 0) {
+                  setAdmins(storedAdmins);
+              }
+          }
+      };
+
+      loadSuperAdmins();
+  }, [activeTab]);
+
+  // Load billing data when billing tab is active
+  useEffect(() => {
+      const loadBillingData = async () => {
+          if (activeTab !== 'billing') return;
+          
+          setIsLoadingBilling(true);
+          try {
+              // Fetch all subscriptions
+              const subscriptions = await supabaseService.getAllSubscriptions();
+              const activeSubs = subscriptions.filter(s => s.status === 'active');
+              
+              // Calculate MRR from active subscriptions
+              const mrr = activeSubs.reduce((sum, sub) => {
+                  if (sub.billing_frequency === 'monthly') {
+                      return sum + Number(sub.amount || 0);
+                  } else if (sub.billing_frequency === 'yearly') {
+                      return sum + (Number(sub.amount || 0) / 12);
+                  }
+                  return sum;
+              }, 0);
+
+              // Fetch all completed payments
+              const payments = await supabaseService.getAllPayments();
+              
+              // Calculate total revenue
+              const totalRevenue = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+              // Group payments by month for chart
+              const monthlyRevenue: Record<string, number> = {};
+              payments.forEach(payment => {
+                  const date = new Date(payment.payment_date);
+                  const monthKey = date.toLocaleDateString('en-US', { month: 'short' });
+                  if (!monthlyRevenue[monthKey]) {
+                      monthlyRevenue[monthKey] = 0;
+                  }
+                  monthlyRevenue[monthKey] += Number(payment.amount || 0);
+              });
+
+              // Convert to chart data format (last 6 months)
+              const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+              const currentMonth = new Date().getMonth();
+              // Get last 6 months including current month
+              const chartData = [];
+              for (let i = 5; i >= 0; i--) {
+                  const monthIndex = (currentMonth - i + 12) % 12;
+                  const monthName = months[monthIndex];
+                  chartData.push({
+                      name: monthName,
+                      revenue: monthlyRevenue[monthName] || 0
+                  });
+              }
+
+              setBillingStats({
+                  totalRevenue,
+                  monthlyRecurringRevenue: mrr,
+                  totalSubscriptions: subscriptions.length,
+                  activeSubscriptions: activeSubs.length,
+                  totalPayments: payments.length
+              });
+              
+              setRevenueData(chartData.length > 0 ? chartData : MOCK_REVENUE_DATA);
+          } catch (error) {
+              console.error('Error loading billing data:', error);
+              setRevenueData(MOCK_REVENUE_DATA);
+          } finally {
+              setIsLoadingBilling(false);
+          }
+      };
+
+      loadBillingData();
   }, [activeTab]);
 
   // Check DB Connection when Settings tab is active
@@ -195,24 +331,153 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
       }
   };
 
-  const handleAddAdmin = (e: React.FormEvent) => {
+  const handleAddAdmin = async (e: React.FormEvent) => {
       e.preventDefault();
-      const newAdmin: User = { id: `sa-${Date.now()}`, name: newAdminForm.name, email: newAdminForm.email, role: Role.SUPER_ADMIN, isOnboarded: true };
-      setAdmins([...admins, newAdmin]);
-      setIsAddAdminOpen(false);
-      setNewAdminForm({ name: '', email: '' });
-      auditService.log({id: 'sys', name: 'Super Admin', email: 'sys', role: Role.SUPER_ADMIN}, 'CREATE', 'User', `Created new super admin: ${newAdmin.email}`);
-      toast.success("New admin created");
+      
+      if (!newAdminForm.password || newAdminForm.password.length < 6) {
+          toast.error("Password must be at least 6 characters");
+          return;
+      }
+
+      try {
+          if (!supabase) {
+              throw new Error('Supabase not initialized');
+          }
+
+          // Check if service role key is available for admin operations
+          const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY;
+          if (!serviceRoleKey) {
+              toast.error('Service role key not configured. Admin user creation requires service role key.');
+              return;
+          }
+
+          // Create admin client with service role key
+          const { createClient } = await import('@supabase/supabase-js');
+          const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
+          if (!supabaseUrl) {
+              throw new Error('Supabase URL not configured');
+          }
+          
+          const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+              auth: {
+                  autoRefreshToken: false,
+                  persistSession: false
+              }
+          });
+
+          // 1. Create auth user in Supabase Auth using admin client
+          const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
+              email: newAdminForm.email,
+              password: newAdminForm.password,
+              email_confirm: true // Auto-confirm email for super admins
+          });
+
+          if (authError) {
+              console.error('❌ Auth signup error:', authError);
+              toast.error(authError.message || 'Failed to create admin user');
+              return;
+          }
+
+          if (!authData.user) {
+              throw new Error('No user returned from signup');
+          }
+
+          console.log('✅ Supabase Auth user created:', authData.user.id);
+
+          // 2. Create app_users record with SUPER_ADMIN role
+          const { error: userError } = await supabase
+              .from('app_users')
+              .insert({
+                  id: authData.user.id,
+                  auth_user_id: authData.user.id,
+                  email: newAdminForm.email,
+                  name: newAdminForm.name,
+                  role: 'SUPER_ADMIN',
+                  is_onboarded: true
+              });
+
+          if (userError) {
+              console.error('❌ Error creating app_users record:', userError);
+              // Try to clean up auth user if app_users insert fails
+              const { createClient } = await import('@supabase/supabase-js');
+              const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
+              const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY;
+              if (supabaseUrl && serviceRoleKey) {
+                  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+                      auth: { autoRefreshToken: false, persistSession: false }
+                  });
+                  await adminClient.auth.admin.deleteUser(authData.user.id);
+              }
+              toast.error('Failed to create admin profile. Please try again.');
+              return;
+          }
+
+          // 3. Update local state and refresh from DB
+          setIsAddAdminOpen(false);
+          setNewAdminForm({ name: '', email: '', password: '' });
+          auditService.log({id: 'sys', name: 'Super Admin', email: 'sys', role: Role.SUPER_ADMIN}, 'CREATE', 'User', `Created new super admin: ${newAdminForm.email}`);
+          toast.success("New admin created successfully");
+          
+          // Refresh admins list from database
+          const updatedAdmins = await supabaseService.getAllSuperAdmins();
+          if (updatedAdmins && updatedAdmins.length > 0) {
+              setAdmins(updatedAdmins);
+              storage.saveSuperAdmins(updatedAdmins);
+          }
+      } catch (error: any) {
+          console.error('Error creating admin:', error);
+          toast.error(error.message || 'Failed to create admin');
+      }
   };
 
-  const handleRemoveAdmin = (id: string) => {
+  const handleRemoveAdmin = async (id: string) => {
       if (admins.length <= 1) { 
           toast.error("Cannot delete the last Super Admin."); 
           return; 
       }
-      if (confirm("Revoke Super Admin access for this user?")) {
-          setAdmins(prev => prev.filter(u => u.id !== id));
-          toast.success("Admin removed");
+      if (confirm("Revoke Super Admin access for this user? This action cannot be undone.")) {
+          try {
+              // Delete from Supabase
+              const deleted = await supabaseService.deleteUser(id);
+              if (!deleted) {
+                  toast.error("Failed to remove admin from database");
+                  return;
+              }
+
+              // Also try to delete from auth (optional, may require service role)
+              const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY;
+              if (serviceRoleKey && supabase) {
+                  try {
+                      const { createClient } = await import('@supabase/supabase-js');
+                      const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
+                      if (supabaseUrl) {
+                          const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+                              auth: { autoRefreshToken: false, persistSession: false }
+                          });
+                          await adminClient.auth.admin.deleteUser(id);
+                      }
+                  } catch (authError) {
+                      console.warn("Could not delete auth user (may require service role key):", authError);
+                      // Continue anyway - app_users record is deleted
+                  }
+              }
+
+              // Refresh admins list from database
+              const updatedAdmins = await supabaseService.getAllSuperAdmins();
+              if (updatedAdmins && updatedAdmins.length > 0) {
+                  setAdmins(updatedAdmins);
+                  storage.saveSuperAdmins(updatedAdmins);
+              } else {
+                  // Fallback: remove from local state
+                  setAdmins(prev => prev.filter(u => u.id !== id));
+              }
+              
+              auditService.log({id: 'sys', name: 'Super Admin', email: 'sys', role: Role.SUPER_ADMIN}, 'DELETE', 'User', `Removed super admin: ${id}`);
+              toast.success("Admin removed successfully");
+          } catch (error: any) {
+              console.error('Error removing admin:', error);
+              toast.error(error.message || "Failed to remove admin");
+          }
       }
   };
 
@@ -478,8 +743,9 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
 
           {isAddAdminOpen && (
               <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 mb-6 animate-scale-in">
-                  <form onSubmit={handleAddAdmin} className="flex items-end space-x-4">
-                      <div className="flex-1">
+                  <form onSubmit={handleAddAdmin} className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
                           <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Name</label>
                           <input 
                               required
@@ -489,7 +755,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                               onChange={e => setNewAdminForm({...newAdminForm, name: e.target.value})}
                           />
                       </div>
-                      <div className="flex-1">
+                          <div>
                           <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email</label>
                           <input 
                               required
@@ -499,12 +765,27 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                               onChange={e => setNewAdminForm({...newAdminForm, email: e.target.value})}
                           />
                       </div>
-                      <button type="submit" className="bg-jam-orange text-jam-black px-6 py-2 rounded font-bold hover:bg-yellow-500">
-                          Save
-                      </button>
-                      <button type="button" onClick={() => setIsAddAdminOpen(false)} className="px-4 py-2 text-gray-500 hover:text-gray-700">
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Password</label>
+                              <input 
+                                  required
+                                  type="password" 
+                                  minLength={6}
+                                  className="w-full border border-gray-300 rounded px-3 py-2"
+                                  value={newAdminForm.password}
+                                  onChange={e => setNewAdminForm({...newAdminForm, password: e.target.value})}
+                                  placeholder="Minimum 6 characters"
+                              />
+                          </div>
+                      </div>
+                      <div className="flex justify-end space-x-2">
+                          <button type="button" onClick={() => { setIsAddAdminOpen(false); setNewAdminForm({ name: '', email: '', password: '' }); }} className="px-4 py-2 text-gray-500 hover:text-gray-700">
                           Cancel
                       </button>
+                          <button type="submit" className="bg-jam-orange text-jam-black px-6 py-2 rounded font-bold hover:bg-yellow-500">
+                              Create Admin
+                          </button>
+                      </div>
                   </form>
               </div>
           )}
@@ -634,22 +915,65 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
 
   const renderBilling = () => (
       <div className="space-y-6 animate-fade-in">
+          {/* Stats Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+              <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                  <p className="text-xs text-gray-500 uppercase font-bold mb-1">Total Revenue</p>
+                  <p className="text-2xl font-bold text-gray-900">${billingStats.totalRevenue.toLocaleString()}</p>
+              </div>
+              <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                  <p className="text-xs text-gray-500 uppercase font-bold mb-1">MRR</p>
+                  <p className="text-2xl font-bold text-jam-orange">${billingStats.monthlyRecurringRevenue.toLocaleString()}</p>
+              </div>
+              <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                  <p className="text-xs text-gray-500 uppercase font-bold mb-1">Total Subscriptions</p>
+                  <p className="text-2xl font-bold text-gray-900">{billingStats.totalSubscriptions}</p>
+              </div>
+              <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                  <p className="text-xs text-gray-500 uppercase font-bold mb-1">Active Subscriptions</p>
+                  <p className="text-2xl font-bold text-green-600">{billingStats.activeSubscriptions}</p>
+              </div>
+              <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                  <p className="text-xs text-gray-500 uppercase font-bold mb-1">Total Payments</p>
+                  <p className="text-2xl font-bold text-gray-900">{billingStats.totalPayments}</p>
+              </div>
+          </div>
+
+          {/* Revenue Chart */}
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-              <h3 className="font-bold text-gray-900 mb-6">Platform Revenue</h3>
+              <div className="flex justify-between items-center mb-6">
+                  <h3 className="font-bold text-gray-900">Platform Revenue (Last 6 Months)</h3>
+                  {isLoadingBilling && (
+                      <div className="flex items-center text-sm text-gray-500">
+                          <Icons.Refresh className="w-4 h-4 mr-2 animate-spin" />
+                          Loading...
+                      </div>
+                  )}
+              </div>
               <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={MOCK_REVENUE_DATA}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#9CA3AF'}} dy={10} />
-                          <YAxis axisLine={false} tickLine={false} tick={{fill: '#9CA3AF'}} tickFormatter={(val) => `$${val/1000}k`} />
-                          <Tooltip 
-                              cursor={{stroke: '#F3F4F6'}}
-                              formatter={(val: number) => [`$${val.toLocaleString()}`, 'Revenue']}
-                              contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'}}
-                          />
-                          <Area type="monotone" dataKey="revenue" stroke="#F59E0B" fill="rgba(245, 158, 11, 0.1)" strokeWidth={3} />
-                      </AreaChart>
-                  </ResponsiveContainer>
+                  {isLoadingBilling ? (
+                      <div className="flex items-center justify-center h-full">
+                          <Icons.Refresh className="w-8 h-8 animate-spin text-jam-orange" />
+                      </div>
+                  ) : revenueData.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={revenueData}>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#9CA3AF'}} dy={10} />
+                              <YAxis axisLine={false} tickLine={false} tick={{fill: '#9CA3AF'}} tickFormatter={(val) => `$${val/1000}k`} />
+                              <Tooltip 
+                                  cursor={{stroke: '#F3F4F6'}}
+                                  formatter={(val: number) => [`$${val.toLocaleString()}`, 'Revenue']}
+                                  contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'}}
+                              />
+                              <Area type="monotone" dataKey="revenue" stroke="#F59E0B" fill="rgba(245, 158, 11, 0.1)" strokeWidth={3} />
+                          </AreaChart>
+                      </ResponsiveContainer>
+                  ) : (
+                      <div className="flex items-center justify-center h-full text-gray-500">
+                          <p>No revenue data available</p>
+                      </div>
+                  )}
               </div>
           </div>
       </div>
@@ -716,28 +1040,28 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                         {f}
                                     </div>
                                 ))}
-                            </div>
-                            <div className="flex space-x-2">
-                                <button 
-                                    onClick={() => setEditingPlan(plan)}
-                                    className="flex-1 py-2 border border-gray-300 rounded text-sm font-medium hover:bg-gray-50"
-                                >
-                                    Edit
-                                </button>
-                                <button 
-                                    onClick={() => toggleActiveStatus(plan)}
-                                    className={`px-3 py-2 rounded border ${plan.isActive ? 'text-red-600 border-red-200 hover:bg-red-50' : 'text-green-600 border-green-200 hover:bg-green-50'}`}
-                                >
-                                    <Icons.Zap className="w-4 h-4" />
-                                </button>
-                            </div>
                         </div>
-                    ))}
-                </div>
-
+                        <div className="flex space-x-2">
+                            <button 
+                                onClick={() => setEditingPlan(plan)}
+                                className="flex-1 py-2 border border-gray-300 rounded text-sm font-medium hover:bg-gray-50"
+                            >
+                                Edit
+                            </button>
+                            <button 
+                                onClick={() => toggleActiveStatus(plan)}
+                                className={`px-3 py-2 rounded border ${plan.isActive ? 'text-red-600 border-red-200 hover:bg-red-50' : 'text-green-600 border-green-200 hover:bg-green-50'}`}
+                            >
+                                <Icons.Zap className="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
+                ))}
             </div>
-        );
-    };
+
+        </div>
+    );
+};
 
   const renderPendingPayments = () => {
     const pendingCompanies = tenants.filter(c => c.subscriptionStatus === 'PENDING_PAYMENT');
@@ -908,6 +1232,236 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                    )}
                </div>
 
+              {/* Gateway Status Card */}
+              <div className="mb-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                  <div className="flex justify-between items-start mb-4">
+                      <div>
+                          <h3 className="text-sm font-bold text-gray-900">Payment Gateway Status</h3>
+                          <p className="text-xs text-gray-500">Gateway Configuration & Availability</p>
+                      </div>
+                  </div>
+                  <div className="space-y-3">
+                      {/* DimePay Status */}
+                      <div className={`p-3 rounded-lg border ${
+                          paymentConfig.dimepay?.enabled && paymentConfig.dimepay?.apiKey && paymentConfig.dimepay?.secretKey
+                              ? 'bg-green-50 border-green-200' 
+                              : paymentConfig.dimepay?.enabled
+                                  ? 'bg-yellow-50 border-yellow-200'
+                                  : 'bg-gray-50 border-gray-200'
+                      }`}>
+                          <div className="flex items-center justify-between">
+                              <div className="flex items-center">
+                                  <div className={`p-1.5 rounded-full mr-2 ${
+                                      paymentConfig.dimepay?.enabled && paymentConfig.dimepay?.apiKey && paymentConfig.dimepay?.secretKey
+                                          ? 'bg-green-100 text-green-600' 
+                                          : paymentConfig.dimepay?.enabled
+                                              ? 'bg-yellow-100 text-yellow-600'
+                                              : 'bg-gray-100 text-gray-400'
+                                  }`}>
+                                      {paymentConfig.dimepay?.enabled && paymentConfig.dimepay?.apiKey && paymentConfig.dimepay?.secretKey
+                                          ? <Icons.CheckCircle className="w-4 h-4" />
+                                          : paymentConfig.dimepay?.enabled
+                                              ? <Icons.Alert className="w-4 h-4" />
+                                              : <Icons.Close className="w-4 h-4" />
+                                      }
+                                  </div>
+                                  <div>
+                                      <h4 className="font-semibold text-sm text-gray-900">DimePay</h4>
+                                      <p className="text-xs text-gray-600">
+                                          {paymentConfig.dimepay?.enabled && paymentConfig.dimepay?.apiKey && paymentConfig.dimepay?.secretKey
+                                              ? `${paymentConfig.dimepay.environment === 'production' ? 'Production' : 'Sandbox'} - Configured`
+                                              : paymentConfig.dimepay?.enabled
+                                                  ? 'Enabled but missing credentials'
+                                                  : 'Disabled'
+                                          }
+                                      </p>
+                                  </div>
+                              </div>
+                              <span className={`text-xs px-2 py-1 rounded font-medium ${
+                                  paymentConfig.dimepay?.enabled && paymentConfig.dimepay?.apiKey && paymentConfig.dimepay?.secretKey
+                                      ? 'bg-green-100 text-green-700'
+                                      : paymentConfig.dimepay?.enabled
+                                          ? 'bg-yellow-100 text-yellow-700'
+                                          : 'bg-gray-100 text-gray-600'
+                              }`}>
+                                  {paymentConfig.dimepay?.enabled && paymentConfig.dimepay?.apiKey && paymentConfig.dimepay?.secretKey
+                                      ? 'Active'
+                                      : paymentConfig.dimepay?.enabled
+                                          ? 'Incomplete'
+                                          : 'Inactive'
+                                  }
+                              </span>
+                          </div>
+                      </div>
+
+                      {/* Stripe Status */}
+                      <div className={`p-3 rounded-lg border ${
+                          paymentConfig.stripe?.enabled && paymentConfig.stripe?.publishableKey && paymentConfig.stripe?.secretKey
+                              ? 'bg-green-50 border-green-200' 
+                              : paymentConfig.stripe?.enabled
+                                  ? 'bg-yellow-50 border-yellow-200'
+                                  : 'bg-gray-50 border-gray-200'
+                      }`}>
+                          <div className="flex items-center justify-between">
+                              <div className="flex items-center">
+                                  <div className={`p-1.5 rounded-full mr-2 ${
+                                      paymentConfig.stripe?.enabled && paymentConfig.stripe?.publishableKey && paymentConfig.stripe?.secretKey
+                                          ? 'bg-green-100 text-green-600' 
+                                          : paymentConfig.stripe?.enabled
+                                              ? 'bg-yellow-100 text-yellow-600'
+                                              : 'bg-gray-100 text-gray-400'
+                                  }`}>
+                                      {paymentConfig.stripe?.enabled && paymentConfig.stripe?.publishableKey && paymentConfig.stripe?.secretKey
+                                          ? <Icons.CheckCircle className="w-4 h-4" />
+                                          : paymentConfig.stripe?.enabled
+                                              ? <Icons.Alert className="w-4 h-4" />
+                                              : <Icons.Close className="w-4 h-4" />
+                                      }
+                                  </div>
+                                  <div>
+                                      <h4 className="font-semibold text-sm text-gray-900">Stripe</h4>
+                                      <p className="text-xs text-gray-600">
+                                          {paymentConfig.stripe?.enabled && paymentConfig.stripe?.publishableKey && paymentConfig.stripe?.secretKey
+                                              ? 'Configured'
+                                              : paymentConfig.stripe?.enabled
+                                                  ? 'Enabled but missing credentials'
+                                                  : 'Disabled'
+                                          }
+                                      </p>
+                                  </div>
+                              </div>
+                              <span className={`text-xs px-2 py-1 rounded font-medium ${
+                                  paymentConfig.stripe?.enabled && paymentConfig.stripe?.publishableKey && paymentConfig.stripe?.secretKey
+                                      ? 'bg-green-100 text-green-700'
+                                      : paymentConfig.stripe?.enabled
+                                          ? 'bg-yellow-100 text-yellow-700'
+                                          : 'bg-gray-100 text-gray-600'
+                              }`}>
+                                  {paymentConfig.stripe?.enabled && paymentConfig.stripe?.publishableKey && paymentConfig.stripe?.secretKey
+                                      ? 'Active'
+                                      : paymentConfig.stripe?.enabled
+                                          ? 'Incomplete'
+                                          : 'Inactive'
+                                  }
+                              </span>
+                          </div>
+                      </div>
+
+                      {/* PayPal Status */}
+                      <div className={`p-3 rounded-lg border ${
+                          paymentConfig.paypal?.enabled && paymentConfig.paypal?.clientId && paymentConfig.paypal?.secret
+                              ? 'bg-green-50 border-green-200' 
+                              : paymentConfig.paypal?.enabled
+                                  ? 'bg-yellow-50 border-yellow-200'
+                                  : 'bg-gray-50 border-gray-200'
+                      }`}>
+                          <div className="flex items-center justify-between">
+                              <div className="flex items-center">
+                                  <div className={`p-1.5 rounded-full mr-2 ${
+                                      paymentConfig.paypal?.enabled && paymentConfig.paypal?.clientId && paymentConfig.paypal?.secret
+                                          ? 'bg-green-100 text-green-600' 
+                                          : paymentConfig.paypal?.enabled
+                                              ? 'bg-yellow-100 text-yellow-600'
+                                              : 'bg-gray-100 text-gray-400'
+                                  }`}>
+                                      {paymentConfig.paypal?.enabled && paymentConfig.paypal?.clientId && paymentConfig.paypal?.secret
+                                          ? <Icons.CheckCircle className="w-4 h-4" />
+                                          : paymentConfig.paypal?.enabled
+                                              ? <Icons.Alert className="w-4 h-4" />
+                                              : <Icons.Close className="w-4 h-4" />
+                                      }
+                                  </div>
+                                  <div>
+                                      <h4 className="font-semibold text-sm text-gray-900">PayPal</h4>
+                                      <p className="text-xs text-gray-600">
+                                          {paymentConfig.paypal?.enabled && paymentConfig.paypal?.clientId && paymentConfig.paypal?.secret
+                                              ? `${paymentConfig.paypal.mode === 'live' ? 'Live' : 'Sandbox'} - Configured`
+                                              : paymentConfig.paypal?.enabled
+                                                  ? 'Enabled but missing credentials'
+                                                  : 'Disabled'
+                                          }
+                                      </p>
+                                  </div>
+                              </div>
+                              <span className={`text-xs px-2 py-1 rounded font-medium ${
+                                  paymentConfig.paypal?.enabled && paymentConfig.paypal?.clientId && paymentConfig.paypal?.secret
+                                      ? 'bg-green-100 text-green-700'
+                                      : paymentConfig.paypal?.enabled
+                                          ? 'bg-yellow-100 text-yellow-700'
+                                          : 'bg-gray-100 text-gray-600'
+                              }`}>
+                                  {paymentConfig.paypal?.enabled && paymentConfig.paypal?.clientId && paymentConfig.paypal?.secret
+                                      ? 'Active'
+                                      : paymentConfig.paypal?.enabled
+                                          ? 'Incomplete'
+                                          : 'Inactive'
+                                  }
+                              </span>
+                          </div>
+                      </div>
+                  </div>
+              </div>
+
+              {/* Email Service Status Card */}
+              <div className="mb-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                  <div className="flex justify-between items-start mb-4">
+                      <div>
+                          <h3 className="text-sm font-bold text-gray-900">Email Service Status</h3>
+                          <p className="text-xs text-gray-500">EmailJS Configuration</p>
+                      </div>
+                  </div>
+                  <div className={`p-4 rounded-lg border ${
+                      paymentConfig.emailjs?.publicKey && paymentConfig.emailjs?.serviceId && paymentConfig.emailjs?.templateId
+                          ? 'bg-green-50 border-green-200' 
+                          : 'bg-yellow-50 border-yellow-200'
+                  }`}>
+                      <div className="flex items-start">
+                          <div className={`p-2 rounded-full mr-3 ${
+                              paymentConfig.emailjs?.publicKey && paymentConfig.emailjs?.serviceId && paymentConfig.emailjs?.templateId
+                                  ? 'bg-green-100 text-green-600' 
+                                  : 'bg-yellow-100 text-yellow-600'
+                          }`}>
+                              {paymentConfig.emailjs?.publicKey && paymentConfig.emailjs?.serviceId && paymentConfig.emailjs?.templateId
+                                  ? <Icons.CheckCircle className="w-5 h-5" />
+                                  : <Icons.Alert className="w-5 h-5" />
+                              }
+                          </div>
+                          <div className="flex-1">
+                              <h4 className={`font-bold text-sm ${
+                                  paymentConfig.emailjs?.publicKey && paymentConfig.emailjs?.serviceId && paymentConfig.emailjs?.templateId
+                                      ? 'text-green-800' 
+                                      : 'text-yellow-800'
+                              }`}>
+                                  {paymentConfig.emailjs?.publicKey && paymentConfig.emailjs?.serviceId && paymentConfig.emailjs?.templateId
+                                      ? 'Email Service Active'
+                                      : 'Email Service Not Configured'
+                                  }
+                              </h4>
+                              <p className={`text-xs mt-1 ${
+                                  paymentConfig.emailjs?.publicKey && paymentConfig.emailjs?.serviceId && paymentConfig.emailjs?.templateId
+                                      ? 'text-green-600' 
+                                      : 'text-yellow-600'
+                              }`}>
+                                  {paymentConfig.emailjs?.publicKey && paymentConfig.emailjs?.serviceId && paymentConfig.emailjs?.templateId
+                                      ? 'Email invitations and notifications are enabled.'
+                                      : 'Email service requires configuration. Invitations will be logged to console only.'
+                                  }
+                              </p>
+                              {!(paymentConfig.emailjs?.publicKey && paymentConfig.emailjs?.serviceId && paymentConfig.emailjs?.templateId) && (
+                                  <div className="mt-2 text-xs text-yellow-700">
+                                      <p className="font-semibold">Missing:</p>
+                                      <ul className="list-disc list-inside mt-1 space-y-0.5">
+                                          {!paymentConfig.emailjs?.publicKey && <li>Public Key</li>}
+                                          {!paymentConfig.emailjs?.serviceId && <li>Service ID</li>}
+                                          {!paymentConfig.emailjs?.templateId && <li>Template ID</li>}
+                                      </ul>
+                                  </div>
+                              )}
+                          </div>
+                      </div>
+                  </div>
+              </div>
+
               {/* Data Source Toggle */}
               <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                   <div className="flex justify-between items-center mb-2">
@@ -945,12 +1499,11 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
               {/* Added Save Button */}
               <button 
                 onClick={async () => { 
-                  storage.saveGlobalConfig(paymentConfig);
-                  
-                  // Save payment gateway settings to Supabase for all companies
-                  // We'll save the payment gateway config to each company's settings
-                  // This ensures payment gateway settings are persisted in Supabase
+                  // Save to Supabase (this will also update localStorage via useEffect)
                   try {
+                    await supabaseService.saveGlobalConfig(paymentConfig);
+                    
+                    // Also save payment gateway settings to each company's settings
                     const allCompanies = await supabaseService.getAllCompanies();
                     for (const company of allCompanies) {
                       await supabaseService.savePaymentGatewaySettings(company.id, {
@@ -963,6 +1516,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     toast.success("Settings saved successfully to Supabase");
                   } catch (error) {
                     console.error("Error saving to Supabase:", error);
+                    storage.saveGlobalConfig(paymentConfig);
                     toast.success("Settings saved locally");
                   }
                 }}
