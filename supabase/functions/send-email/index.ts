@@ -1,16 +1,18 @@
 /**
- * Supabase Edge Function for Sending Emails via SMTP
+ * Supabase Edge Function for Sending Emails via Brevo API
  * 
  * Deploy this function using:
- * supabase functions deploy send-email
+ * supabase functions deploy send-email --no-verify-jwt
  * 
  * Set secrets:
- * supabase secrets set SMTP_HOST=smtp-relay.brevo.com
- * supabase secrets set SMTP_PORT=587
- * supabase secrets set SMTP_USER=9dea0e001@smtp-brevo.com
- * supabase secrets set SMTP_PASS=g5JHWNhvBUqp49yw
+ * supabase secrets set BREVO_API_KEY=your_brevo_api_key
  * supabase secrets set SMTP_FROM_NAME="Payroll-Jam"
  * supabase secrets set SMTP_FROM_EMAIL=9dea0e001@smtp-brevo.com
+ * 
+ * To get your Brevo API key:
+ * 1. Login to https://app.brevo.com/
+ * 2. Go to Settings → SMTP & API
+ * 3. Copy your API Key (v3)
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
@@ -45,78 +47,59 @@ serve(async (req) => {
       );
     }
 
-    // Get SMTP config from environment
-    const smtpHost = Deno.env.get('SMTP_HOST') || 'smtp-relay.brevo.com';
-    const smtpPort = parseInt(Deno.env.get('SMTP_PORT') || '587');
-    const smtpUser = Deno.env.get('SMTP_USER') || '';
-    const smtpPass = Deno.env.get('SMTP_PASS') || '';
+    // Get Brevo API key from environment
+    const brevoApiKey = Deno.env.get('BREVO_API_KEY');
     const fromName = Deno.env.get('SMTP_FROM_NAME') || 'Payroll-Jam';
-    const fromEmail = Deno.env.get('SMTP_FROM_EMAIL') || smtpUser;
+    const fromEmail = Deno.env.get('SMTP_FROM_EMAIL') || '9dea0e001@smtp-brevo.com';
 
-    // Build email message
-    const emailContent = [
-      `From: "${fromName}" <${fromEmail}>`,
-      `To: ${to}`,
-      `Subject: ${subject}`,
-      `MIME-Version: 1.0`,
-      `Content-Type: multipart/alternative; boundary="boundary123"`,
-      ``,
-      `--boundary123`,
-      `Content-Type: text/plain; charset=UTF-8`,
-      ``,
-      text || html.replace(/<[^>]*>/g, ''),
-      ``,
-      `--boundary123`,
-      `Content-Type: text/html; charset=UTF-8`,
-      ``,
-      html,
-      ``,
-      `--boundary123--`,
-    ].join('\r\n');
+    if (!brevoApiKey) {
+      console.error('BREVO_API_KEY not set in Supabase secrets');
+      return new Response(
+        JSON.stringify({ error: 'Email service not configured. BREVO_API_KEY missing.' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-    // Connect to SMTP server and send email
-    const conn = await Deno.connect({
-      hostname: smtpHost,
-      port: smtpPort,
+    // Call Brevo Transactional Email API
+    const brevoResponse = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'api-key': brevoApiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        sender: {
+          name: fromName,
+          email: fromEmail,
+        },
+        to: [
+          {
+            email: to,
+          },
+        ],
+        subject: subject,
+        htmlContent: html,
+        textContent: text || html.replace(/<[^>]*>/g, ''),
+      }),
     });
 
-    const encoder = new TextEncoder();
-    const decoder = new TextDecoder();
+    if (!brevoResponse.ok) {
+      const errorData = await brevoResponse.text();
+      console.error('Brevo API error:', errorData);
+      return new Response(
+        JSON.stringify({
+          error: 'Failed to send email via Brevo',
+          details: errorData,
+        }),
+        { status: brevoResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-    // Helper to read response
-    const readResponse = async () => {
-      const buffer = new Uint8Array(1024);
-      const n = await conn.read(buffer);
-      return decoder.decode(buffer.subarray(0, n || 0));
-    };
-
-    // Helper to send command
-    const sendCommand = async (command: string) => {
-      await conn.write(encoder.encode(command + '\r\n'));
-      return await readResponse();
-    };
-
-    // SMTP conversation
-    await readResponse(); // Read greeting
-    await sendCommand(`EHLO ${smtpHost}`);
-    await sendCommand('STARTTLS'); // Upgrade to TLS
-    
-    // For TLS, you'd need to wrap the connection - simplified here
-    // In production, use a proper SMTP library
-    
-    await sendCommand(`AUTH LOGIN`);
-    await sendCommand(btoa(smtpUser));
-    await sendCommand(btoa(smtpPass));
-    await sendCommand(`MAIL FROM:<${fromEmail}>`);
-    await sendCommand(`RCPT TO:<${to}>`);
-    await sendCommand('DATA');
-    await sendCommand(emailContent + '\r\n.');
-    await sendCommand('QUIT');
-
-    conn.close();
+    const result = await brevoResponse.json();
+    console.log('Email sent successfully:', result);
 
     return new Response(
-      JSON.stringify({ success: true, message: 'Email sent successfully' }),
+      JSON.stringify({ success: true, message: 'Email sent successfully', messageId: result.messageId }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
