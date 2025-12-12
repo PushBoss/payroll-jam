@@ -135,7 +135,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       const inviteLink = `${window.location.origin}/?token=${onboardingToken}`;
 
       const newEmp: Employee = {
-          id: `EMP-${Date.now()}`,
+          id: generateUUID(),
           firstName: inviteData.firstName,
           lastName: inviteData.lastName,
           email: inviteData.email,
@@ -188,7 +188,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       }
 
       const newEmp: Employee = {
-          id: `EMP-${Math.floor(Math.random() * 1000)}`,
+          id: generateUUID(),
           firstName: addForm.firstName,
           lastName: addForm.lastName,
           email: addForm.email,
@@ -309,12 +309,12 @@ export const Employees: React.FC<EmployeesProps> = ({
         }
 
         let count = 0;
-        rows.forEach((row: any, i: number) => {
+        rows.forEach((row: any) => {
           const email = row['Email']?.trim();
           if (!email) return;
 
           const newEmp: Employee = {
-              id: `EMP-${Date.now()}-${i}`,
+              id: generateUUID(),
               firstName: row['First Name'] || 'Unknown',
               lastName: row['Last Name'] || '',
               email: email,

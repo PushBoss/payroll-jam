@@ -11,6 +11,7 @@ import { User, Role, Employee, PayRun as PayRunType, LeaveRequest, WeeklyTimeshe
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { useSubscription } from './hooks/useSubscription';
 import { hasFeatureAccess, getFeatureUpgradeMessage } from './utils/featureAccess';
+import { generateUUID } from './utils/uuid';
 
 // ... (Imports and Lazy Loads remain same) ...
 const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
@@ -449,7 +450,7 @@ function AppContent() {
       // Create Supabase auth user
       const { signup } = useAuth();
       const newUser = {
-        id: `EMP-${Date.now()}`,
+        id: generateUUID(),
         email: employee.email,
         name: `${employee.firstName} ${employee.lastName}`,
         password: password,
