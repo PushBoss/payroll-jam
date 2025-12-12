@@ -1687,21 +1687,21 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                             type="text" 
                             placeholder="Service ID" 
                             value={paymentConfig.emailjs?.serviceId || ''}
-                            onChange={(e) => setPaymentConfig({...paymentConfig, emailjs: {...paymentConfig.emailjs, serviceId: e.target.value}})}
+                            onChange={(e) => setPaymentConfig({...paymentConfig, emailjs: {serviceId: e.target.value, templateId: paymentConfig.emailjs?.templateId || '', publicKey: paymentConfig.emailjs?.publicKey || ''}})}
                             className="w-full border border-gray-300 rounded p-2 text-sm"
                           />
                           <input 
                             type="text" 
                             placeholder="Template ID" 
                             value={paymentConfig.emailjs?.templateId || ''}
-                            onChange={(e) => setPaymentConfig({...paymentConfig, emailjs: {...paymentConfig.emailjs, templateId: e.target.value}})}
+                            onChange={(e) => setPaymentConfig({...paymentConfig, emailjs: {serviceId: paymentConfig.emailjs?.serviceId || '', templateId: e.target.value, publicKey: paymentConfig.emailjs?.publicKey || ''}})}
                             className="w-full border border-gray-300 rounded p-2 text-sm"
                           />
                           <input 
                             type="password" 
                             placeholder="Public Key" 
                             value={paymentConfig.emailjs?.publicKey || ''}
-                            onChange={(e) => setPaymentConfig({...paymentConfig, emailjs: {...paymentConfig.emailjs, publicKey: e.target.value}})}
+                            onChange={(e) => setPaymentConfig({...paymentConfig, emailjs: {serviceId: paymentConfig.emailjs?.serviceId || '', templateId: paymentConfig.emailjs?.templateId || '', publicKey: e.target.value}})}
                             className="w-full border border-gray-300 rounded p-2 text-sm"
                           />
                       </div>

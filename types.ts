@@ -365,10 +365,18 @@ export interface GlobalConfig {
   dataSource?: 'LOCAL' | 'SUPABASE';
   currency: 'JMD' | 'USD';
   pricingPlans?: PricingPlan[];
-  emailjs: {
+  emailjs?: {
     serviceId: string;
     templateId: string;
     publicKey: string;
+  };
+  smtp?: {
+    host: string;
+    port: number;
+    user: string;
+    pass: string;
+    fromName: string;
+    fromEmail: string;
   };
   paypal: {
     enabled: boolean;

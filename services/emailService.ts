@@ -1,12 +1,26 @@
 
 import emailjs from '@emailjs/browser';
 import { storage } from './storage';
+import { smtpEmailService } from './smtpEmailService';
 
 export const emailService = {
   /**
    * Sends an invitation email to a new employee.
    */
   sendInvite: async (email: string, firstName: string, link: string) => {
+    // Try SMTP first (if API URL is configured)
+    const apiUrl = import.meta.env.VITE_API_URL;
+    if (apiUrl) {
+      console.log('📧 Sending invite via SMTP...');
+      const companyName = storage.getCompanyData()?.name || 'Payroll-Jam';
+      const result = await smtpEmailService.sendEmployeeInvite(email, firstName, companyName, link);
+      if (result.success) {
+        return result;
+      }
+      console.warn('⚠️ SMTP failed, falling back to EmailJS');
+    }
+
+    // Fallback to EmailJS
     const config = storage.getGlobalConfig();
     
     if (!config?.emailjs?.publicKey) {
@@ -43,6 +57,18 @@ export const emailService = {
    * Sends an employee account setup invitation email.
    */
   sendEmployeeInvite: async (email: string, firstName: string, companyName: string, link: string) => {
+    // Try SMTP first (if API URL is configured)
+    const apiUrl = import.meta.env.VITE_API_URL;
+    if (apiUrl) {
+      console.log('📧 Sending employee invite via SMTP...');
+      const result = await smtpEmailService.sendEmployeeInvite(email, firstName, companyName, link);
+      if (result.success) {
+        return result;
+      }
+      console.warn('⚠️ SMTP failed, falling back to EmailJS');
+    }
+
+    // Fallback to EmailJS
     const config = storage.getGlobalConfig();
     
     if (!config?.emailjs?.publicKey) {
@@ -81,6 +107,19 @@ export const emailService = {
    * Sends a notification that a payslip is ready.
    */
   sendPayslipNotification: async (email: string, firstName: string, period: string, netPay: string) => {
+    // Try SMTP first (if API URL is configured)
+    const apiUrl = import.meta.env.VITE_API_URL;
+    if (apiUrl) {
+      console.log('📧 Sending payslip notification via SMTP...');
+      const loginLink = window.location.origin;
+      const result = await smtpEmailService.sendPayslipNotification(email, firstName, period, netPay, loginLink);
+      if (result.success) {
+        return result;
+      }
+      console.warn('⚠️ SMTP failed, falling back to EmailJS');
+    }
+
+    // Fallback to EmailJS
     const config = storage.getGlobalConfig();
 
     if (!config?.emailjs?.publicKey) {

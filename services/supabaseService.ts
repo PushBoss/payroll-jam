@@ -1736,6 +1736,27 @@ export const supabaseService = {
     return await supabaseService.saveResellerClient(resellerId, clientCompanyId, data);
   },
 
+  // Cancel a reseller invite
+  cancelResellerInvite: async (inviteId: string): Promise<boolean> => {
+    if (!supabase) return false;
+    try {
+      const { error } = await supabase
+        .from('reseller_invites')
+        .delete()
+        .eq('id', inviteId);
+
+      if (error) {
+        console.error('Error canceling reseller invite:', error);
+        return false;
+      }
+
+      return true;
+    } catch (e) {
+      console.error('Exception in cancelResellerInvite:', e);
+      return false;
+    }
+  },
+
   // Get reseller clients
   getResellerClients: async (resellerId: string): Promise<ResellerClient[]> => {
     if (!supabase) return [];

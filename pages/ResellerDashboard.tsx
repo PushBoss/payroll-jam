@@ -246,6 +246,30 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
       c.contactName.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const handleCancelInvite = async (inviteId: string, email: string) => {
+    if (!window.confirm(`Are you sure you want to cancel the invitation to ${email}?`)) {
+      return;
+    }
+
+    try {
+      const success = await supabaseService.cancelResellerInvite(inviteId);
+      
+      if (success) {
+        toast.success('Invitation cancelled successfully');
+        // Reload pending invites
+        if (user?.companyId) {
+          const invites = await supabaseService.getResellerInvites(user.companyId);
+          setPendingInvites(Array.isArray(invites) ? invites : []);
+        }
+      } else {
+        toast.error('Failed to cancel invitation');
+      }
+    } catch (error) {
+      console.error('Error canceling invite:', error);
+      toast.error('Failed to cancel invitation');
+    }
+  };
+
   const renderClientsTab = () => (
       <>
         {/* Pending Invites Section */}
@@ -271,9 +295,18 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                                     Invited {new Date(invite.invited_at).toLocaleDateString()}
                                 </p>
                             </div>
-                            <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
-                                Pending
-                            </span>
+                            <div className="flex items-center space-x-2">
+                                <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
+                                    Pending
+                                </span>
+                                <button
+                                    onClick={() => handleCancelInvite(invite.id, invite.invite_email)}
+                                    className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
+                                    title="Cancel invitation"
+                                >
+                                    <Icons.Close className="w-4 h-4" />
+                                </button>
+                            </div>
                         </div>
                     ))}
                 </div>

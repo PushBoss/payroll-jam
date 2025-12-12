@@ -22,6 +22,7 @@
     "react-hook-form": "^7.51.0",
     "recharts": "^2.12.2",
     "sonner": "^1.4.3",
+    "supabase": "^2.67.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {
