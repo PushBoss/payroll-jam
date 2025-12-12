@@ -1410,53 +1410,27 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                           <p className="text-xs text-gray-500">EmailJS Configuration</p>
                       </div>
                   </div>
-                  <div className={`p-4 rounded-lg border ${
-                      paymentConfig.emailjs?.publicKey && paymentConfig.emailjs?.serviceId && paymentConfig.emailjs?.templateId
-                          ? 'bg-green-50 border-green-200' 
-                          : 'bg-yellow-50 border-yellow-200'
-                  }`}>
+                  <div className="p-4 rounded-lg border bg-green-50 border-green-200">
                       <div className="flex items-start">
-                          <div className={`p-2 rounded-full mr-3 ${
-                              paymentConfig.emailjs?.publicKey && paymentConfig.emailjs?.serviceId && paymentConfig.emailjs?.templateId
-                                  ? 'bg-green-100 text-green-600' 
-                                  : 'bg-yellow-100 text-yellow-600'
-                          }`}>
-                              {paymentConfig.emailjs?.publicKey && paymentConfig.emailjs?.serviceId && paymentConfig.emailjs?.templateId
-                                  ? <Icons.CheckCircle className="w-5 h-5" />
-                                  : <Icons.Alert className="w-5 h-5" />
-                              }
+                          <div className="p-2 rounded-full mr-3 bg-green-100 text-green-600">
+                              <Icons.CheckCircle className="w-5 h-5" />
                           </div>
                           <div className="flex-1">
-                              <h4 className={`font-bold text-sm ${
-                                  paymentConfig.emailjs?.publicKey && paymentConfig.emailjs?.serviceId && paymentConfig.emailjs?.templateId
-                                      ? 'text-green-800' 
-                                      : 'text-yellow-800'
-                              }`}>
-                                  {paymentConfig.emailjs?.publicKey && paymentConfig.emailjs?.serviceId && paymentConfig.emailjs?.templateId
-                                      ? 'Email Service Active'
-                                      : 'Email Service Not Configured'
-                                  }
+                              <h4 className="font-bold text-sm text-green-800">
+                                  Email Service Active (SMTP)
                               </h4>
-                              <p className={`text-xs mt-1 ${
-                                  paymentConfig.emailjs?.publicKey && paymentConfig.emailjs?.serviceId && paymentConfig.emailjs?.templateId
-                                      ? 'text-green-600' 
-                                      : 'text-yellow-600'
-                              }`}>
-                                  {paymentConfig.emailjs?.publicKey && paymentConfig.emailjs?.serviceId && paymentConfig.emailjs?.templateId
-                                      ? 'Email invitations and notifications are enabled.'
-                                      : 'Email service requires configuration. Invitations will be logged to console only.'
-                                  }
+                              <p className="text-xs mt-1 text-green-600">
+                                  Email invitations and notifications are enabled via Brevo SMTP.
                               </p>
-                              {!(paymentConfig.emailjs?.publicKey && paymentConfig.emailjs?.serviceId && paymentConfig.emailjs?.templateId) && (
-                                  <div className="mt-2 text-xs text-yellow-700">
-                                      <p className="font-semibold">Missing:</p>
-                                      <ul className="list-disc list-inside mt-1 space-y-0.5">
-                                          {!paymentConfig.emailjs?.publicKey && <li>Public Key</li>}
-                                          {!paymentConfig.emailjs?.serviceId && <li>Service ID</li>}
-                                          {!paymentConfig.emailjs?.templateId && <li>Template ID</li>}
-                                      </ul>
-                                  </div>
-                              )}
+                              <div className="mt-2 text-xs text-green-700">
+                                  <p className="font-semibold">Active Features:</p>
+                                  <ul className="list-disc list-inside mt-1 space-y-0.5">
+                                      <li>Employee Invitations</li>
+                                      <li>Reseller Invitations</li>
+                                      <li>Payslip Notifications</li>
+                                      <li>Password Reset Emails</li>
+                                  </ul>
+                              </div>
                           </div>
                       </div>
                   </div>

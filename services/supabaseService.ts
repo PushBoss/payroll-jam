@@ -560,6 +560,8 @@ export const supabaseService = {
         email: emp.email,
         trn: emp.trn,
         nis: emp.nis,
+        phone: emp.phone || null,
+        address: emp.address || null,
         status: emp.status,
         role: emp.role,
         hire_date: emp.hireDate,
@@ -570,7 +572,8 @@ export const supabaseService = {
         leave_balance: emp.leaveBalance,
         allowances: emp.allowances,
         deductions: emp.deductions,
-        termination_details: emp.terminationDetails
+        termination_details: emp.terminationDetails,
+        onboarding_token: emp.onboardingToken || null
       });
 
     if (error) console.error("Error saving employee:", error);
