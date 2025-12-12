@@ -579,6 +579,21 @@ export const supabaseService = {
     if (error) console.error("Error saving employee:", error);
   },
 
+  deleteEmployee: async (employeeId: string, companyId: string) => {
+    if (!supabase) return;
+    
+    const { error } = await supabase
+      .from('employees')
+      .delete()
+      .eq('id', employeeId)
+      .eq('company_id', companyId);
+
+    if (error) {
+      console.error("Error deleting employee:", error);
+      throw error;
+    }
+  },
+
   // --- Pay Runs ---
 
   getPayRuns: async (companyId: string): Promise<PayRun[]> => {
