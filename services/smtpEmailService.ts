@@ -10,7 +10,6 @@
  * 3. Serverless functions (Vercel, Netlify, etc.)
  */
 
-import { supabaseService } from './supabaseService';
 
 export interface SMTPConfig {
   host: string;
@@ -42,28 +41,17 @@ export const smtpEmailService = {
    */
   sendEmail: async (payload: EmailPayload): Promise<{ success: boolean; message?: string; error?: string }> => {
     try {
-      // Get SMTP config from Supabase
-      const config = await supabaseService.getGlobalConfig();
+      // Check if API URL is configured
+      const apiUrl = import.meta.env.VITE_API_URL;
       
-      if (!config?.smtp?.host) {
-        console.error('SMTP not configured');
+      if (!apiUrl) {
+        console.error('SMTP not configured - VITE_API_URL missing');
         return { success: false, error: 'SMTP not configured' };
       }
 
-      // In production, this should call your backend API endpoint
-      // For now, log to console for simulation
-      if (import.meta.env.DEV) {
-        console.log('📧 [SMTP Email Simulation]');
-        console.log('To:', payload.to);
-        console.log('Subject:', payload.subject);
-        console.log('Content:', payload.text || 'HTML email');
-        console.log('SMTP Server:', config.smtp.host);
-        return { success: true, message: 'Simulation: Email logged to console' };
-      }
-
-      // Call backend API endpoint
-      const apiUrl = import.meta.env.VITE_API_URL || '/api/send-email';
-      const response = await fetch(apiUrl, {
+      // Call backend API endpoint (Supabase Edge Function)
+      // SMTP credentials are stored in Supabase secrets, not in global config
+      const response = await fetch(`${apiUrl}/send-email`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
