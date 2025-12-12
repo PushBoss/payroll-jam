@@ -49,6 +49,7 @@ export const Employees: React.FC<EmployeesProps> = ({
   const [terminationModal, setTerminationModal] = useState<{isOpen: boolean, empId: string, step: number}>({ isOpen: false, empId: '', step: 1 });
   const [terminationData, setTerminationData] = useState<Partial<TerminationDetails>>({ reason: 'RESIGNATION' });
   const [deleteWarning, setDeleteWarning] = useState<{isOpen: boolean, empId: string}>({ isOpen: false, empId: '' });
+  const [revokeWarning, setRevokeWarning] = useState<{isOpen: boolean, empId: string, email: string}>({ isOpen: false, empId: '', email: '' });
 
   // Edit State
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
@@ -281,6 +282,24 @@ export const Employees: React.FC<EmployeesProps> = ({
       }
 
       setDeleteWarning({ isOpen: false, empId: '' });
+  };
+
+  const handleRevokeInvite = (empId: string, email: string) => {
+      setRevokeWarning({ isOpen: true, empId, email });
+  };
+
+  const confirmRevokeInvite = () => {
+      const emp = employees.find(e => e.id === revokeWarning.empId);
+      if (!emp) return;
+
+      // Delete the employee if they haven't completed onboarding
+      if (onDeleteEmployee) {
+          onDeleteEmployee(emp.id);
+      }
+      
+      auditService.log(currentUser, 'DELETE', 'Employee', `Revoked invitation for ${emp.firstName} ${emp.lastName} (${revokeWarning.email})`);
+      toast.success(`Invitation revoked for ${revokeWarning.email}`);
+      setRevokeWarning({ isOpen: false, empId: '', email: '' });
   };
 
   const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -564,6 +583,29 @@ export const Employees: React.FC<EmployeesProps> = ({
           </div>
       )}
 
+      {/* Revoke Invite Warning Modal */}
+      {revokeWarning.isOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden animate-fade-in p-6 text-center">
+                  <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4 text-yellow-600">
+                      <Icons.Alert className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900 mb-2">Revoke Invitation?</h3>
+                  <p className="text-sm text-gray-500 mb-2">
+                      This will cancel the invitation for:
+                  </p>
+                  <p className="text-sm font-medium text-gray-900 mb-6">{revokeWarning.email}</p>
+                  <p className="text-xs text-gray-500 mb-6">
+                      The employee will be removed and will not be able to complete onboarding with this invitation link.
+                  </p>
+                  <div className="flex justify-center space-x-3">
+                      <button onClick={() => setRevokeWarning({ isOpen: false, empId: '', email: '' })} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Cancel</button>
+                      <button onClick={confirmRevokeInvite} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-bold">Revoke Invitation</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       {/* Add Employee Modal */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -820,11 +862,13 @@ export const Employees: React.FC<EmployeesProps> = ({
                               </button>
                           )}
                           <button 
-                            className="text-gray-400 cursor-not-allowed"
-                            title="Waiting for employee"
+                            onClick={() => handleRevokeInvite(emp.id, emp.email)}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50 p-1.5 rounded transition-colors"
+                            title="Revoke invitation"
                           >
-                              Pending
+                              <Icons.Close className="w-4 h-4" />
                           </button>
+                          <span className="text-xs text-gray-400 px-2 py-1">Pending</span>
                       </div>
                   ) : emp.status === 'PENDING_VERIFICATION' ? (
                       <button 
