@@ -283,18 +283,23 @@ export const Settings: React.FC<SettingsProps> = ({
   const handleUpgradeSuccess = async () => {
       if (upgradeTarget && currentUser?.companyId) {
           const planAmount = upgradeTarget.priceConfig.type === 'free' ? 0 : upgradeTarget.priceConfig.monthly;
-          
-          // Create subscription in Supabase
-          const subscription = await supabaseService.createSubscription({
-              companyId: currentUser.companyId,
-              planName: upgradeTarget.name,
-              planType: upgradeTarget.name.toLowerCase(),
-              billingFrequency: 'monthly',
-              amount: planAmount,
-              currency: 'JMD',
-              nextBillingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30 days from now
-          });
-          
+
+          // Try to create subscription in Supabase (non-blocking)
+          try {
+              await supabaseService.createSubscription({
+                  companyId: currentUser.companyId,
+                  planName: upgradeTarget.name,
+                  planType: upgradeTarget.name.toLowerCase(),
+                  billingFrequency: 'monthly',
+                  amount: planAmount,
+                  currency: 'JMD',
+                  nextBillingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30 days from now
+              });
+          } catch (error) {
+              console.warn('Subscription creation failed (non-critical):', error);
+              // Continue with upgrade even if subscription creation fails
+          }
+
           // Create payment record if paid plan
           if (planAmount > 0) {
               await supabaseService.createPaymentRecord({
@@ -327,17 +332,27 @@ export const Settings: React.FC<SettingsProps> = ({
           
           // Send email notification if upgrading to Reseller plan
           if (upgradeTarget.name === 'Reseller' && currentUser?.email) {
-              const emailResult = await emailService.sendResellerUpgradeNotification(
-                  currentUser.email,
-                  companyData?.name || 'Your Company',
-                  currentUser.name || 'User'
-              );
-              
-              if (emailResult.success && !emailResult.message?.includes('Simulation')) {
-                  toast.success(`Successfully upgraded to ${upgradeTarget.name}! Check your email for details.`);
-              } else {
+              try {
+                  const emailResult = await emailService.sendResellerUpgradeNotification(
+                      currentUser.email,
+                      companyData?.name || 'Your Company',
+                      currentUser.name || 'User'
+                  );
+                  
+                  if (emailResult.success && !emailResult.message?.includes('Simulation')) {
+                      toast.success(`Successfully upgraded to ${upgradeTarget.name}! Check your email for details.`);
+                  } else {
+                      toast.success(`Successfully switched to ${upgradeTarget.name}!`);
+                  }
+              } catch (error) {
+                  console.error('Email notification failed:', error);
                   toast.success(`Successfully switched to ${upgradeTarget.name}!`);
               }
+              
+              // Reload page to ensure reseller dashboard loads properly
+              setTimeout(() => {
+                  window.location.href = '/?page=reseller-dashboard';
+              }, 1500);
           } else {
               toast.success(`Successfully switched to ${upgradeTarget.name}!`);
           }
