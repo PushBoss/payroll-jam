@@ -549,7 +549,7 @@ function AppContent() {
       console.log('✅ Employee status updated to PENDING_VERIFICATION');
       
       // Login the user directly - no need to reload
-      const { data: sessionData, error: signInError } = await supabase.auth.signInWithPassword({
+      const { error: signInError } = await supabase.auth.signInWithPassword({
         email: employee.email,
         password: password,
       });
