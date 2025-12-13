@@ -14,7 +14,48 @@ interface LandingPageProps {
   onTermsClick?: () => void;
 }
 
-export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onSignup, onPricingClick, onFeaturesClick, onFaqClick, onPrivacyClick, onTermsClick }) => {
+export const LandingPage: React.FC<LandingPageProps> = ({ plans = [], onLogin, onSignup, onPricingClick, onFeaturesClick, onFaqClick, onPrivacyClick, onTermsClick }) => {
+  // Filter only active plans for display
+  const activePlans = plans.filter(p => p.isActive);
+  
+  // Helper function to render pricing
+  const renderPrice = (plan: PricingPlan) => {
+    if (plan.priceConfig.type === 'free') {
+      return (
+        <div className="flex items-baseline">
+          <span className="text-4xl font-bold">$0</span>
+        </div>
+      );
+    }
+    
+    const amount = plan.priceConfig.monthly;
+    
+    if (plan.priceConfig.type === 'flat') {
+      return (
+        <div className="flex items-baseline">
+          <span className="text-4xl font-bold">${amount.toLocaleString()}</span>
+          <span className={`ml-1 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>/mo</span>
+        </div>
+      );
+    }
+    if (plan.priceConfig.type === 'per_emp') {
+      return (
+        <div className="flex items-baseline">
+          <span className="text-4xl font-bold">${amount}</span>
+          <span className={`ml-1 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>/emp</span>
+        </div>
+      );
+    }
+    if (plan.priceConfig.type === 'base') {
+      return (
+        <div className="flex items-baseline">
+          <span className="text-4xl font-bold">${amount.toLocaleString()}</span>
+          <span className={`ml-1 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>+</span>
+        </div>
+      );
+    }
+  };
+  
   const faqs = [
     {
       q: `Is this compliant with the latest 2025 tax laws?`,
@@ -240,40 +281,82 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onSignup, onP
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto opacity-90 hover:opacity-100 transition-all cursor-pointer" onClick={onPricingClick}>
-             {/* Free Plan Teaser */}
-            <div className="bg-white rounded-2xl border border-gray-200 p-8 shadow-sm hover:shadow-md transition-shadow">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Free</h3>
-              <div className="flex items-baseline mb-6">
-                <span className="text-4xl font-bold text-gray-900">$0</span>
-              </div>
-              <p className="text-sm text-gray-500 mb-6">For up to 5 employees. No credit card required.</p>
-              <button className="w-full py-3 border border-gray-300 rounded-lg font-semibold text-gray-900 hover:bg-gray-50">Start Free</button>
+          {activePlans.length > 0 ? (
+            <div className={`grid grid-cols-1 md:grid-cols-${Math.min(activePlans.length, 4)} gap-8 max-w-6xl mx-auto`}>
+              {activePlans.slice(0, 4).map((plan) => (
+                <div 
+                  key={plan.id}
+                  className={`rounded-2xl p-8 shadow-sm hover:shadow-md transition-all relative ${
+                    plan.highlight 
+                      ? 'bg-jam-black text-white border border-gray-900 shadow-xl transform md:-translate-y-4' 
+                      : 'bg-white border border-gray-200'
+                  }`}
+                >
+                  {plan.highlight && (
+                    <div className="absolute top-0 right-0 -mt-2 -mr-2 bg-jam-orange text-jam-black text-xs font-bold px-2 py-1 rounded-full">
+                      POPULAR
+                    </div>
+                  )}
+                  
+                  <h3 className={`text-lg font-semibold mb-2 ${plan.highlight ? 'text-white' : 'text-gray-900'}`}>
+                    {plan.name}
+                  </h3>
+                  
+                  <div className={`flex items-baseline mb-6 ${plan.highlight ? 'text-white' : 'text-gray-900'}`}>
+                    {renderPrice(plan)}
+                  </div>
+                  
+                  <p className={`text-sm mb-6 min-h-[48px] ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>
+                    {plan.description}
+                  </p>
+                  
+                  <button 
+                    onClick={() => onSignup(plan.name)}
+                    className={`w-full py-3 rounded-lg font-semibold transition-colors ${
+                      plan.highlight
+                        ? 'bg-jam-orange text-jam-black hover:bg-yellow-500'
+                        : 'border border-gray-300 text-gray-900 hover:bg-gray-50'
+                    }`}
+                  >
+                    {plan.cta}
+                  </button>
+                </div>
+              ))}
             </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+              {/* Fallback to static plans if no plans available */}
+              <div className="bg-white rounded-2xl border border-gray-200 p-8 shadow-sm hover:shadow-md transition-shadow">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Free</h3>
+                <div className="flex items-baseline mb-6">
+                  <span className="text-4xl font-bold text-gray-900">$0</span>
+                </div>
+                <p className="text-sm text-gray-500 mb-6">For up to 5 employees. No credit card required.</p>
+                <button onClick={() => onSignup('Free')} className="w-full py-3 border border-gray-300 rounded-lg font-semibold text-gray-900 hover:bg-gray-50">Start Free</button>
+              </div>
 
-             {/* Starter Plan Teaser */}
-            <div className="bg-jam-black rounded-2xl border border-gray-900 p-8 shadow-xl transform md:-translate-y-4">
-              <div className="absolute top-0 right-0 -mt-2 -mr-2 bg-jam-orange text-jam-black text-xs font-bold px-2 py-1 rounded-full">POPULAR</div>
-              <h3 className="text-lg font-semibold text-white mb-2">Starter</h3>
-              <div className="flex items-baseline mb-6">
-                <span className="text-4xl font-bold text-white">$2,000</span>
-                <span className="text-gray-400 ml-1">/mo</span>
+              <div className="bg-jam-black rounded-2xl border border-gray-900 p-8 shadow-xl transform md:-translate-y-4 relative">
+                <div className="absolute top-0 right-0 -mt-2 -mr-2 bg-jam-orange text-jam-black text-xs font-bold px-2 py-1 rounded-full">POPULAR</div>
+                <h3 className="text-lg font-semibold text-white mb-2">Starter</h3>
+                <div className="flex items-baseline mb-6">
+                  <span className="text-4xl font-bold text-white">$5,000</span>
+                  <span className="text-gray-400 ml-1">/mo</span>
+                </div>
+                <p className="text-sm text-gray-400 mb-6">For growing teams. Full compliance.</p>
+                <button onClick={() => onSignup('Starter')} className="w-full py-3 bg-jam-orange text-jam-black rounded-lg font-bold hover:bg-yellow-500">Get Started</button>
               </div>
-               <p className="text-sm text-gray-400 mb-6">For growing teams (6-25 staff). Full compliance.</p>
-              <button className="w-full py-3 bg-jam-orange text-jam-black rounded-lg font-bold hover:bg-yellow-500">Get Started</button>
-            </div>
 
-             {/* Pro Plan Teaser */}
-             <div className="bg-white rounded-2xl border border-gray-200 p-8 shadow-sm hover:shadow-md transition-shadow">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Pro</h3>
-              <div className="flex items-baseline mb-6">
-                <span className="text-4xl font-bold text-gray-900">$500</span>
-                <span className="text-gray-500 ml-1">/emp</span>
+              <div className="bg-white rounded-2xl border border-gray-200 p-8 shadow-sm hover:shadow-md transition-shadow">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Pro</h3>
+                <div className="flex items-baseline mb-6">
+                  <span className="text-4xl font-bold text-gray-900">$500</span>
+                  <span className="text-gray-500 ml-1">/emp</span>
+                </div>
+                <p className="text-sm text-gray-500 mb-6">For larger teams. Advanced features.</p>
+                <button onClick={() => onSignup('Pro')} className="w-full py-3 border border-gray-300 rounded-lg font-semibold text-gray-900 hover:bg-gray-50">View Features</button>
               </div>
-               <p className="text-sm text-gray-500 mb-6">For 26+ employees. Advanced reporting & GL integration.</p>
-              <button className="w-full py-3 border border-gray-300 rounded-lg font-semibold text-gray-900 hover:bg-gray-50">View Features</button>
             </div>
-          </div>
+          )}
         </div>
       </section>
 
