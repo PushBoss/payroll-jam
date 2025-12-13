@@ -89,7 +89,7 @@ Deployed Functions on project arqbxlaudfbmiqvwwmnt: send-email
 curl -X POST https://arqbxlaudfbmiqvwwmnt.supabase.co/functions/v1/send-email \
   -H "Content-Type: application/json" \
   -d '{
-    "to": "aaron.gardiner1@outlook.com",
+    "to": "pushtechja@gmail.com",
     "subject": "Test from Brevo API",
     "html": "<h1>Test</h1><p>This should work now!</p>"
   }'

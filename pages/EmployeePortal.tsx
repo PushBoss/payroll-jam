@@ -176,7 +176,6 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
     };
 
     const isPendingVerification = employee?.status === 'PENDING_VERIFICATION';
-    const isVerified = employee?.status === 'ACTIVE' && employee.documentsVerifiedAt;
 
     if (selectedPayslip) {
         return (
@@ -616,7 +615,7 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                 <div className="bg-yellow-50 border-l-4 border-yellow-400 p-6 rounded-r-lg shadow-sm">
                     <div className="flex items-start">
                         <div className="flex-shrink-0">
-                            <Icons.AlertCircle className="h-6 w-6 text-yellow-400" />
+                            <Icons.Alert className="h-6 w-6 text-yellow-400" />
                         </div>
                         <div className="ml-4 flex-1">
                             <h3 className="text-sm font-bold text-yellow-800">Document Verification Required</h3>
@@ -766,7 +765,7 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                             {isPendingVerification && (
                                 <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                                     <p className="text-xs text-yellow-800 font-medium">
-                                        <Icons.Lock className="w-3 h-3 inline mr-1" />
+                                        <Icons.Shield className="w-3 h-3 inline mr-1" />
                                         Features locked until verified
                                     </p>
                                 </div>
