@@ -762,7 +762,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                     </p>
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                         <div className="flex items-start">
-                            <Icons.AlertTriangle className="w-5 h-5 text-blue-600 mr-3 mt-0.5" />
+                            <Icons.Alert className="w-5 h-5 text-blue-600 mr-3 mt-0.5" />
                             <div>
                                 <h4 className="text-sm font-semibold text-blue-900 mb-1">Coming Soon: Employee Management</h4>
                                 <p className="text-sm text-blue-700">

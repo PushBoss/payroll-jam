@@ -285,8 +285,9 @@ export const Settings: React.FC<SettingsProps> = ({
           const planAmount = upgradeTarget.priceConfig.type === 'free' ? 0 : upgradeTarget.priceConfig.monthly;
 
           // Try to create subscription in Supabase (non-blocking)
+          let newSubscription = null;
           try {
-              await supabaseService.createSubscription({
+              newSubscription = await supabaseService.createSubscription({
                   companyId: currentUser.companyId,
                   planName: upgradeTarget.name,
                   planType: upgradeTarget.name.toLowerCase(),
@@ -304,7 +305,7 @@ export const Settings: React.FC<SettingsProps> = ({
           if (planAmount > 0) {
               await supabaseService.createPaymentRecord({
                   companyId: currentUser.companyId,
-                  subscriptionId: subscription?.id,
+                  subscriptionId: newSubscription?.id || currentSubscription?.id,
                   amount: planAmount,
                   currency: 'JMD',
                   status: 'completed',
