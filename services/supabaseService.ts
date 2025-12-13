@@ -539,7 +539,7 @@ export const supabaseService = {
     }));
   },
 
-  getEmployeeByToken: async (token: string, email?: string): Promise<{ employee: Employee; companyName: string } | null> => {
+  getEmployeeByToken: async (token: string, email?: string): Promise<{ employee: Employee; companyName: string; companyId: string } | null> => {
     if (!supabase) return null;
     try {
       let query = supabase
@@ -589,10 +589,11 @@ export const supabaseService = {
         onboardingToken: data.onboarding_token
       };
 
-      // Extract company name from the joined data
+      // Extract company name and ID from the data
       const companyName = (data.companies as any)?.name || 'Your Company';
+      const companyId = data.company_id || '';
 
-      return { employee, companyName };
+      return { employee, companyName, companyId };
     } catch (e) {
       console.error("Error fetching employee by token:", e);
       return null;

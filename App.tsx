@@ -6,6 +6,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { storage } from './services/storage';
 import { updateGlobalConfig } from './services/updateGlobalConfig';
 import { supabaseService } from './services/supabaseService';
+import { supabase } from './services/supabaseClient';
 import { initializeCacheValidation } from './utils/cacheUtils';
 import { User, Role, Employee, PayRun as PayRunType, LeaveRequest, WeeklyTimesheet, CompanySettings, IntegrationConfig, TaxConfig, DocumentTemplate, PricingPlan, Department, Designation, Asset, PerformanceReview } from './types';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -117,7 +118,7 @@ function AppContent() {
   const [designations, setDesignations] = useState<Designation[]>(storage.getDesignations() || []);
   const [assets, setAssets] = useState<Asset[]>(storage.getAssets() || []);
   const [reviews, setReviews] = useState<PerformanceReview[]>(storage.getReviews() || []);
-  const [employeeAccountSetup, setEmployeeAccountSetup] = useState<{ employee: Employee; companyName: string } | null>(null);
+  const [employeeAccountSetup, setEmployeeAccountSetup] = useState<{ employee: Employee; companyName: string; companyId?: string } | null>(null);
 
   // --- SUBSCRIPTION LOGIC ---
   const subscription = useSubscription(employees, companyData || { plan: 'Free' } as CompanySettings, plans);
@@ -231,7 +232,8 @@ function AppContent() {
                       // Show employee account setup page
                       setEmployeeAccountSetup({
                           employee: result.employee,
-                          companyName: result.companyName
+                          companyName: result.companyName,
+                          companyId: result.companyId
                       });
                       toast.info(`Welcome! Please set up your account to access ${result.companyName} employee portal.`);
                       return;
@@ -483,25 +485,69 @@ function AppContent() {
     if (!employeeAccountSetup) return;
 
     try {
-      const { employee } = employeeAccountSetup;
+      const { employee, companyId } = employeeAccountSetup;
       
-      // Create Supabase auth user
-      const { signup } = useAuth();
+      // Get company ID - use from employeeAccountSetup or fetch it
+      let finalCompanyId = companyId || '';
+      
+      if (!finalCompanyId && isSupabaseMode && employee.onboardingToken) {
+        // Fetch employee to get company_id
+        const employeeResult = await supabaseService.getEmployeeByToken(employee.onboardingToken, employee.email);
+        if (employeeResult) {
+          finalCompanyId = employeeResult.companyId;
+        }
+      }
+      
+      // Fallback to user's companyId if available
+      if (!finalCompanyId && user?.companyId) {
+        finalCompanyId = user.companyId;
+      }
+      
+      if (!finalCompanyId) {
+        toast.error('Unable to determine company. Please contact your employer.');
+        return;
+      }
+      
+      // For employees, create auth user directly without creating a company
+      if (!isSupabaseMode || !supabase) {
+        toast.error('Database not available. Please contact your employer.');
+        return;
+      }
+      
+      // 1. Create Supabase auth user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: employee.email,
+        password: password,
+      });
+
+      if (authError) {
+        console.error('❌ Auth signup error:', authError);
+        throw authError;
+      }
+
+      if (!authData.user) {
+        throw new Error('No user returned from signup');
+      }
+
+      console.log('✅ Supabase Auth user created:', authData.user.id);
+
+      // 2. Create app_users profile (linked to auth user)
       const newUser = {
-        id: generateUUID(),
+        id: authData.user.id, // Use auth user ID
         email: employee.email,
         name: `${employee.firstName} ${employee.lastName}`,
-        password: password,
         role: employee.role,
-        companyId: user?.companyId || companyData?.id || '',
+        companyId: finalCompanyId,
         isOnboarded: false
       };
       
-      await signup(newUser);
-      
-      // Update employee status
+      await supabaseService.saveUser(newUser);
+      console.log('✅ Employee user profile created');
+
+      // 3. Update employee status to ACTIVE
       const updatedEmployee = { ...employee, status: 'ACTIVE' as any };
-      await handleUpdateEmployee(updatedEmployee);
+      await supabaseService.saveEmployee(updatedEmployee, finalCompanyId);
+      console.log('✅ Employee status updated to ACTIVE');
       
       toast.success('Account created successfully! Welcome aboard!');
       setEmployeeAccountSetup(null);
@@ -509,9 +555,14 @@ function AppContent() {
       // Clear URL parameters
       window.history.replaceState({}, '', window.location.pathname);
       
-    } catch (error) {
+      // Reload to trigger auth state change and login
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+      
+    } catch (error: any) {
       console.error('Error setting up employee account:', error);
-      toast.error('Failed to create account. Please try again or contact your employer.');
+      toast.error(error?.message || 'Failed to create account. Please try again or contact your employer.');
     }
   };
 
