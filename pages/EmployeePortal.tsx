@@ -19,6 +19,8 @@ interface PortalProps {
 export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = 'home', leaveRequests, onRequestLeave, payRunHistory = [], companyData }) => {
     const [selectedPayslip, setSelectedPayslip] = useState<{data: PayRunLineItem, period: string, date: string} | null>(null);
     const [jobLetterRequest, setJobLetterRequest] = useState(false);
+    const [uploadingDocument, setUploadingDocument] = useState(false);
+    const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
     
     // Leave State
     const [leaveType, setLeaveType] = useState<LeaveType>(LeaveType.VACATION);
@@ -150,6 +152,31 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
             alert("Company data is unavailable for P24 generation.");
         }
     };
+
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (files && files.length > 0) {
+            setUploadedFiles(Array.from(files));
+        }
+    };
+
+    const handleSubmitDocuments = async () => {
+        if (uploadedFiles.length === 0) {
+            alert('Please select at least one document to upload');
+            return;
+        }
+        
+        setUploadingDocument(true);
+        // Simulate upload - in production, this would upload to storage
+        setTimeout(() => {
+            setUploadingDocument(false);
+            setUploadedFiles([]);
+            alert('Documents uploaded successfully! Your employer will review them shortly.');
+        }, 2000);
+    };
+
+    const isPendingVerification = employee?.status === 'PENDING_VERIFICATION';
+    const isVerified = employee?.status === 'ACTIVE' && employee.documentsVerifiedAt;
 
     if (selectedPayslip) {
         return (
@@ -283,6 +310,25 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
 
         return (
             <div className="space-y-6 animate-fade-in">
+                {/* Verification Banner for Leave Page */}
+                {isPendingVerification && (
+                    <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg shadow-sm">
+                        <div className="flex">
+                            <div className="flex-shrink-0">
+                                <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                                </svg>
+                            </div>
+                            <div className="ml-3">
+                                <p className="text-sm font-medium text-yellow-800">Document Verification Required</p>
+                                <p className="text-sm text-yellow-700 mt-1">
+                                    Leave requests are disabled until your employer verifies your documents. Please upload your verification documents from your dashboard.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                
                 <h2 className="text-3xl font-bold text-gray-900">Time Off Center</h2>
                 
                 {/* Balances */}
@@ -311,7 +357,17 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                     {/* Request Form */}
                     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                         <h3 className="text-lg font-bold text-gray-900 mb-4">Request Time Off</h3>
-                        {leaveSubmitted ? (
+                        {isPendingVerification ? (
+                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
+                                <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <svg className="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                    </svg>
+                                </div>
+                                <h4 className="text-gray-900 font-bold text-lg mb-2">Verification Required</h4>
+                                <p className="text-gray-600 text-sm">Upload your documents from the dashboard to request leave.</p>
+                            </div>
+                        ) : leaveSubmitted ? (
                              <div className="bg-green-50 border border-green-200 rounded-lg p-8 text-center animate-fade-in">
                                 <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
                                     <Icons.CheckMark className="w-6 h-6 text-green-600" />
@@ -555,6 +611,60 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
     // Default Home View
     return (
         <div className="space-y-6 animate-fade-in">
+            {/* Verification Banner */}
+            {isPendingVerification && (
+                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-6 rounded-r-lg shadow-sm">
+                    <div className="flex items-start">
+                        <div className="flex-shrink-0">
+                            <Icons.AlertCircle className="h-6 w-6 text-yellow-400" />
+                        </div>
+                        <div className="ml-4 flex-1">
+                            <h3 className="text-sm font-bold text-yellow-800">Document Verification Required</h3>
+                            <p className="mt-1 text-sm text-yellow-700">
+                                Your employer needs to verify your identification documents before you can access all features. 
+                                Please upload your TRN card, NIS card, or other identification below.
+                            </p>
+                            
+                            {/* Document Upload Section */}
+                            <div className="mt-4 bg-white p-4 rounded-lg border border-yellow-200">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Upload Verification Documents (TRN, NIS, ID Card, etc.)
+                                </label>
+                                <div className="flex items-center space-x-3">
+                                    <input
+                                        type="file"
+                                        multiple
+                                        accept="image/*,.pdf"
+                                        onChange={handleFileUpload}
+                                        className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-jam-orange file:text-white hover:file:bg-yellow-600"
+                                    />
+                                </div>
+                                {uploadedFiles.length > 0 && (
+                                    <div className="mt-3">
+                                        <p className="text-xs text-gray-600 mb-2">Selected files:</p>
+                                        <ul className="text-xs text-gray-700 space-y-1">
+                                            {uploadedFiles.map((file, idx) => (
+                                                <li key={idx} className="flex items-center">
+                                                    <Icons.Document className="w-3 h-3 mr-2 text-gray-400" />
+                                                    {file.name} ({(file.size / 1024).toFixed(1)} KB)
+                                                </li>
+                                            ))}
+                                        </ul>
+                                        <button
+                                            onClick={handleSubmitDocuments}
+                                            disabled={uploadingDocument}
+                                            className="mt-3 px-4 py-2 bg-jam-orange text-white text-sm font-medium rounded-lg hover:bg-yellow-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                                        >
+                                            {uploadingDocument ? 'Uploading...' : 'Submit Documents'}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
             <div className="bg-jam-black rounded-xl p-8 text-white shadow-lg relative overflow-hidden">
                 <div className="relative z-10">
                     <h2 className="text-3xl font-bold">Welcome, {user.name.split(' ')[0]}</h2>
@@ -620,18 +730,47 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                         <h3 className="font-bold text-gray-900 mb-4">Quick Actions</h3>
                         <div className="space-y-3">
-                            <button className="w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:border-jam-orange hover:bg-orange-50 transition-all group">
+                            <button 
+                                disabled={isPendingVerification}
+                                className={`w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg transition-all group ${
+                                    isPendingVerification 
+                                        ? 'opacity-50 cursor-not-allowed' 
+                                        : 'hover:border-jam-orange hover:bg-orange-50'
+                                }`}
+                            >
                                 <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">Request Leave</span>
                                 <Icons.Calendar className="w-4 h-4 text-gray-400 group-hover:text-jam-orange" />
                             </button>
-                             <button className="w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:border-jam-orange hover:bg-orange-50 transition-all group">
+                             <button 
+                                disabled={isPendingVerification}
+                                className={`w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg transition-all group ${
+                                    isPendingVerification 
+                                        ? 'opacity-50 cursor-not-allowed' 
+                                        : 'hover:border-jam-orange hover:bg-orange-50'
+                                }`}
+                            >
                                 <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">Submit Claim</span>
                                 <Icons.Upload className="w-4 h-4 text-gray-400 group-hover:text-jam-orange" />
                             </button>
-                            <button className="w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:border-jam-orange hover:bg-orange-50 transition-all group">
+                            <button 
+                                disabled={isPendingVerification}
+                                className={`w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg transition-all group ${
+                                    isPendingVerification 
+                                        ? 'opacity-50 cursor-not-allowed' 
+                                        : 'hover:border-jam-orange hover:bg-orange-50'
+                                }`}
+                            >
                                 <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">Insurance Card</span>
                                 <Icons.Shield className="w-4 h-4 text-gray-400 group-hover:text-jam-orange" />
                             </button>
+                            {isPendingVerification && (
+                                <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                    <p className="text-xs text-yellow-800 font-medium">
+                                        <Icons.Lock className="w-3 h-3 inline mr-1" />
+                                        Features locked until verified
+                                    </p>
+                                </div>
+                            )}
                         </div>
                      </div>
                 </div>

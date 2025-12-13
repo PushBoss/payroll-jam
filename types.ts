@@ -131,13 +131,22 @@ export interface Employee {
   status: 'ACTIVE' | 'ARCHIVED' | 'PENDING_ONBOARDING' | 'PENDING_VERIFICATION' | 'TERMINATED';
   hireDate: string;
   onboardingToken?: string;
-  
+
   // Extended Profile Fields
   jobTitle?: string;
   department?: string;
   phone?: string;
   address?: string;
   emergencyContact?: string;
+
+  // Verification Documents
+  verificationDocuments?: {
+    fileName: string;
+    fileUrl: string;
+    uploadedAt: string;
+  }[];
+  documentsVerifiedAt?: string; // When employer verified the documents
+  documentsVerifiedBy?: string; // User ID who verified
 
   allowances?: Allowance[];
   deductions?: Deduction[];
@@ -147,7 +156,7 @@ export interface Employee {
     personal: number;
   };
   bankDetails?: BankAccount;
-  
+
   // Exiting info
   terminationDetails?: TerminationDetails;
 }

@@ -537,18 +537,18 @@ function AppContent() {
         name: `${employee.firstName} ${employee.lastName}`,
         role: employee.role,
         companyId: finalCompanyId,
-        isOnboarded: false
+        isOnboarded: true // Skip the onboarding wizard, go straight to dashboard
       };
       
       await supabaseService.saveUser(newUser);
       console.log('✅ Employee user profile created');
 
-      // 3. Update employee status to ACTIVE
-      const updatedEmployee = { ...employee, status: 'ACTIVE' as any };
+      // Update employee status to PENDING_VERIFICATION (waiting for employer to verify documents)
+      const updatedEmployee = { ...employee, status: 'PENDING_VERIFICATION' as any };
       await supabaseService.saveEmployee(updatedEmployee, finalCompanyId);
-      console.log('✅ Employee status updated to ACTIVE');
+      console.log('✅ Employee status updated to PENDING_VERIFICATION');
       
-      toast.success('Account created successfully! Welcome aboard!');
+      toast.success('Account created successfully! Please upload your verification documents.');
       setEmployeeAccountSetup(null);
       
       // Clear URL parameters

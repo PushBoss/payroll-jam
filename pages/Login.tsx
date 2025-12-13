@@ -94,19 +94,23 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBack, onRegister
         throw new Error('Supabase not initialized');
       }
 
-      const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-        redirectTo: `https://www.payrolljam.com/?page=reset-password`,
+      console.log('🔄 Requesting password reset for:', resetEmail);
+      
+      const { data, error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+        redirectTo: `${window.location.origin}/?page=reset-password`,
       });
+
+      console.log('📧 Password reset response:', { data, error });
 
       if (error) throw error;
 
-      toast.success('Password reset email sent! Please check your email for the link to reset your password.', {
+      toast.success('Password reset email sent! Please check your email (including spam folder).', {
         duration: 8000,
       });
       setShowForgotPassword(false);
       setResetEmail('');
     } catch (error: any) {
-      console.error('Password reset failed:', error);
+      console.error('❌ Password reset failed:', error);
       toast.error(error.message || 'Failed to send reset email. Please try again.', {
         duration: 5000,
       });
