@@ -206,7 +206,10 @@ function AppContent() {
       }
       
       // Handle employee invite tokens
-      if (employees.length > 0 && !isResellerInvite) {
+      const isEmployeeInvite = params.get('type') === 'employee';
+      
+      // First check local employees array (if loaded)
+      if (employees.length > 0 && !isResellerInvite && !isEmployeeInvite) {
           const invitee = employees.find(e => e.onboardingToken === token);
           if (invitee && (!user || user.email !== invitee.email)) {
               // Show employee account setup page
@@ -218,8 +221,31 @@ function AppContent() {
           }
       }
       
+      // Check Supabase for employee invite (works even when not logged in)
+      if (isSupabaseMode && token && (isEmployeeInvite || (!user && email))) {
+          const checkEmployeeInvite = async () => {
+              try {
+                  // Try to find employee by token and email
+                  const result = await supabaseService.getEmployeeByToken(token, email || undefined);
+                  if (result && (!user || user.email !== result.employee.email)) {
+                      // Show employee account setup page
+                      setEmployeeAccountSetup({
+                          employee: result.employee,
+                          companyName: result.companyName
+                      });
+                      toast.info(`Welcome! Please set up your account to access ${result.companyName} employee portal.`);
+                      return;
+                  }
+              } catch (error) {
+                  console.error('Error checking employee invite:', error);
+              }
+          };
+          
+          checkEmployeeInvite();
+      }
+      
       // Handle user invite tokens (check Supabase)
-      if (isSupabaseMode && token && !user && email) {
+      if (isSupabaseMode && token && !user && email && !isEmployeeInvite) {
           const checkUserInvite = async () => {
               try {
                   // Try to find user by email and token

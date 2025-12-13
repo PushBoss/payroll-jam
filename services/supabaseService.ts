@@ -539,6 +539,66 @@ export const supabaseService = {
     }));
   },
 
+  getEmployeeByToken: async (token: string, email?: string): Promise<{ employee: Employee; companyName: string } | null> => {
+    if (!supabase) return null;
+    try {
+      let query = supabase
+        .from('employees')
+        .select(`
+          *,
+          companies!employees_company_id_fkey(name)
+        `)
+        .eq('onboarding_token', token);
+      
+      if (email) {
+        query = query.eq('email', email);
+      }
+
+      const { data, error } = await query.maybeSingle();
+
+      if (error) {
+        console.error("Error fetching employee by token:", error);
+        return null;
+      }
+
+      if (!data) return null;
+
+      const employee: Employee = {
+        id: data.id,
+        firstName: data.first_name,
+        lastName: data.last_name,
+        email: data.email,
+        trn: data.trn || '',
+        nis: data.nis || '',
+        status: data.status,
+        role: data.role as any,
+        hireDate: data.hire_date,
+        jobTitle: data.job_title,
+        department: data.department,
+        phone: data.phone,
+        address: data.address,
+        grossSalary: data.pay_data?.grossSalary || 0,
+        hourlyRate: data.pay_data?.hourlyRate,
+        payType: data.pay_data?.payType || 'SALARIED',
+        payFrequency: data.pay_data?.payFrequency || 'MONTHLY',
+        bankDetails: data.bank_details || {},
+        leaveBalance: data.leave_balance || { vacation: 0, sick: 0, personal: 0 },
+        allowances: data.allowances || [],
+        deductions: data.deductions || [],
+        terminationDetails: data.termination_details || undefined,
+        onboardingToken: data.onboarding_token
+      };
+
+      // Extract company name from the joined data
+      const companyName = (data.companies as any)?.name || 'Your Company';
+
+      return { employee, companyName };
+    } catch (e) {
+      console.error("Error fetching employee by token:", e);
+      return null;
+    }
+  },
+
   saveEmployee: async (emp: Employee, companyId: string) => {
     if (!supabase) return;
 
