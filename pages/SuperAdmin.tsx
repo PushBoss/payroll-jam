@@ -2022,25 +2022,25 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Monthly Price</label>
-                    <input
+                    <input 
                       type="number"
                       className="w-full border border-gray-300 rounded px-3 py-2"
-                      value={editingPlan.priceConfig.monthly}
+                      value={editingPlan.priceConfig.monthly || 0}
                       onChange={e => setEditingPlan({
                         ...editingPlan,
-                        priceConfig: { ...editingPlan.priceConfig, monthly: parseFloat(e.target.value) }
+                        priceConfig: { ...editingPlan.priceConfig, monthly: parseFloat(e.target.value) || 0 }
                       })}
                     />
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Annual Price</label>
-                    <input
+                    <input 
                       type="number"
                       className="w-full border border-gray-300 rounded px-3 py-2"
-                      value={editingPlan.priceConfig.annual}
+                      value={editingPlan.priceConfig.annual || 0}
                       onChange={e => setEditingPlan({
                         ...editingPlan,
-                        priceConfig: { ...editingPlan.priceConfig, annual: parseFloat(e.target.value) }
+                        priceConfig: { ...editingPlan.priceConfig, annual: parseFloat(e.target.value) || 0 }
                       })}
                     />
                   </div>
@@ -2058,7 +2058,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                         value={editingPlan.priceConfig.baseFee || 0}
                         onChange={e => setEditingPlan({
                           ...editingPlan,
-                          priceConfig: { ...editingPlan.priceConfig, baseFee: parseFloat(e.target.value) }
+                          priceConfig: { ...editingPlan.priceConfig, baseFee: parseFloat(e.target.value) || 0 }
                         })}
                       />
                     </div>
@@ -2070,7 +2070,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                         value={editingPlan.priceConfig.perUserFee || 0}
                         onChange={e => setEditingPlan({
                           ...editingPlan,
-                          priceConfig: { ...editingPlan.priceConfig, perUserFee: parseFloat(e.target.value) }
+                          priceConfig: { ...editingPlan.priceConfig, perUserFee: parseFloat(e.target.value) || 0 }
                         })}
                       />
                     </div>
@@ -2083,7 +2083,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                       value={editingPlan.priceConfig.resellerCommission || 0}
                       onChange={e => setEditingPlan({
                         ...editingPlan,
-                        priceConfig: { ...editingPlan.priceConfig, resellerCommission: parseFloat(e.target.value) }
+                        priceConfig: { ...editingPlan.priceConfig, resellerCommission: parseFloat(e.target.value) || 0 }
                       })}
                     />
                   </div>
