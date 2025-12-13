@@ -397,10 +397,18 @@ export interface GlobalConfig {
   dimepay: {
     enabled: boolean;
     environment: 'sandbox' | 'production';
-    apiKey: string;
-    secretKey: string;
-    merchantId: string;
-    domain: string; // e.g. sandbox.dimepay.net
+    sandbox: {
+      apiKey: string;
+      secretKey: string;
+      merchantId: string;
+      domain: string;
+    };
+    production: {
+      apiKey: string;
+      secretKey: string;
+      merchantId: string;
+      domain: string;
+    };
     passFeesTo: 'MERCHANT' | 'CUSTOMER';
   };
   stripe: {

@@ -34,10 +34,18 @@ const DEFAULT_PAYMENT_CONFIG: GlobalConfig = {
     dimepay: {
         enabled: true,
         environment: 'sandbox',
-        apiKey: 'ck_LGKMlNpFiRr63ce0s621VuGLjYdey',
-        secretKey: 'sk_rYoMG45jVM2gvhE-pm4to9EZoW9tD',
-        merchantId: 'mQn_iBSUd-KNq3K',
-        domain: 'https://staging.api.dimepay.app',
+        sandbox: {
+            apiKey: 'ck_LGKMlNpFiRr63ce0s621VuGLjYdey',
+            secretKey: 'sk_rYoMG45jVM2gvhE-pm4to9EZoW9tD',
+            merchantId: 'mQn_iBSUd-KNq3K',
+            domain: 'https://staging.api.dimepay.app'
+        },
+        production: {
+            apiKey: '',
+            secretKey: '',
+            merchantId: '',
+            domain: 'https://api.dimepay.app'
+        },
         passFeesTo: 'MERCHANT'
     },
     stripe: {
@@ -1243,53 +1251,63 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                   <div className="space-y-3">
                       {/* DimePay Status */}
                       <div className={`p-3 rounded-lg border ${
-                          paymentConfig.dimepay?.enabled && paymentConfig.dimepay?.apiKey && paymentConfig.dimepay?.secretKey
-                              ? 'bg-green-50 border-green-200' 
-                              : paymentConfig.dimepay?.enabled
-                                  ? 'bg-yellow-50 border-yellow-200'
-                                  : 'bg-gray-50 border-gray-200'
+                          (() => {
+                              if (!paymentConfig.dimepay?.enabled) return 'bg-gray-50 border-gray-200';
+                              const activeEnv = paymentConfig.dimepay.environment || 'sandbox';
+                              const activeCreds = activeEnv === 'production' ? paymentConfig.dimepay.production : paymentConfig.dimepay.sandbox;
+                              const isConfigured = activeCreds?.apiKey && activeCreds?.secretKey && activeCreds?.merchantId;
+                              return isConfigured ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200';
+                          })()
                       }`}>
                           <div className="flex items-center justify-between">
                               <div className="flex items-center">
                                   <div className={`p-1.5 rounded-full mr-2 ${
-                                      paymentConfig.dimepay?.enabled && paymentConfig.dimepay?.apiKey && paymentConfig.dimepay?.secretKey
-                                          ? 'bg-green-100 text-green-600' 
-                                          : paymentConfig.dimepay?.enabled
-                                              ? 'bg-yellow-100 text-yellow-600'
-                                              : 'bg-gray-100 text-gray-400'
+                                      (() => {
+                                          if (!paymentConfig.dimepay?.enabled) return 'bg-gray-100 text-gray-400';
+                                          const activeEnv = paymentConfig.dimepay.environment || 'sandbox';
+                                          const activeCreds = activeEnv === 'production' ? paymentConfig.dimepay.production : paymentConfig.dimepay.sandbox;
+                                          const isConfigured = activeCreds?.apiKey && activeCreds?.secretKey && activeCreds?.merchantId;
+                                          return isConfigured ? 'bg-green-100 text-green-600' : 'bg-yellow-100 text-yellow-600';
+                                      })()
                                   }`}>
-                                      {paymentConfig.dimepay?.enabled && paymentConfig.dimepay?.apiKey && paymentConfig.dimepay?.secretKey
-                                          ? <Icons.CheckCircle className="w-4 h-4" />
-                                          : paymentConfig.dimepay?.enabled
-                                              ? <Icons.Alert className="w-4 h-4" />
-                                              : <Icons.Close className="w-4 h-4" />
-                                      }
+                                      {(() => {
+                                          if (!paymentConfig.dimepay?.enabled) return <Icons.Close className="w-4 h-4" />;
+                                          const activeEnv = paymentConfig.dimepay.environment || 'sandbox';
+                                          const activeCreds = activeEnv === 'production' ? paymentConfig.dimepay.production : paymentConfig.dimepay.sandbox;
+                                          const isConfigured = activeCreds?.apiKey && activeCreds?.secretKey && activeCreds?.merchantId;
+                                          return isConfigured ? <Icons.CheckCircle className="w-4 h-4" /> : <Icons.Alert className="w-4 h-4" />;
+                                      })()}
                                   </div>
                                   <div>
                                       <h4 className="font-semibold text-sm text-gray-900">DimePay</h4>
                                       <p className="text-xs text-gray-600">
-                                          {paymentConfig.dimepay?.enabled && paymentConfig.dimepay?.apiKey && paymentConfig.dimepay?.secretKey
-                                              ? `${paymentConfig.dimepay.environment === 'production' ? 'Production' : 'Sandbox'} - Configured`
-                                              : paymentConfig.dimepay?.enabled
-                                                  ? 'Enabled but missing credentials'
-                                                  : 'Disabled'
-                                          }
+                                          {(() => {
+                                              if (!paymentConfig.dimepay?.enabled) return 'Disabled';
+                                              const activeEnv = paymentConfig.dimepay.environment || 'sandbox';
+                                              const activeCreds = activeEnv === 'production' ? paymentConfig.dimepay.production : paymentConfig.dimepay.sandbox;
+                                              const isConfigured = activeCreds?.apiKey && activeCreds?.secretKey && activeCreds?.merchantId;
+                                              const envLabel = activeEnv === 'production' ? '🚀 Production' : '🧪 Sandbox';
+                                              return isConfigured ? `${envLabel} - Configured` : `${envLabel} - Missing credentials`;
+                                          })()}
                                       </p>
                                   </div>
                               </div>
                               <span className={`text-xs px-2 py-1 rounded font-medium ${
-                                  paymentConfig.dimepay?.enabled && paymentConfig.dimepay?.apiKey && paymentConfig.dimepay?.secretKey
-                                      ? 'bg-green-100 text-green-700'
-                                      : paymentConfig.dimepay?.enabled
-                                          ? 'bg-yellow-100 text-yellow-700'
-                                          : 'bg-gray-100 text-gray-600'
+                                  (() => {
+                                      if (!paymentConfig.dimepay?.enabled) return 'bg-gray-100 text-gray-600';
+                                      const activeEnv = paymentConfig.dimepay.environment || 'sandbox';
+                                      const activeCreds = activeEnv === 'production' ? paymentConfig.dimepay.production : paymentConfig.dimepay.sandbox;
+                                      const isConfigured = activeCreds?.apiKey && activeCreds?.secretKey && activeCreds?.merchantId;
+                                      return isConfigured ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700';
+                                  })()
                               }`}>
-                                  {paymentConfig.dimepay?.enabled && paymentConfig.dimepay?.apiKey && paymentConfig.dimepay?.secretKey
-                                      ? 'Active'
-                                      : paymentConfig.dimepay?.enabled
-                                          ? 'Incomplete'
-                                          : 'Inactive'
-                                  }
+                                  {(() => {
+                                      if (!paymentConfig.dimepay?.enabled) return 'Inactive';
+                                      const activeEnv = paymentConfig.dimepay.environment || 'sandbox';
+                                      const activeCreds = activeEnv === 'production' ? paymentConfig.dimepay.production : paymentConfig.dimepay.sandbox;
+                                      const isConfigured = activeCreds?.apiKey && activeCreds?.secretKey && activeCreds?.merchantId;
+                                      return isConfigured ? 'Active' : 'Incomplete';
+                                  })()}
                               </span>
                           </div>
                       </div>
@@ -1513,13 +1531,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                   ...paymentConfig, 
                                   dimepay: {
                                       ...(paymentConfig.dimepay || {}),
-                                      enabled: e.target.checked,
-                                      environment: paymentConfig.dimepay?.environment || 'sandbox',
-                                      apiKey: paymentConfig.dimepay?.apiKey || '',
-                                      secretKey: paymentConfig.dimepay?.secretKey || '',
-                                      merchantId: paymentConfig.dimepay?.merchantId || '',
-                                      domain: paymentConfig.dimepay?.domain || 'https://staging.api.dimepay.app',
-                                      passFeesTo: paymentConfig.dimepay?.passFeesTo || 'MERCHANT'
+                                      enabled: e.target.checked
                                   }
                               })}
                               className="h-5 w-5 text-jam-orange focus:ring-jam-orange"
@@ -1530,14 +1542,14 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                           <div className="space-y-4 animate-fade-in">
                               <div className="grid grid-cols-2 gap-4">
                                   <div>
-                                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Environment</label>
+                                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Active Environment</label>
                                       <select 
                                           value={paymentConfig.dimepay?.environment || 'sandbox'}
                                           onChange={(e) => handleDimeEnvChange(e.target.value as any)}
-                                          className="w-full border border-gray-300 rounded p-2 text-sm bg-white"
+                                          className="w-full border border-gray-300 rounded p-2 text-sm bg-white font-semibold"
                                       >
-                                          <option value="sandbox">Sandbox (Test)</option>
-                                          <option value="production">Production (Live)</option>
+                                          <option value="sandbox">🧪 Sandbox (Test)</option>
+                                          <option value="production">🚀 Production (Live)</option>
                                       </select>
                                   </div>
                                   <div>
@@ -1559,65 +1571,156 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                   </div>
                               </div>
 
-                              <div>
-                                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">API URL</label>
-                                  <input 
-                                    type="text" 
-                                    readOnly
-                                    value={paymentConfig.dimepay?.domain || ''}
-                                    className="w-full border border-gray-200 bg-gray-100 rounded p-2 text-sm text-gray-600 font-mono cursor-not-allowed"
-                                  />
+                              {/* Sandbox Credentials */}
+                              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                                  <h5 className="font-semibold text-sm text-blue-900 mb-3 flex items-center">
+                                      <Icons.Shield className="w-4 h-4 mr-2" />
+                                      Sandbox Credentials (Test Mode)
+                                  </h5>
+                                  <div className="space-y-3">
+                                      <div>
+                                          <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Client Key</label>
+                                          <input 
+                                            type="text" 
+                                            placeholder="ck_test_..." 
+                                            value={paymentConfig.dimepay?.sandbox?.apiKey || ''}
+                                            onChange={(e) => setPaymentConfig({
+                                                ...paymentConfig, 
+                                                dimepay: {
+                                                    ...(paymentConfig.dimepay || {}),
+                                                    sandbox: {
+                                                        ...(paymentConfig.dimepay?.sandbox || { domain: 'https://staging.api.dimepay.app' }),
+                                                        apiKey: e.target.value
+                                                    }
+                                                }
+                                            })}
+                                            className="w-full border border-blue-300 rounded p-2 text-sm font-mono"
+                                          />
+                                      </div>
+                                      <div>
+                                          <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Secret Key</label>
+                                          <input 
+                                            type="password" 
+                                            placeholder="sk_test_..." 
+                                            value={paymentConfig.dimepay?.sandbox?.secretKey || ''}
+                                            onChange={(e) => setPaymentConfig({
+                                                ...paymentConfig, 
+                                                dimepay: {
+                                                    ...(paymentConfig.dimepay || {}),
+                                                    sandbox: {
+                                                        ...(paymentConfig.dimepay?.sandbox || { domain: 'https://staging.api.dimepay.app' }),
+                                                        secretKey: e.target.value
+                                                    }
+                                                }
+                                            })}
+                                            className="w-full border border-blue-300 rounded p-2 text-sm font-mono"
+                                          />
+                                      </div>
+                                      <div>
+                                          <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Merchant ID</label>
+                                          <input 
+                                            type="text" 
+                                            placeholder="mQn_..." 
+                                            value={paymentConfig.dimepay?.sandbox?.merchantId || ''}
+                                            onChange={(e) => setPaymentConfig({
+                                                ...paymentConfig, 
+                                                dimepay: {
+                                                    ...(paymentConfig.dimepay || {}),
+                                                    sandbox: {
+                                                        ...(paymentConfig.dimepay?.sandbox || { domain: 'https://staging.api.dimepay.app' }),
+                                                        merchantId: e.target.value
+                                                    }
+                                                }
+                                            })}
+                                            className="w-full border border-blue-300 rounded p-2 text-sm font-mono"
+                                          />
+                                      </div>
+                                      <div>
+                                          <label className="block text-xs font-bold text-gray-600 uppercase mb-1">API URL</label>
+                                          <input 
+                                            type="text" 
+                                            readOnly
+                                            value={paymentConfig.dimepay?.sandbox?.domain || 'https://staging.api.dimepay.app'}
+                                            className="w-full border border-blue-200 bg-blue-100 rounded p-2 text-sm text-blue-700 font-mono cursor-not-allowed"
+                                          />
+                                      </div>
+                                  </div>
                               </div>
 
-                              <div>
-                                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Client Key (Public)</label>
-                                  <input 
-                                    type="text" 
-                                    placeholder="ck_test_..." 
-                                    value={paymentConfig.dimepay?.apiKey || ''}
-                                    onChange={(e) => setPaymentConfig({
-                                        ...paymentConfig, 
-                                        dimepay: {
-                                            ...(paymentConfig.dimepay || {}),
-                                            apiKey: e.target.value
-                                        }
-                                    })}
-                                    className="w-full border border-gray-300 rounded p-2 text-sm font-mono"
-                                  />
-                              </div>
-
-                              <div>
-                                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Secret Key</label>
-                                  <input 
-                                    type="password" 
-                                    placeholder="sk_test_..." 
-                                    value={paymentConfig.dimepay?.secretKey || ''}
-                                    onChange={(e) => setPaymentConfig({
-                                        ...paymentConfig, 
-                                        dimepay: {
-                                            ...(paymentConfig.dimepay || {}),
-                                            secretKey: e.target.value
-                                        }
-                                    })}
-                                    className="w-full border border-gray-300 rounded p-2 text-sm font-mono"
-                                  />
-                              </div>
-
-                              <div>
-                                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Merchant ID</label>
-                                  <input 
-                                    type="text" 
-                                    placeholder="mQn_..." 
-                                    value={paymentConfig.dimepay?.merchantId || ''}
-                                    onChange={(e) => setPaymentConfig({
-                                        ...paymentConfig, 
-                                        dimepay: {
-                                            ...(paymentConfig.dimepay || {}),
-                                            merchantId: e.target.value
-                                        }
-                                    })}
-                                    className="w-full border border-gray-300 rounded p-2 text-sm font-mono"
-                                  />
+                              {/* Production Credentials */}
+                              <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                                  <h5 className="font-semibold text-sm text-green-900 mb-3 flex items-center">
+                                      <Icons.CheckCircle className="w-4 h-4 mr-2" />
+                                      Production Credentials (Live Mode)
+                                  </h5>
+                                  <div className="space-y-3">
+                                      <div>
+                                          <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Client Key</label>
+                                          <input 
+                                            type="text" 
+                                            placeholder="ck_prod_..." 
+                                            value={paymentConfig.dimepay?.production?.apiKey || ''}
+                                            onChange={(e) => setPaymentConfig({
+                                                ...paymentConfig, 
+                                                dimepay: {
+                                                    ...(paymentConfig.dimepay || {}),
+                                                    production: {
+                                                        ...(paymentConfig.dimepay?.production || { domain: 'https://api.dimepay.app' }),
+                                                        apiKey: e.target.value
+                                                    }
+                                                }
+                                            })}
+                                            className="w-full border border-green-300 rounded p-2 text-sm font-mono"
+                                          />
+                                      </div>
+                                      <div>
+                                          <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Secret Key</label>
+                                          <input 
+                                            type="password" 
+                                            placeholder="sk_prod_..." 
+                                            value={paymentConfig.dimepay?.production?.secretKey || ''}
+                                            onChange={(e) => setPaymentConfig({
+                                                ...paymentConfig, 
+                                                dimepay: {
+                                                    ...(paymentConfig.dimepay || {}),
+                                                    production: {
+                                                        ...(paymentConfig.dimepay?.production || { domain: 'https://api.dimepay.app' }),
+                                                        secretKey: e.target.value
+                                                    }
+                                                }
+                                            })}
+                                            className="w-full border border-green-300 rounded p-2 text-sm font-mono"
+                                          />
+                                      </div>
+                                      <div>
+                                          <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Merchant ID</label>
+                                          <input 
+                                            type="text" 
+                                            placeholder="mQn_..." 
+                                            value={paymentConfig.dimepay?.production?.merchantId || ''}
+                                            onChange={(e) => setPaymentConfig({
+                                                ...paymentConfig, 
+                                                dimepay: {
+                                                    ...(paymentConfig.dimepay || {}),
+                                                    production: {
+                                                        ...(paymentConfig.dimepay?.production || { domain: 'https://api.dimepay.app' }),
+                                                        merchantId: e.target.value
+                                                    }
+                                                }
+                                            })}
+                                            className="w-full border border-green-300 rounded p-2 text-sm font-mono"
+                                          />
+                                      </div>
+                                      <div>
+                                          <label className="block text-xs font-bold text-gray-600 uppercase mb-1">API URL</label>
+                                          <input 
+                                            type="text" 
+                                            readOnly
+                                            value={paymentConfig.dimepay?.production?.domain || 'https://api.dimepay.app'}
+                                            className="w-full border border-green-200 bg-green-100 rounded p-2 text-sm text-green-700 font-mono cursor-not-allowed"
+                                          />
+                                      </div>
+                                  </div>
                               </div>
                           </div>
                       )}

@@ -96,8 +96,12 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBack, onRegister
 
       console.log('🔄 Requesting password reset for:', resetEmail);
       
+      // Use the full URL with hash for better compatibility
+      const redirectUrl = `${window.location.origin}/?page=reset-password`;
+      console.log('Redirect URL:', redirectUrl);
+      
       const { data, error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-        redirectTo: `${window.location.origin}/?page=reset-password`,
+        redirectTo: redirectUrl,
       });
 
       console.log('📧 Password reset response:', { data, error });

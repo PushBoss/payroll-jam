@@ -16,35 +16,92 @@ export const ResetPassword: React.FC = () => {
     // Check if user came from a valid password reset link
     const checkSession = async () => {
       if (!supabase) {
+        console.error('❌ Supabase not initialized');
         setIsCheckingSession(false);
+        toast.error('System error. Please try again.');
         return;
       }
       
       try {
+        console.log('🔍 Checking password reset session...');
+        console.log('Current URL:', window.location.href);
+        console.log('Hash:', window.location.hash);
+        
         // First, check if there's a hash fragment with tokens (from email link)
         const hashParams = new URLSearchParams(window.location.hash.substring(1));
         const accessToken = hashParams.get('access_token');
+        const refreshToken = hashParams.get('refresh_token');
         const type = hashParams.get('type');
+        const error = hashParams.get('error');
+        const errorDescription = hashParams.get('error_description');
 
-        if (accessToken && type === 'recovery') {
-          // Session will be automatically set by Supabase
-          // Wait a moment for it to process
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
+        console.log('Hash params:', { 
+          hasAccessToken: !!accessToken, 
+          hasRefreshToken: !!refreshToken,
+          type, 
+          error,
+          errorDescription 
+        });
 
-        const { data: { session }, error } = await supabase.auth.getSession();
-        
-        if (error || !session) {
-          toast.error('Invalid or expired reset link. Please request a new one.');
+        // Check for errors in the URL
+        if (error) {
+          console.error('❌ Error in URL:', error, errorDescription);
+          toast.error(errorDescription || 'Invalid or expired reset link. Please request a new one.');
           setTimeout(() => {
             window.location.href = '/?page=login';
-          }, 2000);
+          }, 3000);
+          setIsCheckingSession(false);
+          return;
+        }
+
+        // If we have tokens, manually set the session
+        if (accessToken && type === 'recovery') {
+          console.log('✅ Found recovery tokens, setting session...');
+          
+          const { data, error: sessionError } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken || ''
+          });
+
+          if (sessionError) {
+            console.error('❌ Error setting session:', sessionError);
+            throw sessionError;
+          }
+
+          console.log('✅ Session set successfully:', data);
+          
+          // Wait a moment for session to be fully processed
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+
+        // Now check if we have a valid session
+        const { data: { session }, error: getSessionError } = await supabase.auth.getSession();
+        
+        console.log('Session check result:', { hasSession: !!session, error: getSessionError });
+        
+        if (getSessionError) {
+          console.error('❌ Error getting session:', getSessionError);
+          throw getSessionError;
+        }
+        
+        if (!session) {
+          console.error('❌ No valid session found');
+          toast.error('Invalid or expired reset link. Please request a new one.', {
+            duration: 5000
+          });
+          setTimeout(() => {
+            window.location.href = '/?page=login';
+          }, 3000);
         } else {
+          console.log('✅ Valid session found');
           setIsValidSession(true);
         }
-      } catch (err) {
-        console.error('Session check error:', err);
-        toast.error('Error verifying reset link');
+      } catch (err: any) {
+        console.error('❌ Session check error:', err);
+        toast.error(err.message || 'Error verifying reset link. Please request a new one.');
+        setTimeout(() => {
+          window.location.href = '/?page=login';
+        }, 3000);
       } finally {
         setIsCheckingSession(false);
       }

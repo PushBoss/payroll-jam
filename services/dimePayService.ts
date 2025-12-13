@@ -17,12 +17,20 @@ interface PaymentWidgetProps {
 // Default fallback config (sandbox)
 const DEMO_CONFIG = {
     enabled: true,
-    apiKey: 'ck_LGKMlNpFiRr63ce0s621VuGLjYdey',
-    secretKey: 'sk_rYoMG45jVM2gvhE-pm4to9EZoW9tD',
-    merchantId: 'mQn_iBSUd-KNq3K',
-    domain: 'https://staging.api.dimepay.app',
-    environment: 'sandbox',
-    passFeesTo: 'MERCHANT'
+    environment: 'sandbox' as const,
+    sandbox: {
+        apiKey: 'ck_LGKMlNpFiRr63ce0s621VuGLjYdey',
+        secretKey: 'sk_rYoMG45jVM2gvhE-pm4to9EZoW9tD',
+        merchantId: 'mQn_iBSUd-KNq3K',
+        domain: 'https://staging.api.dimepay.app'
+    },
+    production: {
+        apiKey: '',
+        secretKey: '',
+        merchantId: '',
+        domain: 'https://api.dimepay.app'
+    },
+    passFeesTo: 'MERCHANT' as const
 };
 
 export const dimePayService = {
@@ -71,9 +79,24 @@ export const dimePayService = {
             return;
         }
 
-        console.log('🔧 DimePay Environment:', config.environment);
-        console.log('🔧 DimePay Domain:', config.domain);
-        console.log('🔧 DimePay Test Mode:', config.environment === 'sandbox');
+        // Get the active environment credentials
+        const activeEnv = config.environment || 'sandbox';
+        const activeCredentials = activeEnv === 'production' ? config.production : config.sandbox;
+
+        // Validate credentials exist
+        if (!activeCredentials.apiKey || !activeCredentials.secretKey) {
+            console.error(`❌ Missing ${activeEnv} credentials`);
+            props.onError(`Payment gateway ${activeEnv} credentials not configured.`);
+            return;
+        }
+
+        console.log('🔧 DimePay Environment:', activeEnv);
+        console.log('🔧 DimePay Domain:', activeCredentials.domain);
+        console.log('🔧 DimePay Test Mode:', activeEnv === 'sandbox');
+        console.log('🔧 DimePay Credentials:', { 
+            hasApiKey: !!activeCredentials.apiKey,
+            hasMerchantId: !!activeCredentials.merchantId 
+        });
 
         const recurringFreq = props.frequency === 'annual' ? 'YEARLY' : 'MONTHLY';
 
@@ -100,7 +123,7 @@ export const dimePayService = {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         payload: payloadData,
-                        environment: config.environment
+                        environment: activeEnv
                     })
                 });
 
@@ -113,9 +136,9 @@ export const dimePayService = {
                 }
             } catch (backendError) {
                 // Fallback to client-side signing for sandbox only
-                if (config.environment === 'sandbox') {
+                if (activeEnv === 'sandbox') {
                     console.warn("⚠️ Backend unavailable, using client-side signing (sandbox only)");
-                    jwt = await signPayloadWithHMAC(payloadData, config.secretKey);
+                    jwt = await signPayloadWithHMAC(payloadData, activeCredentials.secretKey);
                 } else {
                     console.error("❌ Backend signing required for production");
                     throw new Error('Secure payment signing unavailable');
@@ -135,9 +158,9 @@ export const dimePayService = {
                 mountId: props.mountId,
                 total: props.amount,
                 currency: props.currency,
-                test: config.environment === 'sandbox',
+                test: activeEnv === 'sandbox',
                 order_id: orderId,
-                client_id: config.apiKey,
+                client_id: activeCredentials.apiKey,
                 origin: window.location.origin,
                 data: jwt, 
                 styles: {
