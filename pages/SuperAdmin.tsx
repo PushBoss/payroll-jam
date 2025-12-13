@@ -1876,39 +1876,116 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Plan Name</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   className="w-full border border-gray-300 rounded px-3 py-2"
                   value={editingPlan.name}
                   onChange={e => setEditingPlan({...editingPlan, name: e.target.value})}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Monthly Price</label>
-                  <input 
-                    type="number" 
-                    className="w-full border border-gray-300 rounded px-3 py-2"
-                    value={editingPlan.priceConfig.monthly}
-                    onChange={e => setEditingPlan({
-                      ...editingPlan, 
-                      priceConfig: { ...editingPlan.priceConfig, monthly: parseFloat(e.target.value) }
-                    })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Annual Price</label>
-                  <input 
-                    type="number" 
-                    className="w-full border border-gray-300 rounded px-3 py-2"
-                    value={editingPlan.priceConfig.annual}
-                    onChange={e => setEditingPlan({
-                      ...editingPlan, 
-                      priceConfig: { ...editingPlan.priceConfig, annual: parseFloat(e.target.value) }
-                    })}
-                  />
-                </div>
+              
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Pricing Model</label>
+                <select
+                  className="w-full border border-gray-300 rounded px-3 py-2"
+                  value={editingPlan.priceConfig.type}
+                  onChange={e => setEditingPlan({
+                    ...editingPlan,
+                    priceConfig: { ...editingPlan.priceConfig, type: e.target.value as any }
+                  })}
+                >
+                  <option value="free">Free</option>
+                  <option value="flat">Flat Rate</option>
+                  <option value="per_emp">Per Employee</option>
+                  <option value="base">Base + Usage (Reseller)</option>
+                </select>
               </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Employee Limit</label>
+                <select
+                  className="w-full border border-gray-300 rounded px-3 py-2"
+                  value={editingPlan.limit}
+                  onChange={e => setEditingPlan({...editingPlan, limit: e.target.value})}
+                >
+                  <option value="5">5 Employees</option>
+                  <option value="25">25 Employees</option>
+                  <option value="100">100 Employees</option>
+                  <option value="Unlimited">Unlimited</option>
+                </select>
+              </div>
+
+              {editingPlan.priceConfig.type !== 'free' && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Monthly Price</label>
+                    <input
+                      type="number"
+                      className="w-full border border-gray-300 rounded px-3 py-2"
+                      value={editingPlan.priceConfig.monthly}
+                      onChange={e => setEditingPlan({
+                        ...editingPlan,
+                        priceConfig: { ...editingPlan.priceConfig, monthly: parseFloat(e.target.value) }
+                      })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Annual Price</label>
+                    <input
+                      type="number"
+                      className="w-full border border-gray-300 rounded px-3 py-2"
+                      value={editingPlan.priceConfig.annual}
+                      onChange={e => setEditingPlan({
+                        ...editingPlan,
+                        priceConfig: { ...editingPlan.priceConfig, annual: parseFloat(e.target.value) }
+                      })}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {editingPlan.priceConfig.type === 'base' && (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Base Fee (per company)</label>
+                      <input
+                        type="number"
+                        className="w-full border border-gray-300 rounded px-3 py-2"
+                        value={editingPlan.priceConfig.baseFee || 0}
+                        onChange={e => setEditingPlan({
+                          ...editingPlan,
+                          priceConfig: { ...editingPlan.priceConfig, baseFee: parseFloat(e.target.value) }
+                        })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Per Employee Fee</label>
+                      <input
+                        type="number"
+                        className="w-full border border-gray-300 rounded px-3 py-2"
+                        value={editingPlan.priceConfig.perUserFee || 0}
+                        onChange={e => setEditingPlan({
+                          ...editingPlan,
+                          priceConfig: { ...editingPlan.priceConfig, perUserFee: parseFloat(e.target.value) }
+                        })}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Reseller Commission (%)</label>
+                    <input
+                      type="number"
+                      className="w-full border border-gray-300 rounded px-3 py-2"
+                      value={editingPlan.priceConfig.resellerCommission || 0}
+                      onChange={e => setEditingPlan({
+                        ...editingPlan,
+                        priceConfig: { ...editingPlan.priceConfig, resellerCommission: parseFloat(e.target.value) }
+                      })}
+                    />
+                  </div>
+                </>
+              )}
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Description</label>
                 <textarea 

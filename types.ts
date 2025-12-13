@@ -286,9 +286,10 @@ export interface PricingPlan {
     annual: number;
     baseFee?: number;
     perUserFee?: number;
+    resellerCommission?: number; // Percentage commission for resellers
   };
   description: string;
-  limit: string;
+  limit: string; // "5", "25", "100", "Unlimited"
   features: string[];
   cta: string;
   highlight: boolean;

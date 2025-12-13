@@ -21,7 +21,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
   const [billingHistory, setBillingHistory] = useState<any[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
 
-  const [activeTab, setActiveTab] = useState<'clients' | 'compliance' | 'financials'>('clients');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'partners' | 'compliance' | 'financials'>('dashboard');
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -733,24 +733,59 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
       <div className="bg-white rounded-xl shadow-sm border border-gray-200">
          <div className="border-b border-gray-200 px-6">
             <nav className="-mb-px flex space-x-8">
-                {['clients', 'compliance', 'financials'].map((tab) => (
+                {[
+                    {key: 'dashboard', label: 'My Dashboard'},
+                    {key: 'partners', label: 'Partner Console'},
+                    {key: 'compliance', label: 'Compliance'},
+                    {key: 'financials', label: 'Revenue & Costs'}
+                ].map((tab) => (
                     <button
-                        key={tab}
-                        onClick={() => setActiveTab(tab as any)}
-                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm capitalize transition-colors ${
-                            activeTab === tab
+                        key={tab.key}
+                        onClick={() => setActiveTab(tab.key as any)}
+                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                            activeTab === tab.key
                             ? 'border-jam-orange text-jam-black'
                             : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                         }`}
                     >
-                        {tab === 'financials' ? 'Revenue & Costs' : tab}
+                        {tab.label}
                     </button>
                 ))}
             </nav>
          </div>
          
          <div className="p-6 bg-gray-50">
-            {activeTab === 'clients' && (
+            {activeTab === 'dashboard' && (
+                <div className="space-y-4">
+                    <p className="text-sm text-gray-600 mb-6">
+                        Manage your own company's employees, run payroll, and access all standard admin features.
+                    </p>
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <div className="flex items-start">
+                            <Icons.AlertTriangle className="w-5 h-5 text-blue-600 mr-3 mt-0.5" />
+                            <div>
+                                <h4 className="text-sm font-semibold text-blue-900 mb-1">Coming Soon: Employee Management</h4>
+                                <p className="text-sm text-blue-700">
+                                    Full employee dashboard integration is being finalized. For now, please use the main admin dashboard 
+                                    to manage your employees. Use the "Partner Console" tab to manage your client companies.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="bg-white rounded-lg border border-gray-200 p-6 text-center">
+                        <Icons.Users className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Employee Management Dashboard</h3>
+                        <p className="text-gray-600 mb-4">Navigate to the main Dashboard to manage your own employees</p>
+                        <button 
+                            onClick={() => window.location.href = '/?page=dashboard'}
+                            className="px-6 py-2 bg-jam-orange text-white rounded-lg hover:bg-yellow-600 transition-colors"
+                        >
+                            Go to Dashboard
+                        </button>
+                    </div>
+                </div>
+            )}
+            {activeTab === 'partners' && (
                 <>
                      {/* Stats Cards - Only show on Clients tab */}
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
