@@ -104,6 +104,107 @@ export const emailService = {
   },
 
   /**
+   * Sends a company invitation email.
+   */
+  sendCompanyInvite: async (email: string, contactName: string, invitingCompanyName: string, link: string) => {
+    // Try SMTP first (if API URL is configured)
+    const apiUrl = import.meta.env.VITE_API_URL;
+    if (apiUrl) {
+      console.log('📧 Sending company invite via SMTP...');
+      const result = await smtpEmailService.sendCompanyInvite(email, contactName, invitingCompanyName, link);
+      if (result.success) {
+        return result;
+      }
+      console.warn('⚠️ SMTP failed, falling back to EmailJS');
+    }
+
+    // Fallback to EmailJS
+    const config = storage.getGlobalConfig();
+    
+    if (!config?.emailjs?.publicKey) {
+      console.log(`[Email Simulation] Company Invite`);
+      console.log(`To: ${email}`);
+      console.log(`Company: ${invitingCompanyName}`);
+      console.log(`Link: ${link}`);
+      return { success: true, message: 'Simulation: Email logged to console.' };
+    }
+
+    try {
+      const templateParams = {
+        to_email: email,
+        to_name: contactName,
+        message: `${invitingCompanyName} has invited your company to join Payroll-Jam. Click the link below to accept the invitation and sign up.`,
+        link: link,
+        company_name: invitingCompanyName,
+        action_type: 'COMPANY_INVITE'
+      };
+
+      await emailjs.send(
+        config.emailjs.serviceId,
+        config.emailjs.templateId,
+        templateParams,
+        config.emailjs.publicKey
+      );
+
+      return { success: true, message: 'Email sent successfully.' };
+    } catch (error) {
+      console.error('EmailJS Error:', error);
+      return { success: false, message: 'Failed to send email.' };
+    }
+  },
+
+  /**
+   * Sends a reseller plan upgrade notification email.
+   */
+  sendResellerUpgradeNotification: async (email: string, companyName: string, userName: string) => {
+    // Try SMTP first (if API URL is configured)
+    const apiUrl = import.meta.env.VITE_API_URL;
+    if (apiUrl) {
+      console.log('📧 Sending reseller upgrade notification via SMTP...');
+      const dashboardUrl = typeof window !== 'undefined' ? `${window.location.origin}/?page=reseller-dashboard` : 'https://payroll-jam.com/?page=reseller-dashboard';
+      const result = await smtpEmailService.sendResellerUpgradeNotification(email, companyName, userName, dashboardUrl);
+      if (result.success) {
+        return result;
+      }
+      console.warn('⚠️ SMTP failed, falling back to EmailJS');
+    }
+
+    // Fallback to EmailJS
+    const config = storage.getGlobalConfig();
+    
+    if (!config?.emailjs?.publicKey) {
+      console.log(`[Email Simulation] Reseller Upgrade Notification`);
+      console.log(`To: ${email}`);
+      console.log(`Company: ${companyName}`);
+      console.log(`User: ${userName}`);
+      return { success: true, message: 'Simulation: Email logged to console.' };
+    }
+
+    try {
+      const templateParams = {
+        to_email: email,
+        to_name: userName,
+        message: `Congratulations! ${companyName} has successfully upgraded to the Reseller Plan. You now have access to white label capabilities, client management, and wholesale pricing.`,
+        link: window.location.origin + '/?page=reseller-dashboard',
+        company_name: companyName,
+        action_type: 'RESELLER_UPGRADE'
+      };
+
+      await emailjs.send(
+        config.emailjs.serviceId,
+        config.emailjs.templateId,
+        templateParams,
+        config.emailjs.publicKey
+      );
+
+      return { success: true, message: 'Email sent successfully.' };
+    } catch (error) {
+      console.error('EmailJS Error:', error);
+      return { success: false, message: 'Failed to send email.' };
+    }
+  },
+
+  /**
    * Sends a notification that a payslip is ready.
    */
   sendPayslipNotification: async (email: string, firstName: string, period: string, netPay: string) => {

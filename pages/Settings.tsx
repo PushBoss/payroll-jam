@@ -145,7 +145,7 @@ export const Settings: React.FC<SettingsProps> = ({
   onUpdateDesignations = (_desigs) => {},
   plans = []
 }) => {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, updateUser } = useAuth();
   const [activeTab, setActiveTab] = useState<'company' | 'billing' | 'organization' | 'taxes' | 'integrations' | 'users'>('organization');
   const [isSavingCompany, setIsSavingCompany] = useState(false);
   
@@ -312,7 +312,36 @@ export const Settings: React.FC<SettingsProps> = ({
           // Update local company data
           handleCompanyUpdate({ ...companyData, plan: upgradeTarget.name as any, subscriptionStatus: 'ACTIVE' });
           auditService.log(currentUser, 'UPDATE', 'Billing', `Upgraded plan to ${upgradeTarget.name}`);
-          toast.success(`Successfully switched to ${upgradeTarget.name}!`);
+          
+          // Update user role if upgrading to Reseller plan
+          if (upgradeTarget.name === 'Reseller' && currentUser) {
+              try {
+                  // Update user role in Supabase and locally
+                  const updatedUser = { ...currentUser, role: Role.RESELLER };
+                  await supabaseService.saveUser(updatedUser);
+                  updateUser({ role: Role.RESELLER });
+              } catch (error) {
+                  console.error('Error updating user role:', error);
+              }
+          }
+          
+          // Send email notification if upgrading to Reseller plan
+          if (upgradeTarget.name === 'Reseller' && currentUser?.email) {
+              const emailResult = await emailService.sendResellerUpgradeNotification(
+                  currentUser.email,
+                  companyData?.name || 'Your Company',
+                  currentUser.name || 'User'
+              );
+              
+              if (emailResult.success && !emailResult.message?.includes('Simulation')) {
+                  toast.success(`Successfully upgraded to ${upgradeTarget.name}! Check your email for details.`);
+              } else {
+                  toast.success(`Successfully switched to ${upgradeTarget.name}!`);
+              }
+          } else {
+              toast.success(`Successfully switched to ${upgradeTarget.name}!`);
+          }
+          
           setUpgradeTarget(null);
           
           // Reload billing data
@@ -549,9 +578,12 @@ export const Settings: React.FC<SettingsProps> = ({
                       <div className="mt-4 md:mt-0">
                           <button 
                               onClick={() => {
-                                  // Show plan selection
+                                  // Show plan selection - allow any account to upgrade to Reseller
+                                  const currentPlan = companyData?.plan || 'Free';
                                   const availablePlans = plans.filter(p => {
-                                      const currentPlan = companyData?.plan || 'Free';
+                                      // Always allow Reseller upgrade
+                                      if (p.name === 'Reseller') return true;
+                                      // Standard upgrade path
                                       if (currentPlan === 'Free') return p.name === 'Starter' || p.name === 'Pro';
                                       if (currentPlan === 'Starter') return p.name === 'Pro';
                                       return false;
@@ -589,6 +621,9 @@ export const Settings: React.FC<SettingsProps> = ({
                           {plans
                               .filter(p => {
                                   const currentPlan = companyData?.plan || 'Free';
+                                  // Always show Reseller as an option
+                                  if (p.name === 'Reseller') return true;
+                                  // Standard upgrade path
                                   if (currentPlan === 'Free') return p.name === 'Starter' || p.name === 'Pro';
                                   if (currentPlan === 'Starter') return p.name === 'Pro';
                                   return false;
@@ -749,6 +784,56 @@ export const Settings: React.FC<SettingsProps> = ({
                           <label className="block text-xs font-bold text-gray-500 uppercase">Branch Code</label>
                           <input type="text" value={companyData.branchCode} onChange={e => handleCompanyUpdate({...companyData, branchCode: e.target.value})} className="w-full border rounded p-2" />
                       </div>
+                   </div>
+               </div>
+               
+               {/* Test Company Invite Section */}
+               <div className="mt-8 bg-gray-50 rounded-xl border border-gray-200 p-6">
+                   <h3 className="text-lg font-bold mb-4">Test Company Invite</h3>
+                   <p className="text-sm text-gray-600 mb-4">Send a test company invitation email to verify the email system is working correctly.</p>
+                   <div className="flex items-center space-x-4">
+                       <input 
+                           type="email" 
+                           placeholder="Email address (e.g. pushtechja@gmail.com)" 
+                           className="flex-1 border border-gray-300 rounded-lg p-2" 
+                           id="test-company-invite-email"
+                           defaultValue="pushtechja@gmail.com"
+                       />
+                       <button
+                           onClick={async () => {
+                               const emailInput = document.getElementById('test-company-invite-email') as HTMLInputElement;
+                               const testEmail = emailInput?.value || 'pushtechja@gmail.com';
+                               
+                               if (!testEmail || !testEmail.includes('@')) {
+                                   toast.error('Please enter a valid email address');
+                                   return;
+                               }
+                               
+                               const inviteToken = generateUUID();
+                               const inviteLink = `${window.location.origin}/?page=signup&token=${inviteToken}&email=${encodeURIComponent(testEmail)}&companyInvite=true`;
+                               
+                               toast.info('Sending test company invite...');
+                               const result = await emailService.sendCompanyInvite(
+                                   testEmail,
+                                   'Test User',
+                                   companyData?.name || 'Test Company',
+                                   inviteLink
+                               );
+                               
+                               if (result.success) {
+                                   if (result.message?.includes('Simulation')) {
+                                       toast.info('Test invite sent (simulation mode - check console)');
+                                   } else {
+                                       toast.success(`Test company invite sent to ${testEmail}!`);
+                                   }
+                               } else {
+                                   toast.error('Failed to send test invite: ' + (result.message || 'Unknown error'));
+                               }
+                           }}
+                           className="bg-jam-orange text-jam-black px-6 py-2 rounded-lg font-bold hover:bg-yellow-500 transition-colors"
+                       >
+                           Send Test Invite
+                       </button>
                    </div>
                </div>
           </div>
