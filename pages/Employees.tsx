@@ -50,6 +50,7 @@ export const Employees: React.FC<EmployeesProps> = ({
   const [terminationData, setTerminationData] = useState<Partial<TerminationDetails>>({ reason: 'RESIGNATION' });
   const [deleteWarning, setDeleteWarning] = useState<{isOpen: boolean, empId: string}>({ isOpen: false, empId: '' });
   const [revokeWarning, setRevokeWarning] = useState<{isOpen: boolean, empId: string, email: string}>({ isOpen: false, empId: '', email: '' });
+  const [verificationModal, setVerificationModal] = useState<{isOpen: boolean, employee: Employee | null}>({ isOpen: false, employee: null });
 
   // Edit State
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
@@ -371,7 +372,33 @@ export const Employees: React.FC<EmployeesProps> = ({
   };
 
   const openVerifyModal = (emp: Employee) => {
-      setSelectedEmployee(emp); // Open edit to verify details
+      setVerificationModal({ isOpen: true, employee: emp });
+  };
+
+  const handleApproveVerification = async () => {
+      if (!verificationModal.employee) return;
+      
+      const now = new Date().toISOString();
+      const updated: Employee = {
+          ...verificationModal.employee,
+          status: 'ACTIVE',
+          documentsVerifiedAt: now,
+          documentsVerifiedBy: currentUser?.id
+      };
+      
+      onUpdateEmployee(updated);
+      auditService.log(currentUser, 'VERIFY', 'Employee', `Verified documents for ${updated.firstName} ${updated.lastName}`);
+      toast.success(`${updated.firstName} ${updated.lastName} has been verified and activated!`);
+      setVerificationModal({ isOpen: false, employee: null });
+  };
+
+  const handleRejectVerification = async () => {
+      if (!verificationModal.employee) return;
+      
+      const emp = verificationModal.employee;
+      // Could add rejection reason modal here
+      toast.info(`Verification rejected for ${emp.firstName} ${emp.lastName}. They will need to re-upload documents.`);
+      setVerificationModal({ isOpen: false, employee: null });
   };
 
   const handleUpdateField = (field: keyof Employee, value: any) => {
@@ -409,8 +436,36 @@ export const Employees: React.FC<EmployeesProps> = ({
       return departments.find(d => d.id === id)?.name || id;
   };
 
+  // Count employees pending verification
+  const pendingVerificationCount = employees.filter(e => e.status === 'PENDING_VERIFICATION').length;
+
   return (
     <div className="space-y-6 relative">
+      {/* Pending Verification Banner */}
+      {pendingVerificationCount > 0 && (
+          <div className="bg-purple-50 border-l-4 border-purple-400 p-4 rounded-r-lg shadow-sm">
+              <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                      <Icons.Alert className="h-5 w-5 text-purple-400 mr-3" />
+                      <div>
+                          <p className="text-sm font-medium text-purple-800">
+                              {pendingVerificationCount} employee{pendingVerificationCount > 1 ? 's' : ''} awaiting document verification
+                          </p>
+                          <p className="text-xs text-purple-600 mt-1">
+                              Review uploaded documents and approve to activate their accounts
+                          </p>
+                      </div>
+                  </div>
+                  <button
+                      onClick={() => setViewMode('onboarding')}
+                      className="px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700"
+                  >
+                      Review Now
+                  </button>
+              </div>
+          </div>
+      )}
+      
       {/* Upgrade Modal */}
       {showUpgradeModal && (
           <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
@@ -905,6 +960,110 @@ export const Employees: React.FC<EmployeesProps> = ({
           </tbody>
         </table>
       </div>
+
+      {/* Verification Modal */}
+      {verificationModal.isOpen && verificationModal.employee && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                  {/* Header */}
+                  <div className="bg-purple-600 text-white p-6">
+                      <div className="flex justify-between items-start">
+                          <div>
+                              <h2 className="text-2xl font-bold">Document Verification</h2>
+                              <p className="text-purple-100 mt-1">
+                                  {verificationModal.employee.firstName} {verificationModal.employee.lastName}
+                              </p>
+                          </div>
+                          <button
+                              onClick={() => setVerificationModal({ isOpen: false, employee: null })}
+                              className="text-white hover:text-gray-200"
+                          >
+                              <Icons.Close className="w-6 h-6" />
+                          </button>
+                      </div>
+                  </div>
+
+                  {/* Employee Info */}
+                  <div className="p-6 border-b border-gray-200">
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                              <label className="text-gray-500 text-xs">Email</label>
+                              <p className="font-medium">{verificationModal.employee.email}</p>
+                          </div>
+                          <div>
+                              <label className="text-gray-500 text-xs">Job Title</label>
+                              <p className="font-medium">{verificationModal.employee.jobTitle || 'N/A'}</p>
+                          </div>
+                          <div>
+                              <label className="text-gray-500 text-xs">Department</label>
+                              <p className="font-medium">{getDeptName(verificationModal.employee.department) || 'N/A'}</p>
+                          </div>
+                          <div>
+                              <label className="text-gray-500 text-xs">Hire Date</label>
+                              <p className="font-medium">{verificationModal.employee.hireDate}</p>
+                          </div>
+                      </div>
+                  </div>
+
+                  {/* Uploaded Documents Section */}
+                  <div className="p-6">
+                      <h3 className="text-lg font-bold text-gray-900 mb-4">Uploaded Documents</h3>
+                      
+                      {verificationModal.employee.verificationDocuments && verificationModal.employee.verificationDocuments.length > 0 ? (
+                          <div className="space-y-3">
+                              {verificationModal.employee.verificationDocuments.map((doc, idx) => (
+                                  <div key={idx} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
+                                      <div className="flex items-center space-x-3">
+                                          <Icons.FileCheck className="w-5 h-5 text-purple-600" />
+                                          <div>
+                                              <p className="text-sm font-medium text-gray-900">{doc.fileName}</p>
+                                              <p className="text-xs text-gray-500">Uploaded: {new Date(doc.uploadedAt).toLocaleDateString()}</p>
+                                          </div>
+                                      </div>
+                                      <a
+                                          href={doc.fileUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="px-3 py-1.5 text-sm font-medium text-purple-600 hover:text-purple-700 hover:bg-purple-50 rounded-lg transition-colors"
+                                      >
+                                          View
+                                      </a>
+                                  </div>
+                              ))}
+                          </div>
+                      ) : (
+                          <div className="text-center py-8 bg-gray-50 rounded-lg">
+                              <Icons.Document className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+                              <p className="text-sm text-gray-500">No documents uploaded yet</p>
+                              <p className="text-xs text-gray-400 mt-1">Employee needs to upload verification documents</p>
+                          </div>
+                      )}
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="p-6 bg-gray-50 border-t border-gray-200 flex justify-end space-x-3">
+                      <button
+                          onClick={() => setVerificationModal({ isOpen: false, employee: null })}
+                          className="px-6 py-2.5 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-100 transition-colors"
+                      >
+                          Cancel
+                      </button>
+                      <button
+                          onClick={handleRejectVerification}
+                          className="px-6 py-2.5 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors"
+                      >
+                          Reject
+                      </button>
+                      <button
+                          onClick={handleApproveVerification}
+                          className="px-6 py-2.5 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-colors"
+                      >
+                          Approve & Activate
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
     </div>
   );
 };

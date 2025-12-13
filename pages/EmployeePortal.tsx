@@ -14,9 +14,10 @@ interface PortalProps {
     onRequestLeave: (req: LeaveRequest) => void;
     payRunHistory?: PayRun[];
     companyData?: CompanySettings;
+    onUpdateEmployee?: (emp: Employee) => void;
 }
 
-export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = 'home', leaveRequests, onRequestLeave, payRunHistory = [], companyData }) => {
+export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = 'home', leaveRequests, onRequestLeave, payRunHistory = [], companyData, onUpdateEmployee }) => {
     const [selectedPayslip, setSelectedPayslip] = useState<{data: PayRunLineItem, period: string, date: string} | null>(null);
     const [jobLetterRequest, setJobLetterRequest] = useState(false);
     const [uploadingDocument, setUploadingDocument] = useState(false);
@@ -174,8 +175,9 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
         setUploadingDocument(true);
         
         try {
-            // Import storage service dynamically
+            // Import services dynamically
             const { storageService } = await import('../services/storageService');
+            const { supabaseService } = await import('../services/supabaseService');
             
             // Upload each file to the 'documents' bucket
             const uploadPromises = uploadedFiles.map(async (file) => {
@@ -183,7 +185,11 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                 const filePath = `employee-verification/${employee.id}/${fileName}`;
                 
                 const publicUrl = await storageService.uploadFile('documents', filePath, file);
-                return { success: publicUrl !== null, url: publicUrl };
+                return { 
+                    success: publicUrl !== null, 
+                    url: publicUrl,
+                    fileName: file.name
+                };
             });
             
             const results = await Promise.all(uploadPromises);
@@ -192,6 +198,28 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
             const allSuccess = results.every(r => r.success);
             
             if (allSuccess) {
+                // Update employee record with document info
+                const verificationDocuments = results.map(r => ({
+                    fileName: r.fileName,
+                    fileUrl: r.url || '',
+                    uploadedAt: new Date().toISOString()
+                }));
+                
+                const updatedEmployee: Employee = {
+                    ...employee,
+                    verificationDocuments: [
+                        ...(employee.verificationDocuments || []),
+                        ...verificationDocuments
+                    ]
+                };
+                
+                // Update in database if onUpdateEmployee is provided
+                if (onUpdateEmployee && user?.companyId) {
+                    onUpdateEmployee(updatedEmployee);
+                    // Also save to Supabase
+                    await supabaseService.saveEmployee(updatedEmployee, user.companyId);
+                }
+                
                 setUploadingDocument(false);
                 setUploadedFiles([]);
                 alert('Documents uploaded successfully! Your employer will review them shortly.');
