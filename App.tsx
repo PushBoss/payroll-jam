@@ -548,16 +548,26 @@ function AppContent() {
       await supabaseService.saveEmployee(updatedEmployee, finalCompanyId);
       console.log('✅ Employee status updated to PENDING_VERIFICATION');
       
-      toast.success('Account created successfully! Please upload your verification documents.');
+      // Login the user directly - no need to reload
+      const { data: sessionData, error: signInError } = await supabase.auth.signInWithPassword({
+        email: employee.email,
+        password: password,
+      });
+
+      if (signInError) {
+        console.error('❌ Sign in error:', signInError);
+        toast.error('Account created but login failed. Please login manually.');
+        setEmployeeAccountSetup(null);
+        window.history.replaceState({}, '', window.location.pathname);
+        return;
+      }
+
+      console.log('✅ User logged in successfully');
+      toast.success('Account created successfully! Welcome aboard!');
       setEmployeeAccountSetup(null);
       
-      // Clear URL parameters
-      window.history.replaceState({}, '', window.location.pathname);
-      
-      // Reload to trigger auth state change and login
-      setTimeout(() => {
-        window.location.reload();
-      }, 1500);
+      // Clear URL parameters and navigate to employee portal
+      window.history.replaceState({}, '', '/?page=employee-portal');
       
     } catch (error: any) {
       console.error('Error setting up employee account:', error);

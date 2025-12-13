@@ -166,13 +166,43 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
             return;
         }
         
+        if (!employee?.id) {
+            alert('Employee information not found');
+            return;
+        }
+        
         setUploadingDocument(true);
-        // Simulate upload - in production, this would upload to storage
-        setTimeout(() => {
+        
+        try {
+            // Import storage service dynamically
+            const { storageService } = await import('../services/storageService');
+            
+            // Upload each file to the 'documents' bucket
+            const uploadPromises = uploadedFiles.map(async (file) => {
+                const fileName = `${employee.id}_${Date.now()}_${file.name}`;
+                const filePath = `employee-verification/${employee.id}/${fileName}`;
+                
+                const publicUrl = await storageService.uploadFile('documents', filePath, file);
+                return { success: publicUrl !== null, url: publicUrl };
+            });
+            
+            const results = await Promise.all(uploadPromises);
+            
+            // Check if all uploads succeeded
+            const allSuccess = results.every(r => r.success);
+            
+            if (allSuccess) {
+                setUploadingDocument(false);
+                setUploadedFiles([]);
+                alert('Documents uploaded successfully! Your employer will review them shortly.');
+            } else {
+                throw new Error('Some files failed to upload');
+            }
+        } catch (error) {
+            console.error('Error uploading documents:', error);
             setUploadingDocument(false);
-            setUploadedFiles([]);
-            alert('Documents uploaded successfully! Your employer will review them shortly.');
-        }, 2000);
+            alert('Failed to upload documents. Please try again or contact your employer.');
+        }
     };
 
     const isPendingVerification = employee?.status === 'PENDING_VERIFICATION';
