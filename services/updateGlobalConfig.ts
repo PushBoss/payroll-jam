@@ -1,33 +1,24 @@
-// Update global config for Supabase/global config update
+// Update global config for Supabase backend ONLY (no localStorage for plans)
 import { GlobalConfig } from '../types';
-import { storage } from './storage';
 import { supabaseService } from './supabaseService';
 
 export async function updateGlobalConfig(partial: Partial<GlobalConfig & { pricingPlans?: any }>) {
-  // Update localStorage first
-  const current = storage.getGlobalConfig() || {} as GlobalConfig;
+  // Get current config from Supabase
+  const current = await supabaseService.getGlobalConfig() || {} as GlobalConfig;
   const updated = { ...current, ...partial };
   
-  // Save to localStorage
-  localStorage.setItem('payroll_jam_global_config', JSON.stringify(updated));
-  
-  // Save pricing plans specifically to localStorage if provided
-  if (partial.pricingPlans) {
-    storage.savePricingPlans(partial.pricingPlans);
-  }
-  
-  // Save to Supabase global config
+  // Save to Supabase backend ONLY
   try {
     const success = await supabaseService.saveGlobalConfig(updated);
     if (success) {
-      console.log('✅ Global config updated in Supabase');
+      console.log('✅ Global config (including pricing plans) updated in Supabase backend');
+      return updated;
     } else {
-      console.warn('⚠️ Global config saved to localStorage only (Supabase update failed)');
+      console.error('❌ Global config update failed in Supabase');
+      throw new Error('Failed to save global config to backend');
     }
   } catch (error) {
     console.error('❌ Failed to update global config in Supabase:', error);
-    // Don't throw - localStorage update already succeeded
+    throw error;
   }
-  
-  return updated;
 }

@@ -302,44 +302,51 @@ function AppContent() {
   useEffect(() => storage.saveTaxConfig(taxConfig), [taxConfig]);
   useEffect(() => storage.saveIntegrationConfig(integrationConfig), [integrationConfig]);
   useEffect(() => storage.saveTemplates(templates), [templates]);
-  // Always load plans from Supabase/global config on app load
+  // Load plans from Supabase backend on app load (NOT localStorage)
   useEffect(() => {
-    function loadPlans() {
-      // Always ensure we have plans - use stored or initial
-      const storedPlans = storage.getPricingPlans();
-          const globalConfig = storage.getGlobalConfig();
-      
-      // Priority: globalConfig.pricingPlans > storedPlans > INITIAL_PLANS
-      if (globalConfig?.pricingPlans && Array.isArray(globalConfig.pricingPlans) && globalConfig.pricingPlans.length > 0) {
-            setPlans(globalConfig.pricingPlans);
-            storage.savePricingPlans(globalConfig.pricingPlans);
-      } else if (storedPlans && storedPlans.length > 0) {
-        setPlans(storedPlans);
-      } else if (plans.length === 0) {
-        // Only set INITIAL_PLANS if we don't have any plans yet
+    async function loadPlansFromBackend() {
+      if (!isSupabaseMode) {
+        // Fallback to INITIAL_PLANS if not in Supabase mode
         setPlans(INITIAL_PLANS);
-        storage.savePricingPlans(INITIAL_PLANS);
+        return;
+      }
+
+      try {
+        const globalConfig = await supabaseService.getGlobalConfig();
+        
+        if (globalConfig?.pricingPlans && Array.isArray(globalConfig.pricingPlans) && globalConfig.pricingPlans.length > 0) {
+          console.log('✅ Loaded pricing plans from Supabase backend:', globalConfig.pricingPlans.length);
+          setPlans(globalConfig.pricingPlans);
+        } else {
+          console.log('⚠️ No plans in backend, using INITIAL_PLANS');
+          setPlans(INITIAL_PLANS);
+          // Save initial plans to backend
+          await updateGlobalConfig({ pricingPlans: INITIAL_PLANS });
+        }
+      } catch (error) {
+        console.error('❌ Failed to load plans from backend, using INITIAL_PLANS:', error);
+        setPlans(INITIAL_PLANS);
       }
     }
-    loadPlans();
-  }, []); // Run once on mount
-  useEffect(() => storage.savePricingPlans(plans), [plans]);
+    loadPlansFromBackend();
+  }, [isSupabaseMode]); // Run once on mount
   useEffect(() => storage.saveDepartments(departments), [departments]);
   useEffect(() => storage.saveDesignations(designations), [designations]);
   useEffect(() => storage.saveAssets(assets), [assets]);
   useEffect(() => storage.saveReviews(reviews), [reviews]);
 
-  // Handler to sync plan/pricing edits to backend/global config and local storage
+  // Handler to save plan/pricing edits ONLY to backend (NOT localStorage)
   const handleUpdatePlans = async (updatedPlans: PricingPlan[]) => {
     setPlans(updatedPlans);
-    storage.savePricingPlans(updatedPlans);
-    // If Supabase mode, update global config in Supabase (if available)
+    
+    // Save to Supabase backend only (not localStorage)
     if (isSupabaseMode) {
       try {
         await updateGlobalConfig({ pricingPlans: updatedPlans });
+        console.log('✅ Plans saved to backend only');
       } catch (e) {
-        // Optionally show error to user
-        console.error('Failed to update global config:', e);
+        console.error('❌ Failed to update plans in backend:', e);
+        toast.error('Failed to save pricing plans');
       }
     }
   };
