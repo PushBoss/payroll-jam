@@ -108,11 +108,11 @@ export const supabaseService = {
       preferences.onboardingToken = user.onboardingToken;
     }
     
-    // First check if user exists
+    // Check if user exists by ID or email
     const { data: existing } = await supabase
       .from('app_users')
       .select('id, preferences')
-      .eq('id', user.id)
+      .or(`id.eq.${user.id},email.eq.${user.email}`)
       .maybeSingle();
     
     if (existing) {
@@ -120,10 +120,12 @@ export const supabaseService = {
       const existingPrefs = existing.preferences || {};
       const mergedPrefs = { ...existingPrefs, ...preferences };
       
-      // Update existing user
+      // Update existing user (use the existing ID if different from the provided one)
+      const updateId = existing.id;
       const { data, error } = await supabase
         .from('app_users')
         .update({
+          id: user.id, // Update to new auth ID if changed
           name: user.name,
           role: user.role,
           company_id: user.companyId,
@@ -132,7 +134,7 @@ export const supabaseService = {
           phone: user.phone || null,
           preferences: mergedPrefs
         })
-        .eq('id', user.id)
+        .eq('id', updateId)
         .select();
       
       if (error) {
@@ -141,10 +143,10 @@ export const supabaseService = {
       }
       console.log("✅ User updated successfully:", data);
     } else {
-      // Insert new user
+      // Use upsert to handle conflicts gracefully
       const { data, error } = await supabase
         .from('app_users')
-        .insert({
+        .upsert({
           id: user.id,
           email: user.email,
           name: user.name,
@@ -154,14 +156,17 @@ export const supabaseService = {
           avatar_url: user.avatarUrl || null,
           phone: user.phone || null,
           preferences: preferences
+        }, {
+          onConflict: 'id,email',
+          ignoreDuplicates: false
         })
         .select();
       
       if (error) {
-        console.error("❌ Error inserting user:", error);
+        console.error("❌ Error upserting user:", error);
         throw error;
       }
-      console.log("✅ User inserted successfully:", data);
+      console.log("✅ User upserted successfully:", data);
     }
   },
 
