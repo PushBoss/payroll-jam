@@ -107,12 +107,8 @@ function AppContent() {
   const [taxConfig, setTaxConfig] = useState<TaxConfig>(storage.getTaxConfig() || INITIAL_TAX_CONFIG);
   const [integrationConfig, setIntegrationConfig] = useState<IntegrationConfig>(storage.getIntegrationConfig() || { provider: 'CSV', mappings: [] });
   const [templates, setTemplates] = useState<DocumentTemplate[]>(storage.getTemplates() || []);
-  // Initialize plans - ensure we always have at least INITIAL_PLANS
-  const getInitialPlans = (): PricingPlan[] => {
-    const stored = storage.getPricingPlans();
-    return (stored && stored.length > 0) ? stored : INITIAL_PLANS;
-  };
-  const [plans, setPlans] = useState<PricingPlan[]>(getInitialPlans());
+  // Initialize plans with INITIAL_PLANS as temporary fallback - backend will load immediately
+  const [plans, setPlans] = useState<PricingPlan[]>(INITIAL_PLANS);
   const [departments, setDepartments] = useState<Department[]>(storage.getDepartments() || []);
   const [designations, setDesignations] = useState<Designation[]>(storage.getDesignations() || []);
   const [assets, setAssets] = useState<Asset[]>(storage.getAssets() || []);
