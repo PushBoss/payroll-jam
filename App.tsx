@@ -567,7 +567,7 @@ function AppContent() {
       setEmployeeAccountSetup(null);
       
       // Clear URL parameters and navigate to employee portal
-      window.history.replaceState({}, '', '/?page=employee-portal');
+      window.history.replaceState({}, '', '/?page=portal-home');
       
     } catch (error: any) {
       console.error('Error setting up employee account:', error);
