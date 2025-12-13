@@ -11,7 +11,6 @@ import { generateUUID } from '../utils/uuid';
 
 interface SignupProps {
   onSignup?: (user: User) => void;
-  onSignupSuccess?: (user: User) => void;
   onLoginClick: () => void;
   onBack?: () => void; // Optional back button handler
   onNavigate?: (path: string) => void; // Optional navigation handler for Terms/Privacy
@@ -20,7 +19,7 @@ interface SignupProps {
   plans: PricingPlan[]; 
 }
 
-export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onLoginClick, onBack, onNavigate, initialPlan = 'Starter', initialBillingCycle = 'monthly', plans }) => {
+export const Signup: React.FC<SignupProps> = ({ onLoginClick, onBack, onNavigate, initialPlan = 'Starter', initialBillingCycle = 'monthly', plans }) => {
   const { signup } = useAuth();
   const [step, setStep] = useState<'account' | 'billing'>('account');
   const [paymentError, setPaymentError] = useState<string | null>(null);
@@ -197,33 +196,29 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onLoginClick, o
       await signup(newUser);
       console.log('✅ Signup completed successfully');
       
+      // All signups redirect to login with email verification message
       if (requiresApproval) {
         console.log('📝 Direct deposit - redirecting to login');
-        toast.success('Account created! You will be able to login once payment is received and verified by our team.', {
+        toast.success('🎉 Account created! You will be able to login once payment is received and verified by our team.', {
           duration: 8000,
         });
-        
-        // Redirect to login after showing message
-        setTimeout(() => {
-          console.log('🔄 Redirecting to login...');
-          onLoginClick();
-        }, 3000);
-      } else {
-        console.log('✅ Regular signup - calling onSignupSuccess');
-        toast.success('Account created successfully! Redirecting to setup...', {
-          duration: 3000,
+      } else if (isPaidPlan) {
+        console.log('💳 Paid signup - redirecting to login');
+        toast.success('🎉 Account created and payment successful! Please check your email to verify your account and get started.', {
+          duration: 8000,
         });
-        
-        // Call onSignupSuccess to trigger onboarding flow
-        setTimeout(() => {
-          if (onSignupSuccess) {
-            console.log('✅ Calling onSignupSuccess with user:', newUser);
-            onSignupSuccess(newUser);
-          } else {
-            console.error('⚠️ onSignupSuccess is undefined');
-          }
-        }, 500);
+      } else {
+        console.log('✅ Free signup - redirecting to login');
+        toast.success('🎉 Account created successfully! Please check your email to verify your account and get started.', {
+          duration: 8000,
+        });
       }
+      
+      // Redirect to login after showing message
+      setTimeout(() => {
+        console.log('🔄 Redirecting to login...');
+        onLoginClick();
+      }, 3000);
     } catch (error: any) {
       console.error('❌ Signup failed:', error);
       console.error('Error details:', {

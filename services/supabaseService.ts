@@ -143,7 +143,8 @@ export const supabaseService = {
       }
       console.log("✅ User updated successfully:", data);
     } else {
-      // Use upsert to handle conflicts gracefully
+      // Insert new user
+      console.log("📝 Inserting new user into app_users table...");
       const { data, error } = await supabase
         .from('app_users')
         .upsert({
@@ -157,16 +158,22 @@ export const supabaseService = {
           phone: user.phone || null,
           preferences: preferences
         }, {
-          onConflict: 'id,email',
+          onConflict: 'id',
           ignoreDuplicates: false
         })
         .select();
       
       if (error) {
-        console.error("❌ Error upserting user:", error);
+        console.error("❌ Error inserting user into app_users:", error);
+        console.error("Error details:", {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint
+        });
         throw error;
       }
-      console.log("✅ User upserted successfully:", data);
+      console.log("✅ User created successfully in app_users table:", data);
     }
   },
 

@@ -421,11 +421,7 @@ function AppContent() {
     else navigateTo('dashboard');
   };
 
-  const onSignupSuccess = async (u: User) => {
-    if (u.role === Role.OWNER) navigateTo('onboarding');
-    else if (u.role === Role.EMPLOYEE) navigateTo('employee-onboarding');
-    else navigateTo('dashboard');
-  };
+  // Signup now redirects to login page with email verification message
   
   const handleImpersonation = (client: any) => {
       impersonate(client);
@@ -616,7 +612,7 @@ function AppContent() {
         <Toaster richColors position="top-right" />
         <CookieConsent />
         {currentPath === 'login' && <Login onLoginSuccess={onLoginSuccess} onBack={() => navigateTo('home')} onRegisterClick={() => navigateTo('signup')} />}
-        {currentPath === 'signup' && <Signup onSignupSuccess={onSignupSuccess} onLoginClick={() => navigateTo('login')} onBack={() => navigateTo('home')} onNavigate={navigateTo} plans={plans} />}
+        {currentPath === 'signup' && <Signup onLoginClick={() => navigateTo('login')} onBack={() => navigateTo('home')} onNavigate={navigateTo} plans={plans} />}
         {currentPath === 'pricing' && <Pricing onSignup={() => navigateTo('signup')} onLogin={() => navigateTo('login')} onBack={() => navigateTo('home')} onFeaturesClick={() => navigateTo('features')} onFaqClick={() => navigateTo('faq')} plans={plans} />}
         {currentPath === 'features' && <Features onSignup={() => navigateTo('signup')} onLogin={() => navigateTo('login')} onBack={() => navigateTo('home')} onPricingClick={() => navigateTo('pricing')} onFaqClick={() => navigateTo('faq')} />}
         {currentPath === 'faq' && <FAQ onSignup={() => navigateTo('signup')} onLogin={() => navigateTo('login')} onBack={() => navigateTo('home')} onPricingClick={() => navigateTo('pricing')} onFeaturesClick={() => navigateTo('features')} />}

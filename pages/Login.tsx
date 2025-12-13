@@ -63,7 +63,12 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBack, onRegister
       console.log('Error status:', error.status);
       
       // Provide specific error messages based on error type
-      if (error.message?.toLowerCase().includes('invalid') || 
+      if (error.message?.toLowerCase().includes('profile not found') || 
+          error.message?.toLowerCase().includes('user not found')) {
+        toast.error('Account setup incomplete. Please check your email to verify your account, or contact support if the issue persists.', {
+          duration: 8000,
+        });
+      } else if (error.message?.toLowerCase().includes('invalid') || 
           error.message?.toLowerCase().includes('credentials') ||
           error.message?.toLowerCase().includes('password') ||
           error.status === 400) {
@@ -72,8 +77,8 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBack, onRegister
         });
       } else if (error.message?.toLowerCase().includes('email not confirmed') || 
                  error.message?.toLowerCase().includes('not confirmed')) {
-        toast.error('Please verify your email before logging in. Check your inbox.', {
-          duration: 5000,
+        toast.error('Please verify your email before logging in. Check your inbox for the confirmation link.', {
+          duration: 8000,
         });
       } else {
         toast.error(error.message || 'Login failed. Please try again.', {

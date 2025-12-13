@@ -266,12 +266,33 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         isOnboarded: userData.isOnboarded || false
       };
 
-      await supabaseService.saveUser(appUser);
-      console.log('✅ User profile saved:', appUser.email);
+      console.log('📝 Creating user profile:', { 
+        id: appUser.id, 
+        email: appUser.email, 
+        companyId: appUser.companyId,
+        role: appUser.role 
+      });
+
+      try {
+        await supabaseService.saveUser(appUser);
+        console.log('✅ User profile saved to app_users table:', appUser.email);
+      } catch (profileError) {
+        console.error('❌ CRITICAL: Failed to create user profile:', profileError);
+        // Try to clean up auth user if profile creation fails
+        try {
+          await supabase.auth.admin?.deleteUser(authData.user.id);
+          console.log('🧹 Cleaned up orphaned auth user');
+        } catch (cleanupError) {
+          console.error('⚠️ Failed to cleanup auth user:', cleanupError);
+        }
+        throw new Error(`Profile creation failed: ${(profileError as any).message || 'Unknown error'}`);
+      }
 
       // 4. Update local state
       setUser(appUser);
       storage.saveUser(appUser);
+      
+      console.log('✅ Signup completed successfully - user will receive confirmation email');
 
     } catch (error) {
       console.error('❌ Signup failed:', error);
