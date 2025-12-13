@@ -2025,10 +2025,10 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     <input 
                       type="number"
                       className="w-full border border-gray-300 rounded px-3 py-2"
-                      value={editingPlan.priceConfig.monthly || 0}
+                      value={editingPlan.priceConfig.monthly || ''}
                       onChange={e => setEditingPlan({
                         ...editingPlan,
-                        priceConfig: { ...editingPlan.priceConfig, monthly: parseFloat(e.target.value) || 0 }
+                        priceConfig: { ...editingPlan.priceConfig, monthly: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0 }
                       })}
                     />
                   </div>
@@ -2037,10 +2037,10 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     <input 
                       type="number"
                       className="w-full border border-gray-300 rounded px-3 py-2"
-                      value={editingPlan.priceConfig.annual || 0}
+                      value={editingPlan.priceConfig.annual || ''}
                       onChange={e => setEditingPlan({
                         ...editingPlan,
-                        priceConfig: { ...editingPlan.priceConfig, annual: parseFloat(e.target.value) || 0 }
+                        priceConfig: { ...editingPlan.priceConfig, annual: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0 }
                       })}
                     />
                   </div>
@@ -2055,10 +2055,10 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                       <input
                         type="number"
                         className="w-full border border-gray-300 rounded px-3 py-2"
-                        value={editingPlan.priceConfig.baseFee || 0}
+                        value={editingPlan.priceConfig.baseFee || ''}
                         onChange={e => setEditingPlan({
                           ...editingPlan,
-                          priceConfig: { ...editingPlan.priceConfig, baseFee: parseFloat(e.target.value) || 0 }
+                          priceConfig: { ...editingPlan.priceConfig, baseFee: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0 }
                         })}
                       />
                     </div>
@@ -2067,10 +2067,10 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                       <input
                         type="number"
                         className="w-full border border-gray-300 rounded px-3 py-2"
-                        value={editingPlan.priceConfig.perUserFee || 0}
+                        value={editingPlan.priceConfig.perUserFee || ''}
                         onChange={e => setEditingPlan({
                           ...editingPlan,
-                          priceConfig: { ...editingPlan.priceConfig, perUserFee: parseFloat(e.target.value) || 0 }
+                          priceConfig: { ...editingPlan.priceConfig, perUserFee: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0 }
                         })}
                       />
                     </div>
@@ -2080,10 +2080,10 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     <input
                       type="number"
                       className="w-full border border-gray-300 rounded px-3 py-2"
-                      value={editingPlan.priceConfig.resellerCommission || 0}
+                      value={editingPlan.priceConfig.resellerCommission || ''}
                       onChange={e => setEditingPlan({
                         ...editingPlan,
-                        priceConfig: { ...editingPlan.priceConfig, resellerCommission: parseFloat(e.target.value) || 0 }
+                        priceConfig: { ...editingPlan.priceConfig, resellerCommission: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0 }
                       })}
                     />
                   </div>
