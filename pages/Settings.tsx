@@ -147,6 +147,20 @@ export const Settings: React.FC<SettingsProps> = ({
 }) => {
   const { user: currentUser, updateUser } = useAuth();
   const [activeTab, setActiveTab] = useState<'company' | 'billing' | 'organization' | 'taxes' | 'integrations' | 'users'>('organization');
+  
+  // Debug: Log plans when component mounts or plans change
+  useEffect(() => {
+    console.log('🔍 Settings received plans:', plans.length);
+    if (plans.length > 0) {
+      console.log('📊 Plans data:', plans.map(p => ({ 
+        name: p.name, 
+        monthly: p.priceConfig.monthly,
+        type: p.priceConfig.type 
+      })));
+    } else {
+      console.warn('⚠️ Settings received EMPTY plans array!');
+    }
+  }, [plans]);
   const [isSavingCompany, setIsSavingCompany] = useState(false);
   
   // User Management State
