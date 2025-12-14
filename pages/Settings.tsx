@@ -650,13 +650,14 @@ export const Settings: React.FC<SettingsProps> = ({
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                           {(() => {
                               const currentPlan = companyData?.plan || 'Free';
+                              // Show all active plans except current plan and Free (if not on Free)
                               const filtered = plans.filter(p => {
-                                  // Always show Reseller as an option
-                                  if (p.name === 'Reseller') return true;
-                                  // Standard upgrade path
-                                  if (currentPlan === 'Free') return p.name === 'Starter' || p.name === 'Pro';
-                                  if (currentPlan === 'Starter') return p.name === 'Pro';
-                                  return false;
+                                  // Don't show current plan
+                                  if (p.name === currentPlan) return false;
+                                  // Don't show Free plan (no one upgrades to Free)
+                                  if (p.priceConfig.type === 'free') return false;
+                                  // Show everything else (all paid plans)
+                                  return true;
                               });
                               console.log('🎯 Filtered plans for display (current:', currentPlan, '):', filtered.map(p => ({ name: p.name, monthly: p.priceConfig.monthly })));
                               return filtered.map(plan => (
