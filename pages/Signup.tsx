@@ -199,18 +199,18 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onBack, onNavigate
       // All signups redirect to login with email verification message
       if (requiresApproval) {
         console.log('📝 Direct deposit - redirecting to login');
-        toast.success('🎉 Account created! You will be able to login once payment is received and verified by our team.', {
-          duration: 8000,
+        toast.success('🎉 Account created! Please verify your email before logging in. You will be able to access your account once payment is confirmed.', {
+          duration: 10000,
         });
       } else if (isPaidPlan) {
         console.log('💳 Paid signup - redirecting to login');
-        toast.success('🎉 Account created and payment successful! Please check your email to verify your account and get started.', {
-          duration: 8000,
+        toast.success('🎉 Account created and payment successful! Please check your email and verify your account before logging in.', {
+          duration: 10000,
         });
       } else {
         console.log('✅ Free signup - redirecting to login');
-        toast.success('🎉 Account created successfully! Please check your email to verify your account and get started.', {
-          duration: 8000,
+        toast.success('🎉 Account created! Please check your email and verify your account before logging in.', {
+          duration: 10000,
         });
       }
       

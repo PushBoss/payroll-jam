@@ -820,55 +820,6 @@ export const Settings: React.FC<SettingsProps> = ({
                    </div>
                </div>
                
-               {/* Test Company Invite Section */}
-               <div className="mt-8 bg-gray-50 rounded-xl border border-gray-200 p-6">
-                   <h3 className="text-lg font-bold mb-4">Test Company Invite</h3>
-                   <p className="text-sm text-gray-600 mb-4">Send a test company invitation email to verify the email system is working correctly.</p>
-                   <div className="flex items-center space-x-4">
-                       <input 
-                           type="email" 
-                           placeholder="Email address (e.g. pushtechja@gmail.com)" 
-                           className="flex-1 border border-gray-300 rounded-lg p-2" 
-                           id="test-company-invite-email"
-                           defaultValue="pushtechja@gmail.com"
-                       />
-                       <button
-                           onClick={async () => {
-                               const emailInput = document.getElementById('test-company-invite-email') as HTMLInputElement;
-                               const testEmail = emailInput?.value || 'pushtechja@gmail.com';
-                               
-                               if (!testEmail || !testEmail.includes('@')) {
-                                   toast.error('Please enter a valid email address');
-                                   return;
-                               }
-                               
-                               const inviteToken = generateUUID();
-                               const inviteLink = `${window.location.origin}/?page=signup&token=${inviteToken}&email=${encodeURIComponent(testEmail)}&companyInvite=true`;
-                               
-                               toast.info('Sending test company invite...');
-                               const result = await emailService.sendCompanyInvite(
-                                   testEmail,
-                                   'Test User',
-                                   companyData?.name || 'Test Company',
-                                   inviteLink
-                               );
-                               
-                               if (result.success) {
-                                   if (result.message?.includes('Simulation')) {
-                                       toast.info('Test invite sent (simulation mode - check console)');
-                                   } else {
-                                       toast.success(`Test company invite sent to ${testEmail}!`);
-                                   }
-                               } else {
-                                   toast.error('Failed to send test invite: ' + (result.message || 'Unknown error'));
-                               }
-                           }}
-                           className="bg-jam-orange text-jam-black px-6 py-2 rounded-lg font-bold hover:bg-yellow-500 transition-colors"
-                       >
-                           Send Test Invite
-                       </button>
-                   </div>
-               </div>
           </div>
       )}
 
