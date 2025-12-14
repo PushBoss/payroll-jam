@@ -42,7 +42,10 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ plan, currentUser, onClos
     const [paymentSuccess, setPaymentSuccess] = useState(false);
     const isMountedRef = useRef(true);
     
-    const price = plan.priceConfig.type === 'free' ? 0 : plan.priceConfig.monthly;
+    // Calculate price based on plan type
+    const price = plan.priceConfig.type === 'free' ? 0 :
+                  plan.priceConfig.type === 'base' ? (plan.priceConfig.baseFee || 0) :
+                  plan.priceConfig.monthly;
     const isPaid = price > 0;
 
     useEffect(() => {
@@ -296,7 +299,10 @@ export const Settings: React.FC<SettingsProps> = ({
   
   const handleUpgradeSuccess = async () => {
       if (upgradeTarget && currentUser?.companyId) {
-          const planAmount = upgradeTarget.priceConfig.type === 'free' ? 0 : upgradeTarget.priceConfig.monthly;
+          // Calculate plan amount based on type
+          const planAmount = upgradeTarget.priceConfig.type === 'free' ? 0 :
+                            upgradeTarget.priceConfig.type === 'base' ? (upgradeTarget.priceConfig.baseFee || 0) :
+                            upgradeTarget.priceConfig.monthly;
 
           // Try to create subscription in Supabase (non-blocking)
           let newSubscription = null;
