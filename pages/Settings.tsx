@@ -648,17 +648,18 @@ export const Settings: React.FC<SettingsProps> = ({
                   <div className="bg-white p-6 rounded-xl border border-gray-200">
                       <h3 className="text-lg font-bold mb-4">Available Plans</h3>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          {plans
-                              .filter(p => {
-                                  const currentPlan = companyData?.plan || 'Free';
+                          {(() => {
+                              const currentPlan = companyData?.plan || 'Free';
+                              const filtered = plans.filter(p => {
                                   // Always show Reseller as an option
                                   if (p.name === 'Reseller') return true;
                                   // Standard upgrade path
                                   if (currentPlan === 'Free') return p.name === 'Starter' || p.name === 'Pro';
                                   if (currentPlan === 'Starter') return p.name === 'Pro';
                                   return false;
-                              })
-                              .map(plan => (
+                              });
+                              console.log('🎯 Filtered plans for display (current:', currentPlan, '):', filtered.map(p => ({ name: p.name, monthly: p.priceConfig.monthly })));
+                              return filtered.map(plan => (
                                   <div key={plan.id} className="border border-gray-200 rounded-lg p-4 hover:border-jam-orange transition-colors">
                                       <h4 className="font-bold text-lg mb-2">{plan.name}</h4>
                                       <div className="text-2xl font-bold mb-2">
@@ -677,7 +678,8 @@ export const Settings: React.FC<SettingsProps> = ({
                                           Upgrade to {plan.name}
                                       </button>
                                   </div>
-                              ))}
+                              ));
+                          })()}
                       </div>
                   </div>
               )}
