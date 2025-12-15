@@ -12,6 +12,7 @@ import { generateUUID } from '../utils/uuid';
 interface SignupProps {
   onSignup?: (user: User) => void;
   onLoginClick: () => void;
+  onVerifyEmailClick: (email: string) => void;
   onBack?: () => void; // Optional back button handler
   onNavigate?: (path: string) => void; // Optional navigation handler for Terms/Privacy
   initialPlan?: string;
@@ -19,7 +20,7 @@ interface SignupProps {
   plans: PricingPlan[]; 
 }
 
-export const Signup: React.FC<SignupProps> = ({ onLoginClick, onBack, onNavigate, initialPlan = 'Starter', initialBillingCycle = 'monthly', plans }) => {
+export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick, onBack, onNavigate, initialPlan = 'Starter', initialBillingCycle = 'monthly', plans }) => {
   const { signup } = useAuth();
   const [step, setStep] = useState<'account' | 'billing'>('account');
   const [paymentError, setPaymentError] = useState<string | null>(null);
@@ -196,29 +197,29 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onBack, onNavigate
       await signup(newUser);
       console.log('✅ Signup completed successfully');
       
-      // All signups redirect to login with email verification message
+      // All signups redirect to verify email page
       if (requiresApproval) {
-        console.log('📝 Direct deposit - redirecting to login');
-        toast.success('🎉 Account created! Please verify your email before logging in. You will be able to access your account once payment is confirmed.', {
-          duration: 10000,
+        console.log('📝 Direct deposit - redirecting to verify email page');
+        toast.success('🎉 Account created! Payment pending verification.', {
+          duration: 5000,
         });
       } else if (isPaidPlan) {
-        console.log('💳 Paid signup - redirecting to login');
-        toast.success('🎉 Account created and payment successful! Please check your email and verify your account before logging in.', {
-          duration: 10000,
+        console.log('💳 Paid signup - redirecting to verify email page');
+        toast.success('🎉 Account created and payment successful!', {
+          duration: 5000,
         });
       } else {
-        console.log('✅ Free signup - redirecting to login');
-        toast.success('🎉 Account created! Please check your email and verify your account before logging in.', {
-          duration: 10000,
+        console.log('✅ Free signup - redirecting to verify email page');
+        toast.success('🎉 Account created successfully!', {
+          duration: 5000,
         });
       }
       
-      // Redirect to login after showing message
+      // Redirect to verify email page after showing message
       setTimeout(() => {
-        console.log('🔄 Redirecting to login...');
-        onLoginClick();
-      }, 3000);
+        console.log('🔄 Redirecting to verify email page...');
+        onVerifyEmailClick(formData.email);
+      }, 1500);
     } catch (error: any) {
       console.error('❌ Signup failed:', error);
       console.error('Error details:', {

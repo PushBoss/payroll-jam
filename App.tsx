@@ -40,7 +40,7 @@ const ResellerDashboard = lazy(() => import('./pages/ResellerDashboard').then(m 
 const EmployeeOnboardingWizard = lazy(() => import('./pages/EmployeeOnboardingWizard').then(m => ({ default: m.EmployeeOnboardingWizard })));
 const NotFound = lazy(() => import('./pages/NotFound').then(m => ({ default: m.NotFound })));
 const Profile = lazy(() => import('./pages/Profile').then(m => ({ default: m.Profile })));
-
+const VerifyEmail = lazy(() => import('./pages/VerifyEmail').then(m => ({ default: m.VerifyEmail })));
 
 
 const INITIAL_TAX_CONFIG: TaxConfig = {
@@ -95,6 +95,7 @@ function AppContent() {
   const [currentPath, setCurrentPath] = useState(getInitialPath());
   const [dataLoading, setDataLoading] = useState(false);
   const [editRunId, setEditRunId] = useState<string | undefined>(undefined);
+  const [verifyEmail, setVerifyEmail] = useState<string>('');
   
   // Data State
   const [employees, setEmployees] = useState<Employee[]>(storage.getEmployees() || []);
@@ -151,7 +152,7 @@ function AppContent() {
 
   // Redirect authenticated users away from auth pages
   useEffect(() => {
-    if (user && !isLoading && (currentPath === 'login' || currentPath === 'signup')) {
+    if (user && !isLoading && (currentPath === 'login' || currentPath === 'signup' || currentPath === 'verify-email')) {
       if (user.role === Role.EMPLOYEE) {
         navigateTo('portal-home');
       } else if (user.role === Role.RESELLER) {
@@ -608,14 +609,15 @@ function AppContent() {
         <Toaster richColors position="top-right" />
         <CookieConsent />
         {currentPath === 'login' && <Login onLoginSuccess={onLoginSuccess} onBack={() => navigateTo('home')} onRegisterClick={() => navigateTo('signup')} />}
-        {currentPath === 'signup' && <Signup onLoginClick={() => navigateTo('login')} onBack={() => navigateTo('home')} onNavigate={navigateTo} plans={plans} />}
+        {currentPath === 'signup' && <Signup onLoginClick={() => navigateTo('login')} onVerifyEmailClick={(email) => { setVerifyEmail(email); navigateTo('verify-email'); }} onBack={() => navigateTo('home')} onNavigate={navigateTo} plans={plans} />}
+        {currentPath === 'verify-email' && <VerifyEmail email={verifyEmail} onLoginClick={() => navigateTo('login')} onBack={() => navigateTo('home')} />}
         {currentPath === 'pricing' && <Pricing onSignup={() => navigateTo('signup')} onLogin={() => navigateTo('login')} onBack={() => navigateTo('home')} onFeaturesClick={() => navigateTo('features')} onFaqClick={() => navigateTo('faq')} plans={plans} />}
         {currentPath === 'features' && <Features onSignup={() => navigateTo('signup')} onLogin={() => navigateTo('login')} onBack={() => navigateTo('home')} onPricingClick={() => navigateTo('pricing')} onFaqClick={() => navigateTo('faq')} />}
         {currentPath === 'faq' && <FAQ onSignup={() => navigateTo('signup')} onLogin={() => navigateTo('login')} onBack={() => navigateTo('home')} onPricingClick={() => navigateTo('pricing')} onFeaturesClick={() => navigateTo('features')} />}
         {currentPath === 'privacy-policy' && <PrivacyPolicy onBack={() => navigateTo('home')} />}
         {currentPath === 'terms-of-service' && <TermsOfService onBack={() => navigateTo('home')} />}
         {currentPath === 'home' && <LandingPage plans={plans} onLogin={() => navigateTo('login')} onSignup={() => navigateTo('signup')} onPricingClick={() => navigateTo('pricing')} onFeaturesClick={() => navigateTo('features')} onFaqClick={() => navigateTo('faq')} onPrivacyClick={() => navigateTo('privacy-policy')} onTermsClick={() => navigateTo('terms-of-service')} />}
-        {!['login','signup','pricing','features','faq','home','privacy-policy','terms-of-service'].includes(currentPath) && 
+        {!['login','signup','verify-email','pricing','features','faq','home','privacy-policy','terms-of-service'].includes(currentPath) && 
           <NotFound onGoHome={() => navigateTo('home')} />
         }
       </Suspense>
