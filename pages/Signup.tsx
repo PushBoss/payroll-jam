@@ -35,6 +35,9 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
   const timerRef = useRef<any>(null);
   const isMountedRef = useRef(true);
   
+  // State to store reseller invite token
+  const [resellerInviteToken, setResellerInviteToken] = useState<string | null>(null);
+  
   // Fetch Global Payment Configuration
   const paymentConfig = storage.getGlobalConfig();
   const payPalEnabled = false; // PayPal disabled - only using DimePay
@@ -61,9 +64,18 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
       const params = new URLSearchParams(window.location.search);
       const token = params.get('token');
       const email = params.get('email');
+      const isResellerInvite = params.get('reseller') === 'true';
       
-      if (email && token) {
+      // Pre-fill email if provided
+      if (email) {
           setFormData(prev => ({ ...prev, email: decodeURIComponent(email) }));
+      }
+      
+      // Store reseller invite token if this is a reseller invite
+      if (token && isResellerInvite) {
+          console.log('🔗 Reseller invite token detected:', token);
+          setResellerInviteToken(token);
+          toast.info('You\'re signing up through a reseller invitation!', { duration: 5000 });
       }
       
       return () => { isMountedRef.current = false; };
@@ -191,7 +203,8 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
         isOnboarded: false,
         companyName: formData.name + "'s Company", // Temporary name, will be set in onboarding
         plan: formData.plan,
-        paymentMethod: paymentMethod
+        paymentMethod: paymentMethod,
+        resellerInviteToken: resellerInviteToken || undefined // Pass reseller invite token if present
       };
       
       await signup(newUser);

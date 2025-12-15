@@ -186,8 +186,10 @@ function AppContent() {
           return;
       }
       
-      // Handle reseller invites for existing users
+      // Handle reseller invites
       const isResellerInvite = params.get('reseller') === 'true';
+      
+      // For existing logged-in users - accept invite immediately
       if (isResellerInvite && user && user.companyId && email === user.email && token) {
           // User is already logged in with matching email - accept the invite
           (async () => {
@@ -199,6 +201,13 @@ function AppContent() {
                   toast.error('Failed to accept reseller invitation. It may have expired.');
               }
           })();
+          return;
+      }
+      
+      // For new users (not logged in) - redirect to signup with token preserved
+      if (isResellerInvite && !user && token && email) {
+          console.log('🔗 Reseller invite detected for new user, redirecting to signup...');
+          navigateTo('signup');
           return;
       }
       

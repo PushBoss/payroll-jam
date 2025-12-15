@@ -575,6 +575,23 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
       toast.success(`Plan ${plan.isActive ? 'deactivated' : 'activated'}`);
   };
 
+  const handleDeletePlan = (plan: PricingPlan) => {
+      // Prevent deleting if it's the only active plan
+      const activePlans = plans.filter(p => p.isActive);
+      if (activePlans.length === 1 && plan.isActive) {
+          toast.error('Cannot delete the last active plan!');
+          return;
+      }
+
+      // Confirm deletion
+      if (window.confirm(`Are you sure you want to delete the "${plan.name}" plan? This action cannot be undone.`)) {
+          const updated = plans.filter(p => p.id !== plan.id);
+          onUpdatePlans(updated);
+          auditService.log({id: 'sys', name: 'Super Admin', email: 'sys', role: Role.SUPER_ADMIN}, 'DELETE', 'Plan', `Deleted plan: ${plan.name}`);
+          toast.success(`Plan "${plan.name}" deleted successfully`);
+      }
+  };
+
   // --- Render Components ---
 
   const renderOverview = () => (
@@ -1059,8 +1076,16 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                             <button 
                                 onClick={() => toggleActiveStatus(plan)}
                                 className={`px-3 py-2 rounded border ${plan.isActive ? 'text-red-600 border-red-200 hover:bg-red-50' : 'text-green-600 border-green-200 hover:bg-green-50'}`}
+                                title={plan.isActive ? 'Deactivate plan' : 'Activate plan'}
                             >
                                 <Icons.Zap className="w-4 h-4" />
+                            </button>
+                            <button 
+                                onClick={() => handleDeletePlan(plan)}
+                                className="px-3 py-2 rounded border text-red-600 border-red-200 hover:bg-red-50"
+                                title="Delete plan"
+                            >
+                                <Icons.Trash className="w-4 h-4" />
                             </button>
                         </div>
                     </div>
