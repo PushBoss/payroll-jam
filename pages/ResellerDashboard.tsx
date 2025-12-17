@@ -664,10 +664,18 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                                 value={formData.plan}
                                 onChange={e => setFormData({...formData, plan: e.target.value as any})}
                               >
-                                  <option value="Free">Free</option>
-                                  <option value="Starter">Starter ($2,000)</option>
-                                  <option value="Pro">Pro ($500/emp)</option>
-                                  <option value="Enterprise">Enterprise</option>
+                                  {plans.filter(p => p.isActive && p.name !== 'Reseller').map(plan => {
+                                      const price = plan.priceConfig.type === 'free' ? 'Free' :
+                                                   plan.priceConfig.type === 'flat' ? `$${plan.priceConfig.monthly.toLocaleString()}` :
+                                                   plan.priceConfig.type === 'per_emp' ? `$${plan.priceConfig.monthly.toLocaleString()}/emp` :
+                                                   plan.priceConfig.type === 'base' ? `$${plan.priceConfig.baseFee?.toLocaleString() || 0}` :
+                                                   '';
+                                      return (
+                                          <option key={plan.id} value={plan.name}>
+                                              {plan.name} ({price})
+                                          </option>
+                                      );
+                                  })}
                               </select>
                           </div>
                           <div>

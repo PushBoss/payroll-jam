@@ -299,9 +299,15 @@ export const Settings: React.FC<SettingsProps> = ({
   
   const handleUpgradeSuccess = async () => {
       if (upgradeTarget && currentUser?.companyId) {
+          // Get employee count for per-employee pricing
+          const employees = await supabaseService.getEmployees(currentUser.companyId);
+          const employeeCount = employees?.length || 1; // Minimum 1 to avoid $0 charge
+          
           // Calculate plan amount based on type
           const planAmount = upgradeTarget.priceConfig.type === 'free' ? 0 :
                             upgradeTarget.priceConfig.type === 'base' ? (upgradeTarget.priceConfig.baseFee || 0) :
+                            upgradeTarget.priceConfig.type === 'per_emp' ? 
+                              ((upgradeTarget.priceConfig.monthly || 0) * employeeCount) :
                             upgradeTarget.priceConfig.monthly;
 
           // Try to create subscription in Supabase (non-blocking)

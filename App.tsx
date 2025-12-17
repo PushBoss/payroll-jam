@@ -54,8 +54,8 @@ const INITIAL_TAX_CONFIG: TaxConfig = {
 const INITIAL_PLANS: PricingPlan[] = [
     { id: 'p1', name: 'Free', priceConfig: { type: 'free', monthly: 0, annual: 0 }, description: 'For small businesses (<5 emp)', limit: '5', features: ['Basic Payroll', 'Payslip PDF'], cta: 'Start Free', highlight: false, color: 'bg-white', textColor: 'text-gray-900', isActive: true },
     { id: 'p2', name: 'Starter', priceConfig: { type: 'flat', monthly: 5000, annual: 50000 }, description: 'Growing teams needing compliance', limit: '25', features: ['S01/S02 Reports', 'ACH Bank Files', 'Email Support'], cta: 'Get Started', highlight: true, color: 'bg-jam-black', textColor: 'text-white', isActive: true },
-    { id: 'p3', name: 'Pro', priceConfig: { type: 'per_emp', monthly: 500, annual: 5000 }, description: 'Larger organizations', limit: 'Unlimited', features: ['GL Integration', 'Employee Portal', 'Advanced HR'], cta: 'Contact Sales', highlight: false, color: 'bg-white', textColor: 'text-gray-900', isActive: true },
-    { id: 'p4', name: 'Reseller', priceConfig: { type: 'base', monthly: 0, annual: 0, baseFee: 5000, perUserFee: 500, resellerCommission: 20 }, description: 'For Accountants & Payroll Bureaus', limit: 'Unlimited', features: ['White Label', 'Client Management', '20% Commission'], cta: 'Partner With Us', highlight: false, color: 'bg-gray-100', textColor: 'text-gray-900', isActive: true }
+    { id: 'p3', name: 'Pro', priceConfig: { type: 'per_emp', monthly: 500, annual: 5000 }, description: 'Larger organizations', limit: 'Unlimited', features: ['GL Integration', 'Employee Portal', 'Advanced HR'], cta: 'Get Started', highlight: false, color: 'bg-white', textColor: 'text-gray-900', isActive: true },
+    { id: 'p4', name: 'Reseller', priceConfig: { type: 'base', monthly: 0, annual: 0, baseFee: 5000, perUserFee: 500, resellerCommission: 20 }, description: 'For Accountants & Payroll Bureaus', limit: 'Unlimited', features: ['White Label', 'Client Management', '20% Commission'], cta: 'Get Started', highlight: false, color: 'bg-gray-100', textColor: 'text-gray-900', isActive: true }
 ];
 
 function AppContent() {
@@ -96,6 +96,8 @@ function AppContent() {
   const [dataLoading, setDataLoading] = useState(false);
   const [editRunId, setEditRunId] = useState<string | undefined>(undefined);
   const [verifyEmail, setVerifyEmail] = useState<string>('');
+  const [selectedPlan, setSelectedPlan] = useState<string>('Starter');
+  const [selectedCycle, setSelectedCycle] = useState<'monthly' | 'annual'>('monthly');
   
   // Data State
   const [employees, setEmployees] = useState<Employee[]>(storage.getEmployees() || []);
@@ -618,14 +620,14 @@ function AppContent() {
         <Toaster richColors position="top-right" />
         <CookieConsent />
         {currentPath === 'login' && <Login onLoginSuccess={onLoginSuccess} onBack={() => navigateTo('home')} onRegisterClick={() => navigateTo('signup')} />}
-        {currentPath === 'signup' && <Signup onLoginClick={() => navigateTo('login')} onVerifyEmailClick={(email) => { setVerifyEmail(email); navigateTo('verify-email'); }} onBack={() => navigateTo('home')} onNavigate={navigateTo} plans={plans} />}
+        {currentPath === 'signup' && <Signup initialPlan={selectedPlan} initialBillingCycle={selectedCycle} onLoginClick={() => navigateTo('login')} onVerifyEmailClick={(email) => { setVerifyEmail(email); navigateTo('verify-email'); }} onBack={() => navigateTo('home')} onNavigate={navigateTo} plans={plans} />}
         {currentPath === 'verify-email' && <VerifyEmail email={verifyEmail} onLoginClick={() => navigateTo('login')} onBack={() => navigateTo('home')} />}
-        {currentPath === 'pricing' && <Pricing onSignup={() => navigateTo('signup')} onLogin={() => navigateTo('login')} onBack={() => navigateTo('home')} onFeaturesClick={() => navigateTo('features')} onFaqClick={() => navigateTo('faq')} plans={plans} />}
-        {currentPath === 'features' && <Features onSignup={() => navigateTo('signup')} onLogin={() => navigateTo('login')} onBack={() => navigateTo('home')} onPricingClick={() => navigateTo('pricing')} onFaqClick={() => navigateTo('faq')} />}
-        {currentPath === 'faq' && <FAQ onSignup={() => navigateTo('signup')} onLogin={() => navigateTo('login')} onBack={() => navigateTo('home')} onPricingClick={() => navigateTo('pricing')} onFeaturesClick={() => navigateTo('features')} />}
+        {currentPath === 'pricing' && <Pricing onSignup={(plan, cycle) => { setSelectedPlan(plan); setSelectedCycle(cycle); navigateTo('signup'); }} onLogin={() => navigateTo('login')} onBack={() => navigateTo('home')} onFeaturesClick={() => navigateTo('features')} onFaqClick={() => navigateTo('faq')} plans={plans} />}
+        {currentPath === 'features' && <Features onSignup={() => { setSelectedPlan('Starter'); setSelectedCycle('monthly'); navigateTo('signup'); }} onLogin={() => navigateTo('login')} onBack={() => navigateTo('home')} onPricingClick={() => navigateTo('pricing')} onFaqClick={() => navigateTo('faq')} />}
+        {currentPath === 'faq' && <FAQ onSignup={() => { setSelectedPlan('Starter'); setSelectedCycle('monthly'); navigateTo('signup'); }} onLogin={() => navigateTo('login')} onBack={() => navigateTo('home')} onPricingClick={() => navigateTo('pricing')} onFeaturesClick={() => navigateTo('features')} />}
         {currentPath === 'privacy-policy' && <PrivacyPolicy onBack={() => navigateTo('home')} />}
         {currentPath === 'terms-of-service' && <TermsOfService onBack={() => navigateTo('home')} />}
-        {currentPath === 'home' && <LandingPage plans={plans} onLogin={() => navigateTo('login')} onSignup={() => navigateTo('signup')} onPricingClick={() => navigateTo('pricing')} onFeaturesClick={() => navigateTo('features')} onFaqClick={() => navigateTo('faq')} onPrivacyClick={() => navigateTo('privacy-policy')} onTermsClick={() => navigateTo('terms-of-service')} />}
+        {currentPath === 'home' && <LandingPage plans={plans} onLogin={() => navigateTo('login')} onSignup={(plan) => { setSelectedPlan(plan || 'Free'); setSelectedCycle('monthly'); navigateTo('signup'); }} onPricingClick={() => navigateTo('pricing')} onFeaturesClick={() => navigateTo('features')} onFaqClick={() => navigateTo('faq')} onPrivacyClick={() => navigateTo('privacy-policy')} onTermsClick={() => navigateTo('terms-of-service')} />}
         {!['login','signup','verify-email','pricing','features','faq','home','privacy-policy','terms-of-service'].includes(currentPath) && 
           <NotFound onGoHome={() => navigateTo('home')} />
         }

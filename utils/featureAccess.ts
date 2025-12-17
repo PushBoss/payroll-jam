@@ -10,7 +10,7 @@ export const getPlanFeatures = (planName: string | undefined): string[] => {
     case 'Free':
       return ['Basic Payroll', 'Payslip PDF'];
     case 'Starter':
-      return ['Basic Payroll', 'Payslip PDF', 'S01/S02 Reports', 'ACH Bank Files', 'Email Support'];
+      return ['Basic Payroll', 'Payslip PDF', 'S01/S02 Reports', 'ACH Bank Files', 'Email Support', 'Employee Portal'];
     case 'Pro':
     case 'Professional':
       return ['Basic Payroll', 'Payslip PDF', 'S01/S02 Reports', 'ACH Bank Files', 'Email Support', 'GL Integration', 'Employee Portal', 'Advanced HR', 'AI Assistant', 'Compliance', 'Documents'];
@@ -29,13 +29,13 @@ export const getFeatureUpgradeMessage = (feature: string, currentPlan: string | 
   const plan = currentPlan || 'Free';
   
   if (plan === 'Free') {
-    if (['Employee Dashboard', 'AI Assistant', 'Compliance', 'Documents'].includes(feature)) {
+    if (['Employee Portal', 'Employee Dashboard', 'AI Assistant', 'Compliance', 'Documents'].includes(feature)) {
       return 'Upgrade to Starter or Pro to access this feature';
     }
   }
   
   if (plan === 'Starter') {
-    if (['GL Integration', 'Employee Portal', 'Advanced HR', 'AI Assistant'].includes(feature)) {
+    if (['GL Integration', 'Advanced HR', 'AI Assistant'].includes(feature)) {
       return 'Upgrade to Pro to access this feature';
     }
   }

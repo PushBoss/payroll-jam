@@ -18,6 +18,12 @@ interface PortalProps {
 }
 
 export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = 'home', leaveRequests, onRequestLeave, payRunHistory = [], companyData, onUpdateEmployee }) => {
+    // Check if company plan allows Employee Portal access
+    const hasPortalAccess = companyData && 
+        (companyData.plan === 'Starter' || 
+         companyData.plan === 'Pro' || 
+         companyData.plan === 'Professional');
+    
     const [selectedPayslip, setSelectedPayslip] = useState<{data: PayRunLineItem, period: string, date: string} | null>(null);
     const [jobLetterRequest, setJobLetterRequest] = useState(false);
     const [uploadingDocument, setUploadingDocument] = useState(false);
@@ -234,6 +240,30 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
     };
 
     const isPendingVerification = employee?.status === 'PENDING_VERIFICATION';
+
+    // Check access - show upgrade message if on Free plan
+    if (!hasPortalAccess) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full text-center">
+                    <div className="w-16 h-16 bg-jam-orange rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Icons.Shield className="w-8 h-8 text-white" />
+                    </div>
+                    <h2 className="text-2xl font-bold text-gray-900 mb-2">Employee Portal Access Required</h2>
+                    <p className="text-gray-600 mb-6">
+                        The Employee Portal is available on Starter and Pro plans. Please ask your administrator to upgrade.
+                    </p>
+                    <div className="bg-gray-50 rounded-lg p-4 text-left mb-6">
+                        <p className="text-sm text-gray-700 mb-2"><strong>Current Plan:</strong> {companyData?.plan || 'Free'}</p>
+                        <p className="text-sm text-gray-700"><strong>Required:</strong> Starter or Pro</p>
+                    </div>
+                    <p className="text-xs text-gray-500">
+                        Contact your company administrator to upgrade your plan and unlock this feature.
+                    </p>
+                </div>
+            </div>
+        );
+    }
 
     if (selectedPayslip) {
         return (

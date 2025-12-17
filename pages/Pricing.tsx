@@ -48,7 +48,7 @@ export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onF
     if (plan.priceConfig.type === 'per_emp') {
       return (
         <div className="flex items-baseline">
-           <span className="text-4xl font-bold">${amount}</span>
+           <span className="text-4xl font-bold">${amount.toLocaleString()}</span>
            <span className={`ml-1 text-sm ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>{empPeriod}</span>
         </div>
       );
