@@ -2124,6 +2124,17 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 />
               </div>
               <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Button Text (CTA)</label>
+                <input
+                  type="text"
+                  className="w-full border border-gray-300 rounded px-3 py-2"
+                  placeholder="e.g., Get Started, Start Free"
+                  value={editingPlan.cta}
+                  onChange={e => setEditingPlan({...editingPlan, cta: e.target.value})}
+                />
+                <p className="text-xs text-gray-500 mt-1">Text shown on the pricing card button</p>
+              </div>
+              <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Features</label>
                 <div className="space-y-2 mb-2">
                   {editingPlan.features.map((feature, idx) => (
