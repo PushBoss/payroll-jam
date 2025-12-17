@@ -10,6 +10,55 @@ import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { generateUUID } from '../utils/uuid';
 
+// Progress Bar Component
+const ProgressBar: React.FC<{ currentStep: 'SETUP' | 'DRAFT' | 'FINALIZE' }> = ({ currentStep }) => {
+    const steps = [
+        { id: 'SETUP', label: 'Select Period', icon: Icons.Calendar },
+        { id: 'DRAFT', label: 'Enter Details', icon: Icons.FileEdit },
+        { id: 'FINALIZE', label: 'Finalize', icon: Icons.Check }
+    ];
+    
+    const currentIndex = steps.findIndex(s => s.id === currentStep);
+    
+    return (
+        <div className="mb-8">
+            <div className="flex items-center justify-between max-w-3xl mx-auto">
+                {steps.map((step, index) => {
+                    const StepIcon = step.icon;
+                    const isActive = index === currentIndex;
+                    const isCompleted = index < currentIndex;
+                    
+                    return (
+                        <React.Fragment key={step.id}>
+                            <div className="flex flex-col items-center flex-1">
+                                <div className={`w-12 h-12 rounded-full flex items-center justify-center border-2 transition-all ${
+                                    isActive ? 'bg-jam-orange border-jam-orange text-jam-black' :
+                                    isCompleted ? 'bg-green-600 border-green-600 text-white' :
+                                    'bg-gray-100 border-gray-300 text-gray-400'
+                                }`}>
+                                    {isCompleted ? <Icons.Check className="w-6 h-6" /> : <StepIcon className="w-6 h-6" />}
+                                </div>
+                                <p className={`mt-2 text-sm font-medium ${
+                                    isActive ? 'text-jam-orange' :
+                                    isCompleted ? 'text-green-600' :
+                                    'text-gray-400'
+                                }`}>
+                                    {step.label}
+                                </p>
+                            </div>
+                            {index < steps.length - 1 && (
+                                <div className={`flex-1 h-0.5 mx-4 mb-8 transition-all ${
+                                    index < currentIndex ? 'bg-green-600' : 'bg-gray-300'
+                                }`} />
+                            )}
+                        </React.Fragment>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
+
 interface PayRunProps {
     employees: Employee[];
     timesheets: WeeklyTimesheet[];
@@ -130,7 +179,7 @@ export const PayRun: React.FC<PayRunProps> = ({
     onNavigate
 }) => {
     const { user: currentUser } = useAuth();
-    const [step, setStep] = useState<'SETUP' | 'DRAFT' | 'APPROVE' | 'FINALIZE'>('SETUP');
+    const [step, setStep] = useState<'SETUP' | 'DRAFT' | 'FINALIZE'>('SETUP');
     const [payCycle, setPayCycle] = useState<PayFrequency | 'ALL'>('ALL');
     const [payPeriod, setPayPeriod] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
     const [editingRun, setEditingRun] = useState<PayRunType | null>(null);
@@ -194,9 +243,9 @@ export const PayRun: React.FC<PayRunProps> = ({
                 if (runToEdit.lineItems && runToEdit.lineItems.length > 0) {
                     loadDraftItems(runToEdit.lineItems);
                 }
-                setStep(runToEdit.status === 'APPROVED' ? 'APPROVE' : 'DRAFT');
+                setStep('DRAFT'); // Always load to DRAFT for editing
                 setHasLoadedEdit(true); // Mark as loaded
-                toast.success(`Loaded ${runToEdit.status} pay run for editing`);
+                toast.success(`Loaded pay run for editing`);
             } else if (runToEdit && runToEdit.status === 'FINALIZED') {
                 toast.error('Cannot edit finalized pay runs');
                 setHasLoadedEdit(true);
@@ -268,13 +317,13 @@ export const PayRun: React.FC<PayRunProps> = ({
         }, 800);
     };
 
-    const handleMoveToApproval = () => {
+    const handleContinueToFinalize = async () => {
         if (draftItems.length === 0) {
             toast.error("No employees in pay run. Add employees first.");
             return;
         }
 
-        // Save draft before moving to approval
+        // Auto-save draft before moving to finalize
         const draftRun: PayRunType = {
             id: editingRun?.id || generateUUID(),
             periodStart: payPeriod,
@@ -290,8 +339,10 @@ export const PayRun: React.FC<PayRunProps> = ({
         // Update editingRun state
         setEditingRun(draftRun);
         onSave(draftRun);
-        setStep('APPROVE');
-        toast.success("Pay run ready for approval");
+        toast.success("Progress saved");
+        
+        // Move to finalize and automatically finalize
+        await handleFinalize();
     };
 
     // Determine pay frequency from payCycle
@@ -302,54 +353,9 @@ export const PayRun: React.FC<PayRunProps> = ({
         return 'MONTHLY';
     };
 
-    const handleSaveDraft = () => {
-        if (draftItems.length === 0) {
-            toast.error("No employees in pay run. Add employees first.");
-            return;
-        }
+    // Removed handleSaveDraft - using auto-save with handleContinueToFinalize now
 
-        const draftRun: PayRunType = {
-            id: editingRun?.id || generateUUID(),
-            periodStart: payPeriod,
-            periodEnd: payPeriod,
-            payDate: new Date().toISOString().split('T')[0],
-            payFrequency: editingRun?.payFrequency || getPayFrequency(),
-            status: 'DRAFT',
-            totalGross: totals.gross,
-            totalNet: totals.net,
-            lineItems: draftItems
-        };
-
-        // Update editingRun state so subsequent saves use the same ID
-        setEditingRun(draftRun);
-        onSave(draftRun);
-        toast.success("Draft saved successfully! You can continue editing.");
-    };
-
-    const handleSaveAsApproved = () => {
-        if (draftItems.length === 0) {
-            toast.error("No employees in pay run. Add employees first.");
-            return;
-        }
-
-        const approvedRun: PayRunType = {
-            id: editingRun?.id || generateUUID(),
-            periodStart: payPeriod,
-            periodEnd: payPeriod,
-            payDate: new Date().toISOString().split('T')[0],
-            payFrequency: editingRun?.payFrequency || getPayFrequency(),
-            status: 'APPROVED',
-            totalGross: totals.gross,
-            totalNet: totals.net,
-            lineItems: draftItems
-        };
-
-        onSave(approvedRun);
-        toast.success("Pay run saved as approved!");
-        if (onNavigate) {
-            onNavigate('reports');
-        }
-    };
+    // Removed handleSaveAsApproved - merging approval into finalize step
 
     const handleFinalize = async () => {
         setIsFinalizing(true);
@@ -501,8 +507,9 @@ export const PayRun: React.FC<PayRunProps> = ({
 
     if (step === 'SETUP') {
         return (
-            <div className="max-w-xl mx-auto mt-10 animate-fade-in">
-                <div className="bg-white p-8 rounded-xl shadow-xl border border-gray-100 text-center">
+            <div className="max-w-4xl mx-auto mt-10 animate-fade-in">
+                <ProgressBar currentStep="SETUP" />
+                <div className="bg-white p-8 rounded-xl shadow-xl border border-gray-100 text-center max-w-xl mx-auto">
                     <div className="w-16 h-16 bg-orange-50 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm border border-orange-100">
                         <span className="text-3xl text-jam-orange font-bold">$</span>
                     </div>
@@ -569,56 +576,11 @@ export const PayRun: React.FC<PayRunProps> = ({
         );
     }
 
-    if (step === 'DRAFT' || step === 'APPROVE') {
-        const isDraftMode = step === 'DRAFT';
-        const isApproveMode = step === 'APPROVE';
-
+    if (step === 'DRAFT') {
         return (
             <div className="space-y-6 animate-fade-in relative">
+                <ProgressBar currentStep="DRAFT" />
                 {/* Wizard Stepper */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                    <div className="flex items-center justify-between max-w-3xl mx-auto">
-                        {/* Step 1: Draft */}
-                        <div className="flex items-center flex-1">
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${
-                                isDraftMode ? 'bg-jam-orange text-jam-black' : 'bg-green-500 text-white'
-                            }`}>
-                                {isDraftMode ? '1' : <Icons.Check className="w-5 h-5" />}
-                            </div>
-                            <div className="ml-3">
-                                <p className={`font-bold text-sm ${isDraftMode ? 'text-gray-900' : 'text-green-600'}`}>Draft</p>
-                                <p className="text-xs text-gray-500">Edit pay amounts</p>
-                            </div>
-                        </div>
-                        <div className={`flex-1 h-1 mx-4 ${isApproveMode ? 'bg-jam-orange' : 'bg-gray-200'}`}></div>
-                        
-                        {/* Step 2: Approve */}
-                        <div className="flex items-center flex-1">
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${
-                                isApproveMode ? 'bg-jam-orange text-jam-black' : 'bg-gray-200 text-gray-500'
-                            }`}>
-                                2
-                            </div>
-                            <div className="ml-3">
-                                <p className={`font-bold text-sm ${isApproveMode ? 'text-gray-900' : 'text-gray-500'}`}>Approve</p>
-                                <p className="text-xs text-gray-500">Review totals</p>
-                            </div>
-                        </div>
-                        <div className="flex-1 h-1 mx-4 bg-gray-200"></div>
-                        
-                        {/* Step 3: Finalize */}
-                        <div className="flex items-center flex-1">
-                            <div className="w-10 h-10 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center font-bold text-sm">
-                                3
-                            </div>
-                            <div className="ml-3">
-                                <p className="font-bold text-sm text-gray-500">Finalize</p>
-                                <p className="text-xs text-gray-500">Send & export</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
                 {/* Ad Hoc Modal */}
                 {adHocModal.isOpen && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -695,26 +657,22 @@ export const PayRun: React.FC<PayRunProps> = ({
                     <div>
                         <div className="flex items-center space-x-3 mb-1">
                             <h2 className="text-3xl font-bold text-gray-900">
-                                {isDraftMode ? 'Draft Pay Run' : 'Approve Pay Run'}: {payPeriod}
+                                Draft Pay Run: {payPeriod}
                             </h2>
                         </div>
                         <div className="flex items-center space-x-2 text-sm">
-                            <span className={`px-2 py-0.5 rounded font-bold uppercase text-xs ${
-                                isDraftMode ? 'bg-jam-yellow/30 text-yellow-800' : 'bg-blue-50 text-blue-800'
-                            }`}>
-                                {isDraftMode ? 'Draft Mode' : 'Approval Mode'}
+                            <span className="px-2 py-0.5 rounded font-bold uppercase text-xs bg-jam-yellow/30 text-yellow-800">
+                                Draft Mode
                             </span>
                             <span className="text-gray-500">
-                                • {isDraftMode ? 'Edit amounts and add adjustments' : 'Review totals before finalizing'}
+                                • Edit amounts and add adjustments
                             </span>
                         </div>
                     </div>
                     <div className="flex items-center space-x-3 mt-4 md:mt-0">
-                        {isDraftMode && (
-                            <button onClick={() => setAddEmployeeModalOpen(true)} className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 shadow-sm flex items-center text-sm font-medium">
-                                <Icons.Plus className="w-4 h-4 mr-2" /> Add Employee
-                            </button>
-                        )}
+                        <button onClick={() => setAddEmployeeModalOpen(true)} className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 shadow-sm flex items-center text-sm font-medium">
+                            <Icons.Plus className="w-4 h-4 mr-2" /> Add Employee
+                        </button>
                         <button onClick={() => { 
                             if (window.confirm('Are you sure you want to cancel? Any unsaved changes will be lost.')) {
                                 setStep('SETUP'); 
@@ -727,32 +685,13 @@ export const PayRun: React.FC<PayRunProps> = ({
                         }} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm font-medium">
                             Cancel
                         </button>
-                        {isDraftMode ? (
-                            <>
-                                <button onClick={handleSaveDraft} className="bg-gray-600 text-white px-4 py-2 font-medium rounded-lg hover:bg-gray-700 shadow-sm flex items-center text-sm">
-                                    <Icons.Save className="w-4 h-4 mr-1" /> Save Draft
-                                </button>
-                                <button onClick={handleMoveToApproval} className="bg-jam-orange text-jam-black px-6 py-2 font-bold rounded-lg hover:bg-yellow-500 shadow-lg flex items-center text-sm">
-                                    <Icons.ChevronRight className="w-4 h-4 mr-1" /> Continue to Approve
-                                </button>
-                            </>
-                        ) : (
-                            <>
-                                <button onClick={() => setStep('DRAFT')} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium flex items-center">
-                                    <Icons.ChevronLeft className="w-4 h-4 mr-1" /> Back to Draft
-                                </button>
-                                <button onClick={handleSaveAsApproved} className="bg-blue-600 text-white px-4 py-2 font-medium rounded-lg hover:bg-blue-700 shadow-sm flex items-center text-sm">
-                                    <Icons.Save className="w-4 h-4 mr-1" /> Save as Approved
-                                </button>
-                                <button onClick={handleFinalize} disabled={isFinalizing} className="bg-green-600 text-white px-6 py-2 font-bold rounded-lg hover:bg-green-700 shadow-lg flex items-center disabled:opacity-50 disabled:cursor-not-allowed text-sm">
-                                    {isFinalizing ? (
-                                        <span className="flex items-center"><Icons.Refresh className="w-4 h-4 mr-2 animate-spin"/> Finalizing...</span>
-                                    ) : (
-                                        <span className="flex items-center"><Icons.Check className="w-4 h-4 mr-2" /> Finalize & Send</span>
-                                    )}
-                                </button>
-                            </>
-                        )}
+                        <button onClick={handleContinueToFinalize} disabled={isFinalizing} className="bg-jam-orange text-jam-black px-6 py-2 font-bold rounded-lg hover:bg-yellow-500 shadow-lg flex items-center text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                            {isFinalizing ? (
+                                <span className="flex items-center"><Icons.Refresh className="w-4 h-4 mr-2 animate-spin"/> Finalizing...</span>
+                            ) : (
+                                <span className="flex items-center"><Icons.ChevronRight className="w-4 h-4 mr-1" /> Continue to Finalize</span>
+                            )}
+                        </button>
                     </div>
                 </div>
                 {/* Summary Cards */}
@@ -763,12 +702,6 @@ export const PayRun: React.FC<PayRunProps> = ({
                 </div>
                 {/* Review Table */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                    {isApproveMode && (
-                        <div className="bg-blue-50 border-b border-blue-200 px-6 py-3 flex items-center">
-                            <Icons.Eye className="w-4 h-4 text-blue-600 mr-2" />
-                            <p className="text-sm text-blue-800 font-medium">Read-only mode: Review the pay run before finalizing. Go back to Draft to make changes.</p>
-                        </div>
-                    )}
                     <table className="w-full text-left border-collapse">
                         <thead className="bg-gray-50 border-b border-gray-200">
                             <tr>
@@ -778,47 +711,19 @@ export const PayRun: React.FC<PayRunProps> = ({
                                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase text-center">Other Deductions</th>
                                 <th className="px-6 py-4 text-xs font-bold text-red-500 uppercase text-right">Taxes</th>
                                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase text-right">Net Pay</th>
-                                {isDraftMode && <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase text-center">Action</th>}
+                                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase text-center">Action</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {draftItems.map(item => (
-                                isDraftMode ? (
-                                    <PayRunRow 
-                                        key={item.employeeId} 
-                                        item={item} 
-                                        updateLineItemGross={updateLineItemGross}
-                                        openAdHocModal={openAdHocModal}
-                                        openTaxModal={openTaxModal}
-                                        removeEmployeeFromRun={removeEmployeeFromRun}
-                                    />
-                                ) : (
-                                    <tr key={item.employeeId} className="hover:bg-gray-50">
-                                        <td className="px-6 py-4">
-                                            <p className="font-bold text-gray-900 text-sm">{item.employeeName}</p>
-                                            <p className="text-xs text-gray-400">{item.employeeId}</p>
-                                        </td>
-                                        <td className="px-6 py-4 text-right font-medium text-gray-900">${item.grossPay.toLocaleString()}</td>
-                                        <td className="px-6 py-4 text-center">
-                                            {item.additions > 0 && <span className="text-green-600 font-bold text-sm">+${item.additions.toLocaleString()}</span>}
-                                            {item.additions === 0 && <span className="text-gray-400 text-sm">-</span>}
-                                        </td>
-                                        <td className="px-6 py-4 text-center">
-                                            {item.deductions > 0 && <span className="text-red-600 font-bold text-sm">-${item.deductions.toLocaleString()}</span>}
-                                            {item.deductions === 0 && <span className="text-gray-400 text-sm">-</span>}
-                                        </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <div className="text-xs text-gray-500 space-y-0.5">
-                                                <div className="flex justify-end space-x-2"><span>PAYE:</span> <span className="font-medium text-gray-700">{item.paye.toLocaleString()}</span></div>
-                                                <div className="flex justify-end space-x-2"><span>NIS:</span> <span className="font-medium text-gray-700">{item.nis.toLocaleString()}</span></div>
-                                                <div className="flex justify-end space-x-2"><span>Ed:</span> <span className="font-medium text-gray-700">{item.edTax.toLocaleString()}</span></div>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <p className="text-lg font-bold text-gray-900">${item.netPay.toLocaleString()}</p>
-                                        </td>
-                                    </tr>
-                                )
+                                <PayRunRow 
+                                    key={item.employeeId} 
+                                    item={item} 
+                                    updateLineItemGross={updateLineItemGross}
+                                    openAdHocModal={openAdHocModal}
+                                    openTaxModal={openTaxModal}
+                                    removeEmployeeFromRun={removeEmployeeFromRun}
+                                />
                             ))}
                         </tbody>
                     </table>
@@ -831,6 +736,7 @@ export const PayRun: React.FC<PayRunProps> = ({
     // FINALIZE STEP
     return (
         <div className="animate-fade-in relative pb-12">
+            <ProgressBar currentStep="FINALIZE" />
             
             {/* Payslip View Modal */}
             {viewingPayslip && (
@@ -854,12 +760,20 @@ export const PayRun: React.FC<PayRunProps> = ({
                         <p className="text-green-700 text-sm">Payslips have been generated and saved to reports. You can now export bank files.</p>
                     </div>
                 </div>
-                <button 
-                    onClick={() => { setStep('SETUP'); clearDraft(); }} 
-                    className="bg-green-600 text-white px-6 py-2.5 rounded-lg hover:bg-green-700 shadow-md font-medium text-sm transition-colors"
-                >
-                    Start New Run
-                </button>
+                <div className="flex items-center space-x-3">
+                    <button 
+                        onClick={() => { setStep('DRAFT'); }} 
+                        className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 shadow-sm flex items-center text-sm font-medium"
+                    >
+                        <Icons.FileEdit className="w-4 h-4 mr-2" /> Edit
+                    </button>
+                    <button 
+                        onClick={() => { setStep('SETUP'); clearDraft(); }} 
+                        className="bg-green-600 text-white px-6 py-2.5 rounded-lg hover:bg-green-700 shadow-md font-medium text-sm transition-colors"
+                    >
+                        Start New Run
+                    </button>
+                </div>
             </div>
             
             {/* Top Cards Grid */}
