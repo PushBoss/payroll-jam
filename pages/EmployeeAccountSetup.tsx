@@ -155,22 +155,46 @@ export const EmployeeAccountSetup: React.FC<EmployeeAccountSetupProps> = ({
           {/* Password Requirements */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <p className="text-xs font-medium text-blue-900 mb-2">Password Requirements:</p>
-            <ul className="text-xs text-blue-700 space-y-1">
+            <ul className="text-xs space-y-2">
               <li className="flex items-center">
-                <Icons.Check className={`w-3 h-3 mr-2 ${password.length >= 8 ? 'text-green-600' : 'text-gray-400'}`} />
-                At least 8 characters
+                {password.length >= 8 ? (
+                  <Icons.CheckCircle className="w-4 h-4 mr-2 text-green-600 flex-shrink-0" />
+                ) : (
+                  <div className="w-4 h-4 mr-2 rounded-full border-2 border-gray-400 flex-shrink-0" />
+                )}
+                <span className={password.length >= 8 ? 'text-green-700 font-medium' : 'text-gray-600'}>
+                  At least 8 characters
+                </span>
               </li>
               <li className="flex items-center">
-                <Icons.Check className={`w-3 h-3 mr-2 ${/[A-Z]/.test(password) ? 'text-green-600' : 'text-gray-400'}`} />
-                One uppercase letter
+                {/[A-Z]/.test(password) ? (
+                  <Icons.CheckCircle className="w-4 h-4 mr-2 text-green-600 flex-shrink-0" />
+                ) : (
+                  <div className="w-4 h-4 mr-2 rounded-full border-2 border-gray-400 flex-shrink-0" />
+                )}
+                <span className={/[A-Z]/.test(password) ? 'text-green-700 font-medium' : 'text-gray-600'}>
+                  One uppercase letter (A-Z)
+                </span>
               </li>
               <li className="flex items-center">
-                <Icons.Check className={`w-3 h-3 mr-2 ${/[a-z]/.test(password) ? 'text-green-600' : 'text-gray-400'}`} />
-                One lowercase letter
+                {/[a-z]/.test(password) ? (
+                  <Icons.CheckCircle className="w-4 h-4 mr-2 text-green-600 flex-shrink-0" />
+                ) : (
+                  <div className="w-4 h-4 mr-2 rounded-full border-2 border-gray-400 flex-shrink-0" />
+                )}
+                <span className={/[a-z]/.test(password) ? 'text-green-700 font-medium' : 'text-gray-600'}>
+                  One lowercase letter (a-z)
+                </span>
               </li>
               <li className="flex items-center">
-                <Icons.Check className={`w-3 h-3 mr-2 ${/[0-9]/.test(password) ? 'text-green-600' : 'text-gray-400'}`} />
-                One number
+                {/[0-9]/.test(password) ? (
+                  <Icons.CheckCircle className="w-4 h-4 mr-2 text-green-600 flex-shrink-0" />
+                ) : (
+                  <div className="w-4 h-4 mr-2 rounded-full border-2 border-gray-400 flex-shrink-0" />
+                )}
+                <span className={/[0-9]/.test(password) ? 'text-green-700 font-medium' : 'text-gray-600'}>
+                  One number (0-9)
+                </span>
               </li>
             </ul>
           </div>
