@@ -791,8 +791,15 @@ export const supabaseService = {
       periodEnd = `${periodEnd}-${lastDay.toString().padStart(2, '0')}`;
     }
 
-    // Check if a pay run exists for this period/frequency combination
-    const { data: existing } = await supabase
+    // Check if THIS SPECIFIC pay run exists (by ID)
+    const { data: existingById } = await supabase
+      .from('pay_runs')
+      .select('id')
+      .eq('id', run.id)
+      .maybeSingle();
+    
+    // Also check if a pay run exists for this period/frequency combination (for logging)
+    const { data: existingByPeriod } = await supabase
       .from('pay_runs')
       .select('id')
       .eq('company_id', companyId)
@@ -815,16 +822,19 @@ export const supabaseService = {
     };
 
     let error;
-    if (existing && existing.id) {
-      // Update existing record
-      const result = await supabase
+    let result;
+    if (existingById && existingById.id === run.id) {
+      // Update existing record (same ID)
+      console.log('📝 Updating existing pay run:', existingById.id);
+      result = await supabase
         .from('pay_runs')
         .update(payRunData)
-        .eq('id', existing.id);
+        .eq('id', run.id);
       error = result.error;
     } else {
-      // Insert new record
-      const result = await supabase
+      // Insert new record (either new ID or different ID for same period)
+      console.log('➕ Inserting new pay run:', run.id, existingByPeriod ? '(replacing period match: ' + existingByPeriod.id + ')' : '');
+      result = await supabase
         .from('pay_runs')
         .insert({
           id: run.id,
@@ -832,6 +842,14 @@ export const supabaseService = {
         });
       error = result.error;
     }
+
+    console.log('📊 Save result:', {
+      error: error ? JSON.stringify(error) : 'none',
+      data: result?.data,
+      count: result?.count,
+      status: result?.status,
+      statusText: result?.statusText
+    });
 
     if (error) {
       console.error("❌ Error saving pay run to Supabase:", error);
@@ -846,11 +864,47 @@ export const supabaseService = {
       });
       throw new Error(`Failed to save pay run: ${error.message || error.code || 'Unknown error'}`);
     } else {
-      console.log("✅ Pay run saved to Supabase database:", {
+      console.log("✅ Pay run save reported success:", {
         id: run.id,
         status: run.status,
-        period: periodStart
+        period: periodStart,
+        resultData: result?.data,
+        resultCount: result?.count
       });
+      
+      // Verify the save by querying it back (this will fail if RLS blocks read)
+      console.log('🔍 Verifying pay run exists in database...');
+      const { data: verifyData, error: verifyError } = await supabase
+        .from('pay_runs')
+        .select('id, status, company_id')
+        .eq('id', run.id)
+        .eq('company_id', companyId) // Add company_id filter to help RLS
+        .maybeSingle(); // Use maybeSingle instead of single to avoid error on 0 rows
+      
+      if (verifyError) {
+        console.error("⚠️ WARNING: Pay run save reported success but verification query failed:", {
+          verifyError: JSON.stringify(verifyError),
+          runId: run.id,
+          companyId: companyId,
+          errorCode: verifyError.code,
+          errorMessage: verifyError.message
+        });
+        // Don't throw - RLS might block read even though write succeeded
+        // The Edge Function will use SERVICE_ROLE_KEY to read it
+        console.warn("⚠️ Verification failed but save succeeded. Edge Function will use SERVICE_ROLE_KEY to read.");
+      } else if (!verifyData) {
+        console.warn("⚠️ WARNING: Pay run save reported success but not found in database (RLS may be blocking read):", {
+          runId: run.id,
+          companyId: companyId
+        });
+        console.warn("⚠️ This is OK - Edge Function uses SERVICE_ROLE_KEY to bypass RLS");
+      } else {
+        console.log("✅ Verified: Pay run exists in database:", {
+          id: verifyData.id,
+          status: verifyData.status,
+          company_id: verifyData.company_id
+        });
+      }
     }
   },
 
