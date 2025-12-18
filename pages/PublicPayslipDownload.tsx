@@ -34,12 +34,13 @@ export const PublicPayslipDownload: React.FC<PublicPayslipDownloadProps> = ({ on
         console.log('🔍 Loading payslip via Edge Function');
 
         // Call Supabase Edge Function to get payslip data
-        const apiUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_SUPABASE_URL;
-        if (!apiUrl) {
-          throw new Error('API URL not configured');
+        // Use VITE_SUPABASE_URL directly (not VITE_API_URL which points to send-email function)
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        if (!supabaseUrl) {
+          throw new Error('Supabase URL not configured');
         }
 
-        const functionUrl = `${apiUrl}/functions/v1/get-payslip`;
+        const functionUrl = `${supabaseUrl}/functions/v1/get-payslip`;
         
         const response = await fetch(functionUrl, {
           method: 'POST',
