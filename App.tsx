@@ -401,7 +401,29 @@ function AppContent() {
         return [run, ...prev];
       }
     });
-    if (isSupabaseMode && user?.companyId) await supabaseService.savePayRun(run, user.companyId);
+    
+    // Save to Supabase
+    if (isSupabaseMode && user?.companyId) {
+      console.log('💾 Saving pay run to Supabase:', {
+        runId: run.id,
+        companyId: user.companyId,
+        status: run.status,
+        periodStart: run.periodStart
+      });
+      
+      try {
+        await supabaseService.savePayRun(run, user.companyId);
+        console.log('✅ Pay run saved to Supabase successfully');
+      } catch (error) {
+        console.error('❌ Failed to save pay run to Supabase:', error);
+        toast.error('Failed to save payroll to database. Payslip download may not work.');
+      }
+    } else {
+      console.warn('⚠️ NOT saving to Supabase:', {
+        isSupabaseMode,
+        hasCompanyId: !!user?.companyId
+      });
+    }
   };
   const handleSaveLeaveRequest = async (req: LeaveRequest) => {
     setLeaveRequests(prev => [req, ...prev]); 
