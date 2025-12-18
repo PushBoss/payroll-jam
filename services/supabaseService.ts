@@ -1348,6 +1348,50 @@ export const supabaseService = {
     });
   },
 
+  getAuditLogs: async (companyId: string | null, userRole?: string): Promise<AuditLogEntry[]> => {
+    if (!supabase) return [];
+    
+    try {
+      let query = supabase
+        .from('audit_logs')
+        .select('*')
+        .order('timestamp', { ascending: false })
+        .limit(500);
+
+      // Super admins can see all audit logs, companies only see their own
+      if (userRole !== 'SUPER_ADMIN' && companyId) {
+        query = query.eq('company_id', companyId);
+      }
+      // If no companyId and not super admin, return empty (shouldn't happen)
+      else if (!companyId && userRole !== 'SUPER_ADMIN') {
+        return [];
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error("Error fetching audit logs:", error);
+        return [];
+      }
+
+      if (!data) return [];
+
+      return data.map((log: any) => ({
+        id: log.id,
+        timestamp: log.timestamp,
+        actorId: log.actor_id,
+        actorName: log.actor_name,
+        action: log.action,
+        entity: log.entity,
+        description: log.description,
+        ipAddress: log.ip_address
+      }));
+    } catch (error) {
+      console.error("Error fetching audit logs:", error);
+      return [];
+    }
+  },
+
   // --- Subscriptions ---
   
   getSubscription: async (companyId: string) => {

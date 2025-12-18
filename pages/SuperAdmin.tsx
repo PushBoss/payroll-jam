@@ -166,7 +166,14 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
   }, [paymentConfig]);
   useEffect(() => { storage.saveSuperAdmins(admins); }, [admins]);
   useEffect(() => {
-      if (activeTab === 'overview' || activeTab === 'logs') setLogs(auditService.getLogs());
+      const loadLogs = async () => {
+          if (activeTab === 'overview' || activeTab === 'logs') {
+              // Super admins can see all audit logs (pass null for companyId)
+              const allLogs = await auditService.getLogs(null, 'SUPER_ADMIN');
+              setLogs(allLogs);
+          }
+      };
+      loadLogs();
   }, [activeTab]);
 
   // Load super admins from Supabase when users tab is active

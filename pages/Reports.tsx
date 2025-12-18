@@ -6,6 +6,7 @@ import { PayRun, PayRunLineItem, CompanySettings, AuditLogEntry } from '../types
 import { generateFullRegisterCSV, generateS01CSV, generateS02CSV } from '../utils/exportHelpers';
 import { PayslipView } from '../components/PayslipView';
 import { auditService } from '../services/auditService';
+import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 
 interface ReportsProps {
@@ -17,6 +18,7 @@ interface ReportsProps {
 }
 
 export const Reports: React.FC<ReportsProps> = ({ history = [], companyData, onDeletePayRun, onNavigate }) => {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'register' | 'statutory' | 'audit'>('register');
   const [selectedRun, setSelectedRun] = useState<PayRun | null>(null);
   // Removed editingRun state - edit functionality can be added later if needed
@@ -27,8 +29,14 @@ export const Reports: React.FC<ReportsProps> = ({ history = [], companyData, onD
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'DRAFT' | 'APPROVED' | 'FINALIZED'>('ALL');
 
   useEffect(() => {
-      setAuditLogs(auditService.getLogs());
-  }, [activeTab]);
+      const loadAuditLogs = async () => {
+          const logs = await auditService.getLogs(user?.companyId || null, user?.role);
+          setAuditLogs(logs);
+      };
+      if (activeTab === 'audit') {
+          loadAuditLogs();
+      }
+  }, [activeTab, user?.companyId, user?.role]);
 
   // Use empty array fallback to prevent crashes if history undefined
   const displayHistory = history || [];
