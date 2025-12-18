@@ -114,15 +114,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             setUser(appUser);
             storage.saveUser(appUser);
             
-            // Redirect to login page after email confirmation
+            // Redirect to appropriate dashboard after email confirmation
             const hashParams = new URLSearchParams(window.location.hash.substring(1));
             const type = hashParams.get('type');
             if (type === 'signup') {
-              console.log('✅ Email confirmed, redirecting to login...');
-              toast.success('Email confirmed! Please login to continue.');
+              console.log('✅ Email confirmed, redirecting to dashboard...');
+              toast.success('Email confirmed! Welcome to PayrollJam.');
+              
+              // Determine redirect path based on user role
+              let redirectPath = 'dashboard';
+              if (appUser.role === Role.EMPLOYEE) {
+                redirectPath = 'portal-home';
+              } else if (appUser.role === Role.RESELLER) {
+                redirectPath = 'reseller-dashboard';
+              } else if (appUser.role === Role.SUPER_ADMIN) {
+                redirectPath = 'sa-overview';
+              }
+              
               setTimeout(() => {
-                if (isMounted) window.location.href = '/?page=login';
-              }, 2000);
+                if (isMounted) window.location.href = `/?page=${redirectPath}`;
+              }, 1500);
             }
           }
         } else if (event === 'SIGNED_OUT') {
