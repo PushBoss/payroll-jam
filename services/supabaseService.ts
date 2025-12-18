@@ -832,8 +832,24 @@ export const supabaseService = {
         .eq('id', run.id);
       error = result.error;
     } else {
-      // Insert new record (either new ID or different ID for same period)
-      console.log('➕ Inserting new pay run:', run.id, existingByPeriod ? '(replacing period match: ' + existingByPeriod.id + ')' : '');
+      // Insert new record - but first delete old one if it exists (due to unique constraint)
+      if (existingByPeriod && existingByPeriod.id !== run.id) {
+        console.log('🗑️ Deleting old pay run for this period:', existingByPeriod.id);
+        const deleteResult = await supabase
+          .from('pay_runs')
+          .delete()
+          .eq('id', existingByPeriod.id)
+          .eq('company_id', companyId);
+        
+        if (deleteResult.error) {
+          console.error('⚠️ Failed to delete old pay run:', deleteResult.error);
+          // Continue anyway - the insert might still work if constraint allows
+        } else {
+          console.log('✅ Deleted old pay run:', existingByPeriod.id);
+        }
+      }
+      
+      console.log('➕ Inserting new pay run:', run.id);
       result = await supabase
         .from('pay_runs')
         .insert({
