@@ -834,14 +834,22 @@ export const supabaseService = {
     }
 
     if (error) {
-      console.error("Error saving pay run:", error);
+      console.error("❌ Error saving pay run to Supabase:", error);
       console.error("Pay run data:", {
         id: run.id,
         period_start: periodStart,
         period_end: periodEnd,
         pay_date: run.payDate,
         pay_frequency: payFrequency,
-        status: run.status
+        status: run.status,
+        company_id: companyId
+      });
+      throw new Error(`Failed to save pay run: ${error.message || error.code || 'Unknown error'}`);
+    } else {
+      console.log("✅ Pay run saved to Supabase database:", {
+        id: run.id,
+        status: run.status,
+        period: periodStart
       });
     }
   },
