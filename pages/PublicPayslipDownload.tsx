@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { PayslipView } from '../components/PayslipView';
 import { PayRunLineItem } from '../types';
-import { supabaseService } from '../services/supabaseService';
 
 interface PublicPayslipDownloadProps {
   onBack: () => void;
@@ -29,52 +28,50 @@ export const PublicPayslipDownload: React.FC<PublicPayslipDownloadProps> = ({ on
       return;
     }
 
-    // Decode token (format: base64 encoded JSON with employeeId, period, runId)
+    // Fetch payslip data via Supabase Edge Function (bypasses RLS)
     const loadPayslipData = async () => {
       try {
-        const decoded = JSON.parse(atob(token));
-        const { employeeId, runId } = decoded;
+        console.log('🔍 Loading payslip via Edge Function');
 
-        console.log('🔍 Loading payslip:', { employeeId, runId });
-
-        // Fetch pay run from Supabase
-        const payRun = await supabaseService.getPayRunById(runId);
-        
-        if (!payRun) {
-          setError('Payslip not found or has been deleted');
-          setLoading(false);
-          return;
+        // Call Supabase Edge Function to get payslip data
+        const apiUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_SUPABASE_URL;
+        if (!apiUrl) {
+          throw new Error('API URL not configured');
         }
 
-        // Find the line item for this employee
-        const lineItem = payRun.lineItems.find((item: any) => item.employeeId === employeeId);
+        const functionUrl = `${apiUrl}/functions/v1/get-payslip`;
         
-        if (!lineItem) {
-          setError('Payslip not found for this employee');
-          setLoading(false);
-          return;
-        }
-
-        // Get employee details to find company
-        const employee = await supabaseService.getEmployeeById(employeeId);
-        if (!employee) {
-          setError('Employee information not found');
-          setLoading(false);
-          return;
-        }
-
-        // Get company name
-        const company = await supabaseService.getCompanyById(employee.companyId);
-        
-        setPayslipData({
-          data: lineItem,
-          companyName: company?.name || 'Company',
-          payPeriod: payRun.periodStart,
-          payDate: payRun.payDate
+        const response = await fetch(functionUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify({ token })
         });
-      } catch (err) {
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to load payslip');
+        }
+
+        const result = await response.json();
+
+        if (!result.success || !result.data) {
+          throw new Error('Invalid response from server');
+        }
+
+        setPayslipData({
+          data: result.data.lineItem,
+          companyName: result.data.companyName,
+          payPeriod: result.data.payPeriod,
+          payDate: result.data.payDate
+        });
+
+        console.log('✅ Payslip loaded successfully');
+      } catch (err: any) {
         console.error('❌ Error loading payslip:', err);
-        setError('Invalid or expired download link');
+        setError(err.message || 'Invalid or expired download link');
       } finally {
         setLoading(false);
       }

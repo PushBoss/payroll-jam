@@ -1,0 +1,147 @@
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.4'
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
+  try {
+    // Get token from request
+    const { token } = await req.json()
+
+    if (!token) {
+      return new Response(
+        JSON.stringify({ error: 'Token is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Decode token
+    let decoded: { employeeId: string; runId: string; period: string }
+    try {
+      decoded = JSON.parse(atob(token))
+    } catch (error) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid token format' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const { employeeId, runId } = decoded
+
+    if (!employeeId || !runId) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid token data' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Create Supabase client with SERVICE ROLE key (bypasses RLS)
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false
+        }
+      }
+    )
+
+    // Fetch pay run
+    const { data: payRun, error: payRunError } = await supabaseAdmin
+      .from('pay_runs')
+      .select('*')
+      .eq('id', runId)
+      .single()
+
+    if (payRunError) {
+      console.error('Error fetching pay run:', payRunError)
+      return new Response(
+        JSON.stringify({ error: 'Pay run not found' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (!payRun) {
+      return new Response(
+        JSON.stringify({ error: 'Pay run not found' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Find line item for this employee
+    const lineItems = payRun.line_items || []
+    const lineItem = lineItems.find((item: any) => item.employeeId === employeeId)
+
+    if (!lineItem) {
+      return new Response(
+        JSON.stringify({ error: 'Payslip not found for this employee' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Fetch employee info
+    const { data: employee, error: employeeError } = await supabaseAdmin
+      .from('employees')
+      .select('id, company_id, first_name, last_name, email')
+      .eq('id', employeeId)
+      .single()
+
+    if (employeeError || !employee) {
+      console.error('Error fetching employee:', employeeError)
+      return new Response(
+        JSON.stringify({ error: 'Employee not found' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Fetch company info
+    const { data: company, error: companyError } = await supabaseAdmin
+      .from('companies')
+      .select('name')
+      .eq('id', employee.company_id)
+      .single()
+
+    if (companyError || !company) {
+      console.error('Error fetching company:', companyError)
+      return new Response(
+        JSON.stringify({ error: 'Company not found' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Return payslip data
+    const response = {
+      success: true,
+      data: {
+        lineItem: lineItem,
+        companyName: company.name,
+        payPeriod: payRun.period_start,
+        payDate: payRun.pay_date
+      }
+    }
+
+    return new Response(
+      JSON.stringify(response),
+      { 
+        status: 200, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    )
+
+  } catch (error: any) {
+    console.error('Unexpected error:', error)
+    return new Response(
+      JSON.stringify({ error: error.message || 'Internal server error' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+})
