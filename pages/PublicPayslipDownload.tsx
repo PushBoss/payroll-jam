@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { PayslipView } from '../components/PayslipView';
 import { PayRunLineItem } from '../types';
+import { supabaseService } from '../services/supabaseService';
 
 interface PublicPayslipDownloadProps {
   onBack: () => void;
@@ -29,44 +30,57 @@ export const PublicPayslipDownload: React.FC<PublicPayslipDownloadProps> = ({ on
     }
 
     // Decode token (format: base64 encoded JSON with employeeId, period, runId)
-    try {
-      const decoded = JSON.parse(atob(token));
-      const { employeeId, runId } = decoded;
+    const loadPayslipData = async () => {
+      try {
+        const decoded = JSON.parse(atob(token));
+        const { employeeId, runId } = decoded;
 
-      // Load payslip data from localStorage (or API in production)
-      const storedRuns = localStorage.getItem('payRunHistory');
-      if (storedRuns) {
-        const runs = JSON.parse(storedRuns);
-        const targetRun = runs.find((r: any) => r.id === runId);
+        console.log('🔍 Loading payslip:', { employeeId, runId });
+
+        // Fetch pay run from Supabase
+        const payRun = await supabaseService.getPayRunById(runId);
         
-        if (targetRun) {
-          const lineItem = targetRun.lineItems.find((item: any) => item.employeeId === employeeId);
-          
-          if (lineItem) {
-            // Get company name from localStorage
-            const companyData = JSON.parse(localStorage.getItem('companyData') || '{}');
-            
-            setPayslipData({
-              data: lineItem,
-              companyName: companyData.name || 'Company',
-              payPeriod: targetRun.periodStart,
-              payDate: targetRun.payDate
-            });
-          } else {
-            setError('Payslip not found');
-          }
-        } else {
-          setError('Payslip not found');
+        if (!payRun) {
+          setError('Payslip not found or has been deleted');
+          setLoading(false);
+          return;
         }
-      } else {
-        setError('No payroll data available');
+
+        // Find the line item for this employee
+        const lineItem = payRun.lineItems.find((item: any) => item.employeeId === employeeId);
+        
+        if (!lineItem) {
+          setError('Payslip not found for this employee');
+          setLoading(false);
+          return;
+        }
+
+        // Get employee details to find company
+        const employee = await supabaseService.getEmployeeById(employeeId);
+        if (!employee) {
+          setError('Employee information not found');
+          setLoading(false);
+          return;
+        }
+
+        // Get company name
+        const company = await supabaseService.getCompanyById(employee.companyId);
+        
+        setPayslipData({
+          data: lineItem,
+          companyName: company?.name || 'Company',
+          payPeriod: payRun.periodStart,
+          payDate: payRun.payDate
+        });
+      } catch (err) {
+        console.error('❌ Error loading payslip:', err);
+        setError('Invalid or expired download link');
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      console.error('Error loading payslip:', err);
-      setError('Invalid download link');
-    } finally {
-      setLoading(false);
-    }
+    };
+
+    loadPayslipData();
   }, []);
 
   if (loading) {

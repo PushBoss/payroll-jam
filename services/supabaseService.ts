@@ -551,6 +551,33 @@ export const supabaseService = {
     }));
   },
 
+  /**
+   * Get a specific employee by ID (for public payslip download)
+   */
+  getEmployeeById: async (employeeId: string): Promise<{ id: string; companyId: string; firstName: string; lastName: string; email: string } | null> => {
+    if (!supabase) return null;
+    const { data, error } = await supabase
+      .from('employees')
+      .select('id, company_id, first_name, last_name, email')
+      .eq('id', employeeId)
+      .single();
+
+    if (error) {
+      console.error("Error loading employee:", error);
+      return null;
+    }
+
+    if (!data) return null;
+
+    return {
+      id: data.id,
+      companyId: data.company_id,
+      firstName: data.first_name,
+      lastName: data.last_name,
+      email: data.email
+    };
+  },
+
   getEmployeeByToken: async (token: string, email?: string): Promise<{ employee: Employee; companyName: string; companyId: string } | null> => {
     if (!supabase) return null;
     try {
@@ -701,6 +728,44 @@ export const supabaseService = {
       totalNet: r.total_net || 0,
       lineItems: r.line_items || []
     }));
+  },
+
+  /**
+   * Get a specific pay run by ID (for public payslip download)
+   */
+  getPayRunById: async (runId: string): Promise<PayRun | null> => {
+    if (!supabase) return null;
+    const { data, error } = await supabase
+      .from('pay_runs')
+      .select('*')
+      .eq('id', runId)
+      .single();
+
+    if (error) {
+      console.error("Error loading pay run:", error);
+      return null;
+    }
+
+    if (!data) return null;
+
+    // Normalize status
+    const normalizeStatus = (dbStatus: string): 'DRAFT' | 'APPROVED' | 'FINALIZED' => {
+      if (dbStatus === 'FINALIZED' || dbStatus === 'CANCELLED') return 'FINALIZED';
+      if (dbStatus === 'APPROVED' || dbStatus === 'PROCESSING') return 'APPROVED';
+      return 'DRAFT';
+    };
+
+    return {
+      id: data.id,
+      periodStart: data.period_start,
+      periodEnd: data.period_end,
+      payDate: data.pay_date,
+      payFrequency: data.pay_frequency || 'MONTHLY',
+      status: normalizeStatus(data.status),
+      totalGross: data.total_gross || 0,
+      totalNet: data.total_net || 0,
+      lineItems: data.line_items || []
+    };
   },
 
   savePayRun: async (run: PayRun, companyId: string) => {
