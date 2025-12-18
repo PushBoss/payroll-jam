@@ -207,8 +207,9 @@ export const emailService = {
   /**
    * Sends a notification that a payslip is ready.
    * @param hasPortalAccess - Whether employee has access to portal (Starter/Pro plans)
+   * @param downloadToken - Secure token for direct PDF download (Free plan users)
    */
-  sendPayslipNotification: async (email: string, firstName: string, period: string, netPay: string, hasPortalAccess?: boolean) => {
+  sendPayslipNotification: async (email: string, firstName: string, period: string, netPay: string, hasPortalAccess?: boolean, downloadToken?: string) => {
     hasPortalAccess = hasPortalAccess ?? true; // Default to true if not provided
     
     // Try SMTP first (if API URL is configured)
@@ -216,7 +217,7 @@ export const emailService = {
     if (apiUrl) {
       console.log('📧 Sending payslip notification via SMTP...');
       const loginLink = window.location.origin;
-      const result = await smtpEmailService.sendPayslipNotification(email, firstName, period, netPay, loginLink, hasPortalAccess);
+      const result = await smtpEmailService.sendPayslipNotification(email, firstName, period, netPay, loginLink, hasPortalAccess, downloadToken);
       if (result.success) {
         return result;
       }
@@ -227,18 +228,20 @@ export const emailService = {
     const config = storage.getGlobalConfig();
 
     if (!config?.emailjs?.publicKey) {
-      console.log(`[Payslip Simulation] To: ${email} | Period: ${period} | Net: ${netPay} | Portal: ${hasPortalAccess}`);
+      console.log(`[Payslip Simulation] To: ${email} | Period: ${period} | Net: ${netPay} | Portal: ${hasPortalAccess} | Token: ${downloadToken ? 'Yes' : 'No'}`);
       return { success: true, message: 'Simulation: Notification logged.' };
     }
 
     try {
+      const downloadLink = downloadToken ? `${window.location.origin}/?page=download-payslip&token=${downloadToken}` : window.location.origin;
+      
       const templateParams = {
         to_email: email,
         to_name: firstName,
         message: hasPortalAccess
           ? `Your payslip for ${period} is now available. Net Pay: ${netPay}. Log in to your employee portal to view details.`
-          : `Your payslip for ${period} is now available. Net Pay: ${netPay}. Download your PDF copy.`,
-        link: window.location.origin, // Link to the app login
+          : `Your payslip for ${period} is now available. Net Pay: ${netPay}. Click the button below to download your PDF.`,
+        link: downloadLink,
         action_type: 'PAYSLIP'
       };
 

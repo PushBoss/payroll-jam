@@ -418,12 +418,24 @@ export const PayRun: React.FC<PayRunProps> = ({
             for (const line of currentRun.lineItems) {
                 const emp = employees.find(e => e.id === line.employeeId);
                 if (emp?.email) {
+                    // Generate download token for Free plan users
+                    let downloadToken = '';
+                    if (!hasPortalAccess) {
+                        const tokenData = {
+                            employeeId: line.employeeId,
+                            period: currentRun.periodStart,
+                            runId: currentRun.id
+                        };
+                        downloadToken = btoa(JSON.stringify(tokenData));
+                    }
+                    
                     await emailService.sendPayslipNotification(
                         emp.email, 
                         emp.firstName, 
                         currentRun.periodStart, 
                         `$${line.netPay.toLocaleString()}`,
-                        hasPortalAccess
+                        hasPortalAccess,
+                        downloadToken
                     );
                     sentCount++;
                 }

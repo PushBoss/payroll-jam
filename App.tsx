@@ -41,6 +41,7 @@ const EmployeeOnboardingWizard = lazy(() => import('./pages/EmployeeOnboardingWi
 const NotFound = lazy(() => import('./pages/NotFound').then(m => ({ default: m.NotFound })));
 const Profile = lazy(() => import('./pages/Profile').then(m => ({ default: m.Profile })));
 const VerifyEmail = lazy(() => import('./pages/VerifyEmail').then(m => ({ default: m.VerifyEmail })));
+const PublicPayslipDownload = lazy(() => import('./pages/PublicPayslipDownload').then(m => ({ default: m.PublicPayslipDownload })));
 
 
 const INITIAL_TAX_CONFIG: TaxConfig = {
@@ -622,6 +623,7 @@ function AppContent() {
         {currentPath === 'login' && <Login onLoginSuccess={onLoginSuccess} onBack={() => navigateTo('home')} onRegisterClick={() => navigateTo('signup')} />}
         {currentPath === 'signup' && <Signup initialPlan={selectedPlan} initialBillingCycle={selectedCycle} onLoginClick={() => navigateTo('login')} onVerifyEmailClick={(email) => { setVerifyEmail(email); navigateTo('verify-email'); }} onBack={() => navigateTo('home')} onNavigate={navigateTo} plans={plans} />}
         {currentPath === 'verify-email' && <VerifyEmail email={verifyEmail} onLoginClick={() => navigateTo('login')} onBack={() => navigateTo('home')} />}
+        {currentPath === 'download-payslip' && <PublicPayslipDownload onBack={() => navigateTo('home')} />}
         {currentPath === 'pricing' && <Pricing onSignup={(plan, cycle) => { setSelectedPlan(plan); setSelectedCycle(cycle); navigateTo('signup'); }} onLogin={() => navigateTo('login')} onBack={() => navigateTo('home')} onFeaturesClick={() => navigateTo('features')} onFaqClick={() => navigateTo('faq')} plans={plans} />}
         {currentPath === 'features' && <Features onSignup={() => { setSelectedPlan('Starter'); setSelectedCycle('monthly'); navigateTo('signup'); }} onLogin={() => navigateTo('login')} onBack={() => navigateTo('home')} onPricingClick={() => navigateTo('pricing')} onFaqClick={() => navigateTo('faq')} />}
         {currentPath === 'faq' && <FAQ onSignup={() => { setSelectedPlan('Starter'); setSelectedCycle('monthly'); navigateTo('signup'); }} onLogin={() => navigateTo('login')} onBack={() => navigateTo('home')} onPricingClick={() => navigateTo('pricing')} onFeaturesClick={() => navigateTo('features')} />}

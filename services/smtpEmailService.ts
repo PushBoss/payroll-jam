@@ -393,13 +393,16 @@ Thank you for choosing Payroll-Jam as your payroll solution!
     period: string,
     netPay: string,
     loginLink: string,
-    hasPortalAccess: boolean = true
+    hasPortalAccess: boolean = true,
+    downloadToken?: string
   ): Promise<{ success: boolean; message?: string }> => {
     const buttonText = hasPortalAccess ? 'View Payslip in Portal' : 'Download PDF';
-    const buttonUrl = `${loginLink}/?page=login`;
+    const buttonUrl = hasPortalAccess 
+      ? `${loginLink}/?page=portal-home` 
+      : `${loginLink}/?page=download-payslip&token=${downloadToken}`;
     const instructionText = hasPortalAccess 
       ? 'Log in to your employee portal to view your full payslip and access all your pay history.'
-      : 'Click the button below to log in and download your payslip PDF. Your employer can upgrade to give you full portal access.';
+      : 'Click the button below to view and download your payslip PDF. No login required.';
     
     const htmlContent = `
       <!DOCTYPE html>
@@ -442,7 +445,7 @@ Thank you for choosing Payroll-Jam as your payroll solution!
 
     const textContent = hasPortalAccess
       ? `Hi ${firstName}, Your payslip for ${period} is now available. Net Pay: ${netPay}. Log in to your employee portal: ${buttonUrl}`
-      : `Hi ${firstName}, Your payslip for ${period} is now available. Net Pay: ${netPay}. Log in to download your PDF: ${buttonUrl}`;
+      : `Hi ${firstName}, Your payslip for ${period} is now available. Net Pay: ${netPay}. Download your PDF here (no login required): ${buttonUrl}`;
     
     return await smtpEmailService.sendEmail({
       to: email,
