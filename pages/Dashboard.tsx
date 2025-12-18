@@ -30,7 +30,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ employees, leaveRequests, 
 
     // Group by Month
     const grouped = payRunHistory.reduce((acc, run) => {
-        const date = new Date(run.periodStart + '-01'); // Assuming YYYY-MM format
+        // Handle different date formats: YYYY-MM or YYYY-MM-DD
+        let dateStr = run.periodStart;
+        if (dateStr.match(/^\d{4}-\d{2}$/)) {
+            // YYYY-MM format, add day
+            dateStr = `${dateStr}-01`;
+        }
+        // If already YYYY-MM-DD format, use as-is
+        
+        const date = new Date(dateStr);
+        
+        // Skip invalid dates
+        if (isNaN(date.getTime())) {
+            console.warn('Invalid date format for periodStart:', run.periodStart);
+            return acc;
+        }
+        
         const month = date.toLocaleString('default', { month: 'short' });
         const existing = acc.find(i => i.name === month);
         if (existing) {
