@@ -168,6 +168,53 @@ function AppContent() {
     }
   }, [user, isLoading, currentPath]);
 
+  // Handle expired verification link errors
+  useEffect(() => {
+    // Check for error in URL hash (from Supabase auth redirects)
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    const error = hashParams.get('error');
+    const errorCode = hashParams.get('error_code');
+    const errorDescription = hashParams.get('error_description');
+    const email = hashParams.get('email') || new URLSearchParams(window.location.search).get('email');
+
+    // Check if this is an expired verification link error
+    if (error === 'access_denied' && (errorCode === 'otp_expired' || errorDescription?.includes('expired'))) {
+      console.warn('⚠️ Expired verification link detected');
+      toast.error('This verification link has expired. Please request a new one.', {
+        duration: 5000,
+      });
+      
+      // Redirect to verify-email page with email if available
+      if (email) {
+        setVerifyEmail(email);
+        setTimeout(() => {
+          navigateTo('verify-email');
+          // Clear the error from URL
+          window.history.replaceState({}, '', window.location.pathname + window.location.search);
+        }, 2000);
+      } else {
+        // No email in URL, redirect to signup/login
+        setTimeout(() => {
+          navigateTo('signup');
+          window.history.replaceState({}, '', window.location.pathname);
+        }, 3000);
+      }
+      return;
+    }
+
+    // Handle other auth errors
+    if (error && error !== 'access_denied') {
+      console.error('Auth error:', error, errorDescription);
+      toast.error(errorDescription || 'Authentication error. Please try again.', {
+        duration: 5000,
+      });
+      // Clear error from URL after showing message
+      setTimeout(() => {
+        window.history.replaceState({}, '', window.location.pathname + window.location.search);
+      }, 3000);
+    }
+  }, []);
+
   // Handle invite tokens (both employee and user invites)
   useEffect(() => {
       const params = new URLSearchParams(window.location.search);
