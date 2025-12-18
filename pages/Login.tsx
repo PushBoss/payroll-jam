@@ -178,6 +178,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBack, onRegister
                   id="email"
                   name="email"
                   type="email"
+                  autoComplete="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -195,6 +196,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBack, onRegister
                     id="password"
                     name="password"
                     type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -264,6 +266,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBack, onRegister
                 id="reset-email"
                 name="email"
                 type="email"
+                autoComplete="email"
                 required
                 value={resetEmail}
                 onChange={(e) => setResetEmail(e.target.value)}

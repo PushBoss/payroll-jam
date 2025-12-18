@@ -321,7 +321,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700">Work Email</label>
-                            <input required type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
+                            <input required type="email" autoComplete="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700">Password</label>
@@ -329,6 +329,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                 <input 
                                     required 
                                     type={showPassword ? 'text' : 'password'} 
+                                    autoComplete="new-password"
                                     value={formData.password} 
                                     onChange={(e) => setFormData({...formData, password: e.target.value})} 
                                     className="block w-full px-3 py-2 pr-12 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" 
