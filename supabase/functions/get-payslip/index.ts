@@ -14,7 +14,18 @@ serve(async (req) => {
 
   try {
     // Get token from request
-    const { token } = await req.json()
+    let token: string;
+    
+    try {
+      const body = await req.json();
+      token = body.token;
+    } catch (jsonError) {
+      console.error('Failed to parse request body:', jsonError);
+      return new Response(
+        JSON.stringify({ error: 'Invalid request body. Expected JSON with "token" field.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
     if (!token) {
       return new Response(
