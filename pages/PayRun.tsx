@@ -427,7 +427,18 @@ export const PayRun: React.FC<PayRunProps> = ({
                             runId: currentRun.id
                         };
                         downloadToken = btoa(JSON.stringify(tokenData));
+                        console.log('🔑 Generated download token for Free plan:', {
+                            employeeId: line.employeeId,
+                            token: downloadToken,
+                            decoded: tokenData
+                        });
                     }
+                    
+                    console.log('📧 Sending payslip email:', {
+                        email: emp.email,
+                        hasPortalAccess,
+                        downloadToken: downloadToken || 'N/A (portal access)'
+                    });
                     
                     await emailService.sendPayslipNotification(
                         emp.email, 

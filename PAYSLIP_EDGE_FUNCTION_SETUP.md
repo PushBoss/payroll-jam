@@ -104,11 +104,16 @@ These are **automatically injected** by Supabase. No manual setup needed.
 curl -X POST \
   https://arqbxlaudfbmiqvwwmnt.supabase.co/functions/v1/get-payslip \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_ANON_KEY" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFycWJ4bGF1ZGZibWlxdnd3bW50Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxNjE4MzcsImV4cCI6MjA4MDczNzgzN30.XVgTkgb-IX4QqpDyrkhWf8XC7jhOLnZwqVAi75IGz70" \
   -d '{
     "token": "eyJlbXBsb3llZUlkIjoiMTIzIiwicnVuSWQiOiI0NTYiLCJwZXJpb2QiOiIyMDI1LTAxIn0="
   }'
-```
+
+  curl -X POST \
+  https://arqbxlaudfbmiqvwwmnt.supabase.co/functions/v1/get-payslip \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFycWJ4bGF1ZGZibWlxdnd3bW50Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxNjE4MzcsImV4cCI6MjA4MDczNzgzN30.XVgTkgb-IX4QqpDyrkhWf8XC7jhOLnZwqVAi75IGz70" \
+  -d '{"eyJlbXBsb3llZUlkIjoiMTIzIiwicnVuSWQiOiI0NTYiLCJwZXJpb2QiOiIyMDI1LTAxIn0="}'
 
 Replace `YOUR_ANON_KEY` with your actual Supabase anon key.
 

@@ -404,6 +404,14 @@ Thank you for choosing Payroll-Jam as your payroll solution!
       ? 'Log in to your employee portal to view your full payslip and access all your pay history.'
       : 'Click the button below to view and download your payslip PDF. No login required.';
     
+    console.log('📨 SMTP Email Service - Payslip notification:', {
+      to: email,
+      hasPortalAccess,
+      downloadToken: downloadToken || 'N/A',
+      buttonUrl,
+      buttonText
+    });
+    
     const htmlContent = `
       <!DOCTYPE html>
       <html>
