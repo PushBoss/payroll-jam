@@ -123,6 +123,7 @@ export interface Employee {
   email: string;
   trn: string; // Tax Registration Number
   nis: string; // National Insurance Scheme
+  employeeId?: string; // User-defined Employee ID (e.g., "EMP001", "12345")
   grossSalary: number; // Base Salary for Salaried/Commission
   hourlyRate?: number; // For hourly employees
   payType: PayType;
@@ -209,6 +210,7 @@ export interface PayrollItemDetail {
 export interface PayRunLineItem extends StatutoryDeductions {
   employeeId: string;
   employeeName: string;
+  employeeCustomId?: string; // User-defined Employee ID (e.g., "EMP001")
   grossPay: number;
   additions: number; // Total Bonuses
   deductions: number; // Total Other deductions

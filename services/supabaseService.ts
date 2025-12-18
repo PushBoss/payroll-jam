@@ -532,6 +532,7 @@ export const supabaseService = {
       email: e.email,
       trn: e.trn,
       nis: e.nis,
+      employeeId: e.employee_number || undefined, // Map employee_number to employeeId
       status: e.status,
       role: e.role,
       hireDate: e.hire_date,
@@ -609,6 +610,7 @@ export const supabaseService = {
         email: data.email,
         trn: data.trn || '',
         nis: data.nis || '',
+        employeeId: data.employee_number || undefined, // Map employee_number to employeeId
         status: data.status,
         role: data.role as any,
         hireDate: data.hire_date,
@@ -660,6 +662,7 @@ export const supabaseService = {
         email: emp.email,
         trn: emp.trn,
         nis: emp.nis,
+        employee_number: emp.employeeId || null, // Save employeeId to employee_number column
         phone: emp.phone || null,
         address: emp.address || null,
         status: emp.status,

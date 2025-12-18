@@ -182,6 +182,7 @@ export const usePayroll = (
         return {
             employeeId: emp.id,
             employeeName: `${emp.firstName} ${emp.lastName}`,
+            employeeCustomId: emp.employeeId, // User-defined Employee ID
             grossPay: grossPay,
             additions: allAdditions,
             deductions: customDeductions,

@@ -529,7 +529,9 @@ export const Leave: React.FC<LeaveProps> = ({ requests, employees, onStatusChang
                             <tr key={emp.id} className="hover:bg-gray-50">
                                 <td className="px-6 py-4 font-medium text-gray-900">
                                     {emp.firstName} {emp.lastName}
-                                    <span className="block text-xs text-gray-400">{emp.id}</span>
+                                    {emp.employeeId && (
+                                        <span className="block text-xs text-gray-500">Employee ID: {emp.employeeId}</span>
+                                    )}
                                 </td>
                                 <td className="px-6 py-4 text-center">
                                     <span className="font-bold text-gray-900">{emp.leaveBalance?.vacation || 0}</span> <span className="text-xs text-gray-400">days</span>

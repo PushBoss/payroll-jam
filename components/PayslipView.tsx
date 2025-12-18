@@ -44,7 +44,12 @@ export const PayslipDocument: React.FC<PayslipDocumentProps> = ({ data, companyN
             <div>
               <p className="text-xs text-gray-500 uppercase">Employee Name</p>
               <p className="font-bold text-gray-900 text-lg">{data.employeeName}</p>
-              <p className="text-sm text-gray-600 mt-1">{data.employeeId}</p>
+              {data.employeeCustomId && (
+                <>
+                  <p className="text-xs text-gray-500 uppercase mt-2">Employee ID</p>
+                  <p className="text-sm text-gray-600 font-medium">{data.employeeCustomId}</p>
+                </>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>

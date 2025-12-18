@@ -124,10 +124,10 @@ serve(async (req) => {
       )
     }
 
-    // Fetch employee info
+    // Fetch employee info (including employee_number for custom ID)
     const { data: employee, error: employeeError } = await supabaseAdmin
       .from('employees')
-      .select('id, company_id, first_name, last_name, email')
+      .select('id, company_id, first_name, last_name, email, employee_number')
       .eq('id', employeeId)
       .single()
 
@@ -154,11 +154,17 @@ serve(async (req) => {
       )
     }
 
+    // Add employee custom ID to line item if available
+    const lineItemWithCustomId = {
+      ...lineItem,
+      employeeCustomId: employee.employee_number || undefined
+    };
+
     // Return payslip data
     const response = {
       success: true,
       data: {
-        lineItem: lineItem,
+        lineItem: lineItemWithCustomId,
         companyName: company.name,
         payPeriod: payRun.period_start,
         payDate: payRun.pay_date

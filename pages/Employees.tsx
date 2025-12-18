@@ -62,7 +62,7 @@ export const Employees: React.FC<EmployeesProps> = ({
   // Add Employee Form State
   const [addForm, setAddForm] = useState({
       firstName: '', lastName: '', email: '', trn: '', nis: '', 
-      grossSalary: '', hourlyRate: '', role: Role.EMPLOYEE, 
+      employeeId: '', grossSalary: '', hourlyRate: '', role: Role.EMPLOYEE, 
       payType: PayType.SALARIED, department: '', jobTitle: '',
       bankName: 'NCB', accountNumber: ''
   });
@@ -196,6 +196,7 @@ export const Employees: React.FC<EmployeesProps> = ({
           email: addForm.email,
           trn: formatTRN(addForm.trn),
           nis: addForm.nis || 'PENDING',
+          employeeId: addForm.employeeId || undefined,
           grossSalary: parseFloat(addForm.grossSalary) || 0,
           hourlyRate: parseFloat(addForm.hourlyRate) || 0,
           payType: addForm.payType,
@@ -205,19 +206,19 @@ export const Employees: React.FC<EmployeesProps> = ({
           hireDate: new Date().toISOString().split('T')[0],
           allowances: [],
           deductions: [],
-          department: addForm.department, 
+          department: addForm.department,
           jobTitle: addForm.jobTitle,
-          bankDetails: { 
-              bankName: addForm.bankName as any, 
-              accountNumber: addForm.accountNumber, 
-              accountType: 'SAVINGS', 
-              currency: 'JMD' 
+          bankDetails: {
+              bankName: addForm.bankName as any,
+              accountNumber: addForm.accountNumber,
+              accountType: 'SAVINGS',
+              currency: 'JMD'
           }
       };
       onAddEmployee(newEmp);
       auditService.log(currentUser, 'CREATE', 'Employee', `Added new employee: ${newEmp.firstName} ${newEmp.lastName}`);
       setIsAddModalOpen(false);
-      setAddForm({ firstName: '', lastName: '', email: '', trn: '', nis: '', grossSalary: '', hourlyRate: '', role: Role.EMPLOYEE, payType: PayType.SALARIED, department: '', jobTitle: '', bankName: 'NCB', accountNumber: '' });
+      setAddForm({ firstName: '', lastName: '', email: '', trn: '', nis: '', employeeId: '', grossSalary: '', hourlyRate: '', role: Role.EMPLOYEE, payType: PayType.SALARIED, department: '', jobTitle: '', bankName: 'NCB', accountNumber: '' });
       toast.success("Employee added successfully");
   };
   
@@ -498,7 +499,11 @@ export const Employees: React.FC<EmployeesProps> = ({
                         </div>
                         <div>
                             <h3 className="text-lg font-bold text-gray-900">{selectedEmployee.firstName} {selectedEmployee.lastName}</h3>
-                            <p className="text-xs text-gray-500">{selectedEmployee.id}</p>
+                            {selectedEmployee.employeeId ? (
+                                <p className="text-xs text-gray-500">Employee ID: {selectedEmployee.employeeId}</p>
+                            ) : (
+                                <p className="text-xs text-gray-400 italic">No Employee ID set</p>
+                            )}
                         </div>
                     </div>
                     <button onClick={() => setSelectedEmployee(null)} className="text-gray-400 hover:text-gray-600"><Icons.Close className="w-6 h-6" /></button>
@@ -680,7 +685,12 @@ export const Employees: React.FC<EmployeesProps> = ({
                         <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
                         <input required type="text" className="w-full border border-gray-300 rounded-lg p-2" value={addForm.lastName} onChange={e => setAddForm({...addForm, lastName: e.target.value})} />
                     </div>
-                    <div className="md:col-span-2">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Employee ID (Optional)</label>
+                        <input type="text" placeholder="e.g., EMP001, 12345" className="w-full border border-gray-300 rounded-lg p-2" value={addForm.employeeId} onChange={e => setAddForm({...addForm, employeeId: e.target.value})} />
+                        <p className="text-xs text-gray-500 mt-1">Custom identifier for this employee</p>
+                    </div>
+                    <div className="md:col-span-1">
                         <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                         <input required type="email" className="w-full border border-gray-300 rounded-lg p-2" value={addForm.email} onChange={e => setAddForm({...addForm, email: e.target.value})} />
                     </div>
