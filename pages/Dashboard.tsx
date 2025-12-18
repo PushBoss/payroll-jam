@@ -1,5 +1,5 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Icons } from '../components/Icons';
 import { Employee, LeaveRequest, PayRun, PayType, CompanySettings } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -15,34 +15,83 @@ interface DashboardProps {
 export const Dashboard: React.FC<DashboardProps> = ({ employees, leaveRequests, payRunHistory = [], onNavigate, companyData }) => {
   const pendingLeaveCount = leaveRequests.filter(r => r.status === 'PENDING').length;
 
-  // Calculate Chart Data from Real History
+  // Get available years from pay run history
+  const availableYears = useMemo(() => {
+    const years = new Set<number>();
+    payRunHistory.forEach(run => {
+      let dateStr = run.periodStart;
+      if (dateStr.match(/^\d{4}-\d{2}$/)) {
+        dateStr = `${dateStr}-01`;
+      }
+      const date = new Date(dateStr);
+      if (!isNaN(date.getTime())) {
+        years.add(date.getFullYear());
+      }
+    });
+    return Array.from(years).sort((a, b) => b - a); // Most recent first
+  }, [payRunHistory]);
+
+  // Default to current year or most recent year available
+  const defaultYear = availableYears.length > 0 ? availableYears[0] : new Date().getFullYear();
+  const [selectedYear, setSelectedYear] = useState<number>(defaultYear);
+  const [selectedQuarter, setSelectedQuarter] = useState<'ALL' | 'Q1' | 'Q2' | 'Q3' | 'Q4'>('ALL');
+
+  // Quarter month ranges
+  const quarterMonths: Record<string, number[]> = {
+    'Q1': [0, 1, 2],   // Jan, Feb, Mar
+    'Q2': [3, 4, 5],   // Apr, May, Jun
+    'Q3': [6, 7, 8],   // Jul, Aug, Sep
+    'Q4': [9, 10, 11]  // Oct, Nov, Dec
+  };
+
+  // Calculate Chart Data from Real History with filters
   const chartData = useMemo(() => {
     if (payRunHistory.length === 0) {
-        return [
-            { name: 'Aug', payroll: 0 },
-            { name: 'Sep', payroll: 0 },
-            { name: 'Oct', payroll: 0 },
-            { name: 'Nov', payroll: 0 },
-            { name: 'Dec', payroll: 0 },
-            { name: 'Jan', payroll: 0 },
-        ];
+        return [];
+    }
+
+    // Filter by year and quarter
+    const filteredRuns = payRunHistory.filter(run => {
+      let dateStr = run.periodStart;
+      if (dateStr.match(/^\d{4}-\d{2}$/)) {
+        dateStr = `${dateStr}-01`;
+      }
+      const date = new Date(dateStr);
+      
+      if (isNaN(date.getTime())) {
+        return false;
+      }
+
+      // Filter by year
+      if (date.getFullYear() !== selectedYear) {
+        return false;
+      }
+
+      // Filter by quarter if not 'ALL'
+      if (selectedQuarter !== 'ALL') {
+        const month = date.getMonth();
+        if (!quarterMonths[selectedQuarter].includes(month)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+
+    if (filteredRuns.length === 0) {
+      return [];
     }
 
     // Group by Month
-    const grouped = payRunHistory.reduce((acc, run) => {
-        // Handle different date formats: YYYY-MM or YYYY-MM-DD
+    const grouped = filteredRuns.reduce((acc, run) => {
         let dateStr = run.periodStart;
         if (dateStr.match(/^\d{4}-\d{2}$/)) {
-            // YYYY-MM format, add day
             dateStr = `${dateStr}-01`;
         }
-        // If already YYYY-MM-DD format, use as-is
         
         const date = new Date(dateStr);
         
-        // Skip invalid dates
         if (isNaN(date.getTime())) {
-            console.warn('Invalid date format for periodStart:', run.periodStart);
             return acc;
         }
         
@@ -57,7 +106,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ employees, leaveRequests, 
     }, [] as { name: string, payroll: number, sortDate: Date }[]);
 
     return grouped.sort((a, b) => a.sortDate.getTime() - b.sortDate.getTime()).map(({ name, payroll }) => ({ name, payroll }));
-  }, [payRunHistory]);
+  }, [payRunHistory, selectedYear, selectedQuarter]);
 
   // Estimate current payroll based on active employees or last run
   const estPayroll = useMemo(() => {
@@ -264,21 +313,57 @@ export const Dashboard: React.FC<DashboardProps> = ({ employees, leaveRequests, 
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-800 mb-6">Payroll History (YTD Gross)</h3>
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-semibold text-gray-800">Payroll History (YTD Gross)</h3>
+            <div className="flex items-center gap-3">
+              {/* Year Filter */}
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-jam-orange focus:border-transparent bg-white"
+              >
+                {availableYears.map(year => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+              
+              {/* Quarter Filter */}
+              <select
+                value={selectedQuarter}
+                onChange={(e) => setSelectedQuarter(e.target.value as 'ALL' | 'Q1' | 'Q2' | 'Q3' | 'Q4')}
+                className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-jam-orange focus:border-transparent bg-white"
+              >
+                <option value="ALL">All Quarters</option>
+                <option value="Q1">Q1 (Jan-Mar)</option>
+                <option value="Q2">Q2 (Apr-Jun)</option>
+                <option value="Q3">Q3 (Jul-Sep)</option>
+                <option value="Q4">Q4 (Oct-Dec)</option>
+              </select>
+            </div>
+          </div>
           <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#6B7280'}} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{fill: '#6B7280'}} tickFormatter={(val) => `$${val/1000}k`} />
-                <Tooltip 
-                    cursor={{fill: '#F3F4F6'}}
-                    formatter={(val: number) => [`$${val.toLocaleString()}`, 'Gross Payroll']}
-                    contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'}}
-                />
-                <Bar dataKey="payroll" fill="#111827" radius={[4, 4, 0, 0]} barSize={32} />
-              </BarChart>
-            </ResponsiveContainer>
+            {chartData.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-gray-500">
+                <div className="text-center">
+                  <Icons.Alert className="w-12 h-12 mx-auto mb-2 text-gray-400" />
+                  <p className="text-sm">No payroll data for {selectedYear} {selectedQuarter !== 'ALL' ? selectedQuarter : ''}</p>
+                </div>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#6B7280'}} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{fill: '#6B7280'}} tickFormatter={(val) => `$${val/1000}k`} />
+                  <Tooltip 
+                      cursor={{fill: '#F3F4F6'}}
+                      formatter={(val: number) => [`$${val.toLocaleString()}`, 'Gross Payroll']}
+                      contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'}}
+                  />
+                  <Bar dataKey="payroll" fill="#111827" radius={[4, 4, 0, 0]} barSize={32} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 
