@@ -13,9 +13,10 @@ interface LoginProps {
   onLoginSuccess?: (user: User) => void;
   onBack: () => void;
   onRegisterClick: () => void;
+  onVerifyEmailClick?: (email: string) => void;
 }
 
-export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBack, onRegisterClick }) => {
+export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBack, onRegisterClick, onVerifyEmailClick }) => {
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -62,6 +63,26 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBack, onRegister
       console.log('Error code:', error.code);
       console.log('Error status:', error.status);
       
+      // Handle unverified email - redirect to verification page
+      if (error.code === 'EMAIL_NOT_VERIFIED' || 
+          error.message?.toLowerCase().includes('email not verified') ||
+          error.message?.toLowerCase().includes('email not confirmed') || 
+          error.message?.toLowerCase().includes('not confirmed')) {
+        toast.error('Please verify your email before logging in. Redirecting...', {
+          duration: 3000,
+        });
+        
+        // Redirect to verification page with email
+        setTimeout(() => {
+          if (onVerifyEmailClick && (error.email || email)) {
+            onVerifyEmailClick(error.email || email);
+          }
+        }, 1500);
+        
+        setIsLoading(false);
+        return;
+      }
+      
       // Provide specific error messages based on error type
       if (error.message?.toLowerCase().includes('profile not found') || 
           error.message?.toLowerCase().includes('user not found')) {
@@ -74,11 +95,6 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBack, onRegister
           error.status === 400) {
         toast.error('Wrong password or email. Please try again.', {
           duration: 5000,
-        });
-      } else if (error.message?.toLowerCase().includes('email not confirmed') || 
-                 error.message?.toLowerCase().includes('not confirmed')) {
-        toast.error('Please verify your email before logging in. Check your inbox for the confirmation link.', {
-          duration: 8000,
         });
       } else {
         toast.error(error.message || 'Login failed. Please try again.', {

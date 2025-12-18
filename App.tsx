@@ -620,7 +620,7 @@ function AppContent() {
       <Suspense fallback={<LoadingFallback />}>
         <Toaster richColors position="top-right" />
         <CookieConsent />
-        {currentPath === 'login' && <Login onLoginSuccess={onLoginSuccess} onBack={() => navigateTo('home')} onRegisterClick={() => navigateTo('signup')} />}
+        {currentPath === 'login' && <Login onLoginSuccess={onLoginSuccess} onBack={() => navigateTo('home')} onRegisterClick={() => navigateTo('signup')} onVerifyEmailClick={(email) => { setVerifyEmail(email); navigateTo('verify-email'); }} />}
         {currentPath === 'signup' && <Signup initialPlan={selectedPlan} initialBillingCycle={selectedCycle} onLoginClick={() => navigateTo('login')} onVerifyEmailClick={(email) => { setVerifyEmail(email); navigateTo('verify-email'); }} onBack={() => navigateTo('home')} onNavigate={navigateTo} plans={plans} />}
         {currentPath === 'verify-email' && <VerifyEmail email={verifyEmail} onLoginClick={() => navigateTo('login')} onBack={() => navigateTo('home')} />}
         {currentPath === 'download-payslip' && <PublicPayslipDownload onBack={() => navigateTo('home')} />}

@@ -162,6 +162,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         throw new Error('No user data returned from login');
       }
 
+      // CRITICAL: Check if email is verified
+      if (!data.user.email_confirmed_at) {
+        console.warn('🚫 Login blocked: Email not verified');
+        // Sign out the user immediately
+        await supabase.auth.signOut();
+        // Throw specific error for unverified email
+        const unverifiedError = new Error('Email not verified');
+        (unverifiedError as any).code = 'EMAIL_NOT_VERIFIED';
+        (unverifiedError as any).email = email;
+        throw unverifiedError;
+      }
+
       console.log('✅ Auth login successful, fetching user profile...');
       
       const appUser = await supabaseService.getUserByEmail(data.user.email!);
