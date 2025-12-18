@@ -206,14 +206,17 @@ export const emailService = {
 
   /**
    * Sends a notification that a payslip is ready.
+   * @param hasPortalAccess - Whether employee has access to portal (Starter/Pro plans)
    */
-  sendPayslipNotification: async (email: string, firstName: string, period: string, netPay: string) => {
+  sendPayslipNotification: async (email: string, firstName: string, period: string, netPay: string, hasPortalAccess?: boolean) => {
+    hasPortalAccess = hasPortalAccess ?? true; // Default to true if not provided
+    
     // Try SMTP first (if API URL is configured)
     const apiUrl = import.meta.env.VITE_API_URL;
     if (apiUrl) {
       console.log('📧 Sending payslip notification via SMTP...');
       const loginLink = window.location.origin;
-      const result = await smtpEmailService.sendPayslipNotification(email, firstName, period, netPay, loginLink);
+      const result = await smtpEmailService.sendPayslipNotification(email, firstName, period, netPay, loginLink, hasPortalAccess);
       if (result.success) {
         return result;
       }
@@ -224,7 +227,7 @@ export const emailService = {
     const config = storage.getGlobalConfig();
 
     if (!config?.emailjs?.publicKey) {
-      console.log(`[Payslip Simulation] To: ${email} | Period: ${period} | Net: ${netPay}`);
+      console.log(`[Payslip Simulation] To: ${email} | Period: ${period} | Net: ${netPay} | Portal: ${hasPortalAccess}`);
       return { success: true, message: 'Simulation: Notification logged.' };
     }
 
@@ -232,7 +235,9 @@ export const emailService = {
       const templateParams = {
         to_email: email,
         to_name: firstName,
-        message: `Your payslip for ${period} is now available. Net Pay: ${netPay}. Log in to the portal to view details.`,
+        message: hasPortalAccess
+          ? `Your payslip for ${period} is now available. Net Pay: ${netPay}. Log in to your employee portal to view details.`
+          : `Your payslip for ${period} is now available. Net Pay: ${netPay}. Download your PDF copy.`,
         link: window.location.origin, // Link to the app login
         action_type: 'PAYSLIP'
       };

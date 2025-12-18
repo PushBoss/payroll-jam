@@ -372,35 +372,14 @@ export const PayRun: React.FC<PayRunProps> = ({
             lineItems: draftItems
         };
         
-        // Send emails to all employees
-        setIsEmailing(true);
-        try {
-            for (const item of draftItems) {
-                const emp = employees.find(e => e.id === item.employeeId);
-                if (emp?.email) {
-                    await emailService.sendPayslipNotification(
-                        emp.email,
-                        emp.firstName || 'Employee',
-                        newRun.periodStart,
-                        `$${item.netPay.toLocaleString()}`
-                    );
-                }
-            }
-            toast.success(`Payslips emailed to ${draftItems.length} employees!`);
-        } catch (error) {
-            console.error('Error sending payslips:', error);
-            toast.error('Some emails failed to send. Check logs.');
-        } finally {
-            setIsEmailing(false);
-        }
-
+        // Don't send emails automatically - wait for user to click "Email All"
         onSave(newRun);
         auditService.log(currentUser, 'CREATE', 'PayRun', `Finalized payroll for ${payPeriod}`);
         setCurrentRun(newRun);
 
         setStep('FINALIZE');
         setIsFinalizing(false);
-        toast.success("Payroll finalized successfully!");
+        toast.success("Payroll finalized successfully! Click 'Email All' to send payslips to employees.");
     };
 
     const handleDownloadBankFile = (type: 'NCB' | 'BNS') => {
@@ -431,21 +410,31 @@ export const PayRun: React.FC<PayRunProps> = ({
         setIsEmailing(true);
         let sentCount = 0;
         
-        for (const line of currentRun.lineItems) {
-            const emp = employees.find(e => e.id === line.employeeId);
-            if (emp?.email) {
-                await emailService.sendPayslipNotification(
-                    emp.email, 
-                    emp.firstName, 
-                    currentRun.periodStart, 
-                    `$${line.netPay.toLocaleString()}`
-                );
-                sentCount++;
-            }
-        }
+        // Check company plan for employee portal access
+        const companyPlan = companyData?.plan || 'Free';
+        const hasPortalAccess = companyPlan === 'Starter' || companyPlan === 'Pro' || companyPlan === 'Professional';
         
-        setIsEmailing(false);
-        toast.success(`Notified ${sentCount} employees via email.`);
+        try {
+            for (const line of currentRun.lineItems) {
+                const emp = employees.find(e => e.id === line.employeeId);
+                if (emp?.email) {
+                    await emailService.sendPayslipNotification(
+                        emp.email, 
+                        emp.firstName, 
+                        currentRun.periodStart, 
+                        `$${line.netPay.toLocaleString()}`,
+                        hasPortalAccess
+                    );
+                    sentCount++;
+                }
+            }
+            toast.success(`Payslips emailed to ${sentCount} employees`);
+        } catch (error) {
+            console.error('Error sending payslips:', error);
+            toast.error('Some emails failed to send. Check logs.');
+        } finally {
+            setIsEmailing(false);
+        }
     };
 
     // Ad-Hoc Logic

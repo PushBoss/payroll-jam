@@ -392,8 +392,15 @@ Thank you for choosing Payroll-Jam as your payroll solution!
     firstName: string,
     period: string,
     netPay: string,
-    loginLink: string
+    loginLink: string,
+    hasPortalAccess: boolean = true
   ): Promise<{ success: boolean; message?: string }> => {
+    const buttonText = hasPortalAccess ? 'View Payslip in Portal' : 'Download PDF Payslip';
+    const buttonUrl = hasPortalAccess ? `${loginLink}/?page=portal-home` : `${loginLink}/?page=login`;
+    const instructionText = hasPortalAccess 
+      ? 'Log in to your employee portal to view your full payslip and access all your pay history.'
+      : 'Click the button below to download your payslip PDF. Contact your employer for portal access.';
+    
     const htmlContent = `
       <!DOCTYPE html>
       <html>
@@ -420,9 +427,9 @@ Thank you for choosing Payroll-Jam as your payroll solution!
               <p style="margin: 0; font-size: 14px; color: #92400e;">Net Pay</p>
               <p style="margin: 5px 0 0 0; font-size: 24px; font-weight: bold; color: #92400e;">${netPay}</p>
             </div>
-            <p>Log in to your employee portal to view your full payslip and download a PDF copy.</p>
+            <p>${instructionText}</p>
             <center>
-              <a href="${loginLink}" class="button">View Payslip</a>
+              <a href="${buttonUrl}" class="button">${buttonText}</a>
             </center>
           </div>
           <div class="footer">
@@ -433,11 +440,15 @@ Thank you for choosing Payroll-Jam as your payroll solution!
       </html>
     `;
 
+    const textContent = hasPortalAccess
+      ? `Hi ${firstName}, Your payslip for ${period} is now available. Net Pay: ${netPay}. Log in to your employee portal: ${buttonUrl}`
+      : `Hi ${firstName}, Your payslip for ${period} is now available. Net Pay: ${netPay}. Log in to download your PDF: ${buttonUrl}`;
+    
     return await smtpEmailService.sendEmail({
       to: email,
       subject: `Your Payslip for ${period} is Ready`,
       html: htmlContent,
-      text: `Hi ${firstName}, Your payslip for ${period} is now available. Net Pay: ${netPay}. Log in to view: ${loginLink}`,
+      text: textContent,
     });
   },
 };
