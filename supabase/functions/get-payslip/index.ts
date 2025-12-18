@@ -67,26 +67,51 @@ serve(async (req) => {
     )
 
     // Fetch pay run
+    console.log('🔍 Fetching pay run:', { runId, employeeId })
+    
     const { data: payRun, error: payRunError } = await supabaseAdmin
       .from('pay_runs')
       .select('*')
       .eq('id', runId)
       .single()
 
+    console.log('📊 Pay run query result:', {
+      found: !!payRun,
+      error: payRunError ? JSON.stringify(payRunError) : 'none',
+      runId
+    })
+
     if (payRunError) {
-      console.error('Error fetching pay run:', payRunError)
+      console.error('❌ Error fetching pay run:', {
+        error: payRunError,
+        message: payRunError.message,
+        code: payRunError.code,
+        details: payRunError.details,
+        hint: payRunError.hint
+      })
       return new Response(
-        JSON.stringify({ error: 'Pay run not found' }),
+        JSON.stringify({ 
+          error: 'Pay run not found',
+          details: payRunError.message,
+          runId 
+        }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
     if (!payRun) {
+      console.warn('⚠️ Pay run query succeeded but returned no data')
       return new Response(
-        JSON.stringify({ error: 'Pay run not found' }),
+        JSON.stringify({ error: 'Pay run not found', runId }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
+    
+    console.log('✅ Pay run found:', {
+      id: payRun.id,
+      status: payRun.status,
+      lineItemCount: payRun.line_items?.length || 0
+    })
 
     // Find line item for this employee
     const lineItems = payRun.line_items || []
