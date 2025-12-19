@@ -167,7 +167,12 @@ export const Layout: React.FC<LayoutProps> = ({
 
       <div id="main-layout" className="flex flex-1 overflow-hidden">
       <aside className="hidden md:flex flex-col w-64 bg-jam-black text-white h-full flex-shrink-0 no-print">
-        <div className="p-6 flex items-center justify-center border-b border-gray-800 flex-shrink-0">
+        <div className="p-6 flex flex-col items-center justify-center border-b border-gray-800 flex-shrink-0">
+          <img 
+            src="/assets/icons/android-chrome-192x192.png" 
+            alt="Payroll-Jam Logo" 
+            className="w-12 h-12 mb-3"
+          />
           <h1 className="text-2xl font-bold tracking-wider text-white">
             {variant === 'portal' ? 'My' : variant === 'super_admin' ? 'Admin' : (user?.role === Role.RESELLER && !user.originalRole) ? 'Partner' : 'Payroll'}
             <span className="text-jam-orange">{variant === 'portal' ? 'Portal' : (user?.role === Role.RESELLER && !user.originalRole) ? 'Hub' : '-Jam'}</span>

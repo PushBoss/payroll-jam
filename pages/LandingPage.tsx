@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Icons } from '../components/Icons';
 
 import { PricingPlan } from '../types';
@@ -15,6 +15,64 @@ interface LandingPageProps {
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({ plans = [], onLogin, onSignup, onPricingClick, onFeaturesClick, onFaqClick, onPrivacyClick, onTermsClick }) => {
+  // SEO: Update page title and meta tags
+  useEffect(() => {
+    document.title = 'Payroll-Jam | Jamaican Payroll Software - NIS, NHT & PAYE Compliance';
+    
+    // Update meta description
+    const metaDescription = document.querySelector('meta[name="description"]');
+    if (metaDescription) {
+      metaDescription.setAttribute('content', 'Automate your Jamaican payroll with Payroll-Jam. Built-in NIS, NHT, PAYE, and Education Tax calculations. Generate S01 reports instantly. Start free today!');
+    }
+    
+    // Update keywords
+    const metaKeywords = document.querySelector('meta[name="keywords"]');
+    if (metaKeywords) {
+      metaKeywords.setAttribute('content', 'Jamaica payroll, payroll software Jamaica, TRN, NIS, NHT, PAYE, Jamaican payroll system, cloud payroll, employee management, salary calculator, TAJ compliance, S01 reports, Jamaican tax software');
+    }
+    
+    // Update OG tags
+    const ogTitle = document.querySelector('meta[property="og:title"]');
+    if (ogTitle) {
+      ogTitle.setAttribute('content', 'Payroll-Jam | Jamaican Payroll Software - NIS, NHT & PAYE Compliance');
+    }
+    
+    const ogDescription = document.querySelector('meta[property="og:description"]');
+    if (ogDescription) {
+      ogDescription.setAttribute('content', 'Automate your Jamaican payroll with Payroll-Jam. Built-in NIS, NHT, PAYE, and Education Tax calculations. Generate S01 reports instantly. Start free today!');
+    }
+    
+    const ogUrl = document.querySelector('meta[property="og:url"]');
+    if (ogUrl) {
+      ogUrl.setAttribute('content', window.location.href);
+    }
+    
+    // Update Twitter tags
+    const twitterTitle = document.querySelector('meta[property="twitter:title"]');
+    if (twitterTitle) {
+      twitterTitle.setAttribute('content', 'Payroll-Jam | Jamaican Payroll Software - NIS, NHT & PAYE Compliance');
+    }
+    
+    const twitterDescription = document.querySelector('meta[property="twitter:description"]');
+    if (twitterDescription) {
+      twitterDescription.setAttribute('content', 'Automate your Jamaican payroll with Payroll-Jam. Built-in NIS, NHT, PAYE, and Education Tax calculations. Generate S01 reports instantly.');
+    }
+    
+    const twitterUrl = document.querySelector('meta[property="twitter:url"]');
+    if (twitterUrl) {
+      twitterUrl.setAttribute('content', window.location.href);
+    }
+    
+    // Add or update canonical URL
+    let canonicalLink = document.querySelector('link[rel="canonical"]');
+    if (!canonicalLink) {
+      canonicalLink = document.createElement('link');
+      canonicalLink.setAttribute('rel', 'canonical');
+      document.head.appendChild(canonicalLink);
+    }
+    canonicalLink.setAttribute('href', window.location.href);
+  }, []);
+  
   // Filter only active plans for display
   const activePlans = plans.filter(p => p.isActive);
   

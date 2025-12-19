@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import Papa from 'papaparse';
-import { Employee, PayFrequency, Role, PayRun, CompanySettings, PayType, Department, Designation, Asset, PerformanceReview, TerminationDetails, BankAccount } from '../types';
+import { Employee, PayFrequency, Role, PayRun, CompanySettings, PayType, Department, Designation, Asset, PerformanceReview, TerminationDetails, BankAccount, PricingPlan } from '../types';
 import { Icons } from '../components/Icons';
 import { auditService } from '../services/auditService';
 import { downloadFile, generateP45CSV } from '../utils/exportHelpers';
@@ -24,6 +24,8 @@ interface EmployeesProps {
   onUpdateAssets?: (assets: Asset[]) => void;
   reviews?: PerformanceReview[];
   onUpdateReviews?: (reviews: PerformanceReview[]) => void;
+  plans?: PricingPlan[];
+  onNavigate?: (path: string) => void;
 }
 
 export const Employees: React.FC<EmployeesProps> = ({ 
@@ -35,6 +37,8 @@ export const Employees: React.FC<EmployeesProps> = ({
     onDeleteEmployee,
     onSimulateOnboarding,
     departments = [],
+    plans = [],
+    onNavigate,
 }) => {
   const { user: currentUser } = useAuth();
   
@@ -334,6 +338,19 @@ export const Employees: React.FC<EmployeesProps> = ({
           const email = row['Email']?.trim();
           if (!email) return;
 
+          // Match department name to department ID
+          const departmentName = row['Department']?.trim() || '';
+          let departmentId = '';
+          if (departmentName) {
+            const matchedDept = departments.find(
+              d => d.name.toLowerCase() === departmentName.toLowerCase()
+            );
+            departmentId = matchedDept?.id || '';
+            if (!matchedDept && departmentName) {
+              console.warn(`Department "${departmentName}" not found. Employee will be imported without department assignment.`);
+            }
+          }
+
           const newEmp: Employee = {
               id: generateUUID(),
               firstName: row['First Name'] || 'Unknown',
@@ -349,7 +366,8 @@ export const Employees: React.FC<EmployeesProps> = ({
               hireDate: new Date().toISOString().split('T')[0],
               allowances: [],
               deductions: [],
-              department: ''
+              department: departmentId,
+              jobTitle: row['Job Title']?.trim() || ''
           };
           onAddEmployee(newEmp);
           count++;
@@ -470,17 +488,57 @@ export const Employees: React.FC<EmployeesProps> = ({
       {/* Upgrade Modal */}
       {showUpgradeModal && (
           <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
-              <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden text-center border-t-8 border-jam-orange">
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden border-t-8 border-jam-orange">
                   <div className="p-8">
                       <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4 text-jam-orange">
                           <Icons.Star className="w-8 h-8 fill-current" />
                       </div>
-                      <h3 className="text-2xl font-bold text-gray-900 mb-2">Plan Limit Reached</h3>
-                      <p className="text-gray-600 mb-6">
-                          You have reached the <strong>{getPlanLimit(companyData?.plan)} employee limit</strong>.
+                      <h3 className="text-2xl font-bold text-gray-900 mb-2 text-center">Plan Limit Reached</h3>
+                      <p className="text-gray-600 mb-6 text-center">
+                          You have reached the <strong>{getPlanLimit(companyData?.plan)} employee limit</strong> for your current plan.
                       </p>
+                      
+                      {/* Available Plans */}
+                      {plans.length > 0 && (
+                          <div className="mb-6">
+                              <h4 className="text-sm font-semibold text-gray-700 mb-3 text-center">Available Plans</h4>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  {plans.filter(p => p.isActive && p.name !== companyData?.plan).map(plan => {
+                                      const price = plan.priceConfig.type === 'free' ? 0 :
+                                                   plan.priceConfig.type === 'base' ? (plan.priceConfig.baseFee || 0) :
+                                                   plan.priceConfig.monthly;
+                                      const priceLabel = plan.priceConfig.type === 'free' ? 'Free' :
+                                                        plan.priceConfig.type === 'per_emp' ? `$${price}/emp` :
+                                                        plan.priceConfig.type === 'base' ? `$${price}+ base` :
+                                                        `$${price}/mo`;
+                                      
+                                      return (
+                                          <div key={plan.id} className={`border-2 rounded-lg p-4 ${plan.highlight ? 'border-jam-orange bg-orange-50' : 'border-gray-200'}`}>
+                                              <h5 className="font-bold text-lg text-gray-900">{plan.name}</h5>
+                                              <p className="text-2xl font-bold text-jam-orange my-2">{priceLabel}</p>
+                                              <p className="text-xs text-gray-600 mb-3">{plan.description}</p>
+                                              <p className="text-xs font-medium text-gray-700">Limit: <span className="text-jam-orange">{plan.limit} employees</span></p>
+                                          </div>
+                                      );
+                                  })}
+                              </div>
+                          </div>
+                      )}
+                      
                       <div className="space-y-3">
-                          <button onClick={() => { setShowUpgradeModal(false); toast.info("Redirecting to Billing..."); }} className="w-full bg-jam-black text-white font-bold py-3 rounded-lg">Upgrade Now</button>
+                          <button 
+                              onClick={() => { 
+                                  setShowUpgradeModal(false); 
+                                  if (onNavigate) {
+                                      onNavigate('settings');
+                                  } else {
+                                      toast.info("Please navigate to Settings > Billing to upgrade");
+                                  }
+                              }} 
+                              className="w-full bg-jam-black text-white font-bold py-3 rounded-lg hover:bg-gray-800 transition-colors"
+                          >
+                              Upgrade Now
+                          </button>
                           <button onClick={() => setShowUpgradeModal(false)} className="w-full text-gray-500 font-medium py-2 rounded-lg hover:bg-gray-50">Maybe Later</button>
                       </div>
                   </div>

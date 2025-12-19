@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Icons } from '../components/Icons';
 
 interface FeaturesProps {
@@ -11,6 +11,64 @@ interface FeaturesProps {
 }
 
 export const Features: React.FC<FeaturesProps> = ({ onSignup, onLogin, onBack, onPricingClick, onFaqClick }) => {
+  // SEO: Update page title and meta tags
+  useEffect(() => {
+    document.title = 'Features | Payroll-Jam - Jamaican Payroll & HR Software';
+    
+    // Update meta description
+    const metaDescription = document.querySelector('meta[name="description"]');
+    if (metaDescription) {
+      metaDescription.setAttribute('content', 'Explore Payroll-Jam features: automated payroll, TAJ compliance (S01/S02), employee portal, leave management, AI assistant, and direct bank deposits for Jamaican businesses.');
+    }
+    
+    // Update keywords
+    const metaKeywords = document.querySelector('meta[name="keywords"]');
+    if (metaKeywords) {
+      metaKeywords.setAttribute('content', 'Jamaican payroll features, HR software Jamaica, employee portal, leave management, payroll automation, TAJ compliance, S01 S02 reports, direct deposit Jamaica, AI HR assistant');
+    }
+    
+    // Update OG tags
+    const ogTitle = document.querySelector('meta[property="og:title"]');
+    if (ogTitle) {
+      ogTitle.setAttribute('content', 'Features | Payroll-Jam - Jamaican Payroll & HR Software');
+    }
+    
+    const ogDescription = document.querySelector('meta[property="og:description"]');
+    if (ogDescription) {
+      ogDescription.setAttribute('content', 'Explore Payroll-Jam features: automated payroll, TAJ compliance (S01/S02), employee portal, leave management, AI assistant, and direct bank deposits for Jamaican businesses.');
+    }
+    
+    const ogUrl = document.querySelector('meta[property="og:url"]');
+    if (ogUrl) {
+      ogUrl.setAttribute('content', window.location.href);
+    }
+    
+    // Update Twitter tags
+    const twitterTitle = document.querySelector('meta[property="twitter:title"]');
+    if (twitterTitle) {
+      twitterTitle.setAttribute('content', 'Features | Payroll-Jam - Jamaican Payroll & HR Software');
+    }
+    
+    const twitterDescription = document.querySelector('meta[property="twitter:description"]');
+    if (twitterDescription) {
+      twitterDescription.setAttribute('content', 'Explore Payroll-Jam features: automated payroll, TAJ compliance, employee portal, leave management, and AI assistant for Jamaican businesses.');
+    }
+    
+    const twitterUrl = document.querySelector('meta[property="twitter:url"]');
+    if (twitterUrl) {
+      twitterUrl.setAttribute('content', window.location.href);
+    }
+    
+    // Add or update canonical URL
+    let canonicalLink = document.querySelector('link[rel="canonical"]');
+    if (!canonicalLink) {
+      canonicalLink = document.createElement('link');
+      canonicalLink.setAttribute('rel', 'canonical');
+      document.head.appendChild(canonicalLink);
+    }
+    canonicalLink.setAttribute('href', window.location.href);
+  }, []);
+  
   return (
     <div className="min-h-screen bg-white font-sans text-slate-900">
       {/* Navigation */}
