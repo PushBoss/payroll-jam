@@ -9,6 +9,14 @@ export default defineConfig(({ mode }) => {
   
   return {
     plugins: [react()],
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: undefined,
+        },
+      },
+      chunkSizeWarningLimit: 1000,
+    },
     define: {
       // This ensures process.env variables are replaced with actual values during build
       'process.env.API_KEY': JSON.stringify(process.env.API_KEY || env.API_KEY),
