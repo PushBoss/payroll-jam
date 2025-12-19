@@ -92,18 +92,30 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
         type = selectedPlan.priceConfig.type;
         if (type === 'free') {
              basePrice = 0;
-        } else {
+        } else if (type === 'flat') {
+             // Flat rate plans - use the monthly/annual price directly
              basePrice = formData.billingCycle === 'monthly' ? selectedPlan.priceConfig.monthly : selectedPlan.priceConfig.annual;
-             if (type === 'per_emp') perEmpPrice = basePrice;
+        } else if (type === 'per_emp') {
+             // Per-employee plans - price is per employee
+             perEmpPrice = formData.billingCycle === 'monthly' ? selectedPlan.priceConfig.monthly : selectedPlan.priceConfig.annual;
+        } else if (type === 'base') {
+             // Base fee plans (like Reseller)
+             basePrice = selectedPlan.priceConfig.baseFee || 0;
+             perEmpPrice = selectedPlan.priceConfig.perUserFee || 0;
         }
     }
 
     let subtotal = 0;
-    if (type === 'flat' || type === 'base') {
+    if (type === 'free') {
+        subtotal = 0;
+    } else if (type === 'flat') {
         subtotal = basePrice;
     } else if (type === 'per_emp') {
-        const count = parseInt(formData.numEmployees) || 26;
+        const count = parseInt(formData.numEmployees) || 1; // Default to 1 if not specified
         subtotal = count * perEmpPrice;
+    } else if (type === 'base') {
+        const count = parseInt(formData.numEmployees) || 1;
+        subtotal = basePrice + (count * perEmpPrice);
     }
     
     const billableAmount = subtotal;
@@ -322,6 +334,20 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                         <div>
                             <label className="block text-sm font-medium text-gray-700">Work Email</label>
                             <input required type="email" autoComplete="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Number of Employees</label>
+                            <input 
+                                required 
+                                type="number" 
+                                min="1"
+                                max="9999"
+                                value={formData.numEmployees} 
+                                onChange={(e) => setFormData({...formData, numEmployees: e.target.value})} 
+                                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" 
+                                placeholder="e.g., 10"
+                            />
+                            <p className="mt-1 text-xs text-gray-500">This helps us calculate your plan pricing accurately</p>
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700">Password</label>
@@ -595,14 +621,54 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
          <div className="absolute inset-0 flex flex-col justify-center px-12">
              <div className="max-w-md mx-auto w-full bg-white p-8 rounded-2xl shadow-lg border border-gray-100">
                 <h3 className="text-lg font-medium text-gray-900 mb-6">Order Summary</h3>
-                <div className="flex items-start justify-between pb-6 border-b border-gray-100">
-                    <div>
-                        <p className="font-bold text-gray-900 text-lg">{formData.plan} Plan</p>
-                        <p className="text-sm text-gray-500 mt-1 capitalize">{formData.billingCycle} Subscription</p>
+                <div className="pb-6 border-b border-gray-100">
+                    <div className="flex items-start justify-between mb-4">
+                        <div>
+                            <p className="font-bold text-gray-900 text-lg">{formData.plan} Plan</p>
+                            <p className="text-sm text-gray-500 mt-1 capitalize">{formData.billingCycle} Subscription</p>
+                        </div>
+                        <div className="text-right">
+                            <span className="text-2xl font-bold text-jam-orange">${pricing.total.toLocaleString()}</span>
+                            <p className="text-xs text-gray-400">JMD / {formData.billingCycle === 'annual' ? 'Year' : 'Month'}</p>
+                        </div>
                     </div>
-                    <div className="text-right">
-                        <span className="text-2xl font-bold text-jam-orange">${pricing.total.toLocaleString()}</span>
-                        <p className="text-xs text-gray-400">JMD / {formData.billingCycle === 'annual' ? 'Year' : 'Month'}</p>
+                    
+                    {/* Pricing Breakdown */}
+                    <div className="space-y-2 text-sm">
+                        {pricing.type === 'per_emp' && (
+                            <div className="flex justify-between text-gray-600">
+                                <span>{formData.numEmployees || 1} employee{(parseInt(formData.numEmployees) || 1) > 1 ? 's' : ''} × ${pricing.perEmpPrice.toLocaleString()}</span>
+                                <span>${pricing.subtotal.toLocaleString()}</span>
+                            </div>
+                        )}
+                        {pricing.type === 'flat' && (
+                            <div className="flex justify-between text-gray-600">
+                                <span>Base Plan</span>
+                                <span>${pricing.subtotal.toLocaleString()}</span>
+                            </div>
+                        )}
+                        {pricing.type === 'base' && (
+                            <>
+                                <div className="flex justify-between text-gray-600">
+                                    <span>Base Fee</span>
+                                    <span>${pricing.basePrice.toLocaleString()}</span>
+                                </div>
+                                <div className="flex justify-between text-gray-600">
+                                    <span>{formData.numEmployees || 1} employee{(parseInt(formData.numEmployees) || 1) > 1 ? 's' : ''} × ${pricing.perEmpPrice.toLocaleString()}</span>
+                                    <span>${((parseInt(formData.numEmployees) || 1) * pricing.perEmpPrice).toLocaleString()}</span>
+                                </div>
+                            </>
+                        )}
+                        {pricing.gct > 0 && (
+                            <div className="flex justify-between text-gray-600">
+                                <span>GCT (15%)</span>
+                                <span>${pricing.gct.toLocaleString()}</span>
+                            </div>
+                        )}
+                        <div className="flex justify-between font-bold text-gray-900 pt-2 border-t border-gray-200">
+                            <span>Total</span>
+                            <span>${pricing.total.toLocaleString()}</span>
+                        </div>
                     </div>
                 </div>
                 <div className="pt-6 text-xs text-gray-400 text-center">
