@@ -110,10 +110,10 @@ const PayRunRow = ({
                     />
                 </div>
             </td>
-            <td className="px-6 py-4 text-center">
+            <td className="px-6 py-4 text-center overflow-visible">
                 <div className="flex flex-col items-center relative">
                     {hasAdditions ? (
-                        <div className="flex flex-col items-center">
+                        <div className="flex flex-col items-center relative">
                             <button 
                                 onClick={() => setShowAdditionsMenu(!showAdditionsMenu)}
                                 className="text-green-600 font-bold text-sm mb-1 hover:text-green-700 cursor-pointer"
@@ -121,7 +121,7 @@ const PayRunRow = ({
                                 +${item.additions.toLocaleString()}
                             </button>
                             {showAdditionsMenu && (
-                                <div className="absolute top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-3 z-10 min-w-[250px] left-1/2 transform -translate-x-1/2">
+                                <div className="absolute top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl p-3 z-[100] min-w-[250px] left-1/2 transform -translate-x-1/2">
                                     <div className="flex justify-between items-center mb-2">
                                         <span className="text-xs font-bold text-gray-700">Additions</span>
                                         <button 
@@ -176,10 +176,10 @@ const PayRunRow = ({
                     )}
                 </div>
             </td>
-            <td className="px-6 py-4 text-center">
+            <td className="px-6 py-4 text-center overflow-visible">
                 <div className="flex flex-col items-center relative">
                     {hasDeductions ? (
-                        <div className="flex flex-col items-center">
+                        <div className="flex flex-col items-center relative">
                             <button 
                                 onClick={() => setShowDeductionsMenu(!showDeductionsMenu)}
                                 className="text-red-600 font-bold text-sm mb-1 hover:text-red-700 cursor-pointer"
@@ -187,7 +187,7 @@ const PayRunRow = ({
                                 -${item.deductions.toLocaleString()}
                             </button>
                             {showDeductionsMenu && (
-                                <div className="absolute top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-3 z-10 min-w-[250px] left-1/2 transform -translate-x-1/2">
+                                <div className="absolute top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl p-3 z-[100] min-w-[250px] left-1/2 transform -translate-x-1/2">
                                     <div className="flex justify-between items-center mb-2">
                                         <span className="text-xs font-bold text-gray-700">Deductions</span>
                                         <button 
@@ -819,7 +819,7 @@ export const PayRun: React.FC<PayRunProps> = ({
                     <div className="bg-jam-black text-white p-6 rounded-xl shadow-lg"><p className="text-xs text-jam-yellow font-bold uppercase tracking-wider">Total Net Pay</p><p className="text-3xl font-bold mt-1">${totals.net.toLocaleString()}</p></div>
                 </div>
                 {/* Review Table */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead className="bg-gray-50 border-b border-gray-200">
                             <tr>
