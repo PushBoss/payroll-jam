@@ -99,6 +99,9 @@ export const dimePayService = {
         });
 
         const recurringFreq = props.frequency === 'annual' ? 'YEARLY' : 'MONTHLY';
+        
+        // Get fee routing configuration from config
+        const passFeesTo = config.passFeesTo || 'MERCHANT';
 
         // Prepare Payload to send to backend for signing
         const orderId = `ORD-${Date.now()}`;
@@ -109,7 +112,8 @@ export const dimePayService = {
             description: props.description,
             billing_email: props.email,
             billing_name: props.metadata?.name || 'Guest',
-            frequency: recurringFreq
+            frequency: recurringFreq,
+            pass_fees_to: passFeesTo === 'CUSTOMER' ? 'CUSTOMER' : 'MERCHANT'
         };
 
         try {

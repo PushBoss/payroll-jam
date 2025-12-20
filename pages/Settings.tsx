@@ -352,6 +352,28 @@ export const Settings: React.FC<SettingsProps> = ({
                   const updatedUser = { ...currentUser, role: Role.RESELLER };
                   await supabaseService.saveUser(updatedUser);
                   updateUser({ role: Role.RESELLER });
+                  
+                  // Add their current company as a company they manage
+                  // This allows them to continue managing their own company as a reseller
+                  if (currentUser.companyId) {
+                      try {
+                          await supabaseService.saveResellerClientWithServiceRole(
+                              currentUser.id,
+                              currentUser.companyId,
+                              {
+                                  status: 'ACTIVE',
+                                  accessLevel: 'FULL',
+                                  monthlyBaseFee: 0, // No fee for their own company
+                                  perEmployeeFee: 0,
+                                  discountRate: 100 // 100% discount (free)
+                              }
+                          );
+                          console.log('✅ Added own company as managed company');
+                      } catch (clientError) {
+                          console.warn('Could not add company as reseller client (may already exist):', clientError);
+                          // Non-critical error, continue
+                      }
+                  }
               } catch (error) {
                   console.error('Error updating user role:', error);
               }

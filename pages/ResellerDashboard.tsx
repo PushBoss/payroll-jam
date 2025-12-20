@@ -21,7 +21,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
   const [billingHistory, setBillingHistory] = useState<any[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
 
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'partners' | 'compliance' | 'financials'>('dashboard');
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'partners' | 'manage' | 'compliance' | 'financials'>('dashboard');
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -406,6 +406,9 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
       </>
   );
 
+  // ...existing code...
+  // Move renderManageCompanyTab above component and use inline below
+
   const renderComplianceTab = () => (
       <div className="space-y-6 animate-fade-in">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -614,7 +617,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
               <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in">
                   <div className="flex justify-between items-center p-6 border-b border-gray-100 bg-gray-50">
                       <h3 className="text-xl font-bold text-gray-900">
-                          {isAddModalOpen ? 'Add New Client' : 'Manage Client'}
+                          {isAddModalOpen ? 'Add New Company' : 'Manage Company'}
                       </h3>
                       <button 
                         onClick={() => { setIsAddModalOpen(false); setIsEditModalOpen(false); }}
@@ -732,7 +735,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                 className="bg-jam-black text-white px-6 py-2.5 rounded-lg hover:bg-gray-800 flex items-center shadow-lg transition-transform hover:-translate-y-0.5"
             >
                 <Icons.Plus className="w-4 h-4 mr-2" />
-                Add New Client
+                Add New Company
             </button>
         </div>
       </div>
@@ -744,6 +747,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                 {[
                     {key: 'dashboard', label: 'My Dashboard'},
                     {key: 'partners', label: 'Partner Console'},
+                    {key: 'manage', label: 'Manage My Company'},
                     {key: 'compliance', label: 'Compliance'},
                     {key: 'financials', label: 'Revenue & Costs'}
                 ].map((tab) => (
