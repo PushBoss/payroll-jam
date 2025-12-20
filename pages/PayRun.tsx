@@ -1045,26 +1045,38 @@ export const PayRun: React.FC<PayRunProps> = ({
                                         toast.error('No payslips to print');
                                         return;
                                     }
-                                    // Open all payslips in sequence for printing
+                                    
+                                    toast.success(`Printing ${currentRun.lineItems.length} payslips. Close each print dialog to continue to the next.`);
+                                    
+                                    // Print payslips sequentially, waiting for each print dialog to close
                                     let currentIndex = 0;
+                                    
                                     const printNext = () => {
-                                        if (currentIndex < currentRun.lineItems.length) {
-                                            setViewingPayslip(currentRun.lineItems[currentIndex]);
-                                            setTimeout(() => {
-                                                window.print();
-                                                currentIndex++;
-                                                setTimeout(() => {
-                                                    if (currentIndex < currentRun.lineItems.length) {
-                                                        printNext();
-                                                    } else {
-                                                        setViewingPayslip(null);
-                                                    }
-                                                }, 1000);
-                                            }, 500);
+                                        if (currentIndex >= currentRun.lineItems.length) {
+                                            setViewingPayslip(null);
+                                            toast.success('All payslips printed successfully!');
+                                            return;
                                         }
+                                        
+                                        // Show the current payslip
+                                        setViewingPayslip(currentRun.lineItems[currentIndex]);
+                                        
+                                        // Wait for the payslip to render, then open print dialog
+                                        setTimeout(() => {
+                                            // Set up listener for when print dialog closes
+                                            const handleAfterPrint = () => {
+                                                window.removeEventListener('afterprint', handleAfterPrint);
+                                                currentIndex++;
+                                                // Small delay before showing next payslip
+                                                setTimeout(printNext, 300);
+                                            };
+                                            
+                                            window.addEventListener('afterprint', handleAfterPrint);
+                                            window.print();
+                                        }, 500);
                                     };
+                                    
                                     printNext();
-                                    toast.success(`Preparing to print ${currentRun.lineItems.length} payslips...`);
                                 }}
                                 className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-100"
                             >
