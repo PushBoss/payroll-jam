@@ -642,29 +642,32 @@ export const Settings: React.FC<SettingsProps> = ({
                       <div className="mt-4 md:mt-0">
                           <button 
                               onClick={() => {
-                                  // Show plan selection - allow any account to upgrade to Reseller
+                                  // Show all paid plans except current plan (consistent with cards below)
                                   const currentPlan = companyData?.plan || 'Free';
                                   const availablePlans = plans.filter(p => {
-                                      // Always allow Reseller upgrade
-                                      if (p.name === 'Reseller') return true;
-                                      // Standard upgrade path
-                                      if (currentPlan === 'Free') return p.name === 'Starter' || p.name === 'Pro';
-                                      if (currentPlan === 'Starter') return p.name === 'Pro';
-                                      return false;
+                                      // Don't show current plan
+                                      if (p.name === currentPlan) return false;
+                                      // Don't show Free plan (no one upgrades to Free)
+                                      if (p.priceConfig.type === 'free') return false;
+                                      // Show all other paid plans (Starter, Pro, Reseller, etc.)
+                                      return p.isActive;
                                   });
+                                  
+                                  if (availablePlans.length === 0) {
+                                      toast.info('No upgrade options available');
+                                      return;
+                                  }
+                                  
                                   if (availablePlans.length === 1) {
                                       handleUpgradeClick(availablePlans[0].name);
-                                  } else if (availablePlans.length > 1) {
-                                      // Show plan selector
-                                      const selected = window.confirm(`Choose upgrade plan:\n\n1. Click OK for ${availablePlans[0].name}\n2. Click Cancel to see all options`);
-                                      if (selected) {
-                                          handleUpgradeClick(availablePlans[0].name);
-                                      } else {
-                                          // Show all available plans
-                                          const planNames = availablePlans.map(p => p.name).join(', ');
-                                          const choice = window.prompt(`Available plans: ${planNames}\n\nEnter plan name to upgrade:`);
-                                          if (choice && availablePlans.find(p => p.name === choice)) {
-                                              handleUpgradeClick(choice);
+                                  } else {
+                                      // Show plan selector with all options
+                                      const planNames = availablePlans.map(p => `${p.name} ($${p.priceConfig.monthly?.toLocaleString() || p.priceConfig.baseFee?.toLocaleString()}/mo)`).join('\n');
+                                      const choice = window.prompt(`Choose a plan to upgrade:\n\n${planNames}\n\nEnter plan name:`);
+                                      if (choice && availablePlans.find(p => p.name.toLowerCase() === choice.toLowerCase())) {
+                                          const selectedPlan = availablePlans.find(p => p.name.toLowerCase() === choice.toLowerCase());
+                                          if (selectedPlan) {
+                                              handleUpgradeClick(selectedPlan.name);
                                           }
                                       }
                                   }
@@ -678,29 +681,32 @@ export const Settings: React.FC<SettingsProps> = ({
               </div>
               
               {/* Plan Selection Section */}
-              {companyData?.plan !== 'Pro' && companyData?.plan !== 'Professional' && plans.length > 0 && (
+              {plans.length > 0 && (
                   <div className="bg-white p-6 rounded-xl border border-gray-200">
                       <h3 className="text-lg font-bold mb-4">Available Plans</h3>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                           {(() => {
                               const currentPlan = companyData?.plan || 'Free';
-                              // Show all active plans except current plan and Free (if not on Free)
+                              // Show all active plans except current plan and Free plan
                               const filtered = plans.filter(p => {
                                   // Don't show current plan
                                   if (p.name === currentPlan) return false;
                                   // Don't show Free plan (no one upgrades to Free)
                                   if (p.priceConfig.type === 'free') return false;
-                                  // Show everything else (all paid plans)
-                                  return true;
+                                  // Show all other active paid plans
+                                  return p.isActive;
                               });
-                              console.log('🎯 Filtered plans for display (current:', currentPlan, '):', filtered.map(p => ({ name: p.name, monthly: p.priceConfig.monthly })));
+                              console.log('🎯 Filtered plans for display (current:', currentPlan, '):', filtered.map(p => ({ name: p.name, monthly: p.priceConfig.monthly, baseFee: p.priceConfig.baseFee })));
                               return filtered.map(plan => (
                                   <div key={plan.id} className="border border-gray-200 rounded-lg p-4 hover:border-jam-orange transition-colors">
                                       <h4 className="font-bold text-lg mb-2">{plan.name}</h4>
                                       <div className="text-2xl font-bold mb-2">
-                                          ${plan.priceConfig.type === 'free' ? '0' : plan.priceConfig.monthly.toLocaleString()}
-                                          <span className="text-sm text-gray-500 font-normal">/mo</span>
+                                          {plan.priceConfig.type === 'free' ? '$0' : 
+                                           plan.priceConfig.type === 'base' ? `$${(plan.priceConfig.baseFee || 0).toLocaleString()}` :
+                                           `$${(plan.priceConfig.monthly || 0).toLocaleString()}`}
+                                          <span className="text-sm text-gray-500 font-normal">/mo{plan.priceConfig.type === 'base' ? ' base' : plan.priceConfig.type === 'per_emp' ? '/emp' : ''}</span>
                                       </div>
+                                      <p className="text-xs text-gray-500 mb-3">{plan.description}</p>
                                       <ul className="text-sm text-gray-600 mb-4 space-y-1">
                                           {plan.features.slice(0, 3).map((feature, idx) => (
                                               <li key={idx}>• {feature}</li>
