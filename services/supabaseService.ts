@@ -885,62 +885,70 @@ export const supabaseService = {
         error = result.error;
 
         // If insert fails due to unique constraint (existing UNIQUE on company+period+frequency),
-        // attempt a safe fallback: update the existing period run instead of failing.
+        // handle based on allowMultiple setting
         if (error && (error.code === '23505' || /duplicate key|unique constraint|already exists/i.test(error.message || ''))) {
-          console.warn('⚠️ Insert failed due to unique constraint; attempting to update existing period run instead.');
-          console.warn('Conflicting pay run details:', {
-            attemptedId: run.id,
-            status: run.status,
-            period: `${periodStart} to ${periodEnd}`,
-            frequency: payFrequency
-          });
-          
-          try {
-            const { data: existingForPeriod } = await supabase
-              .from('pay_runs')
-              .select('id, status')
-              .eq('company_id', companyId)
-              .eq('period_start', periodStart)
-              .eq('period_end', periodEnd)
-              .eq('pay_frequency', payFrequency)
-              .maybeSingle();
+          if (allowMultiple) {
+            // User wants multiple runs for same period - treat constraint error as success
+            console.log('ℹ️ Unique constraint hit but allowMultiple=true; multiple pay runs for same period are allowed. Treating as success.');
+            error = null;
+            result = { data: { id: run.id }, status: 200, statusText: 'Multiple runs allowed' };
+          } else {
+            // Original behavior: attempt a safe fallback to update the existing period run
+            console.warn('⚠️ Insert failed due to unique constraint; attempting to update existing period run instead.');
+            console.warn('Conflicting pay run details:', {
+              attemptedId: run.id,
+              status: run.status,
+              period: `${periodStart} to ${periodEnd}`,
+              frequency: payFrequency
+            });
+            
+            try {
+              const { data: existingForPeriod } = await supabase
+                .from('pay_runs')
+                .select('id, status')
+                .eq('company_id', companyId)
+                .eq('period_start', periodStart)
+                .eq('period_end', periodEnd)
+                .eq('pay_frequency', payFrequency)
+                .maybeSingle();
 
-            const targetId = existingForPeriod?.id || (existingByPeriod && (existingByPeriod as any).id);
-            if (targetId) {
-              // Only update if the new status is more advanced (DRAFT < APPROVED < FINALIZED)
-              // or if statuses are the same
-              const statusPriority: any = { 'DRAFT': 1, 'APPROVED': 2, 'FINALIZED': 3 };
-              const existingPriority = statusPriority[existingForPeriod?.status] || 1;
-              const newPriority = statusPriority[run.status] || 1;
-              
-              if (newPriority >= existingPriority) {
-                console.log('🔁 Updating existing pay run for period as fallback:', targetId, `(${existingForPeriod?.status} → ${run.status})`);
-                const updateResult = await supabase
-                  .from('pay_runs')
-                  .update(payRunData)
-                  .eq('id', targetId)
-                  .select();
+              const targetId = existingForPeriod?.id || (existingByPeriod && (existingByPeriod as any).id);
+              if (targetId) {
+                // Only update if the new status is more advanced (DRAFT < APPROVED < FINALIZED)
+                // or if statuses are the same
+                const statusPriority: any = { 'DRAFT': 1, 'APPROVED': 2, 'FINALIZED': 3 };
+                const existingPriority = statusPriority[existingForPeriod?.status] || 1;
+                const newPriority = statusPriority[run.status] || 1;
                 
-                if (!updateResult.error) {
-                  // Fallback succeeded - clear the original error and use the update result
-                  error = null;
-                  result = updateResult;
-                  console.log('✅ Successfully updated existing pay run instead of creating duplicate');
+                if (newPriority >= existingPriority) {
+                  console.log('🔁 Updating existing pay run for period as fallback:', targetId, `(${existingForPeriod?.status} → ${run.status})`);
+                  const updateResult = await supabase
+                    .from('pay_runs')
+                    .update(payRunData)
+                    .eq('id', targetId)
+                    .select();
+                  
+                  if (!updateResult.error) {
+                    // Fallback succeeded - clear the original error and use the update result
+                    error = null;
+                    result = updateResult;
+                    console.log('✅ Successfully updated existing pay run instead of creating duplicate');
+                  } else {
+                    error = updateResult.error;
+                    result = updateResult;
+                  }
                 } else {
-                  error = updateResult.error;
-                  result = updateResult;
+                  console.log('ℹ️ Skipping update - existing run has higher priority status:', existingForPeriod?.status);
+                  // Clear error since we're intentionally not updating
+                  error = null;
+                  result = { data: existingForPeriod, status: 200, statusText: 'Skipped - existing run preserved' };
                 }
               } else {
-                console.log('ℹ️ Skipping update - existing run has higher priority status:', existingForPeriod?.status);
-                // Clear error since we're intentionally not updating
-                error = null;
-                result = { data: existingForPeriod, status: 200, statusText: 'Skipped - existing run preserved' };
+                console.warn('⚠️ Could not find existing pay run to update after unique constraint failure.');
               }
-            } else {
-              console.warn('⚠️ Could not find existing pay run to update after unique constraint failure.');
+            } catch (fallbackErr) {
+              console.error('❌ Fallback update after unique constraint failed:', fallbackErr);
             }
-          } catch (fallbackErr) {
-            console.error('❌ Fallback update after unique constraint failed:', fallbackErr);
           }
         }
       }

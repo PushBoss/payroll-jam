@@ -459,7 +459,8 @@ function AppContent() {
       });
       
       try {
-        await supabaseService.savePayRun(run, user.companyId);
+        // Allow multiple pay runs for the same period (especially for drafts)
+        await supabaseService.savePayRun(run, user.companyId, { allowMultiple: true });
         console.log('✅ Pay run saved to Supabase successfully');
       } catch (error: any) {
         // Only show error toast for actual failures, not duplicate handling
@@ -734,7 +735,7 @@ function AppContent() {
         return <Documents templates={templates} employees={employees} companyData={companyData!} onUpdateTemplates={setTemplates} />;
       case 'reports': return <Reports history={payRunHistory} companyData={companyData!} onUpdatePayRun={async (run) => {
         setPayRunHistory(prev => prev.map(r => r.id === run.id ? run : r));
-        if (isSupabaseMode && user?.companyId) await supabaseService.savePayRun(run, user.companyId);
+        if (isSupabaseMode && user?.companyId) await supabaseService.savePayRun(run, user.companyId, { allowMultiple: true });
       }} onDeletePayRun={async (runId) => {
         setPayRunHistory(prev => prev.filter(r => r.id !== runId));
         if (isSupabaseMode && user?.companyId) await supabaseService.deletePayRun(runId, user.companyId);
