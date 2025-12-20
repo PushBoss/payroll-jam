@@ -1012,7 +1012,20 @@ export const PayRun: React.FC<PayRunProps> = ({
                     {isPayRunConfirmed && (
                         <div className="flex space-x-3">
                             <button 
-                                onClick={() => alert("All Payslips downloaded as ZIP.")}
+                                onClick={() => {
+                                    if (!currentRun) return;
+                                    // Generate all payslips and download as PDFs
+                                    currentRun.lineItems.forEach((item, index) => {
+                                        setTimeout(() => {
+                                            setViewingPayslip(item);
+                                            setTimeout(() => {
+                                                window.print();
+                                                setViewingPayslip(null);
+                                            }, 500);
+                                        }, index * 1000);
+                                    });
+                                    toast.success(`Preparing ${currentRun.lineItems.length} payslips for download...`);
+                                }}
                                 className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-100"
                             >
                                 <Icons.Download className="w-4 h-4 mr-2" />
@@ -1027,7 +1040,32 @@ export const PayRun: React.FC<PayRunProps> = ({
                                 {isEmailing ? 'Sending...' : 'Email All'}
                             </button>
                             <button 
-                                onClick={() => window.print()}
+                                onClick={() => {
+                                    if (!currentRun || currentRun.lineItems.length === 0) {
+                                        toast.error('No payslips to print');
+                                        return;
+                                    }
+                                    // Open all payslips in sequence for printing
+                                    let currentIndex = 0;
+                                    const printNext = () => {
+                                        if (currentIndex < currentRun.lineItems.length) {
+                                            setViewingPayslip(currentRun.lineItems[currentIndex]);
+                                            setTimeout(() => {
+                                                window.print();
+                                                currentIndex++;
+                                                setTimeout(() => {
+                                                    if (currentIndex < currentRun.lineItems.length) {
+                                                        printNext();
+                                                    } else {
+                                                        setViewingPayslip(null);
+                                                    }
+                                                }, 1000);
+                                            }, 500);
+                                        }
+                                    };
+                                    printNext();
+                                    toast.success(`Preparing to print ${currentRun.lineItems.length} payslips...`);
+                                }}
                                 className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-100"
                             >
                                 <Icons.Printer className="w-4 h-4 mr-2" />

@@ -52,6 +52,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
     plan: initialPlan,
     billingCycle: initialBillingCycle,
     numEmployees: '', 
+    numCompanies: '', // For reseller plan
     address: '',
     city: 'Kingston',
     parish: 'Kingston',
@@ -114,7 +115,10 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
         const count = parseInt(formData.numEmployees) || 1; // Default to 1 if not specified
         subtotal = count * perEmpPrice;
     } else if (type === 'base') {
-        const count = parseInt(formData.numEmployees) || 1;
+        // For Reseller plans, use numCompanies instead of numEmployees
+        const count = formData.plan === 'Reseller' 
+            ? (parseInt(formData.numCompanies) || 1)
+            : (parseInt(formData.numEmployees) || 1);
         subtotal = basePrice + (count * perEmpPrice);
     }
     
@@ -335,20 +339,38 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                             <label className="block text-sm font-medium text-gray-700">Work Email</label>
                             <input required type="email" autoComplete="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">Number of Employees</label>
-                            <input 
-                                required 
-                                type="number" 
-                                min="1"
-                                max="9999"
-                                value={formData.numEmployees} 
-                                onChange={(e) => setFormData({...formData, numEmployees: e.target.value})} 
-                                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" 
-                                placeholder="e.g., 10"
-                            />
-                            <p className="mt-1 text-xs text-gray-500">This helps us calculate your plan pricing accurately</p>
-                        </div>
+                        {formData.plan !== 'Reseller' && (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Number of Employees</label>
+                                <input
+                                    required
+                                    type="number"
+                                    min="1"
+                                    max="9999"
+                                    value={formData.numEmployees}
+                                    onChange={(e) => setFormData({...formData, numEmployees: e.target.value})}
+                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm"
+                                    placeholder="e.g., 10"
+                                />
+                                <p className="mt-1 text-xs text-gray-500">This helps us calculate your plan pricing accurately</p>
+                            </div>
+                        )}
+                        {formData.plan === 'Reseller' && (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Number of Companies</label>
+                                <input
+                                    required
+                                    type="number"
+                                    min="1"
+                                    max="9999"
+                                    value={formData.numCompanies}
+                                    onChange={(e) => setFormData({...formData, numCompanies: e.target.value})}
+                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm"
+                                    placeholder="e.g., 5"
+                                />
+                                <p className="mt-1 text-xs text-gray-500">Number of client companies you'll manage</p>
+                            </div>
+                        )}
                         <div>
                             <label className="block text-sm font-medium text-gray-700">Password</label>
                             <div className="relative mt-1">
@@ -419,31 +441,27 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                     I agree to the{' '}
                                     {onNavigate ? (
                                         <>
-                                            <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                    e.preventDefault();
-                                                    onNavigate('terms-of-service');
-                                                }}
+                                            <a
+                                                href="/?page=terms-of-service"
+                                                target="_blank"
+                                                rel="noopener noreferrer"
                                                 className="underline hover:text-jam-orange text-jam-orange"
                                             >
                                                 Terms of Service
-                                            </button>
+                                            </a>
                                             {' '}and{' '}
-                                            <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                    e.preventDefault();
-                                                    onNavigate('privacy-policy');
-                                                }}
+                                            <a
+                                                href="/?page=privacy-policy"
+                                                target="_blank"
+                                                rel="noopener noreferrer"
                                                 className="underline hover:text-jam-orange text-jam-orange"
                                             >
                                                 Privacy Policy
-                                            </button>
+                                            </a>
                                         </>
                                     ) : (
                                         <>
-                                            <span className="underline hover:text-jam-orange">Terms of Service</span> and <span className="underline hover:text-jam-orange">Privacy Policy</span>
+                                            <a href="/?page=terms-of-service" target="_blank" rel="noopener noreferrer" className="underline hover:text-jam-orange">Terms of Service</a> and <a href="/?page=privacy-policy" target="_blank" rel="noopener noreferrer" className="underline hover:text-jam-orange">Privacy Policy</a>
                                         </>
                                     )}
                                     .
