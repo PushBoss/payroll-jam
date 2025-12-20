@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { Icons } from '../components/Icons';
+import { Footer } from '../components/Footer';
 import { PricingPlan } from '../types';
 
 interface PricingProps {
@@ -180,6 +181,12 @@ export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onF
             </div>
         </div>
       </div>
+
+      {/* Footer */}
+      <Footer 
+        onFeaturesClick={onFeaturesClick}
+        onFaqClick={onFaqClick}
+      />
     </div>
   );
 };

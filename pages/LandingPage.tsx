@@ -1,7 +1,7 @@
 
 import React, { useEffect } from 'react';
 import { Icons } from '../components/Icons';
-
+import { Footer } from '../components/Footer';
 import { PricingPlan } from '../types';
 interface LandingPageProps {
   plans?: PricingPlan[];
@@ -445,38 +445,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ plans = [], onLogin, o
       </section>
 
       {/* Footer */}
-      <footer className="bg-gray-900 text-white py-12 border-t border-gray-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-            <div className="col-span-1 md:col-span-2">
-               <span className="text-2xl font-extrabold text-white tracking-tight">
-                Payroll<span className="text-jam-orange">-Jam</span>
-              </span>
-              <p className="mt-4 text-gray-400 max-w-xs">
-                Making payroll compliant, fast, and easy for Jamaican businesses.
-              </p>
-            </div>
-            <div>
-              <h4 className="text-sm font-bold uppercase tracking-wider text-gray-500 mb-4">Product</h4>
-              <ul className="space-y-2 text-gray-400">
-                <li><button onClick={onFeaturesClick} className="hover:text-white">Features</button></li>
-                <li><button onClick={onPricingClick} className="hover:text-white">Pricing</button></li>
-                <li><a href="#" className="hover:text-white">API</a></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="text-sm font-bold uppercase tracking-wider text-gray-500 mb-4">Legal</h4>
-              <ul className="space-y-2 text-gray-400">
-                <li><button onClick={onPrivacyClick} className="hover:text-white">Privacy Policy</button></li>
-                <li><button onClick={onTermsClick} className="hover:text-white">Terms of Service</button></li>
-              </ul>
-            </div>
-          </div>
-          <div className="mt-12 pt-8 border-t border-gray-800 text-center text-gray-500 text-sm">
-            &copy; 2025 Payroll-Jam Ltd. All rights reserved. Kingston, Jamaica.
-          </div>
-        </div>
-      </footer>
+      <Footer 
+        onFeaturesClick={onFeaturesClick}
+        onPricingClick={onPricingClick}
+        onFaqClick={onFaqClick}
+        onPrivacyClick={onPrivacyClick}
+        onTermsClick={onTermsClick}
+      />
     </div>
   );
 };
