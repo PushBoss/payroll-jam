@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Icons } from '../components/Icons';
 import { Role, User, PricingPlan } from '../types';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
@@ -137,7 +137,8 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
     return { type, basePrice, perEmpPrice, subtotal, billableAmount, gct, total, totalUSD };
   };
 
-  const pricing = getPricing();
+  // Recalculate pricing whenever formData changes (especially billingCycle, plan, or employee counts)
+  const pricing = useMemo(() => getPricing(), [formData.plan, formData.billingCycle, formData.numEmployees, formData.numCompanies]);
 
   const initDimePay = () => {
       if (!isMountedRef.current) return;
