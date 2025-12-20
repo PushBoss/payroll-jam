@@ -9,9 +9,11 @@ interface FAQProps {
   onBack: () => void;
   onPricingClick: () => void;
   onFeaturesClick: () => void;
+  onPrivacyClick?: () => void;
+  onTermsClick?: () => void;
 }
 
-export const FAQ: React.FC<FAQProps> = ({ onSignup, onLogin, onBack, onPricingClick, onFeaturesClick }) => {
+export const FAQ: React.FC<FAQProps> = ({ onSignup, onLogin, onBack, onPricingClick, onFeaturesClick, onPrivacyClick, onTermsClick }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
 
@@ -213,7 +215,12 @@ export const FAQ: React.FC<FAQProps> = ({ onSignup, onLogin, onBack, onPricingCl
       </section>
 
       {/* Footer */}
-      <Footer />
+      <Footer 
+        onFeaturesClick={onFeaturesClick}
+        onPricingClick={onPricingClick}
+        onPrivacyClick={onPrivacyClick}
+        onTermsClick={onTermsClick}
+      />
     </div>
   );
 };

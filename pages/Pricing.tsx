@@ -10,10 +10,12 @@ interface PricingProps {
   onBack: () => void;
   onFeaturesClick?: () => void;
   onFaqClick?: () => void;
+  onPrivacyClick?: () => void;
+  onTermsClick?: () => void;
   plans: PricingPlan[];
 }
 
-export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onFeaturesClick, onFaqClick, plans = [] }) => {
+export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onFeaturesClick, onFaqClick, onPrivacyClick, onTermsClick, plans = [] }) => {
   const [cycle, setCycle] = useState<'monthly' | 'annual'>('monthly');
 
   // Filter only active plans
@@ -186,6 +188,8 @@ export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onF
       <Footer 
         onFeaturesClick={onFeaturesClick}
         onFaqClick={onFaqClick}
+        onPrivacyClick={onPrivacyClick}
+        onTermsClick={onTermsClick}
       />
     </div>
   );
