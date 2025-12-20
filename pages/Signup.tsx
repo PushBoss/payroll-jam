@@ -115,11 +115,18 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
         const count = parseInt(formData.numEmployees) || 1; // Default to 1 if not specified
         subtotal = count * perEmpPrice;
     } else if (type === 'base') {
-        // For Reseller plans, use numCompanies instead of numEmployees
-        const count = formData.plan === 'Reseller' 
-            ? (parseInt(formData.numCompanies) || 1)
-            : (parseInt(formData.numEmployees) || 1);
-        subtotal = basePrice + (count * perEmpPrice);
+        // For Reseller plans, calculate based on both companies and employees
+        if (formData.plan === 'Reseller') {
+            const numCompanies = parseInt(formData.numCompanies) || 1;
+            const numEmployees = parseInt(formData.numEmployees) || 1;
+            // Base fee + (companies × per-company fee) + small fee per total employees
+            // perEmpPrice is per-company fee, add $1/employee for capacity
+            const perEmployeeFee = 1; // $1 per employee across all companies
+            subtotal = basePrice + (numCompanies * perEmpPrice) + (numEmployees * perEmployeeFee);
+        } else {
+            const count = parseInt(formData.numEmployees) || 1;
+            subtotal = basePrice + (count * perEmpPrice);
+        }
     }
     
     const billableAmount = subtotal;
@@ -339,22 +346,24 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                             <label className="block text-sm font-medium text-gray-700">Work Email</label>
                             <input required type="email" autoComplete="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
                         </div>
-                        {formData.plan !== 'Reseller' && (
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700">Number of Employees</label>
-                                <input
-                                    required
-                                    type="number"
-                                    min="1"
-                                    max="9999"
-                                    value={formData.numEmployees}
-                                    onChange={(e) => setFormData({...formData, numEmployees: e.target.value})}
-                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm"
-                                    placeholder="e.g., 10"
-                                />
-                                <p className="mt-1 text-xs text-gray-500">This helps us calculate your plan pricing accurately</p>
-                            </div>
-                        )}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Number of Employees</label>
+                            <input
+                                required
+                                type="number"
+                                min="1"
+                                max="9999"
+                                value={formData.numEmployees}
+                                onChange={(e) => setFormData({...formData, numEmployees: e.target.value})}
+                                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm"
+                                placeholder="e.g., 10"
+                            />
+                            <p className="mt-1 text-xs text-gray-500">
+                                {formData.plan === 'Reseller' 
+                                    ? 'Total employees across all your client companies' 
+                                    : 'This helps us calculate your plan pricing accurately'}
+                            </p>
+                        </div>
                         {formData.plan === 'Reseller' && (
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">Number of Companies</label>
