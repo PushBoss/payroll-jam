@@ -209,6 +209,7 @@ export const PayRun: React.FC<PayRunProps> = ({
     const [isFinalizing, setIsFinalizing] = useState(false);
     const [isEmailing, setIsEmailing] = useState(false);
     const [currentRun, setCurrentRun] = useState<PayRunType | null>(null);
+    const [isPayRunConfirmed, setIsPayRunConfirmed] = useState(false);
 
     const { 
         draftItems, 
@@ -338,11 +339,13 @@ export const PayRun: React.FC<PayRunProps> = ({
 
         // Update editingRun state
         setEditingRun(draftRun);
+        setCurrentRun(draftRun);
         onSave(draftRun);
-        toast.success("Progress saved");
         
-        // Move to finalize and automatically finalize
-        await handleFinalize();
+        // Move to finalize step (but not finalized yet)
+        setStep('FINALIZE');
+        setIsPayRunConfirmed(false);
+        toast.success("Review your pay run and click Finalize to complete");
     };
 
     // Determine pay frequency from payCycle
@@ -357,11 +360,11 @@ export const PayRun: React.FC<PayRunProps> = ({
 
     // Removed handleSaveAsApproved - merging approval into finalize step
 
-    const handleFinalize = async () => {
+    const handleConfirmFinalize = async () => {
         setIsFinalizing(true);
         
         const newRun: PayRunType = {
-            id: editingRun?.id || generateUUID(),
+            id: editingRun?.id || currentRun?.id || generateUUID(),
             periodStart: payPeriod,
             periodEnd: payPeriod, 
             payDate: new Date().toISOString().split('T')[0],
@@ -376,10 +379,9 @@ export const PayRun: React.FC<PayRunProps> = ({
         onSave(newRun);
         auditService.log(currentUser, 'CREATE', 'PayRun', `Finalized payroll for ${payPeriod}`);
         setCurrentRun(newRun);
-
-        setStep('FINALIZE');
+        setIsPayRunConfirmed(true);
         setIsFinalizing(false);
-        toast.success("Payroll finalized successfully! Click 'Email All' to send payslips to employees.");
+        toast.success("Payroll finalized successfully! You can now download, email, or print payslips.");
     };
 
     const handleDownloadBankFile = (type: 'NCB' | 'BNS') => {
@@ -761,32 +763,59 @@ export const PayRun: React.FC<PayRunProps> = ({
                 />
             )}
 
-            {/* Success Banner */}
-            <div className="bg-green-50 border border-green-200 rounded-xl p-6 flex justify-between items-center mb-8 shadow-sm">
-                <div className="flex items-center">
-                    <div className="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mr-4">
-                        <Icons.Check className="w-6 h-6" />
+            {/* Banner - Different based on confirmation status */}
+            {!isPayRunConfirmed ? (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 flex justify-between items-center mb-8 shadow-sm">
+                    <div className="flex items-center">
+                        <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mr-4">
+                            <Icons.Calendar className="w-6 h-6" />
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-bold text-blue-900">Ready to Finalize Pay Run</h2>
+                            <p className="text-blue-700 text-sm">Review the payroll details below. Once finalized, payslips will be generated and you can export files.</p>
+                        </div>
                     </div>
-                    <div>
-                        <h2 className="text-xl font-bold text-green-900">Pay Run Finalized Successfully!</h2>
-                        <p className="text-green-700 text-sm">Payslips have been generated and saved to reports. You can now export bank files.</p>
+                    <div className="flex items-center space-x-3">
+                        <button 
+                            onClick={() => { setStep('DRAFT'); }} 
+                            className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 shadow-sm flex items-center text-sm font-medium"
+                        >
+                            <Icons.ArrowLeft className="w-4 h-4 mr-2" /> Back to Edit
+                        </button>
+                        <button 
+                            onClick={handleConfirmFinalize}
+                            disabled={isFinalizing}
+                            className="bg-jam-orange text-jam-black px-6 py-2.5 rounded-lg hover:bg-yellow-400 shadow-md font-bold text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                        >
+                            {isFinalizing ? (
+                                <><Icons.Refresh className="w-4 h-4 mr-2 animate-spin" /> Finalizing...</>
+                            ) : (
+                                <><Icons.Check className="w-4 h-4 mr-2" /> Finalize Pay Run</>
+                            )}
+                        </button>
                     </div>
                 </div>
-                <div className="flex items-center space-x-3">
-                    <button 
-                        onClick={() => { setStep('DRAFT'); }} 
-                        className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 shadow-sm flex items-center text-sm font-medium"
-                    >
-                        <Icons.FileEdit className="w-4 h-4 mr-2" /> Edit
-                    </button>
-                    <button 
-                        onClick={() => { setStep('SETUP'); clearDraft(); }} 
-                        className="bg-green-600 text-white px-6 py-2.5 rounded-lg hover:bg-green-700 shadow-md font-medium text-sm transition-colors"
-                    >
-                        Start New Run
-                    </button>
+            ) : (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-6 flex justify-between items-center mb-8 shadow-sm">
+                    <div className="flex items-center">
+                        <div className="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mr-4">
+                            <Icons.Check className="w-6 h-6" />
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-bold text-green-900">Pay Run Finalized Successfully!</h2>
+                            <p className="text-green-700 text-sm">Payslips have been generated and saved to reports. You can now export bank files and send payslips.</p>
+                        </div>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                        <button 
+                            onClick={() => { setStep('SETUP'); clearDraft(); setIsPayRunConfirmed(false); }} 
+                            className="bg-green-600 text-white px-6 py-2.5 rounded-lg hover:bg-green-700 shadow-md font-medium text-sm transition-colors"
+                        >
+                            Start New Run
+                        </button>
+                    </div>
                 </div>
-            </div>
+            )}
             
             {/* Top Cards Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
@@ -811,8 +840,8 @@ export const PayRun: React.FC<PayRunProps> = ({
                             </div>
                             <button 
                                 onClick={() => handleDownloadBankFile('NCB')}
-                                disabled={!showNcbCard}
-                                className="w-full py-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded text-xs font-medium text-gray-700 disabled:cursor-not-allowed disabled:bg-gray-50"
+                                disabled={!showNcbCard || !isPayRunConfirmed}
+                                className="w-full py-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded text-xs font-medium text-gray-700 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:opacity-50"
                             >
                                 Download File
                             </button>
@@ -832,8 +861,8 @@ export const PayRun: React.FC<PayRunProps> = ({
                             </div>
                             <button 
                                 onClick={() => handleDownloadBankFile('BNS')}
-                                disabled={!showBnsCard}
-                                className="w-full py-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded text-xs font-medium text-gray-700 disabled:cursor-not-allowed disabled:bg-gray-50"
+                                disabled={!showBnsCard || !isPayRunConfirmed}
+                                className="w-full py-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded text-xs font-medium text-gray-700 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:opacity-50"
                             >
                                 Download File
                             </button>
@@ -862,7 +891,8 @@ export const PayRun: React.FC<PayRunProps> = ({
                         <p className="text-xs text-blue-700 mb-4">Post payroll costs to your GL automatically.</p>
                         <button 
                             onClick={handleDownloadGL}
-                            className="w-full py-2 bg-white border border-blue-200 text-blue-700 rounded font-medium text-sm hover:bg-blue-50 flex items-center justify-center"
+                            disabled={!isPayRunConfirmed}
+                            className="w-full py-2 bg-white border border-blue-200 text-blue-700 rounded font-medium text-sm hover:bg-blue-50 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <Icons.Link className="w-3 h-3 mr-2" /> Sync to GL
                         </button>
@@ -873,31 +903,33 @@ export const PayRun: React.FC<PayRunProps> = ({
             {/* Generated Payslips List */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                 <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <h3 className="font-bold text-gray-900">Generated Payslips</h3>
-                    <div className="flex space-x-3">
-                        <button 
-                            onClick={() => alert("All Payslips downloaded as ZIP.")}
-                            className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-100"
-                        >
-                            <Icons.Download className="w-4 h-4 mr-2" />
-                            Download All
-                        </button>
-                        <button 
-                            onClick={handleEmailPayslips}
-                            disabled={isEmailing}
-                            className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-100 disabled:opacity-50"
-                        >
-                            <Icons.Mail className="w-4 h-4 mr-2" />
-                            {isEmailing ? 'Sending...' : 'Email All'}
-                        </button>
-                        <button 
-                            onClick={() => window.print()}
-                            className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-100"
-                        >
-                            <Icons.Printer className="w-4 h-4 mr-2" />
-                            Print All
-                        </button>
-                    </div>
+                    <h3 className="font-bold text-gray-900">{isPayRunConfirmed ? 'Generated Payslips' : 'Payslips Preview'}</h3>
+                    {isPayRunConfirmed && (
+                        <div className="flex space-x-3">
+                            <button 
+                                onClick={() => alert("All Payslips downloaded as ZIP.")}
+                                className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-100"
+                            >
+                                <Icons.Download className="w-4 h-4 mr-2" />
+                                Download All
+                            </button>
+                            <button 
+                                onClick={handleEmailPayslips}
+                                disabled={isEmailing}
+                                className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-100 disabled:opacity-50"
+                            >
+                                <Icons.Mail className="w-4 h-4 mr-2" />
+                                {isEmailing ? 'Sending...' : 'Email All'}
+                            </button>
+                            <button 
+                                onClick={() => window.print()}
+                                className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-100"
+                            >
+                                <Icons.Printer className="w-4 h-4 mr-2" />
+                                Print All
+                            </button>
+                        </div>
+                    )}
                 </div>
                 
                 <div className="divide-y divide-gray-100">
