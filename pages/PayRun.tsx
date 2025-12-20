@@ -1013,18 +1013,43 @@ export const PayRun: React.FC<PayRunProps> = ({
                         <div className="flex space-x-3">
                             <button 
                                 onClick={() => {
-                                    if (!currentRun) return;
-                                    // Generate all payslips and download as PDFs
-                                    currentRun.lineItems.forEach((item, index) => {
+                                    if (!currentRun || currentRun.lineItems.length === 0) {
+                                        toast.error('No payslips to download');
+                                        return;
+                                    }
+                                    
+                                    toast.success(`Downloading ${currentRun.lineItems.length} payslips. Save each as PDF, then close the dialog to continue.`);
+                                    
+                                    // Download payslips sequentially as PDFs
+                                    let currentIndex = 0;
+                                    
+                                    const downloadNext = () => {
+                                        if (currentIndex >= currentRun.lineItems.length) {
+                                            setViewingPayslip(null);
+                                            toast.success('All payslips downloaded successfully!');
+                                            return;
+                                        }
+                                        
+                                        // Show the current payslip
+                                        setViewingPayslip(currentRun.lineItems[currentIndex]);
+                                        
+                                        // Wait for the payslip to render, then open print dialog for saving as PDF
                                         setTimeout(() => {
-                                            setViewingPayslip(item);
-                                            setTimeout(() => {
-                                                window.print();
-                                                setViewingPayslip(null);
-                                            }, 500);
-                                        }, index * 1000);
-                                    });
-                                    toast.success(`Preparing ${currentRun.lineItems.length} payslips for download...`);
+                                            // Set up listener for when print/save dialog closes
+                                            const handleAfterPrint = () => {
+                                                window.removeEventListener('afterprint', handleAfterPrint);
+                                                currentIndex++;
+                                                // Small delay before showing next payslip
+                                                setTimeout(downloadNext, 300);
+                                            };
+                                            
+                                            window.addEventListener('afterprint', handleAfterPrint);
+                                            // Open print dialog - user can choose "Save as PDF" as destination
+                                            window.print();
+                                        }, 500);
+                                    };
+                                    
+                                    downloadNext();
                                 }}
                                 className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-100"
                             >
