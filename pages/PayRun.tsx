@@ -77,18 +77,22 @@ const PayRunRow = ({
     updateLineItemGross, 
     openAdHocModal, 
     openTaxModal, 
-    removeEmployeeFromRun 
+    removeEmployeeFromRun,
+    removeAdHocItem
 }: { 
     item: PayRunLineItem, 
     updateLineItemGross: (id: string, val: string) => void,
     openAdHocModal: (id: string, type: 'ADDITIONS' | 'DEDUCTIONS') => void,
     openTaxModal: (item: PayRunLineItem) => void,
-    removeEmployeeFromRun: (id: string) => void
+    removeEmployeeFromRun: (id: string) => void,
+    removeAdHocItem: (employeeId: string, itemId: string) => void
 }) => {
     // Pre-calculate booleans
     const hasAdditions = item.additions > 0;
     const hasDeductions = item.deductions > 0;
     const isManualTax = item.isTaxOverridden === true;
+    const [showAdditionsMenu, setShowAdditionsMenu] = React.useState(false);
+    const [showDeductionsMenu, setShowDeductionsMenu] = React.useState(false);
 
     return (
         <tr className="hover:bg-gray-50 group">
@@ -107,12 +111,62 @@ const PayRunRow = ({
                 </div>
             </td>
             <td className="px-6 py-4 text-center">
-                <div className="flex flex-col items-center">
+                <div className="flex flex-col items-center relative">
                     {hasAdditions ? (
                         <div className="flex flex-col items-center">
-                            <span className="text-green-600 font-bold text-sm mb-1">+${item.additions.toLocaleString()}</span>
-                            <button onClick={() => openAdHocModal(item.employeeId, 'ADDITIONS')} className="text-xs text-gray-400 hover:text-jam-orange flex items-center">
-                                <Icons.FileEdit className="w-3 h-3 mr-1" /> Adjust
+                            <button 
+                                onClick={() => setShowAdditionsMenu(!showAdditionsMenu)}
+                                className="text-green-600 font-bold text-sm mb-1 hover:text-green-700 cursor-pointer"
+                            >
+                                +${item.additions.toLocaleString()}
+                            </button>
+                            {showAdditionsMenu && (
+                                <div className="absolute top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-3 z-10 min-w-[250px] left-1/2 transform -translate-x-1/2">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <span className="text-xs font-bold text-gray-700">Additions</span>
+                                        <button 
+                                            onClick={() => setShowAdditionsMenu(false)}
+                                            className="text-gray-400 hover:text-gray-600"
+                                        >
+                                            <Icons.Close className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                    <div className="space-y-1 max-h-60 overflow-y-auto">
+                                        {item.additionsBreakdown?.map((add) => (
+                                            <div key={add.id} className="flex justify-between items-center text-xs p-2 hover:bg-gray-50 rounded">
+                                                <div className="flex-1">
+                                                    <div className="font-medium text-gray-900">{add.name}</div>
+                                                    <div className="text-gray-500 text-[10px]">{add.isTaxable === false ? 'Non-taxable' : 'Taxable'}</div>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-green-600 font-bold">${add.amount.toLocaleString()}</span>
+                                                    <button 
+                                                        onClick={() => {
+                                                            removeAdHocItem(item.employeeId, add.id);
+                                                            if (item.additionsBreakdown?.length === 1) setShowAdditionsMenu(false);
+                                                        }}
+                                                        className="text-red-500 hover:text-red-700"
+                                                        title="Delete"
+                                                    >
+                                                        <Icons.Trash className="w-3 h-3" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <button 
+                                        onClick={() => {
+                                            setShowAdditionsMenu(false);
+                                            openAdHocModal(item.employeeId, 'ADDITIONS');
+                                        }}
+                                        className="w-full mt-2 text-xs text-jam-orange hover:text-jam-black flex items-center justify-center border-t border-gray-200 pt-2"
+                                    >
+                                        <Icons.Plus className="w-3 h-3 mr-1" /> Add Another
+                                    </button>
+                                </div>
+                            )}
+                            <button onClick={() => setShowAdditionsMenu(!showAdditionsMenu)} className="text-xs text-gray-400 hover:text-jam-orange flex items-center">
+                                <Icons.ChevronDown className="w-3 h-3 mr-1" /> View
                             </button>
                         </div>
                     ) : (
@@ -123,12 +177,61 @@ const PayRunRow = ({
                 </div>
             </td>
             <td className="px-6 py-4 text-center">
-                <div className="flex flex-col items-center">
+                <div className="flex flex-col items-center relative">
                     {hasDeductions ? (
                         <div className="flex flex-col items-center">
-                            <span className="text-red-600 font-bold text-sm mb-1">-${item.deductions.toLocaleString()}</span>
-                            <button onClick={() => openAdHocModal(item.employeeId, 'DEDUCTIONS')} className="text-xs text-gray-400 hover:text-jam-orange flex items-center">
-                                <Icons.FileEdit className="w-3 h-3 mr-1" /> Adjust
+                            <button 
+                                onClick={() => setShowDeductionsMenu(!showDeductionsMenu)}
+                                className="text-red-600 font-bold text-sm mb-1 hover:text-red-700 cursor-pointer"
+                            >
+                                -${item.deductions.toLocaleString()}
+                            </button>
+                            {showDeductionsMenu && (
+                                <div className="absolute top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-3 z-10 min-w-[250px] left-1/2 transform -translate-x-1/2">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <span className="text-xs font-bold text-gray-700">Deductions</span>
+                                        <button 
+                                            onClick={() => setShowDeductionsMenu(false)}
+                                            className="text-gray-400 hover:text-gray-600"
+                                        >
+                                            <Icons.Close className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                    <div className="space-y-1 max-h-60 overflow-y-auto">
+                                        {item.deductionsBreakdown?.map((ded) => (
+                                            <div key={ded.id} className="flex justify-between items-center text-xs p-2 hover:bg-gray-50 rounded">
+                                                <div className="flex-1">
+                                                    <div className="font-medium text-gray-900">{ded.name}</div>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-red-600 font-bold">${ded.amount.toLocaleString()}</span>
+                                                    <button 
+                                                        onClick={() => {
+                                                            removeAdHocItem(item.employeeId, ded.id);
+                                                            if (item.deductionsBreakdown?.length === 1) setShowDeductionsMenu(false);
+                                                        }}
+                                                        className="text-red-500 hover:text-red-700"
+                                                        title="Delete"
+                                                    >
+                                                        <Icons.Trash className="w-3 h-3" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <button 
+                                        onClick={() => {
+                                            setShowDeductionsMenu(false);
+                                            openAdHocModal(item.employeeId, 'DEDUCTIONS');
+                                        }}
+                                        className="w-full mt-2 text-xs text-jam-orange hover:text-jam-black flex items-center justify-center border-t border-gray-200 pt-2"
+                                    >
+                                        <Icons.Plus className="w-3 h-3 mr-1" /> Add Another
+                                    </button>
+                                </div>
+                            )}
+                            <button onClick={() => setShowDeductionsMenu(!showDeductionsMenu)} className="text-xs text-gray-400 hover:text-jam-orange flex items-center">
+                                <Icons.ChevronDown className="w-3 h-3 mr-1" /> View
                             </button>
                         </div>
                     ) : (
@@ -221,7 +324,8 @@ export const PayRun: React.FC<PayRunProps> = ({
         addEmployeeToRun, 
         removeEmployeeFromRun, 
         clearDraft,
-        loadDraftItems
+        loadDraftItems,
+        removeAdHocItem
     } = usePayroll(employees, timesheets, leaveRequests, payRunHistory);
 
     const isSuspended = companyData.subscriptionStatus === 'SUSPENDED';
@@ -730,13 +834,14 @@ export const PayRun: React.FC<PayRunProps> = ({
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {draftItems.map(item => (
-                                <PayRunRow 
-                                    key={item.employeeId} 
-                                    item={item} 
+                                <PayRunRow
+                                    key={item.employeeId}
+                                    item={item}
                                     updateLineItemGross={updateLineItemGross}
                                     openAdHocModal={openAdHocModal}
                                     openTaxModal={openTaxModal}
                                     removeEmployeeFromRun={removeEmployeeFromRun}
+                                    removeAdHocItem={removeAdHocItem}
                                 />
                             ))}
                         </tbody>
