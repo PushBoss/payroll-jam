@@ -915,14 +915,20 @@ export const supabaseService = {
               
               if (newPriority >= existingPriority) {
                 console.log('🔁 Updating existing pay run for period as fallback:', targetId, `(${existingForPeriod?.status} → ${run.status})`);
-                result = await supabase
+                const updateResult = await supabase
                   .from('pay_runs')
                   .update(payRunData)
-                  .eq('id', targetId);
-                error = result.error;
+                  .eq('id', targetId)
+                  .select();
                 
-                if (!error) {
+                if (!updateResult.error) {
+                  // Fallback succeeded - clear the original error and use the update result
+                  error = null;
+                  result = updateResult;
                   console.log('✅ Successfully updated existing pay run instead of creating duplicate');
+                } else {
+                  error = updateResult.error;
+                  result = updateResult;
                 }
               } else {
                 console.log('ℹ️ Skipping update - existing run has higher priority status:', existingForPeriod?.status);
@@ -949,26 +955,18 @@ export const supabaseService = {
     });
 
     if (error) {
-      // Check if error was already handled by fallback logic
-      const isDuplicateError = error.code === '23505' || /duplicate key|unique constraint/i.test(error.message || '');
-      
-      if (isDuplicateError && result?.status === 200) {
-        // Duplicate was handled successfully by fallback - treat as success
-        console.log("ℹ️ Duplicate pay run handled gracefully - no action needed");
-      } else {
-        // Real error that wasn't handled
-        console.error("❌ Error saving pay run to Supabase:", error);
-        console.error("Pay run data:", {
-          id: run.id,
-          period_start: periodStart,
-          period_end: periodEnd,
-          pay_date: run.payDate,
-          pay_frequency: payFrequency,
-          status: run.status,
-          company_id: companyId
-        });
-        throw new Error(`Failed to save pay run: ${error.message || error.code || 'Unknown error'}`);
-      }
+      // This should not happen if fallback logic worked correctly
+      console.error("❌ Error saving pay run to Supabase:", error);
+      console.error("Pay run data:", {
+        id: run.id,
+        period_start: periodStart,
+        period_end: periodEnd,
+        pay_date: run.payDate,
+        pay_frequency: payFrequency,
+        status: run.status,
+        company_id: companyId
+      });
+      throw new Error(`Failed to save pay run: ${error.message || error.code || 'Unknown error'}`);
     } else {
       console.log("✅ Pay run save reported success:", {
         id: run.id,
