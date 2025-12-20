@@ -847,8 +847,6 @@ export const supabaseService = {
       } else {
         payRunData.notes = existingNotes;
       }
-      // Expose token to caller by attaching to payRunData (not persisted separately)
-      payRunData._finalized_token = finalizedToken;
     }
 
     let error;
