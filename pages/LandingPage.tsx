@@ -86,9 +86,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ plans = [], onLogin, o
       );
     }
     
-    const amount = plan.priceConfig.monthly;
-    
     if (plan.priceConfig.type === 'flat') {
+      const amount = plan.priceConfig.monthly;
       return (
         <div className="flex items-baseline">
           <span className="text-4xl font-bold">${amount.toLocaleString()}</span>
@@ -96,19 +95,23 @@ export const LandingPage: React.FC<LandingPageProps> = ({ plans = [], onLogin, o
         </div>
       );
     }
+    
     if (plan.priceConfig.type === 'per_emp') {
+      const amount = plan.priceConfig.monthly;
       return (
         <div className="flex items-baseline">
           <span className="text-4xl font-bold">${amount.toLocaleString()}</span>
-          <span className={`ml-1 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>/emp</span>
+          <span className={`ml-1 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>/emp/mo</span>
         </div>
       );
     }
+    
     if (plan.priceConfig.type === 'base') {
+      const amount = plan.priceConfig.baseFee || 0;
       return (
         <div className="flex items-baseline">
           <span className="text-4xl font-bold">${amount.toLocaleString()}</span>
-          <span className={`ml-1 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>+</span>
+          <span className={`ml-1 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>/mo base</span>
         </div>
       );
     }
