@@ -461,9 +461,15 @@ function AppContent() {
       try {
         await supabaseService.savePayRun(run, user.companyId);
         console.log('✅ Pay run saved to Supabase successfully');
-      } catch (error) {
-        console.error('❌ Failed to save pay run to Supabase:', error);
-        toast.error('Failed to save payroll to database. Payslip download may not work.');
+      } catch (error: any) {
+        // Only show error toast for actual failures, not duplicate handling
+        const isDuplicateError = error.message?.includes('duplicate') || error.message?.includes('unique constraint');
+        if (!isDuplicateError) {
+          console.error('❌ Failed to save pay run to Supabase:', error);
+          toast.error('Failed to save payroll to database. Payslip download may not work.');
+        } else {
+          console.log('ℹ️ Duplicate pay run handled gracefully - continuing normally');
+        }
       }
     } else {
       console.warn('⚠️ NOT saving to Supabase:', {

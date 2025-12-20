@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { generateUUID } from '../utils/uuid';
 import { 
   Employee, 
   PayRun, 
@@ -771,8 +772,9 @@ export const supabaseService = {
     };
   },
 
-  savePayRun: async (run: PayRun, companyId: string) => {
+  savePayRun: async (run: PayRun, companyId: string, options?: { allowMultiple?: boolean }) => {
     if (!supabase) return;
+    const allowMultiple = options?.allowMultiple ?? false;
 
     // Determine pay_frequency - default to MONTHLY if not specified
     // If payFrequency is not set, we'll default to MONTHLY (most common)
@@ -794,10 +796,10 @@ export const supabaseService = {
       periodEnd = `${periodEnd}-${lastDay.toString().padStart(2, '0')}`;
     }
 
-    // Check if THIS SPECIFIC pay run exists (by ID)
+    // Check if THIS SPECIFIC pay run exists (by ID) and pull notes for token reuse
     const { data: existingById } = await supabase
       .from('pay_runs')
-      .select('id')
+      .select('id, notes')
       .eq('id', run.id)
       .maybeSingle();
     
@@ -811,7 +813,19 @@ export const supabaseService = {
       .eq('pay_frequency', payFrequency)
       .maybeSingle();
 
-    const payRunData = {
+    // Ensure we include a finalized token inside `notes` when a run is finalized.
+    // We store it in the existing `notes` TEXT column to avoid schema changes.
+    let finalizedToken: string | null = null;
+    if (run.status === 'FINALIZED') {
+      // Try to reuse existing token if present on the same run
+      if (existingById && (existingById as any).notes) {
+        const match = ((existingById as any).notes as string).match(/finalized_token:([0-9a-fA-F-]+)/);
+        if (match) finalizedToken = match[1];
+      }
+      if (!finalizedToken) finalizedToken = generateUUID();
+    }
+
+    const payRunData: any = {
       company_id: companyId,
       period_start: periodStart,
       period_end: periodEnd,
@@ -824,6 +838,19 @@ export const supabaseService = {
       line_items: run.lineItems || [] // Stored as JSONB
     };
 
+    if (finalizedToken) {
+      const tokenNote = `finalized_token:${finalizedToken}`;
+      // Preserve any existing notes while appending token if not present
+      const existingNotes = (existingById && (existingById as any).notes) ? (existingById as any).notes : '';
+      if (!existingNotes || !existingNotes.includes('finalized_token:')) {
+        payRunData.notes = existingNotes ? `${existingNotes}\n${tokenNote}` : tokenNote;
+      } else {
+        payRunData.notes = existingNotes;
+      }
+      // Expose token to caller by attaching to payRunData (not persisted separately)
+      payRunData._finalized_token = finalizedToken;
+    }
+
     let error;
     let result;
     if (existingById && existingById.id === run.id) {
@@ -835,31 +862,82 @@ export const supabaseService = {
         .eq('id', run.id);
       error = result.error;
     } else {
-      // Insert new record - but first delete old one if it exists (due to unique constraint)
-      if (existingByPeriod && existingByPeriod.id !== run.id) {
-        console.log('🗑️ Deleting old pay run for this period:', existingByPeriod.id);
-        const deleteResult = await supabase
+      // No existing ID match; decide whether to update an existing period or insert
+      // a new record. Default (allowMultiple=false) will update the existing period
+      // run if present to avoid creating duplicate runs unexpectedly. If callers
+      // explicitly pass { allowMultiple: true } we will insert a new run even
+      // when a run for the same period already exists.
+      if (existingByPeriod && !allowMultiple) {
+        console.log('ℹ️ Existing pay run for this period found; updating it to avoid duplicates:', existingByPeriod.id);
+        result = await supabase
           .from('pay_runs')
-          .delete()
-          .eq('id', existingByPeriod.id)
-          .eq('company_id', companyId);
-        
-        if (deleteResult.error) {
-          console.error('⚠️ Failed to delete old pay run:', deleteResult.error);
-          // Continue anyway - the insert might still work if constraint allows
-        } else {
-          console.log('✅ Deleted old pay run:', existingByPeriod.id);
+          .update(payRunData)
+          .eq('id', existingByPeriod.id);
+        error = result.error;
+      } else {
+        console.log(`➕ Inserting new pay run (allowMultiple=${allowMultiple}):`, run.id);
+        result = await supabase
+          .from('pay_runs')
+          .insert({
+            id: run.id,
+            ...payRunData
+          });
+        error = result.error;
+
+        // If insert fails due to unique constraint (existing UNIQUE on company+period+frequency),
+        // attempt a safe fallback: update the existing period run instead of failing.
+        if (error && (error.code === '23505' || /duplicate key|unique constraint|already exists/i.test(error.message || ''))) {
+          console.warn('⚠️ Insert failed due to unique constraint; attempting to update existing period run instead.');
+          console.warn('Conflicting pay run details:', {
+            attemptedId: run.id,
+            status: run.status,
+            period: `${periodStart} to ${periodEnd}`,
+            frequency: payFrequency
+          });
+          
+          try {
+            const { data: existingForPeriod } = await supabase
+              .from('pay_runs')
+              .select('id, status')
+              .eq('company_id', companyId)
+              .eq('period_start', periodStart)
+              .eq('period_end', periodEnd)
+              .eq('pay_frequency', payFrequency)
+              .maybeSingle();
+
+            const targetId = existingForPeriod?.id || (existingByPeriod && (existingByPeriod as any).id);
+            if (targetId) {
+              // Only update if the new status is more advanced (DRAFT < APPROVED < FINALIZED)
+              // or if statuses are the same
+              const statusPriority: any = { 'DRAFT': 1, 'APPROVED': 2, 'FINALIZED': 3 };
+              const existingPriority = statusPriority[existingForPeriod?.status] || 1;
+              const newPriority = statusPriority[run.status] || 1;
+              
+              if (newPriority >= existingPriority) {
+                console.log('🔁 Updating existing pay run for period as fallback:', targetId, `(${existingForPeriod?.status} → ${run.status})`);
+                result = await supabase
+                  .from('pay_runs')
+                  .update(payRunData)
+                  .eq('id', targetId);
+                error = result.error;
+                
+                if (!error) {
+                  console.log('✅ Successfully updated existing pay run instead of creating duplicate');
+                }
+              } else {
+                console.log('ℹ️ Skipping update - existing run has higher priority status:', existingForPeriod?.status);
+                // Clear error since we're intentionally not updating
+                error = null;
+                result = { data: existingForPeriod, status: 200, statusText: 'Skipped - existing run preserved' };
+              }
+            } else {
+              console.warn('⚠️ Could not find existing pay run to update after unique constraint failure.');
+            }
+          } catch (fallbackErr) {
+            console.error('❌ Fallback update after unique constraint failed:', fallbackErr);
+          }
         }
       }
-      
-      console.log('➕ Inserting new pay run:', run.id);
-      result = await supabase
-        .from('pay_runs')
-        .insert({
-          id: run.id,
-          ...payRunData
-        });
-      error = result.error;
     }
 
     console.log('📊 Save result:', {
@@ -871,17 +949,26 @@ export const supabaseService = {
     });
 
     if (error) {
-      console.error("❌ Error saving pay run to Supabase:", error);
-      console.error("Pay run data:", {
-        id: run.id,
-        period_start: periodStart,
-        period_end: periodEnd,
-        pay_date: run.payDate,
-        pay_frequency: payFrequency,
-        status: run.status,
-        company_id: companyId
-      });
-      throw new Error(`Failed to save pay run: ${error.message || error.code || 'Unknown error'}`);
+      // Check if error was already handled by fallback logic
+      const isDuplicateError = error.code === '23505' || /duplicate key|unique constraint/i.test(error.message || '');
+      
+      if (isDuplicateError && result?.status === 200) {
+        // Duplicate was handled successfully by fallback - treat as success
+        console.log("ℹ️ Duplicate pay run handled gracefully - no action needed");
+      } else {
+        // Real error that wasn't handled
+        console.error("❌ Error saving pay run to Supabase:", error);
+        console.error("Pay run data:", {
+          id: run.id,
+          period_start: periodStart,
+          period_end: periodEnd,
+          pay_date: run.payDate,
+          pay_frequency: payFrequency,
+          status: run.status,
+          company_id: companyId
+        });
+        throw new Error(`Failed to save pay run: ${error.message || error.code || 'Unknown error'}`);
+      }
     } else {
       console.log("✅ Pay run save reported success:", {
         id: run.id,
@@ -924,7 +1011,51 @@ export const supabaseService = {
           company_id: verifyData.company_id
         });
       }
+      // If finalized, persist a lightweight snapshot record with the finalized token.
+      if (finalizedToken) {
+        try {
+          let savedId: string | undefined = undefined;
+          if (result?.data && Array.isArray(result.data) && result.data.length > 0 && typeof result.data[0] === 'object' && 'id' in result.data[0]) {
+            savedId = (result.data as any[])[0].id;
+          } else if (run.id) {
+            savedId = run.id;
+          } else if (existingByPeriod && (existingByPeriod as any).id) {
+            savedId = (existingByPeriod as any).id;
+          }
+          const snapshotPayload = {
+            pay_run_id: savedId,
+            company_id: companyId,
+            finalized_token: finalizedToken,
+            snapshot_data: {
+              id: savedId,
+              period_start: periodStart,
+              period_end: periodEnd,
+              pay_date: run.payDate,
+              status: run.status,
+              total_gross: run.totalGross,
+              total_net: run.totalNet,
+              employee_count: run.lineItems?.length || 0,
+              line_items: run.lineItems || []
+            },
+            notes: payRunData.notes || null
+          };
+
+          const { error: snapErr } = await supabase
+            .from('pay_run_snapshots')
+            .insert(snapshotPayload);
+
+          if (snapErr) {
+            console.warn('⚠️ Failed to write pay_run_snapshots record:', snapErr);
+          } else {
+            console.log('✅ pay_run_snapshots record created for finalized run', { pay_run_id: savedId, finalizedToken });
+          }
+        } catch (snapEx) {
+          console.warn('⚠️ Exception while creating pay_run_snapshots record:', snapEx);
+        }
+      }
     }
+    // Return the saved data and token where available
+    return { data: result?.data, finalizedToken: payRunData._finalized_token || null };
   },
 
   deletePayRun: async (runId: string, companyId: string): Promise<boolean> => {
