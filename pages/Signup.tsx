@@ -129,11 +129,11 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
     }
     
     const billableAmount = subtotal;
-    const gct = billableAmount * 0.15;
-    const total = billableAmount + gct;
+    const platformFees = billableAmount * 0.035; // Dime platform fees (3.5%)
+    const total = billableAmount + platformFees;
     const totalUSD = (total / 155).toFixed(2);
 
-    return { type, basePrice, perEmpPrice, subtotal, billableAmount, gct, total, totalUSD };
+    return { type, basePrice, perEmpPrice, subtotal, billableAmount, platformFees, total, totalUSD };
   };
 
   // Recalculate pricing whenever formData changes (especially billingCycle, plan, or employee counts)
@@ -701,10 +701,10 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                 )}
                             </>
                         )}
-                        {pricing.gct > 0 && (
+                        {pricing.platformFees > 0 && (
                             <div className="flex justify-between text-gray-600">
-                                <span>GCT (15%)</span>
-                                <span>${pricing.gct.toLocaleString()}</span>
+                                <span>Dime Platform Fees (3.5%)</span>
+                                <span>${pricing.platformFees.toLocaleString()}</span>
                             </div>
                         )}
                         <div className="flex justify-between font-bold text-gray-900 pt-2 border-t border-gray-200">
