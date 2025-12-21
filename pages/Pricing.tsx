@@ -115,7 +115,7 @@ export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onF
                 <span className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${cycle === 'annual' ? 'translate-x-6' : 'translate-x-0'}`} />
             </button>
             <span className={`text-sm font-semibold ${cycle === 'annual' ? 'text-gray-900' : 'text-gray-500'}`}>
-                Yearly <span className="text-jam-orange text-xs ml-1 font-bold">(Save ~20%)</span>
+                Yearly <span className="text-jam-orange text-xs ml-1 font-bold">(Save 10%)</span>
             </span>
           </div>
         </div>
