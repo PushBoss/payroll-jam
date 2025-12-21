@@ -115,9 +115,17 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
         const count = parseInt(formData.numEmployees) || 1; // Default to 1 if not specified
         subtotal = count * perEmpPrice;
     } else if (type === 'base') {
-        // Base fee plans (like Reseller): base fee + (employees × per-employee fee)
-        const count = parseInt(formData.numEmployees) || 1;
-        subtotal = basePrice + (count * perEmpPrice);
+        // Base fee plans (like Reseller)
+        if (formData.plan === 'Reseller') {
+            // For resellers: (companies × baseFee) + (employees × perUserFee)
+            const numCompanies = parseInt(formData.numCompanies) || 1;
+            const numEmployees = parseInt(formData.numEmployees) || 1;
+            subtotal = (numCompanies * basePrice) + (numEmployees * perEmpPrice);
+        } else {
+            // For other base plans: base fee + (employees × per-employee fee)
+            const count = parseInt(formData.numEmployees) || 1;
+            subtotal = basePrice + (count * perEmpPrice);
+        }
     }
     
     const billableAmount = subtotal;
@@ -668,19 +676,28 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                         )}
                         {pricing.type === 'base' && (
                             <>
-                                <div className="flex justify-between text-gray-600">
-                                    <span>Base Fee</span>
-                                    <span>${pricing.basePrice.toLocaleString()}</span>
-                                </div>
-                                <div className="flex justify-between text-gray-600">
-                                    <span>{formData.numEmployees || 1} employee{(parseInt(formData.numEmployees) || 1) > 1 ? 's' : ''} × ${pricing.perEmpPrice.toLocaleString()}</span>
-                                    <span>${((parseInt(formData.numEmployees) || 1) * pricing.perEmpPrice).toLocaleString()}</span>
-                                </div>
-                                {formData.plan === 'Reseller' && formData.numCompanies && (
-                                    <div className="flex justify-between text-gray-500 text-xs italic">
-                                        <span>Managing {formData.numCompanies} compan{(parseInt(formData.numCompanies) || 1) > 1 ? 'ies' : 'y'}</span>
-                                        <span>—</span>
-                                    </div>
+                                {formData.plan === 'Reseller' ? (
+                                    <>
+                                        <div className="flex justify-between text-gray-600">
+                                            <span>{formData.numCompanies || 1} compan{(parseInt(formData.numCompanies) || 1) > 1 ? 'ies' : 'y'} × ${pricing.basePrice.toLocaleString()}</span>
+                                            <span>${((parseInt(formData.numCompanies) || 1) * pricing.basePrice).toLocaleString()}</span>
+                                        </div>
+                                        <div className="flex justify-between text-gray-600">
+                                            <span>{formData.numEmployees || 1} employee{(parseInt(formData.numEmployees) || 1) > 1 ? 's' : ''} × ${pricing.perEmpPrice.toLocaleString()}</span>
+                                            <span>${((parseInt(formData.numEmployees) || 1) * pricing.perEmpPrice).toLocaleString()}</span>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="flex justify-between text-gray-600">
+                                            <span>Base Fee</span>
+                                            <span>${pricing.basePrice.toLocaleString()}</span>
+                                        </div>
+                                        <div className="flex justify-between text-gray-600">
+                                            <span>{formData.numEmployees || 1} employee{(parseInt(formData.numEmployees) || 1) > 1 ? 's' : ''} × ${pricing.perEmpPrice.toLocaleString()}</span>
+                                            <span>${((parseInt(formData.numEmployees) || 1) * pricing.perEmpPrice).toLocaleString()}</span>
+                                        </div>
+                                    </>
                                 )}
                             </>
                         )}
