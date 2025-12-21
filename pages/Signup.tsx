@@ -82,6 +82,16 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
       return () => { isMountedRef.current = false; };
   }, []);
 
+  // Get selected plan and its employee limit
+  const selectedPlan = plans.find(p => p.name === formData.plan);
+  const getEmployeeLimit = () => {
+    if (!selectedPlan) return 9999;
+    const limit = selectedPlan.limit;
+    if (limit === 'Unlimited') return 9999;
+    return parseInt(limit) || 9999;
+  };
+  const employeeLimit = getEmployeeLimit();
+
   // Pricing Logic 
   const getPricing = () => {
     const selectedPlan = plans.find(p => p.name === formData.plan);
@@ -352,7 +362,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                 required
                                 type="number"
                                 min="1"
-                                max="9999"
+                                max={formData.plan === 'Reseller' ? 9999 : employeeLimit}
                                 value={formData.numEmployees}
                                 onChange={(e) => setFormData({...formData, numEmployees: e.target.value})}
                                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm"
@@ -361,7 +371,9 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                             <p className="mt-1 text-xs text-gray-500">
                                 {formData.plan === 'Reseller' 
                                     ? 'Total employees across all your client companies' 
-                                    : 'This helps us calculate your plan pricing accurately'}
+                                    : employeeLimit < 9999 
+                                        ? `${formData.plan} plan supports up to ${employeeLimit} employees` 
+                                        : 'This helps us calculate your plan pricing accurately'}
                             </p>
                         </div>
                         {formData.plan === 'Reseller' && (

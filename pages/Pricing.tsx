@@ -37,30 +37,30 @@ export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onF
     if (plan.priceConfig.type === 'free') return <span className="text-4xl font-bold">$0</span>;
     
     const amount = cycle === 'monthly' ? plan.priceConfig.monthly : plan.priceConfig.annual;
-    const period = cycle === 'monthly' ? '/mo' : '/yr';
-    const empPeriod = cycle === 'monthly' ? 'per Employee/month' : 'per Employee/year';
+    const period = cycle === 'monthly' ? '/month' : '/year';
+    const empPeriod = cycle === 'monthly' ? 'per employee/month' : 'per employee/year';
     
     if (plan.priceConfig.type === 'flat') {
       return (
-        <div className="flex items-baseline">
-          <span className="text-4xl font-bold">${amount.toLocaleString()}</span>
-          <span className={`ml-1 text-sm ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>{period}</span>
+        <div>
+          <div className="text-4xl font-bold">${amount.toLocaleString()}</div>
+          <div className={`text-sm mt-1 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>{period}</div>
         </div>
       );
     }
     if (plan.priceConfig.type === 'per_emp') {
       return (
-        <div className="flex items-baseline">
-           <span className="text-4xl font-bold">${amount.toLocaleString()}</span>
-           <span className={`ml-1 text-sm ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>{empPeriod}</span>
+        <div>
+          <div className="text-4xl font-bold">${amount.toLocaleString()}</div>
+          <div className={`text-sm mt-1 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>{empPeriod}</div>
         </div>
       );
     }
     if (plan.priceConfig.type === 'base') {
        return (
-        <div className="flex items-baseline">
-           <span className="text-4xl font-bold">${amount.toLocaleString()}</span>
-           <span className={`ml-1 text-sm ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>{period} base</span>
+        <div>
+          <div className="text-4xl font-bold">${amount.toLocaleString()}</div>
+          <div className={`text-sm mt-1 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>{period} base</div>
         </div>
       );
     }

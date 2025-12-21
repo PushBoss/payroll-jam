@@ -89,9 +89,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ plans = [], onLogin, o
     if (plan.priceConfig.type === 'flat') {
       const amount = plan.priceConfig.monthly;
       return (
-        <div className="flex items-baseline">
-          <span className="text-4xl font-bold">${amount.toLocaleString()}</span>
-          <span className={`ml-1 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>/mo</span>
+        <div>
+          <div className="text-4xl font-bold">${amount.toLocaleString()}</div>
+          <div className={`text-sm mt-1 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>/month</div>
         </div>
       );
     }
@@ -99,9 +99,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ plans = [], onLogin, o
     if (plan.priceConfig.type === 'per_emp') {
       const amount = plan.priceConfig.monthly;
       return (
-        <div className="flex items-baseline">
-          <span className="text-4xl font-bold">${amount.toLocaleString()}</span>
-          <span className={`ml-1 text-sm ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>per Employee/month</span>
+        <div>
+          <div className="text-4xl font-bold">${amount.toLocaleString()}</div>
+          <div className={`text-sm mt-1 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>per employee/month</div>
         </div>
       );
     }
@@ -109,9 +109,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ plans = [], onLogin, o
     if (plan.priceConfig.type === 'base') {
       const amount = plan.priceConfig.baseFee || 0;
       return (
-        <div className="flex items-baseline">
-          <span className="text-4xl font-bold">${amount.toLocaleString()}</span>
-          <span className={`ml-1 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>/mo base</span>
+        <div>
+          <div className="text-4xl font-bold">${amount.toLocaleString()}</div>
+          <div className={`text-sm mt-1 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>per month base</div>
         </div>
       );
     }
