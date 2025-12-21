@@ -22,9 +22,11 @@ export const Footer: React.FC<FooterProps> = ({
           {/* Logo and Description */}
           <div className="col-span-1 md:col-span-2">
             <div className="flex items-center space-x-2 mb-4">
-              <div className="w-10 h-10 bg-jam-orange rounded-lg flex items-center justify-center">
-                <span className="text-2xl font-bold text-jam-black">PJ</span>
-              </div>
+              <img 
+                src="/assets/icons/apple-touch-icon.png" 
+                alt="Payroll-Jam Logo" 
+                className="w-10 h-10 rounded-lg"
+              />
               <span className="text-2xl font-extrabold text-white tracking-tight">
                 Payroll<span className="text-jam-orange">-Jam</span>
               </span>
