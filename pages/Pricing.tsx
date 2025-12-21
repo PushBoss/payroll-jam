@@ -38,7 +38,7 @@ export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onF
     
     const amount = cycle === 'monthly' ? plan.priceConfig.monthly : plan.priceConfig.annual;
     const period = cycle === 'monthly' ? '/mo' : '/yr';
-    const empPeriod = cycle === 'monthly' ? '/emp/mo' : '/emp/yr';
+    const empPeriod = cycle === 'monthly' ? 'per Employee/month' : 'per Employee/year';
     
     if (plan.priceConfig.type === 'flat') {
       return (
