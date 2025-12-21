@@ -664,7 +664,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                     <div className="space-y-2 text-sm">
                         {pricing.type === 'per_emp' && (
                             <div className="flex justify-between text-gray-600">
-                                <span>{formData.numEmployees || 1} employee{(parseInt(formData.numEmployees) || 1) > 1 ? 's' : ''} × ${pricing.perEmpPrice.toLocaleString()}</span>
+                                <span>{formData.numEmployees || 1} Employee{(parseInt(formData.numEmployees) || 1) > 1 ? 's' : ''} × ${pricing.perEmpPrice.toLocaleString()}</span>
                                 <span>${pricing.subtotal.toLocaleString()}</span>
                             </div>
                         )}
@@ -679,7 +679,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                 {formData.plan === 'Reseller' ? (
                                     <>
                                         <div className="flex justify-between text-gray-600">
-                                            <span>{formData.numCompanies || 1} compan{(parseInt(formData.numCompanies) || 1) > 1 ? 'ies' : 'y'} × ${pricing.basePrice.toLocaleString()}</span>
+                                            <span>{formData.numCompanies || 1} Compan{(parseInt(formData.numCompanies) || 1) > 1 ? 'ies' : 'y'} × ${pricing.basePrice.toLocaleString()}</span>
                                             <span>${((parseInt(formData.numCompanies) || 1) * pricing.basePrice).toLocaleString()}</span>
                                         </div>
                                         <div className="flex justify-between text-gray-600">
