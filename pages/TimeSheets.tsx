@@ -178,7 +178,6 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
                 <tr key={ts.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4">
                     <div className="font-medium text-gray-900">{ts.employeeName}</div>
-                    <div className="text-xs text-gray-500">{ts.employeeId}</div>
                   </td>
                   <td className="px-6 py-4 text-center text-sm text-gray-500">
                     {ts.weekStartDate}

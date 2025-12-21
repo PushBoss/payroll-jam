@@ -98,7 +98,7 @@ const PayRunRow = ({
         <tr className="hover:bg-gray-50 group">
             <td className="px-6 py-4">
                 <p className="font-bold text-gray-900 text-sm">{item.employeeName}</p>
-                <p className="text-xs text-gray-400">{item.employeeId}</p>
+                <p className="text-xs text-gray-400">{item.employeeCustomId || 'No ID'}</p>
             </td>
             <td className="px-6 py-4 text-right">
                 <div className="flex items-center justify-end">
