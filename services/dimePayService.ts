@@ -9,6 +9,7 @@ interface PaymentWidgetProps {
     metadata?: any;
     frequency?: 'monthly' | 'annual';
     companyId?: string; // Optional company ID for company-specific gateway config
+    billingCycles?: number; // Number of recurring billing cycles (default: 9999 for unlimited)
     onSuccess: (data: any) => void;
     onError: (err: any) => void;
 }
@@ -105,14 +106,59 @@ export const dimePayService = {
 
         // Prepare Payload to send to backend for signing
         const orderId = `ORD-${Date.now()}`;
+        
+        // DimePay Recurring Payments: Order-based subscription model
+        // Docs: https://docs.dimepay.net/%EF%B8%8F-dime-apis/z-recurring-payments
         const payloadData = {
+            // Standard order fields
             id: orderId,
-            total: props.amount,
             currency: props.currency,
-            description: props.description,
-            billing_email: props.email,
-            billing_name: props.metadata?.name || 'Guest',
-            frequency: recurringFreq,
+            subtotal: props.amount,
+            total: props.amount,
+            email: props.email,
+            
+            // Billing details
+            billingPerson: {
+                name: props.metadata?.name || 'Guest',
+                email: props.email
+            },
+            
+            // Items array (required for DimePay orders)
+            items: [
+                {
+                    id: `PLAN-${props.metadata?.plan || 'subscription'}`.replace(/\s+/g, '-').toUpperCase(),
+                    name: props.description,
+                    price: props.amount,
+                    quantity: 1
+                }
+            ],
+            
+            // 🎯 SUBSCRIPTION FIELDS - Enable recurring billing
+            is_subscription: true,
+            subscription_instructions: {
+                recurring_frequency: recurringFreq, // 'MONTHLY' or 'YEARLY'
+                billing_cycles: props.billingCycles || 9999 // Effectively unlimited unless specified
+            },
+            
+            // Tokenize card for future recurring charges
+            tokenize: true,
+            
+            // Webhook URL for subscription events
+            webhookUrl: `${window.location.origin}/api/dimepay-webhook`,
+            
+            // Redirect after payment
+            redirectUrl: props.metadata?.redirectUrl || window.location.href,
+            checkoutUrl: window.location.href,
+            
+            // Metadata to track subscription in webhook
+            metadata: {
+                company_id: props.companyId,
+                user_id: props.metadata?.userId,
+                plan_name: props.description,
+                plan_type: props.metadata?.planType
+            },
+            
+            // Fee routing
             pass_fees_to: passFeesTo === 'CUSTOMER' ? 'CUSTOMER' : 'MERCHANT'
         };
 

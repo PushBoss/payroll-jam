@@ -64,12 +64,19 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ plan, currentUser, onClos
                 email: currentUser?.email || 'billing@company.com',
                 amount: price,
                 currency: 'JMD',
-                description: `Upgrade to ${plan.name} Plan`,
+                description: `${plan.name} Plan (monthly)`,
                 frequency: 'monthly',
-                companyId: currentUser?.companyId, // Pass companyId to get company-specific gateway config
-                metadata: { planId: plan.id, planName: plan.name },
-                onSuccess: () => {
+                companyId: currentUser?.companyId, // Pass companyId for webhook linking
+                metadata: { 
+                    planId: plan.id, 
+                    planName: plan.name,
+                    plan: plan.name,
+                    planType: plan.name.toLowerCase()
+                },
+                onSuccess: (data) => {
                     if (isMountedRef.current) {
+                        console.log('DimePay Upgrade Success:', data);
+                        console.log('📦 Subscription updated:', data.subscription_id);
                         setPaymentSuccess(true);
                         setTimeout(() => { if (isMountedRef.current) onSuccess(); }, 2000);
                     }
@@ -299,47 +306,9 @@ export const Settings: React.FC<SettingsProps> = ({
   
   const handleUpgradeSuccess = async () => {
       if (upgradeTarget && currentUser?.companyId) {
-          // Get employee count for per-employee pricing
-          const employees = await supabaseService.getEmployees(currentUser.companyId);
-          const employeeCount = employees?.length || 1; // Minimum 1 to avoid $0 charge
-          
-          // Calculate plan amount based on type
-          const planAmount = upgradeTarget.priceConfig.type === 'free' ? 0 :
-                            upgradeTarget.priceConfig.type === 'base' ? (upgradeTarget.priceConfig.baseFee || 0) :
-                            upgradeTarget.priceConfig.type === 'per_emp' ? 
-                              ((upgradeTarget.priceConfig.monthly || 0) * employeeCount) :
-                            upgradeTarget.priceConfig.monthly;
-
-          // Try to create subscription in Supabase (non-blocking)
-          let newSubscription = null;
-          try {
-              newSubscription = await supabaseService.createSubscription({
-                  companyId: currentUser.companyId,
-                  planName: upgradeTarget.name,
-                  planType: upgradeTarget.name.toLowerCase(),
-                  billingFrequency: 'monthly',
-                  amount: planAmount,
-                  currency: 'JMD',
-                  nextBillingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30 days from now
-              });
-          } catch (error) {
-              console.warn('Subscription creation failed (non-critical):', error);
-              // Continue with upgrade even if subscription creation fails
-          }
-
-          // Create payment record if paid plan
-          if (planAmount > 0) {
-              await supabaseService.createPaymentRecord({
-                  companyId: currentUser.companyId,
-                  subscriptionId: newSubscription?.id || currentSubscription?.id,
-                  amount: planAmount,
-                  currency: 'JMD',
-                  status: 'completed',
-                  paymentMethod: 'card',
-                  description: `${upgradeTarget.name} Plan - Monthly Subscription`,
-                  invoiceNumber: `INV-${Date.now()}`
-              });
-          }
+          // Note: DimePay webhook will automatically create/update subscription record
+          // and payment record, so we don't need to do it here
+          console.log('✅ Payment successful via DimePay - webhook will handle subscription creation');
           
           // Update local company data
           handleCompanyUpdate({ ...companyData, plan: upgradeTarget.name as any, subscriptionStatus: 'ACTIVE' });

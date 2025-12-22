@@ -149,6 +149,9 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
   // Recalculate pricing whenever formData changes (especially billingCycle, plan, or employee counts)
   const pricing = useMemo(() => getPricing(), [formData.plan, formData.billingCycle, formData.numEmployees, formData.numCompanies]);
 
+  // Generate companyId early so it can be passed to DimePay for webhook linking
+  const [companyId] = useState(() => generateUUID());
+
   const initDimePay = () => {
       if (!isMountedRef.current) return;
       setWidgetStatus('loading');
@@ -164,15 +167,18 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
               amount: pricing.total,
               currency: 'JMD',
               description: `${formData.plan} Plan (${formData.billingCycle})`,
-              frequency: formData.billingCycle, 
+              frequency: formData.billingCycle,
+              companyId: companyId, // Pass company ID for webhook linking
               metadata: {
                   name: formData.name,
                   company: formData.companyName,
-                  plan: formData.plan
+                  plan: formData.plan,
+                  planType: formData.plan.toLowerCase()
               },
               onSuccess: (data) => {
                   if (!isMountedRef.current) return;
                   console.log('DimePay Success:', data);
+                  console.log('📦 Subscription created:', data.subscription_id);
                   setWidgetStatus('ready');
                   toast.success('Payment successful!');
                   handleSubmit();
@@ -232,7 +238,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
         email: formData.email,
         password: formData.password,
         role: role,
-        companyId: generateUUID(),
+        companyId: companyId, // Use pre-generated companyId for DimePay webhook linking
         isOnboarded: false,
         companyName: formData.name + "'s Company", // Temporary name, will be set in onboarding
         plan: formData.plan,
