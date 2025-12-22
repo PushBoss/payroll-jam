@@ -249,12 +249,53 @@ If recurring billing fails:
 
 ---
 
+## 🛑 Subscription Cancellation
+
+### User Self-Service Cancellation
+
+Users can cancel their subscription from the Settings → Billing page:
+
+1. **"Cancel Subscription" button** appears next to "Upgrade Plan"
+2. **Confirmation modal** explains what happens:
+   - Retains access until end of billing period
+   - No further charges
+   - Downgrades to Free plan
+   - Can resubscribe anytime
+3. **Immediate feedback** - status updates locally
+4. **DimePay API call** cancels the subscription at gateway
+5. **Webhook confirmation** - DimePay sends `subscription.canceled` event
+
+### API Endpoint: `/api/cancel-subscription`
+
+```typescript
+POST /api/cancel-subscription
+Body: {
+  subscription_id: string,  // DimePay subscription ID
+  company_id: string        // Company UUID
+}
+```
+
+**What it does:**
+1. Calls DimePay API to cancel subscription
+2. Updates `subscriptions` table: `status = 'cancelled'`
+3. Updates `companies` table: `plan = 'Free'`, `subscription_status = 'SUSPENDED'`
+4. Returns success message with billing period info
+
+**Grace Period:**
+- Users keep access until `next_billing_date`
+- Webhookupdates status when period expires
+- No prorated refunds (as per DimePay standard behavior)
+
+---
+
 ## 💡 Future Enhancements
 
 - [ ] Add prorated upgrades for mid-month plan changes
 - [ ] Email notifications for upcoming renewals (3 days before)
 - [ ] Email notifications for failed payments
-- [ ] Self-service subscription cancellation
+- [x] Self-service subscription cancellation ✅ **COMPLETED**
 - [ ] Dunning management (retry failed payments with delays)
 - [ ] Usage-based billing for per-employee plans
 - [ ] Annual to monthly plan switches (and vice versa)
+- [ ] Pause subscription (temporary hold)
+- [ ] Subscription reactivation after cancellation

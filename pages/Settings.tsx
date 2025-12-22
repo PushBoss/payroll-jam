@@ -192,6 +192,8 @@ export const Settings: React.FC<SettingsProps> = ({
   const [invoices, setInvoices] = useState<PaymentRecord[]>([]);
   const [currentSubscription, setCurrentSubscription] = useState<any>(null);
   const [isLoadingBilling, setIsLoadingBilling] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   // Early return if companyData is not available
   if (!companyData) {
@@ -530,6 +532,66 @@ export const Settings: React.FC<SettingsProps> = ({
       }
   };
 
+  const handleCancelSubscription = async () => {
+      if (!currentUser?.companyId || !currentSubscription?.dimepaySubscriptionId) {
+          toast.error('Unable to cancel subscription. Missing subscription information.');
+          return;
+      }
+
+      setIsCancelling(true);
+
+      try {
+          const response = await fetch('/api/cancel-subscription', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                  subscription_id: currentSubscription.dimepaySubscriptionId,
+                  company_id: currentUser.companyId
+              })
+          });
+
+          const data = await response.json();
+
+          if (!response.ok) {
+              throw new Error(data.error || 'Failed to cancel subscription');
+          }
+
+          toast.success('Subscription cancelled. You\'ll retain access until the end of your billing period.');
+          
+          // Update local state
+          handleCompanyUpdate({ 
+              ...companyData, 
+              plan: 'Free' as any, 
+              subscriptionStatus: 'SUSPENDED' 
+          });
+          
+          setShowCancelModal(false);
+          
+          // Reload billing data after a delay
+          setTimeout(async () => {
+              if (currentUser?.companyId) {
+                  const payments = await supabaseService.getPaymentHistory(currentUser.companyId);
+                  const formattedPayments: PaymentRecord[] = payments.map(p => ({
+                      id: p.invoiceNumber || p.id,
+                      date: new Date(p.paymentDate).toLocaleDateString(),
+                      amount: p.amount,
+                      plan: p.description || 'Subscription',
+                      method: (p.paymentMethod === 'card' ? 'Card' : 'Bank Transfer') as any,
+                      status: p.status.toUpperCase() as any,
+                      referenceId: p.transactionId || p.id
+                  }));
+                  setInvoices(formattedPayments);
+              }
+          }, 1000);
+
+      } catch (error: any) {
+          console.error('Error cancelling subscription:', error);
+          toast.error(error.message || 'Failed to cancel subscription. Please try again.');
+      } finally {
+          setIsCancelling(false);
+      }
+  };
+
   const updateMapping = (id: string, field: keyof GLMapping, value: string) => {
       const newMappings = integrationConfig.mappings.map(m => 
           m.id === id ? { ...m, [field]: value } : m
@@ -545,6 +607,60 @@ export const Settings: React.FC<SettingsProps> = ({
     <div className="space-y-6">
       {upgradeTarget && <CheckoutModal plan={upgradeTarget} currentUser={currentUser} onClose={() => setUpgradeTarget(null)} onSuccess={handleUpgradeSuccess} />}
       
+      {/* Cancel Subscription Confirmation Modal */}
+      {showCancelModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+              <div className="bg-white rounded-xl w-full max-w-md p-6 animate-fade-in">
+                  <div className="flex items-start mb-4">
+                      <div className="flex-shrink-0">
+                          <Icons.Alert className="w-10 h-10 text-red-500" />
+                      </div>
+                      <div className="ml-4">
+                          <h3 className="text-xl font-bold mb-2">Cancel Subscription?</h3>
+                          <p className="text-sm text-gray-600 mb-4">
+                              Are you sure you want to cancel your <strong>{currentSubscription?.planName || companyData?.plan}</strong> subscription?
+                          </p>
+                          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+                              <p className="text-xs text-yellow-800">
+                                  <strong>What happens next:</strong>
+                              </p>
+                              <ul className="text-xs text-yellow-800 mt-2 space-y-1 list-disc list-inside">
+                                  <li>You'll retain access until {currentSubscription?.nextBillingDate ? new Date(currentSubscription.nextBillingDate).toLocaleDateString() : 'the end of your billing period'}</li>
+                                  <li>No further charges will be made</li>
+                                  <li>Your account will be downgraded to the Free plan</li>
+                                  <li>You can resubscribe anytime</li>
+                              </ul>
+                          </div>
+                      </div>
+                  </div>
+                  <div className="flex justify-end space-x-2">
+                      <button 
+                          type="button" 
+                          onClick={() => setShowCancelModal(false)} 
+                          className="px-4 py-2 text-gray-500 hover:text-gray-700"
+                          disabled={isCancelling}
+                      >
+                          Keep Subscription
+                      </button>
+                      <button 
+                          onClick={handleCancelSubscription}
+                          className="px-4 py-2 bg-red-600 text-white rounded font-bold hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                          disabled={isCancelling}
+                      >
+                          {isCancelling ? (
+                              <>
+                                  <Icons.Refresh className="w-4 h-4 mr-2 animate-spin" />
+                                  Cancelling...
+                              </>
+                          ) : (
+                              'Yes, Cancel Subscription'
+                          )}
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       {isInviteModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
               <div className="bg-white rounded-xl w-full max-w-md p-6 animate-fade-in">
@@ -591,7 +707,7 @@ export const Settings: React.FC<SettingsProps> = ({
       </div>
       
       {activeTab === 'billing' && (
-          <div className="space-y-6 animate-fade-in">
+              <div className="space-y-6 animate-fade-in">
               <div className="bg-jam-black rounded-xl p-8 text-white shadow-lg flex flex-col md:flex-row justify-between items-center">
                   <div>
                       <p className="text-sm text-gray-400 uppercase font-bold">Current Plan</p>
@@ -607,8 +723,8 @@ export const Settings: React.FC<SettingsProps> = ({
                           </div>
                       )}
                   </div>
-                  {companyData?.plan !== 'Pro' && companyData?.plan !== 'Professional' && (
-                      <div className="mt-4 md:mt-0">
+                  <div className="mt-4 md:mt-0 flex flex-col space-y-2">
+                      {companyData?.plan !== 'Pro' && companyData?.plan !== 'Professional' && (
                           <button 
                               onClick={() => {
                                   // Show all paid plans except current plan (consistent with cards below)
@@ -645,8 +761,16 @@ export const Settings: React.FC<SettingsProps> = ({
                           >
                               Upgrade Plan
                           </button>
-                      </div>
-                  )}
+                      )}
+                      {currentSubscription && currentSubscription.status === 'active' && companyData?.plan !== 'Free' && (
+                          <button 
+                              onClick={() => setShowCancelModal(true)}
+                              className="bg-transparent border border-gray-500 text-gray-300 px-6 py-2.5 rounded-lg font-bold text-sm hover:bg-gray-800 hover:border-gray-400 transition-colors"
+                          >
+                              Cancel Subscription
+                          </button>
+                      )}
+                  </div>
               </div>
               
               {/* Plan Selection Section */}
