@@ -115,8 +115,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ plans = [], onLogin, o
     }
     
     if (plan.priceConfig.type === 'base') {
-      // Reseller plan: show base fee + per employee fee
-      const baseFee = plan.priceConfig.baseFee || 0;
+      // Base fee plans (Starter, Pro, Reseller) - all show base + per employee
+      const baseFee = plan.priceConfig.monthly || plan.priceConfig.baseFee || 0;
       const perEmpFee = plan.priceConfig.perUserFee || 0;
       return (
         <div>

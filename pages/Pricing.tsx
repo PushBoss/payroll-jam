@@ -65,8 +65,10 @@ export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onF
       );
     }
     if (plan.priceConfig.type === 'base') {
-      // Reseller plan: show base fee + per employee fee
-      const baseFee = plan.priceConfig.baseFee || 0;
+      // Base fee plans (Starter, Pro, Reseller) - all show base + per employee
+      const baseFee = cycle === 'monthly' 
+        ? (plan.priceConfig.monthly || plan.priceConfig.baseFee || 0)
+        : (plan.priceConfig.annual || (plan.priceConfig.baseFee || 0) * 10 || 0);
       const perEmpFee = plan.priceConfig.perUserFee || 0;
       return (
         <div>

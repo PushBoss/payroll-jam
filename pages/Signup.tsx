@@ -110,8 +110,11 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
              // Per-employee plans - price is per employee
              perEmpPrice = formData.billingCycle === 'monthly' ? selectedPlan.priceConfig.monthly : selectedPlan.priceConfig.annual;
         } else if (type === 'base') {
-             // Base fee plans (like Reseller)
-             basePrice = selectedPlan.priceConfig.baseFee || 0;
+             // Base fee plans (Starter, Pro, Reseller)
+             // All base plans (Starter, Pro, Reseller) use monthly/annual based on billing cycle
+             basePrice = formData.billingCycle === 'monthly' 
+                 ? (selectedPlan.priceConfig.monthly || selectedPlan.priceConfig.baseFee || 0)
+                 : (selectedPlan.priceConfig.annual || (selectedPlan.priceConfig.baseFee || 0) * 10 || 0);
              perEmpPrice = selectedPlan.priceConfig.perUserFee || 0;
              
              // Debug logging for Reseller pricing
@@ -120,6 +123,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                      planConfig: selectedPlan.priceConfig,
                      basePrice,
                      perEmpPrice,
+                     billingCycle: formData.billingCycle,
                      numCompanies: formData.numCompanies,
                      numEmployees: formData.numEmployees
                  });
@@ -136,14 +140,15 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
         const count = parseInt(formData.numEmployees) || 1; // Default to 1 if not specified
         subtotal = count * perEmpPrice;
     } else if (type === 'base') {
-        // Base fee plans (like Reseller)
+        // Base fee plans (Starter, Pro, Reseller)
         if (formData.plan === 'Reseller') {
             // For resellers: (companies × baseFee) + (employees × perUserFee)
-            const numCompanies = parseInt(formData.numCompanies) || 1;
+            // User's own company is always included, so numCompanies is 1 + additional companies
+            const numCompanies = Math.max(1, parseInt(formData.numCompanies) || 1); // Ensure at least 1 (their own company)
             const numEmployees = parseInt(formData.numEmployees) || 1;
             subtotal = (numCompanies * basePrice) + (numEmployees * perEmpPrice);
         } else {
-            // For other base plans: base fee + (employees × per-employee fee)
+            // For Starter/Pro: basePrice + (employees × perEmpPrice)
             const count = parseInt(formData.numEmployees) || 1;
             subtotal = basePrice + (count * perEmpPrice);
         }
@@ -213,6 +218,13 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
           if (timerRef.current) clearTimeout(timerRef.current);
       };
   }, [step, paymentMethod, dimePayEnabled, formData.email, pricing.total]);
+
+  // Default numCompanies to "1" when Reseller is selected (their own company)
+  useEffect(() => {
+      if (formData.plan === 'Reseller' && (!formData.numCompanies || formData.numCompanies === '')) {
+          setFormData(prev => ({ ...prev, numCompanies: '1' }));
+      }
+  }, [formData.plan]);
 
   const handleAccountSubmit = (e: React.FormEvent) => {
       e.preventDefault();
@@ -373,8 +385,8 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                             <label className="block text-sm font-medium text-gray-700">Work Email</label>
                             <input required type="email" autoComplete="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
                         </div>
-                        {/* Only show employee count field for plans that need it (not Starter, not Free) */}
-                        {formData.plan !== 'Starter' && formData.plan !== 'Free' && (
+                        {/* Show employee count field for all plans except Free */}
+                        {formData.plan !== 'Free' && (
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">Number of Employees</label>
                                 <input
@@ -390,9 +402,11 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                 <p className="mt-1 text-xs text-gray-500">
                                     {formData.plan === 'Reseller' 
                                         ? 'Total employees across all your client companies' 
-                                        : employeeLimit < 9999 
-                                            ? `${formData.plan} plan supports up to ${employeeLimit} employees` 
-                                            : 'This helps us calculate your plan pricing accurately'}
+                                        : formData.plan === 'Starter' || formData.plan === 'Pro'
+                                            ? `Share how many employees you have (${formData.plan} plan supports up to ${employeeLimit} employees)`
+                                            : employeeLimit < 9999 
+                                                ? `${formData.plan} plan supports up to ${employeeLimit} employees` 
+                                                : 'This helps us calculate your plan pricing accurately'}
                                 </p>
                             </div>
                         )}
@@ -407,9 +421,9 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                     value={formData.numCompanies}
                                     onChange={(e) => setFormData({...formData, numCompanies: e.target.value})}
                                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm"
-                                    placeholder="e.g., 5"
+                                    placeholder="1 (your company)"
                                 />
-                                <p className="mt-1 text-xs text-gray-500">Number of client companies you'll manage</p>
+                                <p className="mt-1 text-xs text-gray-500">Number of companies you'll manage (includes your own company + any additional client companies)</p>
                             </div>
                         )}
                         <div>
@@ -715,8 +729,8 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                             <span></span>
                                         </div>
                                         <div className="flex justify-between text-gray-600 text-sm pl-3">
-                                            <span>{formData.numCompanies || 1} Compan{(parseInt(formData.numCompanies) || 1) > 1 ? 'ies' : 'y'} × ${pricing.basePrice.toLocaleString()}/ea</span>
-                                            <span>${((parseInt(formData.numCompanies) || 1) * pricing.basePrice).toLocaleString()}</span>
+                                            <span>{Math.max(1, parseInt(formData.numCompanies) || 1)} Compan{(Math.max(1, parseInt(formData.numCompanies) || 1)) > 1 ? 'ies' : 'y'} × ${pricing.basePrice.toLocaleString()}/ea</span>
+                                            <span>${(Math.max(1, parseInt(formData.numCompanies) || 1) * pricing.basePrice).toLocaleString()}</span>
                                         </div>
                                         <div className="flex justify-between text-gray-600 mt-2">
                                             <span className="font-medium">Employee Fees:</span>
@@ -734,7 +748,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                             <span>${pricing.basePrice.toLocaleString()}</span>
                                         </div>
                                         <div className="flex justify-between text-gray-600">
-                                            <span>{formData.numEmployees || 1} Employee{(parseInt(formData.numEmployees) || 1) > 1 ? 's' : ''} × ${pricing.perEmpPrice.toLocaleString()}</span>
+                                            <span>{formData.numEmployees || 1} Employee{(parseInt(formData.numEmployees) || 1) > 1 ? 's' : ''} × ${pricing.perEmpPrice.toLocaleString()}/ea</span>
                                             <span>${((parseInt(formData.numEmployees) || 1) * pricing.perEmpPrice).toLocaleString()}</span>
                                         </div>
                                     </>
