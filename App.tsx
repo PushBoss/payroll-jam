@@ -398,8 +398,11 @@ function AppContent() {
     setPlans(updatedPlans);
     
     // Save to Supabase backend only (not localStorage)
+    console.log('🔍 isSupabaseMode:', isSupabaseMode);
     if (isSupabaseMode) {
+      console.log('🔍 ENTERING save block');
       try {
+        console.log('🔍 About to call updateGlobalConfig');
         await updateGlobalConfig({ pricingPlans: updatedPlans });
         console.log('✅ Plans saved to backend only');
         
