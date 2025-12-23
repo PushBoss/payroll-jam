@@ -362,26 +362,29 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                             <label className="block text-sm font-medium text-gray-700">Work Email</label>
                             <input required type="email" autoComplete="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">Number of Employees</label>
-                            <input
-                                required
-                                type="number"
-                                min="1"
-                                max={formData.plan === 'Reseller' ? 9999 : employeeLimit}
-                                value={formData.numEmployees}
-                                onChange={(e) => setFormData({...formData, numEmployees: e.target.value})}
-                                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm"
-                                placeholder="e.g., 10"
-                            />
-                            <p className="mt-1 text-xs text-gray-500">
-                                {formData.plan === 'Reseller' 
-                                    ? 'Total employees across all your client companies' 
-                                    : employeeLimit < 9999 
-                                        ? `${formData.plan} plan supports up to ${employeeLimit} employees` 
-                                        : 'This helps us calculate your plan pricing accurately'}
-                            </p>
-                        </div>
+                        {/* Only show employee count field for plans that need it (not Starter, not Free) */}
+                        {formData.plan !== 'Starter' && formData.plan !== 'Free' && (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Number of Employees</label>
+                                <input
+                                    required
+                                    type="number"
+                                    min="1"
+                                    max={formData.plan === 'Reseller' ? 9999 : employeeLimit}
+                                    value={formData.numEmployees}
+                                    onChange={(e) => setFormData({...formData, numEmployees: e.target.value})}
+                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm"
+                                    placeholder="e.g., 10"
+                                />
+                                <p className="mt-1 text-xs text-gray-500">
+                                    {formData.plan === 'Reseller' 
+                                        ? 'Total employees across all your client companies' 
+                                        : employeeLimit < 9999 
+                                            ? `${formData.plan} plan supports up to ${employeeLimit} employees` 
+                                            : 'This helps us calculate your plan pricing accurately'}
+                                </p>
+                            </div>
+                        )}
                         {formData.plan === 'Reseller' && (
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">Number of Companies</label>
