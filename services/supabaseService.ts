@@ -337,15 +337,28 @@ export const supabaseService = {
         .from('global_config')
         .select('config')
         .eq('id', 'platform')
-        .single();
+        .maybeSingle(); // Use maybeSingle instead of single to avoid errors if no row
 
       if (!error && data) {
         console.log('✅ Loaded global config from dedicated table');
         return data.config || null;
       }
 
+      // Log the actual error for debugging (406 errors might not have standard error object)
+      if (error) {
+        console.error('❌ Error loading from global_config:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          fullError: error
+        });
+      } else if (!data) {
+        console.warn('⚠️ No error but also no data from global_config - might be RLS blocking or empty table');
+      }
+
       // Fallback to old method (companies.settings) for backwards compatibility
-      console.log('⚠️ global_config table not found, falling back to companies.settings');
+      console.log('⚠️ global_config table not found or error, falling back to companies.settings');
       const { data: companyData, error: companyError } = await supabase
         .from('companies')
         .select('settings')
