@@ -393,6 +393,8 @@ function AppContent() {
 
   // Handler to save plan/pricing edits ONLY to backend (NOT localStorage)
   const handleUpdatePlans = async (updatedPlans: PricingPlan[]) => {
+    console.log('🔍 handleUpdatePlans called with:', updatedPlans.length, 'plans');
+    console.log('🔍 Plans preview:', updatedPlans.map(p => ({ id: p.id, name: p.name, features: p.features.length })));
     setPlans(updatedPlans);
     
     // Save to Supabase backend only (not localStorage)
@@ -400,6 +402,13 @@ function AppContent() {
       try {
         await updateGlobalConfig({ pricingPlans: updatedPlans });
         console.log('✅ Plans saved to backend only');
+        
+        // Verify it was saved correctly
+        const verifyConfig = await supabaseService.getGlobalConfig();
+        console.log('🔍 Verification - Plans in DB:', verifyConfig?.pricingPlans?.length);
+        if (verifyConfig?.pricingPlans) {
+          console.log('🔍 First plan features:', verifyConfig.pricingPlans[0]?.features);
+        }
       } catch (e) {
         console.error('❌ Failed to update plans in backend:', e);
         toast.error('Failed to save pricing plans');

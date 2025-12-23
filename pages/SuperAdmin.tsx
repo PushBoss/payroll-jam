@@ -553,10 +553,14 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         if (exists) {
             updated = plans.map(p => p.id === editingPlan.id ? editingPlan : p);
             auditService.log({id: 'sys', name: 'Super Admin', email: 'sys', role: Role.SUPER_ADMIN}, 'UPDATE', 'Plan', `Updated plan: ${editingPlan.name}`);
+            console.log('🔍 Saving updated plan:', editingPlan);
+            console.log('🔍 Updated plans array:', updated);
             toast.success("Plan updated");
         } else {
             updated = [...plans, editingPlan];
             auditService.log({id: 'sys', name: 'Super Admin', email: 'sys', role: Role.SUPER_ADMIN}, 'CREATE', 'Plan', `Created plan: ${editingPlan.name}`);
+            console.log('🔍 Creating new plan:', editingPlan);
+            console.log('🔍 Updated plans array:', updated);
             toast.success("Plan created");
         }
         onUpdatePlans(updated);
