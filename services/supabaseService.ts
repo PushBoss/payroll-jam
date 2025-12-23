@@ -328,36 +328,64 @@ export const supabaseService = {
     }
   },
 
-  // Get global config from Supabase (stored in a system company or first company)
+  // Get global config from dedicated global_config table (platform-wide)
   getGlobalConfig: async (): Promise<GlobalConfig | null> => {
     if (!supabase) return null;
     try {
-      // Try to get from a system company first (if exists)
-      // Otherwise, get from the first company's settings
+      // Try new global_config table first
       const { data, error } = await supabase
+        .from('global_config')
+        .select('config')
+        .eq('id', 'platform')
+        .single();
+
+      if (!error && data) {
+        console.log('✅ Loaded global config from dedicated table');
+        return data.config || null;
+      }
+
+      // Fallback to old method (companies.settings) for backwards compatibility
+      console.log('⚠️ global_config table not found, falling back to companies.settings');
+      const { data: companyData, error: companyError } = await supabase
         .from('companies')
         .select('settings')
         .order('created_at', { ascending: true })
         .limit(1)
         .single();
 
-      if (error) {
-        console.error("Error fetching global config:", error);
+      if (companyError) {
+        console.error("Error fetching global config from companies:", companyError);
         return null;
       }
 
-      // Global config is stored in settings.globalConfig
-      return data?.settings?.globalConfig || null;
+      return companyData?.settings?.globalConfig || null;
     } catch (e) {
       console.error("Error fetching global config:", e);
       return null;
     }
   },
 
-  // Save global config to Supabase (save to all companies or a system company)
+  // Save global config to dedicated global_config table (platform-wide)
   saveGlobalConfig: async (config: GlobalConfig): Promise<boolean> => {
     if (!supabase) return false;
     try {
+      // Try to save to new global_config table
+      const { error } = await supabase
+        .from('global_config')
+        .upsert({
+          id: 'platform',
+          config: config,
+          updated_at: new Date().toISOString()
+        });
+
+      if (!error) {
+        console.log("✅ Global config saved to dedicated table (platform-wide)");
+        return true;
+      }
+
+      // If table doesn't exist yet, fall back to old method
+      console.warn("⚠️ global_config table not found, using fallback method");
+      
       // Get all companies
       const { data: companies, error: fetchError } = await supabase
         .from('companies')
@@ -368,7 +396,7 @@ export const supabaseService = {
         return false;
       }
 
-      // Update all companies with global config
+      // Update all companies with global config (old method)
       if (!supabase) return false;
       const updates = (companies || []).map(company => {
         const currentSettings = company.settings || {};
@@ -385,7 +413,7 @@ export const supabaseService = {
       });
 
       await Promise.all(updates);
-      console.log("✅ Global config saved to Supabase");
+      console.log("✅ Global config saved using fallback method");
       return true;
     } catch (e) {
       console.error("Error saving global config:", e);

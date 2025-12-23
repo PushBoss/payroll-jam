@@ -36,6 +36,22 @@ supabase db push
 **Why this migration?**
 Enables DimePay recurring billing integration. These fields link our subscription records to DimePay's subscription system so webhooks can update the correct subscriptions.
 
+### `create_global_config_table.sql`
+**Status**: 🆕 **NEEDS TO BE RUN** (Critical!)
+- Creates `global_config` table (single row for entire platform)
+- Stores pricing plans, payment gateway credentials, email config
+- Enables RLS (super admin only access)
+- Adds trigger for auto-updating `updated_at` timestamp
+- Inserts default configuration with demo DimePay credentials
+
+**Why this migration?**
+Fixes the issue where global config (pricing plans, DimePay credentials) was stored in each company's settings field. This caused:
+- Feature edits not persisting across super admin accounts
+- Inconsistent payment gateway credentials
+- New companies not getting latest config
+
+Now all super admins see the same configuration platform-wide!
+
 ---
 
 ## Testing Migrations

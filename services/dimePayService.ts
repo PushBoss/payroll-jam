@@ -143,19 +143,17 @@ export const dimePayService = {
             // Tokenize card for future recurring charges
             tokenize: true,
             
-            // Webhook URL for subscription events
-            webhookUrl: `${window.location.origin}/api/dimepay-webhook`,
-            
             // Redirect after payment
             redirectUrl: props.metadata?.redirectUrl || window.location.href,
             checkoutUrl: window.location.href,
             
-            // Metadata to track subscription in webhook
+            // Metadata to track subscription in webhook (includes webhook URL per DimePay agent)
             metadata: {
                 company_id: props.companyId,
                 user_id: props.metadata?.userId,
                 plan_name: props.description,
-                plan_type: props.metadata?.planType
+                plan_type: props.metadata?.planType,
+                webhookUrl: `${window.location.origin}/api/dimepay-webhook` // Webhook URL in metadata per DimePay guidance
             },
             
             // Fee routing
