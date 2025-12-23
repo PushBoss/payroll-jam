@@ -21,6 +21,14 @@ export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onF
   // Filter only active plans
   const displayPlans = plans.filter(p => p.isActive);
   
+  // Debug: Log plans to verify they're coming from backend
+  React.useEffect(() => {
+    console.log('🔍 Pricing page - Plans received:', displayPlans.length);
+    displayPlans.forEach(plan => {
+      console.log(`  - ${plan.name}: ${plan.features.length} features`, plan.features);
+    });
+  }, [displayPlans]);
+  
   // If no plans, show a message (shouldn't happen with INITIAL_PLANS fallback)
   if (displayPlans.length === 0) {
     return (
@@ -57,10 +65,20 @@ export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onF
       );
     }
     if (plan.priceConfig.type === 'base') {
-       return (
+      // Reseller plan: show base fee + per employee fee
+      const baseFee = plan.priceConfig.baseFee || 0;
+      const perEmpFee = plan.priceConfig.perUserFee || 0;
+      return (
         <div>
-          <div className="text-4xl font-bold">${amount.toLocaleString()}</div>
-          <div className={`text-sm mt-1 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>{period} base</div>
+          <div className="text-4xl font-bold">${baseFee.toLocaleString()}</div>
+          <div className={`text-sm mt-1 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>
+            {period} base
+            {perEmpFee > 0 && (
+              <div className="text-xs mt-1 opacity-75">
+                + ${perEmpFee.toLocaleString()} per employee
+              </div>
+            )}
+          </div>
         </div>
       );
     }

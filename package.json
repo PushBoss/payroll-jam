@@ -5,8 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "node scripts/check-node-version.js",
     "build": "tsc && vite build",
+    "build:force": "SKIP_NODE_CHECK=true npm run build",
     "preview": "vite preview"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "dependencies": {
     "@emailjs/browser": "^4.1.0",

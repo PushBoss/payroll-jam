@@ -208,6 +208,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
 
     try {
+      // Server-side guard: prevent Free-plan signups with too many employees
+      if (userData.plan === 'Free') {
+        const empCount = (userData as any).numEmployees || 0;
+        if (empCount > 5) {
+          const err = new Error('Free plan supports up to 5 employees. Please choose a paid plan.');
+          (err as any).code = 'FREE_PLAN_LIMIT';
+          throw err;
+        }
+      }
+
       // 1. Create auth user in Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: userData.email,

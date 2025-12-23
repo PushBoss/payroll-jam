@@ -76,6 +76,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ plans = [], onLogin, o
   // Filter only active plans for display
   const activePlans = plans.filter(p => p.isActive);
   
+  // Debug: Log plans to verify they're coming from backend
+  useEffect(() => {
+    console.log('🔍 Landing page - Plans received:', activePlans.length);
+    activePlans.forEach(plan => {
+      console.log(`  - ${plan.name}: ${plan.features.length} features`, plan.features);
+    });
+  }, [activePlans]);
+  
   // Helper function to render pricing
   const renderPrice = (plan: PricingPlan) => {
     if (plan.priceConfig.type === 'free') {
@@ -107,11 +115,20 @@ export const LandingPage: React.FC<LandingPageProps> = ({ plans = [], onLogin, o
     }
     
     if (plan.priceConfig.type === 'base') {
-      const amount = plan.priceConfig.baseFee || 0;
+      // Reseller plan: show base fee + per employee fee
+      const baseFee = plan.priceConfig.baseFee || 0;
+      const perEmpFee = plan.priceConfig.perUserFee || 0;
       return (
         <div>
-          <div className="text-4xl font-bold">${amount.toLocaleString()}</div>
-          <div className={`text-sm mt-1 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>per month base</div>
+          <div className="text-4xl font-bold">${baseFee.toLocaleString()}</div>
+          <div className={`text-sm mt-1 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>
+            per month base
+            {perEmpFee > 0 && (
+              <div className="text-xs mt-1 opacity-75">
+                + ${perEmpFee.toLocaleString()} per employee
+              </div>
+            )}
+          </div>
         </div>
       );
     }
