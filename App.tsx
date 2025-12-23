@@ -71,16 +71,24 @@ function AppContent() {
   
   // Auto-enable Supabase mode if credentials are available
   const isSupabaseMode = (() => {
-    if (globalConfig?.dataSource === 'SUPABASE') return true;
-    
-    // Auto-detect if Supabase is configured via env vars
+    // PRIORITY 1: Check if Supabase env vars exist (most reliable)
     const hasSupabaseEnv = import.meta.env?.VITE_SUPABASE_URL && import.meta.env?.VITE_SUPABASE_ANON_KEY;
-    if (hasSupabaseEnv && !globalConfig) {
-      // Initialize global config with Supabase enabled
-      storage.saveGlobalConfig({ dataSource: 'SUPABASE' } as any);
+    if (hasSupabaseEnv) {
+      console.log('✅ Supabase mode enabled via environment variables');
+      // Ensure global config is set
+      if (globalConfig?.dataSource !== 'SUPABASE') {
+        storage.saveGlobalConfig({ ...globalConfig, dataSource: 'SUPABASE' } as any);
+      }
       return true;
     }
     
+    // PRIORITY 2: Check localStorage config
+    if (globalConfig?.dataSource === 'SUPABASE') {
+      console.log('✅ Supabase mode enabled via global config');
+      return true;
+    }
+    
+    console.warn('⚠️ Supabase mode DISABLED - no credentials found');
     return false;
   })();
 
