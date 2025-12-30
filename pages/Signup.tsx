@@ -252,70 +252,17 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
       // Reset initialization flag when step changes or payment method changes
       if (step !== 'billing' || paymentMethod !== 'card') {
           widgetInitializedRef.current = false;
-          // Clear the widget container when leaving billing step
-          const widgetElement = document.getElementById('dimepay-widget');
-          if (widgetElement) {
-              // Clear any DimePay content safely
-              try {
-                  widgetElement.innerHTML = '';
-              } catch (e) {
-                  // Ignore errors when clearing - DimePay may have already cleared it
-                  console.debug('Widget container already cleared');
-              }
-          }
           return;
       }
       
       if (step === 'billing' && paymentMethod === 'card' && dimePayEnabled && !widgetInitializedRef.current) {
-          // Small delay to ensure DOM is stable
-          const initTimer = setTimeout(() => {
-              if (isMountedRef.current && !widgetInitializedRef.current) {
-                  initDimePay();
-              }
-          }, 200);
-          
-          return () => {
-              clearTimeout(initTimer);
-          };
+          initDimePay();
       }
       
       return () => {
           if (timerRef.current) clearTimeout(timerRef.current);
       };
   }, [step, paymentMethod, dimePayEnabled]);
-  
-  // Prevent React from reconciling the DimePay widget container after it's initialized
-  useEffect(() => {
-      if (widgetStatus !== 'ready' || !widgetContainerRef.current) return;
-      
-      // Once widget is ready, prevent React from managing this element's children
-      const container = widgetContainerRef.current;
-      
-      // Store original methods to restore if needed
-      const originalRemoveChild = container.removeChild;
-      const originalAppendChild = container.appendChild;
-      
-      // Override removeChild to prevent React from removing DimePay's nodes
-      container.removeChild = function(child: Node) {
-          // Only allow removal if the child is actually a child of this node
-          if (container.contains(child)) {
-              return originalRemoveChild.call(container, child);
-          }
-          // Silently ignore if React tries to remove a node that's not a child
-          // (this happens when DimePay has already moved/removed the node)
-          return child;
-      } as typeof container.removeChild;
-      
-      return () => {
-          // Restore original methods on cleanup
-          if (container.removeChild !== originalRemoveChild) {
-              container.removeChild = originalRemoveChild;
-          }
-          if (container.appendChild !== originalAppendChild) {
-              container.appendChild = originalAppendChild;
-          }
-      };
-  }, [widgetStatus]);
 
   // Default numCompanies to "1" when Reseller is selected (their own company)
   useEffect(() => {
