@@ -251,16 +251,30 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
       // Reset initialization flag when step changes or payment method changes
       if (step !== 'billing' || paymentMethod !== 'card') {
           widgetInitializedRef.current = false;
+          // Clear the widget container when leaving billing step
+          const widgetElement = document.getElementById('dimepay-widget');
+          if (widgetElement) {
+              // Clear any DimePay content
+              widgetElement.innerHTML = '';
+          }
           return;
       }
       
       if (step === 'billing' && paymentMethod === 'card' && dimePayEnabled && !widgetInitializedRef.current) {
-          initDimePay();
+          // Small delay to ensure DOM is stable
+          const initTimer = setTimeout(() => {
+              if (isMountedRef.current && !widgetInitializedRef.current) {
+                  initDimePay();
+              }
+          }, 200);
+          
+          return () => {
+              clearTimeout(initTimer);
+          };
       }
       
       return () => {
           if (timerRef.current) clearTimeout(timerRef.current);
-          // Don't reset widgetInitializedRef here - let it persist during the billing step
       };
   }, [step, paymentMethod, dimePayEnabled]);
 
@@ -631,7 +645,11 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                         
                         {paymentMethod === 'card' && dimePayEnabled && (
                             <div className="mb-6">
-                                <div id="dimepay-widget" className="min-h-[400px] w-full rounded-lg border border-gray-100 shadow-sm bg-white overflow-hidden relative">
+                                <div 
+                                    id="dimepay-widget" 
+                                    key={`dimepay-${step}-${paymentMethod}`}
+                                    className="min-h-[400px] w-full rounded-lg border border-gray-100 shadow-sm bg-white overflow-hidden relative"
+                                >
                                     {widgetStatus === 'loading' && (
                                         <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10">
                                             <Icons.Refresh className="w-6 h-6 animate-spin text-jam-orange mb-2" />
@@ -642,7 +660,16 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                         <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10 p-6 text-center">
                                             <Icons.Alert className="w-8 h-8 text-red-500 mb-2" />
                                             <p className="text-red-600 font-medium mb-4">Failed to load payment widget.</p>
-                                            <button type="button" onClick={initDimePay} className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-sm">Retry Connection</button>
+                                            <button 
+                                                type="button" 
+                                                onClick={() => {
+                                                    widgetInitializedRef.current = false;
+                                                    initDimePay();
+                                                }} 
+                                                className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-sm"
+                                            >
+                                                Retry Connection
+                                            </button>
                                         </div>
                                     )}
                                 </div>
