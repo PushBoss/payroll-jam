@@ -337,9 +337,19 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
           return;
       }
 
+      // Debug logging to understand why payment might be skipped
+      console.log('🔍 Account Submit Check:', {
+          plan: formData.plan,
+          pricingTotal: pricing.total,
+          pricingType: pricing.type,
+          willSkipPayment: formData.plan === 'Free' || pricing.total === 0
+      });
+
       if (formData.plan === 'Free' || pricing.total === 0) {
+          console.log('⏭️ Skipping payment step - proceeding directly to signup');
           handleSubmit();
       } else {
+          console.log('💳 Proceeding to billing step for payment');
           setStep('billing');
       }
   };
@@ -378,11 +388,22 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
         });
       } else if (isPaidPlan) {
         console.log('💳 Paid signup - redirecting to verify email page');
+        console.log('🔍 Paid plan details:', {
+          plan: formData.plan,
+          pricingTotal: pricing.total,
+          paymentMethod: paymentMethod
+        });
         toast.success('🎉 Account created and payment successful!', {
           duration: 5000,
         });
       } else {
         console.log('✅ Free signup - redirecting to verify email page');
+        console.log('🔍 Free plan details:', {
+          plan: formData.plan,
+          pricingTotal: pricing.total,
+          isFreePlan: formData.plan === 'Free',
+          isZeroTotal: pricing.total === 0
+        });
         toast.success('🎉 Account created successfully!', {
           duration: 5000,
         });
