@@ -1056,17 +1056,77 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     </button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    {plans.map(plan => (
+                    {plans.map(plan => {
+                        // Helper function to render price based on pricing type
+                        const renderPlanPrice = () => {
+                            if (plan.priceConfig.type === 'free') {
+                                return (
+                                    <div>
+                                        <div className="text-2xl font-bold text-gray-900">$0</div>
+                                        <div className="text-xs text-gray-500 mt-1">Free forever</div>
+                                    </div>
+                                );
+                            }
+                            
+                            if (plan.priceConfig.type === 'flat') {
+                                const monthly = plan.priceConfig.monthly || 0;
+                                return (
+                                    <div>
+                                        <div className="text-2xl font-bold text-gray-900">
+                                            ${monthly.toLocaleString()}
+                                            <span className="text-sm font-normal text-gray-500">/mo</span>
+                                        </div>
+                                    </div>
+                                );
+                            }
+                            
+                            if (plan.priceConfig.type === 'per_emp') {
+                                const perEmp = plan.priceConfig.monthly || plan.priceConfig.perUserFee || 0;
+                                return (
+                                    <div>
+                                        <div className="text-2xl font-bold text-gray-900">
+                                            ${perEmp.toLocaleString()}
+                                            <span className="text-sm font-normal text-gray-500">/emp/mo</span>
+                                        </div>
+                                    </div>
+                                );
+                            }
+                            
+                            if (plan.priceConfig.type === 'base') {
+                                // Base fee plans (Starter, Pro, Reseller) - show base + per employee
+                                const baseFee = plan.priceConfig.monthly || plan.priceConfig.baseFee || 0;
+                                const perEmpFee = plan.priceConfig.perUserFee || 0;
+                                return (
+                                    <div>
+                                        <div className="text-2xl font-bold text-gray-900">
+                                            ${baseFee.toLocaleString()}
+                                            <span className="text-sm font-normal text-gray-500">/mo base</span>
+                                        </div>
+                                        {perEmpFee > 0 && (
+                                            <div className="text-xs text-gray-500 mt-1">
+                                                + ${perEmpFee.toLocaleString()} per employee
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            }
+                            
+                            // Fallback
+                            return (
+                                <div>
+                                    <div className="text-2xl font-bold text-gray-900">$0</div>
+                                </div>
+                            );
+                        };
+                        
+                        return (
                         <div key={plan.id} className={`p-6 rounded-xl border-2 transition-all ${plan.isActive ? 'bg-white border-gray-200' : 'bg-gray-50 border-gray-100 opacity-75'}`}>
                             <div className="flex justify-between items-start mb-4">
                                 <h3 className="font-bold text-lg text-gray-900">{plan.name}</h3>
                                 <div className={`w-3 h-3 rounded-full ${plan.isActive ? 'bg-green-500' : 'bg-gray-300'}`}></div>
                             </div>
                             <div className="mb-4">
-                                <p className="text-2xl font-bold text-gray-900">
-                                    ${plan.priceConfig.monthly.toLocaleString()}
-                                    <span className="text-sm font-normal text-gray-500">/mo</span>
-                                </p>
+                                {renderPlanPrice()}
                                 <p className="text-xs text-gray-500 mt-1">{plan.description}</p>
                             </div>
                             <div className="space-y-2 mb-6">
@@ -1100,7 +1160,8 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                             </button>
                         </div>
                     </div>
-                ))}
+                        );
+                    })}
             </div>
 
         </div>

@@ -320,7 +320,17 @@ export const supabaseService = {
         .eq('id', companyId)
         .single();
 
-      if (error || !data) return null;
+      if (error) {
+        // 406 errors are often RLS-related - log but don't throw
+        if (error.code === 'PGRST116' || error.message?.includes('406')) {
+          console.debug("⚠️ Could not fetch company payment settings (RLS or permissions) - using global config");
+        } else {
+          console.error("Error fetching payment gateway settings:", error);
+        }
+        return null;
+      }
+      
+      if (!data) return null;
       return data.settings?.paymentGateway || null;
     } catch (e) {
       console.error("Error fetching payment gateway settings:", e);

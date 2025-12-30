@@ -182,10 +182,17 @@ export const dimePayService = {
                 } else {
                     throw new Error('Backend signing failed');
                 }
-            } catch (backendError) {
+            } catch (backendError: any) {
+                // In local development, API endpoints aren't available - this is expected
+                const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                
                 // Fallback to client-side signing for sandbox only
                 if (activeEnv === 'sandbox') {
-                    console.warn("⚠️ Backend unavailable, using client-side signing (sandbox only)");
+                    if (isLocalDev) {
+                        console.log("ℹ️ Local dev mode: Using client-side signing (sandbox)");
+                    } else {
+                        console.warn("⚠️ Backend unavailable, using client-side signing (sandbox only)");
+                    }
                     jwt = await signPayloadWithHMAC(payloadData, activeCredentials.secretKey);
                 } else {
                     console.error("❌ Backend signing required for production");
