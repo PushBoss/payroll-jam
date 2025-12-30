@@ -261,13 +261,33 @@ export const dimePayService = {
                 // Fallback: If onReady isn't called by DimePay, check for widget content after a delay
                 setTimeout(() => {
                     const widgetElement = document.getElementById(props.mountId);
-                    if (widgetElement && widgetElement.children.length > 0) {
-                        console.log("✅ DimePay widget content detected");
-                        if (props.onReady) {
-                            props.onReady();
+                    if (widgetElement) {
+                        const hasContent = widgetElement.children.length > 0 || widgetElement.innerHTML.trim().length > 0;
+                        console.log("🔍 Widget container check:", {
+                            hasChildren: widgetElement.children.length > 0,
+                            hasInnerHTML: widgetElement.innerHTML.trim().length > 0,
+                            innerHTML: widgetElement.innerHTML.substring(0, 100),
+                            computedStyle: window.getComputedStyle(widgetElement).display
+                        });
+                        
+                        if (hasContent) {
+                            console.log("✅ DimePay widget content detected");
+                            if (props.onReady) {
+                                props.onReady();
+                            }
+                        } else {
+                            console.warn("⚠️ DimePay widget container is empty - widget may not have rendered");
+                            // Check again after another delay
+                            setTimeout(() => {
+                                const retryElement = document.getElementById(props.mountId);
+                                if (retryElement && (retryElement.children.length > 0 || retryElement.innerHTML.trim().length > 0)) {
+                                    console.log("✅ DimePay widget content detected on retry");
+                                    if (props.onReady) {
+                                        props.onReady();
+                                    }
+                                }
+                            }, 3000);
                         }
-                    } else {
-                        console.warn("⚠️ DimePay widget may not have rendered yet");
                     }
                 }, 2000);
             } catch (initError: any) {
