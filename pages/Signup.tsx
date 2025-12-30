@@ -175,8 +175,26 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
       
       if (timerRef.current) clearTimeout(timerRef.current);
       
-      timerRef.current = setTimeout(() => {
+      // Wait for mount element to exist and ensure DimePay SDK is loaded
+      const checkAndInit = () => {
+          const mountElement = document.getElementById('dimepay-widget');
+          const dimepaySDK = (window as any).dimepay || (window as any).DimePay;
+          
+          if (!mountElement) {
+              console.warn('⏳ Waiting for mount element...');
+              timerRef.current = setTimeout(checkAndInit, 100);
+              return;
+          }
+          
+          if (!dimepaySDK) {
+              console.warn('⏳ Waiting for DimePay SDK...');
+              timerRef.current = setTimeout(checkAndInit, 100);
+              return;
+          }
+          
           if (!isMountedRef.current) return;
+          
+          console.log('✅ Mount element and SDK ready, initializing widget...');
           dimePayService.renderPaymentWidget({
               mountId: 'dimepay-widget',
               email: formData.email,
@@ -206,7 +224,10 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                   setPaymentError('Payment failed or SDK missing. Check configuration.');
               }
           });
-      }, 800);
+      };
+      
+      // Start checking after a short delay to ensure DOM is ready
+      timerRef.current = setTimeout(checkAndInit, 100);
   };
 
   // Initialize DimePay Widget when on billing step with card payment

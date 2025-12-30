@@ -203,43 +203,59 @@ export const dimePayService = {
                 }
             }
 
+            // Wait for mount element to exist in DOM
+            const mountElement = document.getElementById(props.mountId);
+            if (!mountElement) {
+                console.error(`❌ Mount element #${props.mountId} not found in DOM`);
+                props.onError("Payment form container not found. Please refresh the page.");
+                return;
+            }
+
             // Access the global SDK
             const dimepay = (window as any).dimepay || (window as any).DimePay;
 
             if (!dimepay) {
-                console.error("DimePay SDK Global not found.");
-                props.onError("Payment SDK failed to load.");
+                console.error("❌ DimePay SDK Global not found. Make sure the DimePay script is loaded.");
+                props.onError("Payment SDK failed to load. Please refresh the page.");
                 return;
             }
 
-            dimepay.initPayment({
-                mountId: props.mountId,
-                total: props.amount,
-                currency: props.currency,
-                test: activeEnv === 'sandbox',
-                order_id: orderId,
-                client_id: activeCredentials.apiKey,
-                origin: window.location.origin,
-                data: jwt, 
-                styles: {
-                    primaryColor: '#FFA500', 
-                    buttonColor: '#000000',
-                    buttonTextColor: '#FFFFFF',
-                    backgroundColor: '#FFFFFF'
-                },
-                onSuccess: (data: any) => {
-                    console.log("✅ DimePay Success:", data);
-                    props.onSuccess(data);
-                },
-                onFailed: (err: any) => {
-                    console.error("❌ DimePay Failed:", err);
-                    props.onError(err);
-                },
-                onError: (err: any) => {
-                    console.error("❌ DimePay Error:", err);
-                    props.onError(err);
-                }
-            });
+            console.log("🎯 Initializing DimePay widget in element:", props.mountId);
+
+            try {
+                dimepay.initPayment({
+                    mountId: props.mountId,
+                    total: props.amount,
+                    currency: props.currency,
+                    test: activeEnv === 'sandbox',
+                    order_id: orderId,
+                    client_id: activeCredentials.apiKey,
+                    origin: window.location.origin,
+                    data: jwt, 
+                    styles: {
+                        primaryColor: '#FFA500', 
+                        buttonColor: '#000000',
+                        buttonTextColor: '#FFFFFF',
+                        backgroundColor: '#FFFFFF'
+                    },
+                    onSuccess: (data: any) => {
+                        console.log("✅ DimePay Success:", data);
+                        props.onSuccess(data);
+                    },
+                    onFailed: (err: any) => {
+                        console.error("❌ DimePay Failed:", err);
+                        props.onError(err);
+                    },
+                    onError: (err: any) => {
+                        console.error("❌ DimePay Error:", err);
+                        props.onError(err);
+                    }
+                });
+                console.log("✅ DimePay initPayment called successfully");
+            } catch (initError: any) {
+                console.error("❌ Error calling dimepay.initPayment:", initError);
+                props.onError(initError.message || "Failed to initialize payment form");
+            }
 
         } catch (e) {
             console.error("Error initializing payment:", e);
