@@ -34,6 +34,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
   // Timer Ref for cleanup
   const timerRef = useRef<any>(null);
   const isMountedRef = useRef(true);
+  const widgetInitializedRef = useRef(false); // Track if widget has been initialized
   
   // State to store reseller invite token
   const [resellerInviteToken, setResellerInviteToken] = useState<string | null>(null);
@@ -170,6 +171,13 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
 
   const initDimePay = () => {
       if (!isMountedRef.current) return;
+      
+      // Prevent multiple initializations
+      if (widgetInitializedRef.current) {
+          console.log('⚠️ Widget already initialized, skipping...');
+          return;
+      }
+      
       setWidgetStatus('loading');
       setPaymentError(null);
       
@@ -192,7 +200,10 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
               return;
           }
           
-          if (!isMountedRef.current) return;
+          if (!isMountedRef.current || widgetInitializedRef.current) return;
+          
+          // Mark as initialized to prevent duplicate calls
+          widgetInitializedRef.current = true;
           
           console.log('✅ Mount element and SDK ready, initializing widget...');
           dimePayService.renderPaymentWidget({
@@ -237,13 +248,21 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
 
   // Initialize DimePay Widget when on billing step with card payment
   useEffect(() => {
-      if (step === 'billing' && paymentMethod === 'card' && dimePayEnabled) {
+      // Reset initialization flag when step changes or payment method changes
+      if (step !== 'billing' || paymentMethod !== 'card') {
+          widgetInitializedRef.current = false;
+          return;
+      }
+      
+      if (step === 'billing' && paymentMethod === 'card' && dimePayEnabled && !widgetInitializedRef.current) {
           initDimePay();
       }
+      
       return () => {
           if (timerRef.current) clearTimeout(timerRef.current);
+          // Don't reset widgetInitializedRef here - let it persist during the billing step
       };
-  }, [step, paymentMethod, dimePayEnabled, formData.email, pricing.total]);
+  }, [step, paymentMethod, dimePayEnabled]);
 
   // Default numCompanies to "1" when Reseller is selected (their own company)
   useEffect(() => {
