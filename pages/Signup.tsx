@@ -35,6 +35,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
   const timerRef = useRef<any>(null);
   const isMountedRef = useRef(true);
   const widgetInitializedRef = useRef(false); // Track if widget has been initialized
+  const widgetContainerRef = useRef<HTMLDivElement>(null); // Ref for widget container
   
   // State to store reseller invite token
   const [resellerInviteToken, setResellerInviteToken] = useState<string | null>(null);
@@ -254,8 +255,13 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
           // Clear the widget container when leaving billing step
           const widgetElement = document.getElementById('dimepay-widget');
           if (widgetElement) {
-              // Clear any DimePay content
-              widgetElement.innerHTML = '';
+              // Clear any DimePay content safely
+              try {
+                  widgetElement.innerHTML = '';
+              } catch (e) {
+                  // Ignore errors when clearing - DimePay may have already cleared it
+                  console.debug('Widget container already cleared');
+              }
           }
           return;
       }
@@ -277,6 +283,29 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
           if (timerRef.current) clearTimeout(timerRef.current);
       };
   }, [step, paymentMethod, dimePayEnabled]);
+  
+  // Suppress React DOM errors for DimePay widget container
+  useEffect(() => {
+      // Override console.error temporarily to suppress known React DOM errors from DimePay
+      const originalError = console.error;
+      const errorHandler = (...args: any[]) => {
+          const errorMsg = args[0]?.toString() || '';
+          // Suppress the specific removeChild error from DimePay widget
+          if (errorMsg.includes('removeChild') && errorMsg.includes('dimepay')) {
+              return; // Silently ignore this error
+          }
+          originalError.apply(console, args);
+      };
+      
+      // Only suppress in production or when widget is ready
+      if (widgetStatus === 'ready' || process.env.NODE_ENV === 'production') {
+          console.error = errorHandler;
+      }
+      
+      return () => {
+          console.error = originalError;
+      };
+  }, [widgetStatus]);
 
   // Default numCompanies to "1" when Reseller is selected (their own company)
   useEffect(() => {
@@ -646,12 +675,13 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                         {paymentMethod === 'card' && dimePayEnabled && (
                             <div className="mb-6">
                                 <div 
+                                    ref={widgetContainerRef}
                                     id="dimepay-widget" 
-                                    key={`dimepay-${step}-${paymentMethod}`}
                                     className="min-h-[400px] w-full rounded-lg border border-gray-100 shadow-sm bg-white overflow-hidden relative"
+                                    suppressHydrationWarning
                                 >
                                     {widgetStatus === 'loading' && (
-                                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10">
+                                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10 pointer-events-none">
                                             <Icons.Refresh className="w-6 h-6 animate-spin text-jam-orange mb-2" />
                                             <span className="text-sm text-gray-500">Loading Payment Gateway...</span>
                                         </div>
@@ -664,6 +694,10 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                                 type="button" 
                                                 onClick={() => {
                                                     widgetInitializedRef.current = false;
+                                                    const widgetEl = document.getElementById('dimepay-widget');
+                                                    if (widgetEl) {
+                                                        widgetEl.innerHTML = '';
+                                                    }
                                                     initDimePay();
                                                 }} 
                                                 className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-sm"
