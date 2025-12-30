@@ -312,28 +312,24 @@ export const supabaseService = {
 
   // Get payment gateway settings from company settings
   getPaymentGatewaySettings: async (companyId: string) => {
-    if (!supabase) return null;
+    if (!supabase || !companyId) return null;
     try {
       const { data, error } = await supabase
         .from('companies')
         .select('settings')
         .eq('id', companyId)
-        .single();
+        .maybeSingle(); // Use maybeSingle to avoid errors if company doesn't exist yet (e.g., during signup)
 
       if (error) {
-        // 406 errors are often RLS-related - log but don't throw
-        if (error.code === 'PGRST116' || error.message?.includes('406')) {
-          console.debug("⚠️ Could not fetch company payment settings (RLS or permissions) - using global config");
-        } else {
-          console.error("Error fetching payment gateway settings:", error);
-        }
+        // 406 errors are often RLS-related or company doesn't exist yet (during signup) - this is expected
+        // Silently fall back to global config - no need to log as error
         return null;
       }
       
       if (!data) return null;
       return data.settings?.paymentGateway || null;
     } catch (e) {
-      console.error("Error fetching payment gateway settings:", e);
+      // Silently fail - will fall back to global config
       return null;
     }
   },
