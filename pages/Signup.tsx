@@ -613,10 +613,12 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                         {paymentMethod === 'card' && dimePayEnabled && (
                             <div className="mb-6">
                                 <div id="dimepay-widget" className="min-h-[400px] w-full rounded-lg border border-gray-100 shadow-sm bg-white overflow-hidden relative">
-                                    <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400 z-0">
-                                        <Icons.Refresh className="w-6 h-6 animate-spin mr-2 mb-2" />
-                                        <span className="text-sm">Loading Payment Gateway...</span>
-                                    </div>
+                                    {widgetStatus === 'loading' && (
+                                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10">
+                                            <Icons.Refresh className="w-6 h-6 animate-spin text-jam-orange mb-2" />
+                                            <span className="text-sm text-gray-500">Loading Payment Gateway...</span>
+                                        </div>
+                                    )}
                                     {widgetStatus === 'error' && (
                                         <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10 p-6 text-center">
                                             <Icons.Alert className="w-8 h-8 text-red-500 mb-2" />

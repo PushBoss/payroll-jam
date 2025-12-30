@@ -12,6 +12,7 @@ interface PaymentWidgetProps {
     billingCycles?: number; // Number of recurring billing cycles (default: 9999 for unlimited)
     onSuccess: (data: any) => void;
     onError: (err: any) => void;
+    onReady?: () => void; // Optional callback when widget is ready and rendered
 }
 
 
