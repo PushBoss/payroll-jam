@@ -284,9 +284,38 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
       };
   }, [step, paymentMethod, dimePayEnabled]);
   
-  // Note: The React removeChild error is a known issue when third-party SDKs (like DimePay)
-  // manipulate the DOM directly. The widget still functions correctly despite this warning.
-  // This is a React reconciliation warning, not a functional error.
+  // Prevent React from reconciling the DimePay widget container after it's initialized
+  useEffect(() => {
+      if (widgetStatus !== 'ready' || !widgetContainerRef.current) return;
+      
+      // Once widget is ready, prevent React from managing this element's children
+      const container = widgetContainerRef.current;
+      
+      // Store original methods to restore if needed
+      const originalRemoveChild = container.removeChild;
+      const originalAppendChild = container.appendChild;
+      
+      // Override removeChild to prevent React from removing DimePay's nodes
+      container.removeChild = function(child: Node) {
+          // Only allow removal if the child is actually a child of this node
+          if (container.contains(child)) {
+              return originalRemoveChild.call(container, child);
+          }
+          // Silently ignore if React tries to remove a node that's not a child
+          // (this happens when DimePay has already moved/removed the node)
+          return child;
+      } as typeof container.removeChild;
+      
+      return () => {
+          // Restore original methods on cleanup
+          if (container.removeChild !== originalRemoveChild) {
+              container.removeChild = originalRemoveChild;
+          }
+          if (container.appendChild !== originalAppendChild) {
+              container.appendChild = originalAppendChild;
+          }
+      };
+  }, [widgetStatus]);
 
   // Default numCompanies to "1" when Reseller is selected (their own company)
   useEffect(() => {
@@ -660,6 +689,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                     id="dimepay-widget" 
                                     className="min-h-[400px] w-full rounded-lg border border-gray-100 shadow-sm bg-white overflow-hidden relative"
                                     suppressHydrationWarning
+                                    suppressContentEditableWarning
                                 >
                                     {widgetStatus === 'loading' && (
                                         <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10 pointer-events-none">
