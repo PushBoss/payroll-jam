@@ -209,6 +209,11 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                   plan: formData.plan,
                   planType: formData.plan.toLowerCase()
               },
+              onReady: () => {
+                  if (!isMountedRef.current) return;
+                  console.log('✅ DimePay widget is ready and rendered');
+                  setWidgetStatus('ready');
+              },
               onSuccess: (data) => {
                   if (!isMountedRef.current) return;
                   console.log('DimePay Success:', data);

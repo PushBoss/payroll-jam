@@ -249,9 +249,26 @@ export const dimePayService = {
                     onError: (err: any) => {
                         console.error("❌ DimePay Error:", err);
                         props.onError(err);
-                    }
+                    },
+                    // Add onReady callback if DimePay supports it
+                    onReady: props.onReady || (() => {
+                        console.log("✅ DimePay widget ready");
+                    })
                 });
                 console.log("✅ DimePay initPayment called successfully");
+                
+                // Fallback: If onReady isn't called by DimePay, check for widget content after a delay
+                setTimeout(() => {
+                    const widgetElement = document.getElementById(props.mountId);
+                    if (widgetElement && widgetElement.children.length > 0) {
+                        console.log("✅ DimePay widget content detected");
+                        if (props.onReady) {
+                            props.onReady();
+                        }
+                    } else {
+                        console.warn("⚠️ DimePay widget may not have rendered yet");
+                    }
+                }, 2000);
             } catch (initError: any) {
                 console.error("❌ Error calling dimepay.initPayment:", initError);
                 props.onError(initError.message || "Failed to initialize payment form");
