@@ -50,9 +50,12 @@ export const dimePayService = {
             const { supabaseService } = await import('./supabaseService');
             globalConfig = await supabaseService.getGlobalConfig();
             
-            // Also try to get company-specific payment gateway settings if companyId is available
-            // This allows per-company gateway configuration
-            if (props.companyId) {
+            // Only try to get company-specific settings if companyId is provided AND we're not in signup mode
+            // During signup, the company doesn't exist yet, so skip this to avoid errors
+            // We can detect signup mode by checking if metadata has signup indicators
+            const isSignupFlow = props.metadata?.plan || props.metadata?.company;
+            if (props.companyId && !isSignupFlow) {
+                // Only fetch company settings for existing companies (e.g., upgrade flow)
                 companyConfig = await supabaseService.getPaymentGatewaySettings(props.companyId);
             }
         } catch (e) {
