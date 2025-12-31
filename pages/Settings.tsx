@@ -97,7 +97,19 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ plan, currentUser, onClos
 
         }, 500);
         
-        return () => { isMountedRef.current = false; clearTimeout(timer); };
+        return () => { 
+            isMountedRef.current = false; 
+            clearTimeout(timer);
+            // Clean up widget container to prevent React DOM errors
+            const widgetEl = document.getElementById('dimepay-upgrade-widget');
+            if (widgetEl) {
+                try {
+                    widgetEl.innerHTML = '';
+                } catch (e) {
+                    console.warn('Widget cleanup warning:', e);
+                }
+            }
+        };
     }, [plan, isPaid, currentUser, price, onSuccess, error]);
 
     const handleFreeDowngrade = () => { setPaymentSuccess(true); setTimeout(onSuccess, 1500); };

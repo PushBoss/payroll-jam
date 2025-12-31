@@ -60,6 +60,21 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
     parish: 'Kingston',
   });
 
+  // Cleanup function to safely remove widget
+  const cleanupWidget = () => {
+      const widgetEl = document.getElementById('dimepay-widget');
+      if (widgetEl) {
+          // Clear the innerHTML before React tries to clean it up
+          // This prevents the "removeChild" error when DimePay iframe is removed
+          try {
+              widgetEl.innerHTML = '';
+          } catch (e) {
+              console.warn('Widget cleanup warning:', e);
+          }
+      }
+      widgetInitializedRef.current = false;
+  };
+
   useEffect(() => {
       isMountedRef.current = true;
       
@@ -81,7 +96,12 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
           toast.info('You\'re signing up through a reseller invitation!', { duration: 5000 });
       }
       
-      return () => { isMountedRef.current = false; };
+      return () => { 
+          isMountedRef.current = false;
+          // Clean up widget on component unmount
+          cleanupWidget();
+          if (timerRef.current) clearTimeout(timerRef.current);
+      };
   }, []);
 
   // Get selected plan and its employee limit
@@ -251,7 +271,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
   useEffect(() => {
       // Reset initialization flag when step changes or payment method changes
       if (step !== 'billing' || paymentMethod !== 'card') {
-          widgetInitializedRef.current = false;
+          cleanupWidget();
           return;
       }
       
@@ -261,6 +281,8 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
       
       return () => {
           if (timerRef.current) clearTimeout(timerRef.current);
+          // Clean up widget when effect is cleaned up (unmount or dependencies change)
+          cleanupWidget();
       };
   }, [step, paymentMethod, dimePayEnabled]);
 
@@ -651,41 +673,41 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                         </div>
                         
                         {paymentMethod === 'card' && dimePayEnabled && (
-                            <div className="mb-6">
+                            <div className="mb-6 relative">
+                                {/* Widget container - React should NOT manage children here */}
                                 <div 
                                     ref={widgetContainerRef}
-                                    id="dimepay-widget" 
-                                    className="min-h-[400px] w-full rounded-lg border border-gray-100 shadow-sm bg-white overflow-hidden relative"
+                                    id="dimepay-widget"
+                                    className="min-h-[400px] w-full rounded-lg border border-gray-100 shadow-sm bg-white overflow-hidden"
                                     suppressHydrationWarning
                                     suppressContentEditableWarning
-                                >
-                                    {widgetStatus === 'loading' && (
-                                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10 pointer-events-none">
-                                            <Icons.Refresh className="w-6 h-6 animate-spin text-jam-orange mb-2" />
-                                            <span className="text-sm text-gray-500">Loading Payment Gateway...</span>
-                                        </div>
-                                    )}
-                                    {widgetStatus === 'error' && (
-                                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10 p-6 text-center">
-                                            <Icons.Alert className="w-8 h-8 text-red-500 mb-2" />
-                                            <p className="text-red-600 font-medium mb-4">Failed to load payment widget.</p>
-                                            <button 
-                                                type="button" 
-                                                onClick={() => {
-                                                    widgetInitializedRef.current = false;
-                                                    const widgetEl = document.getElementById('dimepay-widget');
-                                                    if (widgetEl) {
-                                                        widgetEl.innerHTML = '';
-                                                    }
-                                                    initDimePay();
-                                                }} 
-                                                className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-sm"
-                                            >
-                                                Retry Connection
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
+                                />
+                                {/* Loading overlay - rendered outside widget container to avoid DOM conflicts */}
+                                {widgetStatus === 'loading' && (
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10 pointer-events-none rounded-lg">
+                                        <Icons.Refresh className="w-6 h-6 animate-spin text-jam-orange mb-2" />
+                                        <span className="text-sm text-gray-500">Loading Payment Gateway...</span>
+                                    </div>
+                                )}
+                                {/* Error overlay - rendered outside widget container to avoid DOM conflicts */}
+                                {widgetStatus === 'error' && (
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10 p-6 text-center rounded-lg">
+                                        <Icons.Alert className="w-8 h-8 text-red-500 mb-2" />
+                                        <p className="text-red-600 font-medium mb-4">Failed to load payment widget.</p>
+                                        <button 
+                                            type="button" 
+                                            onClick={() => {
+                                                cleanupWidget();
+                                                setWidgetStatus('loading');
+                                                setPaymentError(null);
+                                                initDimePay();
+                                            }} 
+                                            className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-sm"
+                                        >
+                                            Retry Connection
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         )}
 
