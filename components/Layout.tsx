@@ -33,11 +33,6 @@ export const Layout: React.FC<LayoutProps> = ({
 }) => {
   const { user, logout, stopImpersonation } = useAuth();
 
-  // Debug log
-  React.useEffect(() => {
-    console.log("🔍 Layout: companyData prop:", companyData);
-  }, [companyData]);
-
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Filter admin nav items based on feature access
@@ -148,8 +143,8 @@ export const Layout: React.FC<LayoutProps> = ({
       {/* 4. Impersonation Banner */}
       {isImpersonating && (
         <div className={`px-4 py-2 text-sm font-bold flex justify-between items-center shadow-md z-50 ${isSuperAdminImpersonating
-            ? 'bg-red-900 text-white'
-            : 'bg-jam-black text-jam-yellow'
+          ? 'bg-red-900 text-white'
+          : 'bg-jam-black text-jam-yellow'
           }`}>
           <div className="flex items-center">
             <Icons.Shield className="w-4 h-4 mr-2" />
@@ -160,8 +155,8 @@ export const Layout: React.FC<LayoutProps> = ({
           <button
             onClick={stopImpersonation}
             className={`px-3 py-1 rounded text-xs transition-colors flex items-center ${isSuperAdminImpersonating
-                ? 'bg-white text-red-900 hover:bg-gray-200'
-                : 'bg-jam-yellow text-jam-black hover:bg-white'
+              ? 'bg-white text-red-900 hover:bg-gray-200'
+              : 'bg-jam-yellow text-jam-black hover:bg-white'
               }`}
           >
             <Icons.Back className="w-3 h-3 mr-1" /> Return to Console
@@ -188,8 +183,8 @@ export const Layout: React.FC<LayoutProps> = ({
                 key={item.id}
                 onClick={() => onNavigate(item.id)}
                 className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${currentPath === item.id
-                    ? 'bg-jam-orange text-jam-black font-semibold'
-                    : 'text-gray-400 hover:bg-gray-900 hover:text-white'
+                  ? 'bg-jam-orange text-jam-black font-semibold'
+                  : 'text-gray-400 hover:bg-gray-900 hover:text-white'
                   }`}
               >
                 <item.icon className="w-5 h-5 mr-3 flex-shrink-0" />
@@ -248,8 +243,8 @@ export const Layout: React.FC<LayoutProps> = ({
                       setIsMobileMenuOpen(false);
                     }}
                     className={`w-full flex items-center px-4 py-3 rounded-lg ${currentPath === item.id
-                        ? 'bg-jam-orange text-jam-black'
-                        : 'text-gray-400'
+                      ? 'bg-jam-orange text-jam-black'
+                      : 'text-gray-400'
                       }`}
                   >
                     <item.icon className="w-5 h-5 mr-3" />

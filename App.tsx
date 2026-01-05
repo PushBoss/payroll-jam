@@ -343,8 +343,6 @@ function AppContent() {
           ]);
 
           if (dbCompany) {
-            console.log("🔍 App: Loaded company settings:", dbCompany);
-            console.log("🔍 App: Plan from DB:", dbCompany.plan);
             setCompanyData(dbCompany);
             // Sync to local storage for offline support
             storage.saveCompanyData(dbCompany);
