@@ -30,7 +30,7 @@ export interface User {
   phone?: string;
   onboardingToken?: string; // For invite links
   // Used for Reseller Impersonation
-  originalRole?: Role; 
+  originalRole?: Role;
   isResellerView?: boolean;
 }
 
@@ -214,17 +214,17 @@ export interface PayRunLineItem extends StatutoryDeductions {
   grossPay: number;
   additions: number; // Total Bonuses
   deductions: number; // Total Other deductions
-  
+
   // Detailed Breakdowns
   additionsBreakdown?: PayrollItemDetail[];
   deductionsBreakdown?: PayrollItemDetail[];
-  
+
   // Proration Info
   prorationDetails?: {
-      isProrated: boolean;
-      daysWorked: number;
-      totalWorkDays: number;
-      originalGross: number;
+    isProrated: boolean;
+    daysWorked: number;
+    totalWorkDays: number;
+    originalGross: number;
   };
 
   // Tax Override Flags (for editable calculations)
@@ -232,10 +232,10 @@ export interface PayRunLineItem extends StatutoryDeductions {
   isGrossOverridden?: boolean;
   originalCalculatedGross?: number;
   taxOverrideReason?: string;
-  
+
   // Employer contributions (for S01/S02 reporting)
   employerContributions?: EmployerContributions;
-  
+
   // Bank details for payment file generation
   bankName?: string;
   accountNumber?: string;
@@ -301,13 +301,13 @@ export interface PricingPlan {
 }
 
 export interface PaymentRecord {
-    id: string;
-    amount: number;
-    date: string;
-    plan: string;
-    method: 'Card' | 'PayPal' | 'Bank Transfer';
-    status: 'COMPLETED' | 'FAILED' | 'REFUNDED';
-    referenceId: string;
+  id: string;
+  amount: number;
+  date: string;
+  plan: string;
+  method: 'Card' | 'PayPal' | 'Bank Transfer';
+  status: 'COMPLETED' | 'FAILED' | 'REFUNDED';
+  referenceId: string;
 }
 
 // Time & Attendance Types
@@ -360,6 +360,8 @@ export interface CompanySettings {
   defaultPayDate?: string;
   subscriptionStatus?: 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'PENDING_PAYMENT';
   plan?: string;
+  billingCycle?: 'MONTHLY' | 'ANNUAL';
+  employeeLimit?: string;
   paymentMethod?: 'card' | 'direct-deposit';
 }
 
@@ -498,7 +500,7 @@ export interface AuditLogEntry {
 export const DOCUMENT_PLACEHOLDERS = [
   { key: '{{firstName}}', label: 'First Name' },
   { key: '{{lastName}}', label: 'Last Name' },
-  { key: '{{address}}', label: 'Employee Address' }, 
+  { key: '{{address}}', label: 'Employee Address' },
   { key: '{{trn}}', label: 'TRN' },
   { key: '{{grossSalary}}', label: 'Salary Amount' },
   { key: '{{role}}', label: 'Job Title' },

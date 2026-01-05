@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User, Role, ResellerClient } from '../types';
+import { User, Role, ResellerClient, CompanySettings } from '../types';
 import { storage } from '../services/storage';
 import { supabaseService } from '../services/supabaseService';
 import { supabase } from '../services/supabaseClient';
@@ -255,13 +255,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         const dbPlan = mapPlanToDbFormat(userData.plan);
 
+        // Map billing cycle to database format (MONTHLY/ANNUAL uppercase)
+        const billingCycle: 'MONTHLY' | 'ANNUAL' = (userData as any).billingCycle === 'annual' ? 'ANNUAL' : 'MONTHLY';
+        const employeeLimit = (userData as any).employeeLimit || 'Unlimited';
+
         console.log('🔍 SIGNUP DEBUG:', {
           'userData.plan (from form)': userData.plan,
           'dbPlan (mapped for DB)': dbPlan,
-          'isPaidPlan': isPaidPlan
+          'isPaidPlan': isPaidPlan,
+          'billingCycle': billingCycle,
+          'employeeLimit': employeeLimit
         });
 
-        const companyData = {
+        const companyData: CompanySettings = {
           name: userData.companyName,
           trn: '',
           address: '',
@@ -272,6 +278,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           payFrequency: 'Monthly',
           subscriptionStatus: (isPaidPlan && (userData as any).paymentMethod === 'direct-deposit' ? 'PENDING_PAYMENT' : 'ACTIVE') as 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'PENDING_PAYMENT',
           plan: dbPlan as any,
+          billingCycle: billingCycle, // Save billing cycle
+          employeeLimit: employeeLimit, // Save employee limit
           paymentMethod: (userData as any).paymentMethod || 'card'
         };
 

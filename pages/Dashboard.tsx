@@ -143,16 +143,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ employees, leaveRequests, 
 
   return (
     <div className="space-y-6">
-      {/* TEMPORARY DEBUG BANNER */}
-      {companyData && (
-        <div className="bg-blue-50 border-2 border-blue-500 rounded-lg p-4">
-          <p className="text-sm font-mono">
-            <strong>🔍 DEBUG:</strong> Current Plan = "<span className="text-blue-700 font-bold">{companyData.plan || 'undefined'}</span>"
-            {!companyData.plan && <span className="text-red-600 ml-2">(⚠️ Plan is missing!)</span>}
-          </p>
-        </div>
-      )}
-
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
         <div>
           <h2 className="text-3xl font-bold text-gray-900">Dashboard</h2>

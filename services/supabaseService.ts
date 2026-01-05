@@ -1,12 +1,12 @@
 import { supabase } from './supabaseClient';
 import { generateUUID } from '../utils/uuid';
-import { 
-  Employee, 
-  PayRun, 
-  CompanySettings, 
-  LeaveRequest, 
-  AuditLogEntry, 
-  ResellerClient, 
+import {
+  Employee,
+  PayRun,
+  CompanySettings,
+  LeaveRequest,
+  AuditLogEntry,
+  ResellerClient,
   WeeklyTimesheet,
   User,
   DocumentRequest,
@@ -16,7 +16,7 @@ import {
 } from '../types';
 
 export const supabaseService = {
-  
+
   // --- Users (Auth) ---
 
   getUserByEmail: async (email: string): Promise<User | null> => {
@@ -29,8 +29,8 @@ export const supabaseService = {
         .maybeSingle();
 
       if (error) {
-          console.error("Error fetching user:", error);
-          return null;
+        console.error("Error fetching user:", error);
+        return null;
       }
       if (!data) return null;
 
@@ -100,27 +100,27 @@ export const supabaseService = {
       console.error("❌ Supabase client not available");
       throw new Error("Supabase client not initialized");
     }
-    
+
     console.log("💾 Saving user to Supabase:", { id: user.id, email: user.email, companyId: user.companyId });
-    
+
     // Prepare preferences JSONB with onboardingToken if present
     const preferences: any = {};
     if (user.onboardingToken) {
       preferences.onboardingToken = user.onboardingToken;
     }
-    
+
     // Check if user exists by ID or email
     const { data: existing } = await supabase
       .from('app_users')
       .select('id, preferences')
       .or(`id.eq.${user.id},email.eq.${user.email}`)
       .maybeSingle();
-    
+
     if (existing) {
       // Merge existing preferences with new ones
       const existingPrefs = existing.preferences || {};
       const mergedPrefs = { ...existingPrefs, ...preferences };
-      
+
       // Update existing user (use the existing ID if different from the provided one)
       const updateId = existing.id;
       const { data, error } = await supabase
@@ -137,7 +137,7 @@ export const supabaseService = {
         })
         .eq('id', updateId)
         .select();
-      
+
       if (error) {
         console.error("❌ Error updating user:", error);
         throw error;
@@ -163,7 +163,7 @@ export const supabaseService = {
           ignoreDuplicates: false
         })
         .select();
-      
+
       if (error) {
         console.error("❌ Error inserting user into app_users:", error);
         console.error("Error details:", {
@@ -179,7 +179,7 @@ export const supabaseService = {
   },
 
   // --- Companies (Tenants) ---
-  
+
   getCompany: async (companyId: string): Promise<CompanySettings | null> => {
     if (!supabase) return null;
     const { data, error } = await supabase
@@ -187,12 +187,12 @@ export const supabaseService = {
       .select('*')
       .eq('id', companyId)
       .single();
-    
+
     if (error || !data) return null;
 
     // Map database fields + JSON settings to App types
     const settings = data.settings || {};
-    
+
     // Map database plan format back to app format
     const mapPlanFromDbFormat = (dbPlan: string | undefined): string => {
       if (!dbPlan) return 'Free';
@@ -216,13 +216,15 @@ export const supabaseService = {
       payFrequency: settings.payFrequency || 'Monthly',
       defaultPayDate: settings.defaultPayDate || '',
       subscriptionStatus: data.status || 'ACTIVE',
-      plan: mapPlanFromDbFormat(data.plan) as any
+      plan: mapPlanFromDbFormat(data.plan) as any,
+      billingCycle: data.billing_cycle === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY',
+      employeeLimit: data.employee_limit
     };
   },
 
   saveCompany: async (companyId: string, settings: CompanySettings) => {
     if (!supabase) return null;
-    
+
     // Map plan names to match database constraint: ('Free', 'Starter', 'Professional', 'Enterprise')
     const mapPlanToDbFormat = (plan: string | undefined): string => {
       if (!plan) return 'Free';
@@ -236,7 +238,7 @@ export const supabaseService = {
       };
       return planMap[plan] || 'Free';
     };
-    
+
     // Pack extra fields into settings JSONB
     const settingsJson = {
       phone: settings.phone,
@@ -248,7 +250,7 @@ export const supabaseService = {
     };
 
     const dbPlan = mapPlanToDbFormat(settings.plan);
-    
+
     const { data, error } = await supabase
       .from('companies')
       .upsert({
@@ -258,7 +260,9 @@ export const supabaseService = {
         address: settings.address,
         settings: settingsJson,
         status: settings.subscriptionStatus,
-        plan: dbPlan // Map to database format
+        plan: dbPlan, // Map to database format
+        billing_cycle: settings.billingCycle || 'MONTHLY', // Save billing cycle
+        employee_limit: settings.employeeLimit || 'Unlimited' // Save employee limit
       }, {
         onConflict: 'id'
       })
@@ -269,7 +273,7 @@ export const supabaseService = {
       console.error("Error saving company:", error);
       return null;
     }
-    
+
     return data;
   },
 
@@ -325,7 +329,7 @@ export const supabaseService = {
         // Silently fall back to global config - no need to log as error
         return null;
       }
-      
+
       if (!data) return null;
       return data.settings?.paymentGateway || null;
     } catch (e) {
@@ -404,7 +408,7 @@ export const supabaseService = {
 
       // If table doesn't exist yet, fall back to old method
       console.warn("⚠️ global_config table not found, using fallback method");
-      
+
       // Get all companies
       const { data: companies, error: fetchError } = await supabase
         .from('companies')
@@ -476,8 +480,8 @@ export const supabaseService = {
     const { data, error } = await supabase.from('companies').select('*');
 
     if (error || !data) {
-        console.error("Error fetching companies:", error);
-        return [];
+      console.error("Error fetching companies:", error);
+      return [];
     }
 
     // Map database plan format back to app format
@@ -493,14 +497,14 @@ export const supabaseService = {
     };
 
     return data.map(c => ({
-        id: c.id,
-        companyName: c.name,
-        contactName: c.settings?.contactName || 'Admin',
-        email: c.settings?.email || '',
-        employeeCount: c.settings?.employeeCount || 0,
-        plan: (mapPlanFromDbFormat(c.plan) || 'Free') as 'Free' | 'Starter' | 'Pro' | 'Enterprise' | 'Reseller',
-        status: c.status || 'ACTIVE',
-        mrr: c.settings?.mrr || 0
+      id: c.id,
+      companyName: c.name,
+      contactName: c.settings?.contactName || 'Admin',
+      email: c.settings?.email || '',
+      employeeCount: c.settings?.employeeCount || 0,
+      plan: (mapPlanFromDbFormat(c.plan) || 'Free') as 'Free' | 'Starter' | 'Pro' | 'Enterprise' | 'Reseller',
+      status: c.status || 'ACTIVE',
+      mrr: c.settings?.mrr || 0
     }));
   },
 
@@ -513,8 +517,8 @@ export const supabaseService = {
       .single();
 
     if (error || !data) {
-        console.error("Error fetching company:", error);
-        return null;
+      console.error("Error fetching company:", error);
+      return null;
     }
 
     // Map database plan format back to app format
@@ -547,7 +551,7 @@ export const supabaseService = {
 
   updateCompanyStatus: async (companyId: string, status: 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'PENDING_PAYMENT'): Promise<void> => {
     if (!supabase) return;
-    
+
     const { error } = await supabase
       .from('companies')
       .update({ status: status })
@@ -637,7 +641,7 @@ export const supabaseService = {
           companies!employees_company_id_fkey(name)
         `)
         .eq('onboarding_token', token);
-      
+
       if (email) {
         query = query.eq('email', email);
       }
@@ -732,7 +736,7 @@ export const supabaseService = {
 
   deleteEmployee: async (employeeId: string, companyId: string) => {
     if (!supabase) return;
-    
+
     const { error } = await supabase
       .from('employees')
       .delete()
@@ -849,7 +853,7 @@ export const supabaseService = {
       .select('id, notes')
       .eq('id', run.id)
       .maybeSingle();
-    
+
     // Also check if a pay run exists for this period/frequency combination (for logging)
     const { data: existingByPeriod } = await supabase
       .from('pay_runs')
@@ -946,7 +950,7 @@ export const supabaseService = {
               period: `${periodStart} to ${periodEnd}`,
               frequency: payFrequency
             });
-            
+
             try {
               const { data: existingForPeriod } = await supabase
                 .from('pay_runs')
@@ -964,7 +968,7 @@ export const supabaseService = {
                 const statusPriority: any = { 'DRAFT': 1, 'APPROVED': 2, 'FINALIZED': 3 };
                 const existingPriority = statusPriority[existingForPeriod?.status] || 1;
                 const newPriority = statusPriority[run.status] || 1;
-                
+
                 if (newPriority >= existingPriority) {
                   console.log('🔁 Updating existing pay run for period as fallback:', targetId, `(${existingForPeriod?.status} → ${run.status})`);
                   const updateResult = await supabase
@@ -972,7 +976,7 @@ export const supabaseService = {
                     .update(payRunData)
                     .eq('id', targetId)
                     .select();
-                  
+
                   if (!updateResult.error) {
                     // Fallback succeeded - clear the original error and use the update result
                     error = null;
@@ -1028,7 +1032,7 @@ export const supabaseService = {
         resultData: result?.data,
         resultCount: result?.count
       });
-      
+
       // Verify the save by querying it back (this will fail if RLS blocks read)
       console.log('🔍 Verifying pay run exists in database...');
       const { data: verifyData, error: verifyError } = await supabase
@@ -1037,7 +1041,7 @@ export const supabaseService = {
         .eq('id', run.id)
         .eq('company_id', companyId) // Add company_id filter to help RLS
         .maybeSingle(); // Use maybeSingle instead of single to avoid error on 0 rows
-      
+
       if (verifyError) {
         console.error("⚠️ WARNING: Pay run save reported success but verification query failed:", {
           verifyError: JSON.stringify(verifyError),
@@ -1176,7 +1180,7 @@ export const supabaseService = {
   },
 
   // --- Timesheets ---
-  
+
   getTimesheets: async (companyId: string): Promise<WeeklyTimesheet[]> => {
     if (!supabase) return [];
     try {
@@ -1263,7 +1267,7 @@ export const supabaseService = {
   },
 
   // --- Document Requests ---
-  
+
   getDocumentRequests: async (companyId: string): Promise<DocumentRequest[]> => {
     if (!supabase) return [];
     try {
@@ -1357,7 +1361,7 @@ export const supabaseService = {
   },
 
   // --- Document Templates ---
-  
+
   getDocumentTemplates: async (companyId: string): Promise<DocumentTemplate[]> => {
     if (!supabase) return [];
     try {
@@ -1387,7 +1391,7 @@ export const supabaseService = {
   },
 
   // --- Expert Referrals (Ask an Expert) ---
-  
+
   getExpertReferrals: async (companyId: string): Promise<ExpertReferral[]> => {
     if (!supabase) return [];
     try {
@@ -1449,7 +1453,7 @@ export const supabaseService = {
   },
 
   // --- YTD (Year-to-Date) Tracking ---
-  
+
   getEmployeeYTD: async (employeeId: string, taxYear: number) => {
     if (!supabase) return null;
     try {
@@ -1514,25 +1518,25 @@ export const supabaseService = {
   },
 
   // --- Audit Logs ---
-  
+
   saveAuditLog: async (log: AuditLogEntry, companyId: string) => {
     if (!supabase) return;
     await supabase.from('audit_logs').insert({
-        id: log.id,
-        company_id: companyId,
-        actor_id: log.actorId,
-        actor_name: log.actorName,
-        action: log.action,
-        entity: log.entity,
-        description: log.description,
-        timestamp: log.timestamp,
-        ip_address: log.ipAddress
+      id: log.id,
+      company_id: companyId,
+      actor_id: log.actorId,
+      actor_name: log.actorName,
+      action: log.action,
+      entity: log.entity,
+      description: log.description,
+      timestamp: log.timestamp,
+      ip_address: log.ipAddress
     });
   },
 
   getAuditLogs: async (companyId: string | null, userRole?: string): Promise<AuditLogEntry[]> => {
     if (!supabase) return [];
-    
+
     try {
       let query = supabase
         .from('audit_logs')
@@ -1575,7 +1579,7 @@ export const supabaseService = {
   },
 
   // --- Subscriptions ---
-  
+
   getSubscription: async (companyId: string) => {
     if (!supabase) return null;
     try {
@@ -1934,7 +1938,7 @@ export const supabaseService = {
         try {
           const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY;
           const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
-          
+
           if (serviceRoleKey && supabaseUrl) {
             const { createClient } = await import('@supabase/supabase-js');
             const adminClient = createClient(supabaseUrl, serviceRoleKey, {
@@ -2145,7 +2149,7 @@ export const supabaseService = {
     // Try with service role key if available
     const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY;
     const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
-    
+
     if (serviceRoleKey && supabaseUrl) {
       try {
         const { createClient } = await import('@supabase/supabase-js');
