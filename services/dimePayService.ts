@@ -45,12 +45,12 @@ export const dimePayService = {
         // Try to get from Supabase first (backend), then fallback to localStorage
         let globalConfig: any = null;
         let companyConfig: any = null;
-        
+
         // Try Supabase if available - get global config from backend
         try {
             const { supabaseService } = await import('./supabaseService');
             globalConfig = await supabaseService.getGlobalConfig();
-            
+
             // Only try to get company-specific settings if companyId is provided AND we're not in signup mode
             // During signup, the company doesn't exist yet, so skip this to avoid errors
             // We can detect signup mode by checking if metadata has signup indicators
@@ -62,12 +62,12 @@ export const dimePayService = {
         } catch (e) {
             console.log('Supabase not available, using localStorage');
         }
-        
+
         // Fallback to localStorage if Supabase didn't return config
         if (!globalConfig) {
             globalConfig = storage.getGlobalConfig();
         }
-        
+
         // Priority: company-specific config > global config > demo config
         let config = null;
         if (companyConfig?.dimepay && companyConfig.dimepay.enabled) {
@@ -98,21 +98,22 @@ export const dimePayService = {
         console.log('🔧 DimePay Environment:', activeEnv);
         console.log('🔧 DimePay Domain:', activeCredentials.domain);
         console.log('🔧 DimePay Test Mode:', activeEnv === 'sandbox');
-        console.log('🔧 DimePay Credentials:', { 
+        console.log('🔧 DimePay Credentials:', {
             hasApiKey: !!activeCredentials.apiKey,
-            hasMerchantId: !!activeCredentials.merchantId 
+            hasMerchantId: !!activeCredentials.merchantId
         });
 
-        const recurringFreq = props.frequency === 'annual' ? 'YEARLY' : 'MONTHLY';
-        
+
+
         // Get fee routing configuration from config
         const passFeesTo = config.passFeesTo || 'MERCHANT';
 
+
+
         // Prepare Payload to send to backend for signing
         const orderId = `ORD-${Date.now()}`;
-        
-        // DimePay Recurring Payments: Order-based subscription model
-        // Docs: https://docs.dimepay.net/%EF%B8%8F-dime-apis/z-recurring-payments
+
+        // DimePay One-Time Payment Payload
         const payloadData = {
             // Standard order fields
             id: orderId,
@@ -120,46 +121,23 @@ export const dimePayService = {
             subtotal: props.amount,
             total: props.amount,
             email: props.email,
-            
+
             // Billing details
             billingPerson: {
                 name: props.metadata?.name || 'Guest',
                 email: props.email
             },
-            
-            // Items array (required for DimePay orders)
+
+            // Items array (required by DimePay)
             items: [
                 {
-                    id: `PLAN-${props.metadata?.plan || 'subscription'}`.replace(/\s+/g, '-').toUpperCase(),
+                    id: `PLAN-${props.metadata?.plan || 'payment'}`.replace(/\s+/g, '-').toUpperCase(),
                     name: props.description,
                     price: props.amount,
                     quantity: 1
                 }
             ],
-            
-            // 🎯 SUBSCRIPTION FIELDS - Enable recurring billing
-            is_subscription: true,
-            subscription_instructions: {
-                recurring_frequency: recurringFreq, // 'MONTHLY' or 'YEARLY'
-                billing_cycles: props.billingCycles || 9999 // Effectively unlimited unless specified
-            },
-            
-            // Tokenize card for future recurring charges
-            tokenize: true,
-            
-            // Redirect after payment
-            redirectUrl: props.metadata?.redirectUrl || window.location.href,
-            checkoutUrl: window.location.href,
-            
-            // Metadata to track subscription in webhook (includes webhook URL per DimePay agent)
-            metadata: {
-                company_id: props.companyId,
-                user_id: props.metadata?.userId,
-                plan_name: props.description,
-                plan_type: props.metadata?.planType,
-                webhookUrl: `${window.location.origin}/api/dimepay-webhook` // Webhook URL in metadata per DimePay guidance
-            },
-            
+
             // Fee routing
             pass_fees_to: passFeesTo === 'CUSTOMER' ? 'CUSTOMER' : 'MERCHANT'
         };
@@ -167,7 +145,10 @@ export const dimePayService = {
         try {
             // Try to use backend signing API (production-ready)
             let jwt: string;
-            
+
+            // Debug: Log the payload we're sending
+            console.log('📤 DimePay Payload:', JSON.stringify(payloadData, null, 2));
+
             try {
                 console.log("[Secure Mode] Requesting backend signature...");
                 const response = await fetch('/api/sign-payment', {
@@ -189,7 +170,7 @@ export const dimePayService = {
             } catch (backendError: any) {
                 // In local development, API endpoints aren't available - this is expected
                 const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-                
+
                 // Fallback to client-side signing for sandbox only
                 if (activeEnv === 'sandbox') {
                     if (isLocalDev) {
@@ -232,9 +213,9 @@ export const dimePayService = {
                     order_id: orderId,
                     client_id: activeCredentials.apiKey,
                     origin: window.location.origin,
-                    data: jwt, 
+                    data: jwt,
                     styles: {
-                        primaryColor: '#FFA500', 
+                        primaryColor: '#FFA500',
                         buttonColor: '#000000',
                         buttonTextColor: '#FFFFFF',
                         backgroundColor: '#FFFFFF'
@@ -257,7 +238,7 @@ export const dimePayService = {
                     })
                 });
                 console.log("✅ DimePay initPayment called successfully");
-                
+
                 // Fallback: If onReady isn't called by DimePay, check for widget content after a delay
                 setTimeout(() => {
                     const widgetElement = document.getElementById(props.mountId);
@@ -269,7 +250,7 @@ export const dimePayService = {
                             innerHTML: widgetElement.innerHTML.substring(0, 100),
                             computedStyle: window.getComputedStyle(widgetElement).display
                         });
-                        
+
                         if (hasContent) {
                             console.log("✅ DimePay widget content detected");
                             if (props.onReady) {
@@ -305,23 +286,23 @@ export const dimePayService = {
 // Sign JWT with HMAC-SHA256 using Web Crypto API
 const signPayloadWithHMAC = async (payload: any, secretKey: string): Promise<string> => {
     const header = { alg: "HS256", typ: "JWT" };
-    
+
     const base64url = (source: string) => {
         return btoa(source)
             .replace(/=/g, '')
             .replace(/\+/g, '-')
             .replace(/\//g, '_');
     };
-    
+
     const encodedHeader = base64url(JSON.stringify(header));
     const encodedPayload = base64url(JSON.stringify(payload));
     const signatureInput = `${encodedHeader}.${encodedPayload}`;
-    
+
     // Use Web Crypto API to sign with HMAC-SHA256
     const encoder = new TextEncoder();
     const keyData = encoder.encode(secretKey);
     const dataToSign = encoder.encode(signatureInput);
-    
+
     const cryptoKey = await crypto.subtle.importKey(
         'raw',
         keyData,
@@ -329,15 +310,15 @@ const signPayloadWithHMAC = async (payload: any, secretKey: string): Promise<str
         false,
         ['sign']
     );
-    
+
     const signature = await crypto.subtle.sign('HMAC', cryptoKey, dataToSign);
-    
+
     // Convert signature to base64url
     const signatureArray = Array.from(new Uint8Array(signature));
     const signatureBase64 = btoa(String.fromCharCode(...signatureArray))
         .replace(/=/g, '')
         .replace(/\+/g, '-')
         .replace(/\//g, '_');
-    
+
     return `${encodedHeader}.${encodedPayload}.${signatureBase64}`;
 };
