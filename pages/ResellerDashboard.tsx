@@ -21,6 +21,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
     const [financialData, setFinancialData] = useState<any[]>([]);
     const [billingHistory, setBillingHistory] = useState<any[]>([]);
     const [isLoadingData, setIsLoadingData] = useState(true);
+    const [complianceMap, setComplianceMap] = useState<Record<string, any>>({});
 
     const [activeTab, setActiveTab] = useState<'dashboard' | 'partners' | 'manage' | 'compliance' | 'financials'>('dashboard');
     const [searchTerm, setSearchTerm] = useState('');
@@ -44,6 +45,11 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                     // Load pending invites
                     const invites = await supabaseService.getResellerInvites(user.companyId);
                     setPendingInvites(Array.isArray(invites) ? invites : []);
+
+                    // Get compliance data
+                    const compOverview = await supabaseService.getComplianceOverview(user.companyId);
+                    setComplianceMap(compOverview);
+
 
                     // Load reseller's own billing history (payments made by reseller)
                     const paymentsData = await supabaseService.getPaymentHistory(user.companyId, 100);
@@ -69,23 +75,25 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                     const perUserFee = resellerPlan?.priceConfig.perUserFee ?? 100;
 
                     const calculatedFinancialData = last6Months.map(({ name, month, year }) => {
-                        // Get payments for this month - ensure payments is an array
-                        const monthPayments = Array.isArray(payments) ? payments.filter(p => {
+                        const monthEnd = new Date(year, month + 1, 0);
+
+                        // Cost: What Reseller paid to Platform this month
+                        const cost = Array.isArray(payments) ? payments.filter(p => {
                             if (!p || !p.paymentDate) return false;
                             const paymentDate = new Date(p.paymentDate);
                             return paymentDate.getMonth() === month && paymentDate.getFullYear() === year && p.status === 'completed';
+                        }).reduce((sum, p) => sum + (p.amount || 0), 0) : 0;
+
+                        // Revenue: Estimated Client MRR
+                        const activeClientsInMonth = Array.isArray(resellerClients) ? resellerClients.filter(c => {
+                            if (c.status !== 'ACTIVE') return false;
+                            if (!c.createdAt) return true;
+                            return new Date(c.createdAt) <= monthEnd;
                         }) : [];
 
-                        const revenue = monthPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-                        // Calculate profit (revenue - platform fees for that month)
-                        const activeClientsInMonth = Array.isArray(resellerClients) ? resellerClients.filter(c => c.status === 'ACTIVE').length : 0;
-                        const activeEmpInMonth = Array.isArray(resellerClients) ? resellerClients
-                            .filter(c => c.status === 'ACTIVE')
-                            .reduce((sum, c) => sum + (c.employeeCount || 0), 0) : 0;
-                        const platformFeesForMonth = (activeClientsInMonth * baseFee) + (activeEmpInMonth * perUserFee);
-                        const profit = Math.max(0, revenue - platformFeesForMonth);
+                        const revenue = activeClientsInMonth.reduce((sum, c) => sum + (c.mrr || 0), 0);
 
-                        return { name, revenue, profit };
+                        return { name, revenue, profit: revenue - cost, cost };
                     });
                     setFinancialData(calculatedFinancialData);
                 } else {

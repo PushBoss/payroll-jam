@@ -2274,12 +2274,67 @@ export const supabaseService = {
           plan: company?.plan || 'Free',
           employeeCount: company?.settings?.employeeCount || 0,
           status: rc.status || 'ACTIVE',
-          mrr: (rc.monthly_base_fee || 0) + ((rc.per_employee_fee || 0) * (company?.settings?.employeeCount || 0))
+          mrr: (rc.monthly_base_fee || 0) + ((rc.per_employee_fee || 0) * (company?.settings?.employeeCount || 0)),
+          createdAt: rc.created_at
         };
       });
     } catch (e) {
       console.error("Error fetching reseller clients:", e);
       return [];
+    }
+  },
+
+  // Get compliance overview for reseller clients
+  getComplianceOverview: async (resellerId: string): Promise<Record<string, any>> => {
+    if (!supabase) return {};
+    try {
+      // 1. Get all client IDs
+      const { data: clients } = await supabase
+        .from('reseller_clients')
+        .select('client_company_id')
+        .eq('reseller_id', resellerId);
+
+      if (!clients || clients.length === 0) return {};
+      const clientIds = clients.map((c: any) => c.client_company_id);
+
+      // 2. Get latest finalized pay run for each client
+      // Fetch finalized runs for the last 3 months for these clients.
+      const threeMonthsAgo = new Date();
+      threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+
+      const { data: runs, error } = await supabase
+        .from('pay_runs')
+        .select('company_id, period_end, status, pay_date')
+        .in('company_id', clientIds)
+        .eq('status', 'FINALIZED')
+        .gte('period_end', threeMonthsAgo.toISOString().split('T')[0])
+        .order('period_end', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching compliance runs:', error);
+        return {};
+      }
+
+      // 3. Process into map (keeping only the most recent one per company)
+      const overview: Record<string, any> = {};
+
+      if (runs) {
+        runs.forEach((run: any) => {
+          if (!overview[run.company_id]) {
+            overview[run.company_id] = {
+              lastPayRunDate: run.pay_date || run.period_end,
+              periodEnd: run.period_end,
+              status: 'FILED'
+            };
+          }
+        });
+      }
+
+      return overview;
+
+    } catch (e) {
+      console.error("Error fetching compliance overview:", e);
+      return {};
     }
   }
 };

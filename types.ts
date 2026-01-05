@@ -277,6 +277,7 @@ export interface ResellerClient {
   status: 'ACTIVE' | 'PENDING' | 'SUSPENDED';
   subscriptionStatus?: 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'PENDING_PAYMENT';
   mrr: number;
+  createdAt?: string;
 }
 
 export interface PricingPlan {

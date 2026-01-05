@@ -52,14 +52,29 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
       // Create a unique filename
       const fileExt = file.name.split('.').pop();
       const fileName = `${user.id}-${Date.now()}.${fileExt}`;
-      const filePath = `avatars/${fileName}`;
+      const filePath = fileName; // No need for nested 'avatars/' folder inside 'avatars' bucket
+
+      console.log('🚀 Uploading image:', {
+        bucket: 'avatars',
+        path: filePath,
+        size: file.size,
+        type: file.type
+      });
 
       // Upload to Supabase Storage
-      const { error: uploadError } = await supabase.storage
+      const { error: uploadError, data: uploadData } = await supabase.storage
         .from('avatars')
-        .upload(filePath, file, { upsert: true });
+        .upload(filePath, file, {
+          upsert: true,
+          contentType: file.type // explicitly set content type
+        });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error('❌ Supabase Storage upload error:', uploadError);
+        throw uploadError;
+      }
+
+      console.log('✅ Upload successful:', uploadData);
 
       // Get public URL
       const { data } = supabase.storage
@@ -88,12 +103,12 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
 
     try {
       setUploadingImage(true);
-      
+
       // Update user profile to remove avatar
       const updatedUser = { ...user, avatarUrl: undefined };
       await supabaseService.saveUser(updatedUser);
       onUpdate(updatedUser);
-      
+
       setAvatarUrl('');
       toast.success('Profile photo removed');
     } catch (error: any) {
@@ -131,7 +146,7 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
       };
 
       await supabaseService.saveUser(updatedUser);
-      
+
       // Reload user from Supabase to confirm save
       const savedUser = await supabaseService.getUserByEmail(updatedUser.email);
       if (savedUser) {
@@ -174,15 +189,15 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
 
       if (success) {
         toast.success('Account deleted successfully');
-        
+
         // Clear local storage
         if (typeof window !== 'undefined') {
           localStorage.clear();
         }
-        
+
         // Logout and redirect
         await logout();
-        
+
         // Redirect to home page
         setTimeout(() => {
           window.location.href = '/';
@@ -348,7 +363,7 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
           <p className="text-sm text-gray-600 mb-4">
             Once you delete your account, there is no going back. Please be certain.
           </p>
-          
+
           {!showDeleteConfirm ? (
             <button
               type="button"
@@ -377,7 +392,7 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
                   <li>All other associated data</li>
                 </ul>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-red-900 mb-2">
                   Type <span className="font-mono font-bold">DELETE</span> to confirm:
@@ -390,7 +405,7 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
                   className="w-full px-4 py-2 border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
                 />
               </div>
-              
+
               <div className="flex gap-3">
                 <button
                   type="button"
