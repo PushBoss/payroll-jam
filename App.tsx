@@ -2,7 +2,7 @@ import { useState, useEffect, Suspense, lazy } from 'react';
 import { Toaster, toast } from 'sonner';
 import { Layout } from './components/Layout';
 import { CookieConsent } from './components/CookieConsent';
-import { ErrorBoundary } from './components/ErrorBoundary'; 
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { storage } from './services/storage';
 import { updateGlobalConfig } from './services/updateGlobalConfig';
 import { supabaseService } from './services/supabaseService';
@@ -53,22 +53,22 @@ const INITIAL_TAX_CONFIG: TaxConfig = {
 };
 
 const INITIAL_PLANS: PricingPlan[] = [
-    { id: 'p1', name: 'Free', priceConfig: { type: 'free', monthly: 0, annual: 0 }, description: 'For small businesses (<5 emp)', limit: '5', features: ['Basic Payroll', 'Payslip PDF'], cta: 'Start Free', highlight: false, color: 'bg-white', textColor: 'text-gray-900', isActive: true },
-    { id: 'p2', name: 'Starter', priceConfig: { type: 'flat', monthly: 5000, annual: 50000 }, description: 'Growing teams needing compliance', limit: '25', features: ['S01/S02 Reports', 'ACH Bank Files', 'Email Support'], cta: 'Get Started', highlight: true, color: 'bg-jam-black', textColor: 'text-white', isActive: true },
-    { id: 'p3', name: 'Pro', priceConfig: { type: 'per_emp', monthly: 500, annual: 5000 }, description: 'Larger organizations', limit: 'Unlimited', features: ['GL Integration', 'Employee Portal', 'Advanced HR'], cta: 'Get Started', highlight: false, color: 'bg-white', textColor: 'text-gray-900', isActive: true },
-    { id: 'p4', name: 'Reseller', priceConfig: { type: 'base', monthly: 0, annual: 0, baseFee: 5000, perUserFee: 500, resellerCommission: 20 }, description: 'For Accountants & Payroll Bureaus', limit: 'Unlimited', features: ['White Label', 'Client Management', '20% Commission'], cta: 'Get Started', highlight: false, color: 'bg-gray-100', textColor: 'text-gray-900', isActive: true }
+  { id: 'p1', name: 'Free', priceConfig: { type: 'free', monthly: 0, annual: 0 }, description: 'For small businesses (<5 emp)', limit: '5', features: ['Basic Payroll', 'Payslip PDF'], cta: 'Start Free', highlight: false, color: 'bg-white', textColor: 'text-gray-900', isActive: true },
+  { id: 'p2', name: 'Starter', priceConfig: { type: 'flat', monthly: 5000, annual: 50000 }, description: 'Growing teams needing compliance', limit: '25', features: ['S01/S02 Reports', 'ACH Bank Files', 'Email Support'], cta: 'Get Started', highlight: true, color: 'bg-jam-black', textColor: 'text-white', isActive: true },
+  { id: 'p3', name: 'Pro', priceConfig: { type: 'per_emp', monthly: 500, annual: 5000 }, description: 'Larger organizations', limit: 'Unlimited', features: ['GL Integration', 'Employee Portal', 'Advanced HR'], cta: 'Get Started', highlight: false, color: 'bg-white', textColor: 'text-gray-900', isActive: true },
+  { id: 'p4', name: 'Reseller', priceConfig: { type: 'base', monthly: 0, annual: 0, baseFee: 5000, perUserFee: 500, resellerCommission: 20 }, description: 'For Accountants & Payroll Bureaus', limit: 'Unlimited', features: ['White Label', 'Client Management', '20% Commission'], cta: 'Get Started', highlight: false, color: 'bg-gray-100', textColor: 'text-gray-900', isActive: true }
 ];
 
 function AppContent() {
-  const { user, impersonate, updateUser, isLoading } = useAuth(); 
-  
+  const { user, impersonate, updateUser, isLoading } = useAuth();
+
   // Initialize cache validation on mount
   useEffect(() => {
     initializeCacheValidation();
   }, []);
-  
+
   const globalConfig = storage.getGlobalConfig();
-  
+
   // Auto-enable Supabase mode if credentials are available
   const isSupabaseMode = (() => {
     // PRIORITY 1: Check if Supabase env vars exist (most reliable)
@@ -81,13 +81,13 @@ function AppContent() {
       }
       return true;
     }
-    
+
     // PRIORITY 2: Check localStorage config
     if (globalConfig?.dataSource === 'SUPABASE') {
       console.log('✅ Supabase mode enabled via global config');
       return true;
     }
-    
+
     console.warn('⚠️ Supabase mode DISABLED - no credentials found');
     return false;
   })();
@@ -107,13 +107,13 @@ function AppContent() {
   const [verifyEmail, setVerifyEmail] = useState<string>('');
   const [selectedPlan, setSelectedPlan] = useState<string>('Starter');
   const [selectedCycle, setSelectedCycle] = useState<'monthly' | 'annual'>('monthly');
-  
+
   // Data State
   const [employees, setEmployees] = useState<Employee[]>(storage.getEmployees() || []);
   const [payRunHistory, setPayRunHistory] = useState<PayRunType[]>(storage.getPayRuns() || []);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(storage.getLeaveRequests() || []);
   const [timesheets, setTimesheets] = useState<WeeklyTimesheet[]>(storage.getTimesheets() || []);
-  
+
   // Config State
   const [companyData, setCompanyData] = useState<CompanySettings | null>(storage.getCompanyData());
   const [taxConfig, setTaxConfig] = useState<TaxConfig>(storage.getTaxConfig() || INITIAL_TAX_CONFIG);
@@ -139,11 +139,11 @@ function AppContent() {
       setEditRunId(undefined);
     }
     try {
-        const newUrl = new URL(window.location.href);
-        newUrl.searchParams.set('page', path);
-        window.history.pushState({ path }, '', newUrl.toString());
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.set('page', path);
+      window.history.pushState({ path }, '', newUrl.toString());
     } catch (e) {
-        console.warn("Navigation failed to update URL history:", e);
+      console.warn("Navigation failed to update URL history:", e);
     }
   };
 
@@ -191,7 +191,7 @@ function AppContent() {
       toast.error('This verification link has expired. Please request a new one.', {
         duration: 5000,
       });
-      
+
       // Redirect to verify-email page with email if available
       if (email) {
         setVerifyEmail(email);
@@ -225,109 +225,109 @@ function AppContent() {
 
   // Handle invite tokens (both employee and user invites)
   useEffect(() => {
-      const params = new URLSearchParams(window.location.search);
-      const token = params.get('token');
-      const email = params.get('email');
-      
-      if (!token) return;
-      
-      // If already on signup page with token, don't redirect
-      if (currentPath === 'signup' && token) {
-          return;
-      }
-      
-      // Check if user is already logged in with matching email
-      if (user && email && user.email === email) {
-          // User is already logged in, just clear the token from URL
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    const email = params.get('email');
+
+    if (!token) return;
+
+    // If already on signup page with token, don't redirect
+    if (currentPath === 'signup' && token) {
+      return;
+    }
+
+    // Check if user is already logged in with matching email
+    if (user && email && user.email === email) {
+      // User is already logged in, just clear the token from URL
+      window.history.replaceState({}, '', window.location.pathname);
+      toast.success('You are already logged in!');
+      return;
+    }
+
+    // Handle reseller invites
+    const isResellerInvite = params.get('reseller') === 'true';
+
+    // For existing logged-in users - accept invite immediately
+    if (isResellerInvite && user && user.companyId && email === user.email && token) {
+      // User is already logged in with matching email - accept the invite
+      (async () => {
+        const accepted = await supabaseService.acceptResellerInvite(token, user.companyId || '');
+        if (accepted) {
+          toast.success('Reseller invitation accepted! You can now be managed by your accountant.');
           window.history.replaceState({}, '', window.location.pathname);
-          toast.success('You are already logged in!');
-          return;
+        } else {
+          toast.error('Failed to accept reseller invitation. It may have expired.');
+        }
+      })();
+      return;
+    }
+
+    // For new users (not logged in) - redirect to signup with token preserved
+    if (isResellerInvite && !user && token && email) {
+      console.log('🔗 Reseller invite detected for new user, redirecting to signup...');
+      navigateTo('signup');
+      return;
+    }
+
+    // Handle employee invite tokens
+    const isEmployeeInvite = params.get('type') === 'employee';
+
+    // First check local employees array (if loaded)
+    if (employees.length > 0 && !isResellerInvite && !isEmployeeInvite) {
+      const invitee = employees.find(e => e.onboardingToken === token);
+      if (invitee && (!user || user.email !== invitee.email)) {
+        // Show employee account setup page
+        setEmployeeAccountSetup({
+          employee: invitee,
+          companyName: companyData?.name || 'Your Company'
+        });
+        return;
       }
-      
-      // Handle reseller invites
-      const isResellerInvite = params.get('reseller') === 'true';
-      
-      // For existing logged-in users - accept invite immediately
-      if (isResellerInvite && user && user.companyId && email === user.email && token) {
-          // User is already logged in with matching email - accept the invite
-          (async () => {
-              const accepted = await supabaseService.acceptResellerInvite(token, user.companyId || '');
-              if (accepted) {
-                  toast.success('Reseller invitation accepted! You can now be managed by your accountant.');
-                  window.history.replaceState({}, '', window.location.pathname);
-              } else {
-                  toast.error('Failed to accept reseller invitation. It may have expired.');
-              }
-          })();
-          return;
-      }
-      
-      // For new users (not logged in) - redirect to signup with token preserved
-      if (isResellerInvite && !user && token && email) {
-          console.log('🔗 Reseller invite detected for new user, redirecting to signup...');
-          navigateTo('signup');
-          return;
-      }
-      
-      // Handle employee invite tokens
-      const isEmployeeInvite = params.get('type') === 'employee';
-      
-      // First check local employees array (if loaded)
-      if (employees.length > 0 && !isResellerInvite && !isEmployeeInvite) {
-          const invitee = employees.find(e => e.onboardingToken === token);
-          if (invitee && (!user || user.email !== invitee.email)) {
-              // Show employee account setup page
-              setEmployeeAccountSetup({
-                  employee: invitee,
-                  companyName: companyData?.name || 'Your Company'
-              });
-              return;
+    }
+
+    // Check Supabase for employee invite (works even when not logged in)
+    if (isSupabaseMode && token && (isEmployeeInvite || (!user && email))) {
+      const checkEmployeeInvite = async () => {
+        try {
+          // Try to find employee by token and email
+          const result = await supabaseService.getEmployeeByToken(token, email || undefined);
+          if (result && (!user || user.email !== result.employee.email)) {
+            // Show employee account setup page
+            setEmployeeAccountSetup({
+              employee: result.employee,
+              companyName: result.companyName,
+              companyId: result.companyId
+            });
+            toast.info(`Welcome! Please set up your account to access ${result.companyName} employee portal.`);
+            return;
           }
-      }
-      
-      // Check Supabase for employee invite (works even when not logged in)
-      if (isSupabaseMode && token && (isEmployeeInvite || (!user && email))) {
-          const checkEmployeeInvite = async () => {
-              try {
-                  // Try to find employee by token and email
-                  const result = await supabaseService.getEmployeeByToken(token, email || undefined);
-                  if (result && (!user || user.email !== result.employee.email)) {
-                      // Show employee account setup page
-                      setEmployeeAccountSetup({
-                          employee: result.employee,
-                          companyName: result.companyName,
-                          companyId: result.companyId
-                      });
-                      toast.info(`Welcome! Please set up your account to access ${result.companyName} employee portal.`);
-                      return;
-                  }
-              } catch (error) {
-                  console.error('Error checking employee invite:', error);
-              }
-          };
-          
-          checkEmployeeInvite();
-      }
-      
-      // Handle user invite tokens (check Supabase)
-      if (isSupabaseMode && token && !user && email && !isEmployeeInvite) {
-          const checkUserInvite = async () => {
-              try {
-                  // Try to find user by email and token
-                  const foundUser = await supabaseService.getUserByEmail(email);
-                  if (foundUser && foundUser.onboardingToken === token) {
-                      // Navigate to signup with pre-filled email
-                      navigateTo(`signup?token=${token}&email=${encodeURIComponent(email)}&type=user`);
-                      toast.info(`Welcome! Please sign up to join ${companyData?.name || 'the team'}.`);
-                      return;
-                  }
-              } catch (error) {
-                  console.error('Error checking user invite:', error);
-              }
-          };
-          
-          checkUserInvite();
-      }
+        } catch (error) {
+          console.error('Error checking employee invite:', error);
+        }
+      };
+
+      checkEmployeeInvite();
+    }
+
+    // Handle user invite tokens (check Supabase)
+    if (isSupabaseMode && token && !user && email && !isEmployeeInvite) {
+      const checkUserInvite = async () => {
+        try {
+          // Try to find user by email and token
+          const foundUser = await supabaseService.getUserByEmail(email);
+          if (foundUser && foundUser.onboardingToken === token) {
+            // Navigate to signup with pre-filled email
+            navigateTo(`signup?token=${token}&email=${encodeURIComponent(email)}&type=user`);
+            toast.info(`Welcome! Please sign up to join ${companyData?.name || 'the team'}.`);
+            return;
+          }
+        } catch (error) {
+          console.error('Error checking user invite:', error);
+        }
+      };
+
+      checkUserInvite();
+    }
   }, [employees, user, isSupabaseMode, companyData, currentPath]);
 
   useEffect(() => {
@@ -342,7 +342,15 @@ function AppContent() {
             supabaseService.getLeaveRequests(user.companyId)
           ]);
 
-          if (dbCompany) setCompanyData(dbCompany);
+          if (dbCompany) {
+            console.log("🔍 App: Loaded company settings:", dbCompany);
+            console.log("🔍 App: Plan from DB:", dbCompany.plan);
+            setCompanyData(dbCompany);
+            // Sync to local storage for offline support
+            storage.saveCompanyData(dbCompany);
+          } else {
+            console.warn("⚠️ App: loaded dbCompany is null/undefined");
+          }
           if (dbEmps) setEmployees(dbEmps);
           if (dbRuns) setPayRunHistory(dbRuns);
           if (dbLeaves) setLeaveRequests(dbLeaves);
@@ -377,7 +385,7 @@ function AppContent() {
 
       try {
         const globalConfig = await supabaseService.getGlobalConfig();
-        
+
         if (globalConfig?.pricingPlans && Array.isArray(globalConfig.pricingPlans) && globalConfig.pricingPlans.length > 0) {
           console.log('✅ Loaded pricing plans from Supabase backend:', globalConfig.pricingPlans.length);
           setPlans(globalConfig.pricingPlans);
@@ -404,7 +412,7 @@ function AppContent() {
     console.log('🔍 handleUpdatePlans called with:', updatedPlans.length, 'plans');
     console.log('🔍 Plans preview:', updatedPlans.map(p => ({ id: p.id, name: p.name, features: p.features.length })));
     setPlans(updatedPlans);
-    
+
     // Save to Supabase backend only (not localStorage)
     console.log('🔍 isSupabaseMode:', isSupabaseMode);
     if (isSupabaseMode) {
@@ -413,7 +421,7 @@ function AppContent() {
         console.log('🔍 About to call updateGlobalConfig');
         await updateGlobalConfig({ pricingPlans: updatedPlans });
         console.log('✅ Plans saved to backend only');
-        
+
         // Verify it was saved correctly
         const verifyConfig = await supabaseService.getGlobalConfig();
         console.log('🔍 Verification - Plans in DB:', verifyConfig?.pricingPlans?.length);
@@ -430,13 +438,13 @@ function AppContent() {
   // ... (Wrappers unchanged) ...
   const handleAddEmployee = async (emp: Employee) => {
     if (!subscription.canAddEmployee) {
-        toast.error("Plan Limit Reached. Please upgrade.");
-        return;
+      toast.error("Plan Limit Reached. Please upgrade.");
+      return;
     }
-    setEmployees(prev => [...prev, emp]); 
+    setEmployees(prev => [...prev, emp]);
     if (isSupabaseMode && user?.companyId) await supabaseService.saveEmployee(emp, user.companyId);
   };
-  
+
   const handleUpdateEmployee = async (emp: Employee) => {
     setEmployees(prev => prev.map(e => e.id === emp.id ? emp : e));
     if (isSupabaseMode && user?.companyId) await supabaseService.saveEmployee(emp, user.companyId);
@@ -453,7 +461,7 @@ function AppContent() {
       }
     }
   };
-  
+
   const handleSavePayRun = async (run: PayRunType) => {
     setPayRunHistory(prev => {
       // Check if run already exists (updating existing)
@@ -468,7 +476,7 @@ function AppContent() {
         return [run, ...prev];
       }
     });
-    
+
     // Save to Supabase
     if (isSupabaseMode && user?.companyId) {
       console.log('💾 Saving pay run to Supabase:', {
@@ -477,7 +485,7 @@ function AppContent() {
         status: run.status,
         periodStart: run.periodStart
       });
-      
+
       try {
         // Allow multiple pay runs for the same period (especially for drafts)
         await supabaseService.savePayRun(run, user.companyId, { allowMultiple: true });
@@ -500,15 +508,15 @@ function AppContent() {
     }
   };
   const handleSaveLeaveRequest = async (req: LeaveRequest) => {
-    setLeaveRequests(prev => [req, ...prev]); 
+    setLeaveRequests(prev => [req, ...prev]);
     if (isSupabaseMode && user?.companyId) await supabaseService.saveLeaveRequest(req, user.companyId);
   };
   const handleUpdateLeaveStatus = async (id: string, status: 'APPROVED' | 'REJECTED', dates?: string[]) => {
     const updated = leaveRequests.map(r => r.id === id ? { ...r, status, approvedDates: dates } : r);
     setLeaveRequests(updated);
     if (isSupabaseMode && user?.companyId) {
-        const target = updated.find(r => r.id === id);
-        if (target) await supabaseService.saveLeaveRequest(target, user.companyId);
+      const target = updated.find(r => r.id === id);
+      if (target) await supabaseService.saveLeaveRequest(target, user.companyId);
     }
   };
   const handleUpdateCompany = async (data: CompanySettings) => {
@@ -516,7 +524,7 @@ function AppContent() {
     storage.saveCompanyData(data);
     if (isSupabaseMode && user?.companyId) await supabaseService.saveCompany(user.companyId, data);
   };
-  
+
   const onLoginSuccess = (u: User) => {
     if (!u.isOnboarded && u.role === Role.OWNER) navigateTo('onboarding');
     else if (!u.isOnboarded && u.role === Role.EMPLOYEE) navigateTo('employee-onboarding');
@@ -527,51 +535,57 @@ function AppContent() {
   };
 
   // Signup now redirects to login page with email verification message
-  
+
   const handleImpersonation = (client: any) => {
-      impersonate(client);
-      if (!isSupabaseMode && companyData) setCompanyData({ ...companyData, name: client.companyName });
-      navigateTo('dashboard');
+    impersonate(client);
+    if (!isSupabaseMode && companyData) setCompanyData({ ...companyData, name: client.companyName });
+    navigateTo('dashboard');
   };
   const handleCompanyOnboardComplete = async (data: CompanySettings, importedEmployees: Employee[]) => {
-      // Ensure subscriptionStatus is set (default to ACTIVE for Free tier)
-      const companyDataWithStatus: CompanySettings = {
-          ...data,
-          subscriptionStatus: data.subscriptionStatus || 'ACTIVE',
-          plan: data.plan || 'Free'
-      };
-      
-      setCompanyData(companyDataWithStatus);
-      setEmployees(prev => [...prev, ...importedEmployees]);
-      storage.saveCompanyData(companyDataWithStatus);
-      
-      // Only save to Supabase if we have a valid UUID companyId
-      if (isSupabaseMode && user?.companyId && user.companyId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+    // CRITICAL: Preserve the plan that was set during signup (e.g., "Pro" -> "Professional")
+    // The onboarding form doesn't know about the plan, so we must keep the existing value
+    const existingPlan = companyData?.plan || 'Free';
+
+    console.log('🔍 ONBOARDING: Preserving plan from signup:', existingPlan);
+
+    // Ensure subscriptionStatus is set (default to ACTIVE for Free tier)
+    const companyDataWithStatus: CompanySettings = {
+      ...data,
+      subscriptionStatus: data.subscriptionStatus || 'ACTIVE',
+      plan: existingPlan // Use existing plan, NOT data.plan which is always 'Free'
+    };
+
+    setCompanyData(companyDataWithStatus);
+    setEmployees(prev => [...prev, ...importedEmployees]);
+    storage.saveCompanyData(companyDataWithStatus);
+
+    // Only save to Supabase if we have a valid UUID companyId
+    if (isSupabaseMode && user?.companyId && user.companyId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+      try {
+        await supabaseService.saveCompany(user.companyId, companyDataWithStatus);
+        console.log('✅ Company data saved to Supabase during onboarding');
+
+        // Save employees to Supabase
+        for (const emp of importedEmployees) {
           try {
-              await supabaseService.saveCompany(user.companyId, companyDataWithStatus);
-              console.log('✅ Company data saved to Supabase during onboarding');
-              
-              // Save employees to Supabase
-              for (const emp of importedEmployees) {
-                  try {
-                  await supabaseService.saveEmployee(emp, user.companyId);
-                  } catch (empError) {
-                      console.warn(`Failed to save employee ${emp.email}:`, empError);
-                  }
-              }
-              console.log(`✅ Saved ${importedEmployees.length} employees to Supabase`);
-          } catch (error) {
-              console.error('Failed to sync to Supabase:', error);
-              toast.error('Failed to save to database. Data saved locally.');
+            await supabaseService.saveEmployee(emp, user.companyId);
+          } catch (empError) {
+            console.warn(`Failed to save employee ${emp.email}:`, empError);
           }
+        }
+        console.log(`✅ Saved ${importedEmployees.length} employees to Supabase`);
+      } catch (error) {
+        console.error('Failed to sync to Supabase:', error);
+        toast.error('Failed to save to database. Data saved locally.');
       }
-      // Mark user as onboarded
-      updateUser({ isOnboarded: true });
-      toast.success('Company setup complete!');
-      navigateTo('dashboard');
+    }
+    // Mark user as onboarded
+    updateUser({ isOnboarded: true });
+    toast.success('Company setup complete!');
+    navigateTo('dashboard');
   };
   const handleEmployeeWizardComplete = () => { navigateTo('portal-home'); };
-  
+
   const LoadingFallback = () => (
     <div className="flex items-center justify-center min-h-screen bg-gray-50">
       <div className="flex flex-col items-center">
@@ -593,10 +607,10 @@ function AppContent() {
 
     try {
       const { employee, companyId } = employeeAccountSetup;
-      
+
       // Get company ID - use from employeeAccountSetup or fetch it
       let finalCompanyId = companyId || '';
-      
+
       if (!finalCompanyId && isSupabaseMode && employee.onboardingToken) {
         // Fetch employee to get company_id
         const employeeResult = await supabaseService.getEmployeeByToken(employee.onboardingToken, employee.email);
@@ -604,23 +618,23 @@ function AppContent() {
           finalCompanyId = employeeResult.companyId;
         }
       }
-      
+
       // Fallback to user's companyId if available
       if (!finalCompanyId && user?.companyId) {
         finalCompanyId = user.companyId;
       }
-      
+
       if (!finalCompanyId) {
         toast.error('Unable to determine company. Please contact your employer.');
         return;
       }
-      
+
       // For employees, create auth user directly without creating a company
       if (!isSupabaseMode || !supabase) {
         toast.error('Database not available. Please contact your employer.');
         return;
       }
-      
+
       // 1. Create Supabase auth user
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: employee.email,
@@ -647,7 +661,7 @@ function AppContent() {
         companyId: finalCompanyId,
         isOnboarded: true // Skip the onboarding wizard, go straight to dashboard
       };
-      
+
       await supabaseService.saveUser(newUser);
       console.log('✅ Employee user profile created');
 
@@ -655,7 +669,7 @@ function AppContent() {
       const updatedEmployee = { ...employee, status: 'PENDING_VERIFICATION' as any };
       await supabaseService.saveEmployee(updatedEmployee, finalCompanyId);
       console.log('✅ Employee status updated to PENDING_VERIFICATION');
-      
+
       // Login the user directly
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email: employee.email,
@@ -673,11 +687,11 @@ function AppContent() {
       console.log('✅ User logged in successfully');
       toast.success('Account created successfully! Welcome aboard!');
       setEmployeeAccountSetup(null);
-      
+
       // Wait for auth state to update, then reload to ensure everything is in sync
       await new Promise(resolve => setTimeout(resolve, 500));
       window.location.href = '/?page=portal-home';
-      
+
     } catch (error: any) {
       console.error('Error setting up employee account:', error);
       toast.error(error?.message || 'Failed to create account. Please try again or contact your employer.');
@@ -726,7 +740,7 @@ function AppContent() {
         {currentPath === 'privacy-policy' && <PrivacyPolicy onBack={() => navigateTo('home')} />}
         {currentPath === 'terms-of-service' && <TermsOfService onBack={() => navigateTo('home')} />}
         {currentPath === 'home' && <LandingPage plans={plans} onLogin={() => navigateTo('login')} onSignup={(plan) => { setSelectedPlan(plan || 'Free'); setSelectedCycle('monthly'); navigateTo('signup'); }} onPricingClick={() => navigateTo('pricing')} onFeaturesClick={() => navigateTo('features')} onFaqClick={() => navigateTo('faq')} onPrivacyClick={() => navigateTo('privacy-policy')} onTermsClick={() => navigateTo('terms-of-service')} />}
-        {!['login','signup','verify-email','pricing','features','faq','home','privacy-policy','terms-of-service'].includes(currentPath) && 
+        {!['login', 'signup', 'verify-email', 'pricing', 'features', 'faq', 'home', 'privacy-policy', 'terms-of-service'].includes(currentPath) &&
           <NotFound onGoHome={() => navigateTo('home')} />
         }
       </Suspense>
@@ -737,8 +751,8 @@ function AppContent() {
     if (dataLoading) return <LoadingFallback />;
 
     if (!user.isOnboarded) {
-        if (user.role === Role.EMPLOYEE) return <EmployeeOnboardingWizard companyName={companyData?.name || 'Company'} onComplete={handleEmployeeWizardComplete} />;
-        return <Onboarding departments={departments} onComplete={handleCompanyOnboardComplete} onUpdateDepartments={setDepartments} />;
+      if (user.role === Role.EMPLOYEE) return <EmployeeOnboardingWizard companyName={companyData?.name || 'Company'} onComplete={handleEmployeeWizardComplete} />;
+      return <Onboarding departments={departments} onComplete={handleCompanyOnboardComplete} onUpdateDepartments={setDepartments} />;
     }
 
     switch (currentPath) {
@@ -746,7 +760,7 @@ function AppContent() {
       case 'employees': return <Employees employees={employees} payRunHistory={payRunHistory} companyData={companyData!} onAddEmployee={handleAddEmployee} onUpdateEmployee={handleUpdateEmployee} onDeleteEmployee={handleDeleteEmployee} onSimulateOnboarding={e => alert(`Link: ${window.location.origin}/?token=${e.onboardingToken}`)} departments={departments} designations={designations} assets={assets} onUpdateAssets={setAssets} reviews={reviews} onUpdateReviews={setReviews} plans={plans} onNavigate={navigateTo} />;
       case 'payrun': return <PayRun employees={employees} timesheets={timesheets} leaveRequests={leaveRequests} onSave={handleSavePayRun} companyData={companyData!} integrationConfig={integrationConfig} payRunHistory={payRunHistory} editRunId={editRunId} onNavigate={navigateTo} />;
       case 'leave': return <Leave requests={leaveRequests} employees={employees} onStatusChange={handleUpdateLeaveStatus} onAddRequest={handleSaveLeaveRequest} onUpdateEmployee={handleUpdateEmployee} />;
-      case 'documents': 
+      case 'documents':
         if (!hasFeatureAccess(companyData || undefined, 'Documents')) {
           toast.error(getFeatureUpgradeMessage('Documents', companyData?.plan));
           navigateTo('dashboard');
@@ -760,14 +774,14 @@ function AppContent() {
         setPayRunHistory(prev => prev.filter(r => r.id !== runId));
         if (isSupabaseMode && user?.companyId) await supabaseService.deletePayRun(runId, user.companyId);
       }} onNavigate={navigateTo} />;
-      case 'compliance': 
+      case 'compliance':
         if (!hasFeatureAccess(companyData || undefined, 'Compliance')) {
           toast.error(getFeatureUpgradeMessage('Compliance', companyData?.plan));
           navigateTo('dashboard');
           return <Dashboard employees={employees} leaveRequests={leaveRequests} payRunHistory={payRunHistory} onNavigate={navigateTo} companyData={companyData || undefined} />;
         }
         return <Compliance payRunHistory={payRunHistory} companyData={companyData!} />;
-      case 'ai-assistant': 
+      case 'ai-assistant':
         if (!hasFeatureAccess(companyData || undefined, 'AI Assistant')) {
           toast.error(getFeatureUpgradeMessage('AI Assistant', companyData?.plan));
           navigateTo('dashboard');
@@ -782,8 +796,8 @@ function AppContent() {
       case 'portal-leave': return <EmployeePortal user={user} employee={employees.find(e => e.email === user.email)} view="leave" leaveRequests={leaveRequests} onRequestLeave={handleSaveLeaveRequest} onUpdateEmployee={handleUpdateEmployee} />;
       case 'portal-docs': return <EmployeePortal user={user} employee={employees.find(e => e.email === user.email)} view="documents" leaveRequests={leaveRequests} onRequestLeave={handleSaveLeaveRequest} payRunHistory={payRunHistory} companyData={companyData || undefined} onUpdateEmployee={handleUpdateEmployee} />;
       case 'portal-profile': return <EmployeePortal user={user} employee={employees.find(e => e.email === user.email)} view="profile" leaveRequests={leaveRequests} onRequestLeave={handleSaveLeaveRequest} onUpdateEmployee={handleUpdateEmployee} />;
-        case 'sa-overview': case 'sa-tenants': case 'sa-billing': case 'sa-health': case 'sa-users': case 'sa-logs': case 'sa-settings': case 'sa-plans':
-          return <SuperAdmin plans={plans} onUpdatePlans={handleUpdatePlans} onImpersonate={handleImpersonation} initialTab={currentPath.replace('sa-', '')} />;
+      case 'sa-overview': case 'sa-tenants': case 'sa-billing': case 'sa-health': case 'sa-users': case 'sa-logs': case 'sa-settings': case 'sa-plans':
+        return <SuperAdmin plans={plans} onUpdatePlans={handleUpdatePlans} onImpersonate={handleImpersonation} initialTab={currentPath.replace('sa-', '')} />;
       case 'reseller-dashboard': return <ResellerDashboard onManageClient={handleImpersonation} plans={plans} />;
       default: return <NotFound onGoHome={() => navigateTo('dashboard')} />;
     }
@@ -796,22 +810,22 @@ function AppContent() {
 
   return (
     <ErrorBoundary>
-      <Layout 
-            currentPath={currentPath} 
-            onNavigate={navigateTo} 
-            variant={layoutVariant}
-            managingCompanyName={companyData?.name || 'Your Company'}
-            systemBanner={globalConfig?.systemBanner}
-            companyData={companyData || undefined}
-            subscriptionStatus={companyData?.subscriptionStatus}
-            isOverLimit={subscription.isOverLimit} // NEW: Pass soft lock state
-        >
-          <Toaster richColors position="top-right" />
-          <Suspense fallback={<LoadingFallback />}>
-            {renderPage()}
-          </Suspense>
-          <CookieConsent />
-        </Layout>
+      <Layout
+        currentPath={currentPath}
+        onNavigate={navigateTo}
+        variant={layoutVariant}
+        managingCompanyName={companyData?.name || 'Your Company'}
+        systemBanner={globalConfig?.systemBanner}
+        companyData={companyData || undefined}
+        subscriptionStatus={companyData?.subscriptionStatus}
+        isOverLimit={subscription.isOverLimit} // NEW: Pass soft lock state
+      >
+        <Toaster richColors position="top-right" />
+        <Suspense fallback={<LoadingFallback />}>
+          {renderPage()}
+        </Suspense>
+        <CookieConsent />
+      </Layout>
     </ErrorBoundary>
   );
 }

@@ -25,7 +25,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   useEffect(() => {
     let isMounted = true;
-    
+
     // Check for existing Supabase session
     const initAuth = async () => {
       try {
@@ -40,7 +40,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
 
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        
+
         if (sessionError) {
           console.error('Session error:', sessionError);
           // Try localStorage fallback
@@ -51,7 +51,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           if (isMounted) setIsLoading(false);
           return;
         }
-        
+
         if (session?.user) {
           // Load user profile from app_users table
           const appUser = await supabaseService.getUserByEmail(session.user.email!);
@@ -80,7 +80,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             setUser(storedUser);
           }
         }
-        
+
         if (isMounted) setIsLoading(false);
       } catch (error) {
         console.error('Auth initialization error:', error);
@@ -94,7 +94,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     initAuth();
-    
+
     return () => {
       isMounted = false;
     };
@@ -104,23 +104,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (supabase) {
       const { data: { subscription } } = supabase!.auth.onAuthStateChange(async (event, session) => {
         if (!isMounted) return;
-        
+
         console.log('🔄 Auth event:', event);
-        
+
         // Handle email confirmation
         if (event === 'SIGNED_IN' && session?.user) {
           const appUser = await supabaseService.getUserByEmail(session.user.email!);
           if (appUser && isMounted) {
             setUser(appUser);
             storage.saveUser(appUser);
-            
+
             // Redirect to appropriate dashboard after email confirmation
             const hashParams = new URLSearchParams(window.location.hash.substring(1));
             const type = hashParams.get('type');
             if (type === 'signup') {
               console.log('✅ Email confirmed, redirecting to dashboard...');
               toast.success('Email confirmed! Welcome to PayrollJam.');
-              
+
               // Determine redirect path based on user role
               let redirectPath = 'dashboard';
               if (appUser.role === Role.EMPLOYEE) {
@@ -130,7 +130,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               } else if (appUser.role === Role.SUPER_ADMIN) {
                 redirectPath = 'sa-overview';
               }
-              
+
               setTimeout(() => {
                 if (isMounted) window.location.href = `/?page=${redirectPath}`;
               }, 1500);
@@ -146,7 +146,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       authSubscription = subscription;
     }
-    
+
     return () => {
       isMounted = false;
       if (authSubscription) authSubscription.unsubscribe();
@@ -186,13 +186,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       console.log('✅ Auth login successful, fetching user profile...');
-      
+
       const appUser = await supabaseService.getUserByEmail(data.user.email!);
-      
+
       if (!appUser) {
         throw new Error('User profile not found in database');
       }
-      
+
       console.log('✅ User profile loaded:', appUser.email);
       setUser(appUser);
       storage.saveUser(appUser);
@@ -238,7 +238,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // 2. Create company record first (if needed)
       if (userData.companyName && userData.companyId) {
         const isPaidPlan = userData.plan && userData.plan !== 'Free';
-        
+
         // Map plan names to match database constraint: ('Free', 'Starter', 'Professional', 'Enterprise')
         const mapPlanToDbFormat = (plan: string | undefined): string => {
           if (!plan) return 'Free';
@@ -252,9 +252,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           };
           return planMap[plan] || 'Free';
         };
-        
+
         const dbPlan = mapPlanToDbFormat(userData.plan);
-        
+
+        console.log('🔍 SIGNUP DEBUG:', {
+          'userData.plan (from form)': userData.plan,
+          'dbPlan (mapped for DB)': dbPlan,
+          'isPaidPlan': isPaidPlan
+        });
+
         const companyData = {
           name: userData.companyName,
           trn: '',
@@ -268,16 +274,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           plan: dbPlan as any,
           paymentMethod: (userData as any).paymentMethod || 'card'
         };
-        
+
         const savedCompany = await supabaseService.saveCompany(userData.companyId, companyData);
         if (!savedCompany) {
           throw new Error('Failed to create company record');
         }
         console.log('✅ Company saved to Supabase:', userData.companyName);
-        
+        console.log('✅ Saved company plan:', savedCompany);
+
         // Wait a moment to ensure company is committed before creating user
         await new Promise(resolve => setTimeout(resolve, 100));
-        
+
         // If there's a reseller invite token, accept it
         if (userData.resellerInviteToken) {
           const accepted = await supabaseService.acceptResellerInvite(userData.resellerInviteToken, userData.companyId);
@@ -299,11 +306,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         isOnboarded: userData.isOnboarded || false
       };
 
-      console.log('📝 Creating user profile:', { 
-        id: appUser.id, 
-        email: appUser.email, 
+      console.log('📝 Creating user profile:', {
+        id: appUser.id,
+        email: appUser.email,
         companyId: appUser.companyId,
-        role: appUser.role 
+        role: appUser.role
       });
 
       try {
@@ -324,7 +331,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // 4. Update local state
       setUser(appUser);
       storage.saveUser(appUser);
-      
+
       console.log('✅ Signup completed successfully - user will receive confirmation email');
 
     } catch (error) {
@@ -362,25 +369,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (!user) return;
     const originalRole = user.originalRole || user.role;
     const impersonatedUser = {
-        ...user,
-        originalRole: originalRole,
-        companyId: client.id,
-        role: Role.ADMIN
+      ...user,
+      originalRole: originalRole,
+      companyId: client.id,
+      role: Role.ADMIN
     };
     setUser(impersonatedUser);
     storage.saveUser(impersonatedUser);
   };
 
   const stopImpersonation = () => {
-      if (!user || !user.originalRole) return;
-      const restoredUser = {
-          ...user,
-          role: user.originalRole,
-          originalRole: undefined,
-          companyId: undefined // Clear context
-      };
-      setUser(restoredUser);
-      storage.saveUser(restoredUser);
+    if (!user || !user.originalRole) return;
+    const restoredUser = {
+      ...user,
+      role: user.originalRole,
+      originalRole: undefined,
+      companyId: undefined // Clear context
+    };
+    setUser(restoredUser);
+    storage.saveUser(restoredUser);
   };
 
   return (

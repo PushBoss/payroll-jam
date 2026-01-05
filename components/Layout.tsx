@@ -20,10 +20,10 @@ interface LayoutProps {
   companyData?: CompanySettings;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ 
-  children, 
-  currentPath, 
-  onNavigate, 
+export const Layout: React.FC<LayoutProps> = ({
+  children,
+  currentPath,
+  onNavigate,
   variant = 'admin',
   managingCompanyName,
   systemBanner,
@@ -32,6 +32,12 @@ export const Layout: React.FC<LayoutProps> = ({
   companyData
 }) => {
   const { user, logout, stopImpersonation } = useAuth();
+
+  // Debug log
+  React.useEffect(() => {
+    console.log("🔍 Layout: companyData prop:", companyData);
+  }, [companyData]);
+
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Filter admin nav items based on feature access
@@ -48,7 +54,7 @@ export const Layout: React.FC<LayoutProps> = ({
       { id: 'ai-assistant', label: 'AI Assistant', icon: Icons.AI, feature: 'AI Assistant' },
       { id: 'settings', label: 'Settings', icon: Icons.Settings, feature: null },
     ];
-    
+
     // Filter out items that require features the plan doesn't have
     return allItems.filter(item => {
       if (!item.feature) return true; // Always show items without feature requirements
@@ -101,175 +107,171 @@ export const Layout: React.FC<LayoutProps> = ({
   const isSuperAdminImpersonating = user?.originalRole === Role.SUPER_ADMIN;
 
   const handleLogout = async (e: React.MouseEvent) => {
-      e.preventDefault();
-      await logout();
-      // Clear all storage and redirect
-      window.location.href = '/?page=login';
+    e.preventDefault();
+    await logout();
+    // Clear all storage and redirect
+    window.location.href = '/?page=login';
   };
 
   return (
     <div className="flex flex-col h-screen bg-gray-100 font-sans text-slate-900 overflow-hidden print:h-auto print:overflow-visible">
-      
+
       {/* 1. Global System Banner (Super Admin) */}
       {systemBanner?.active && (
         <div className={`px-4 py-2 text-sm font-bold flex justify-center items-center shadow-sm z-[60] text-center
-            ${systemBanner.type === 'ERROR' ? 'bg-red-600 text-white' : 
-              systemBanner.type === 'WARNING' ? 'bg-orange-500 text-white' : 'bg-blue-600 text-white'}`
+            ${systemBanner.type === 'ERROR' ? 'bg-red-600 text-white' :
+            systemBanner.type === 'WARNING' ? 'bg-orange-500 text-white' : 'bg-blue-600 text-white'}`
         }>
-            <Icons.Alert className="w-4 h-4 mr-2" />
-            <span>{systemBanner.message}</span>
+          <Icons.Alert className="w-4 h-4 mr-2" />
+          <span>{systemBanner.message}</span>
         </div>
       )}
 
       {/* 2. Subscription Status Banner (Billing) */}
       {variant === 'admin' && subscriptionStatus === 'SUSPENDED' && (
         <div className="bg-red-600 text-white px-4 py-3 text-sm font-bold flex justify-center items-center shadow-md z-[55]">
-            <Icons.Alert className="w-5 h-5 mr-2" />
-            <span>ACCOUNT SUSPENDED: Payment required. Payroll features are currently disabled.</span>
-            <button onClick={() => onNavigate('settings')} className="ml-4 underline hover:text-red-100">Update Billing</button>
+          <Icons.Alert className="w-5 h-5 mr-2" />
+          <span>ACCOUNT SUSPENDED: Payment required. Payroll features are currently disabled.</span>
+          <button onClick={() => onNavigate('settings')} className="ml-4 underline hover:text-red-100">Update Billing</button>
         </div>
       )}
-      
+
       {/* 3. Plan Limit Banner (Soft Lock) */}
       {variant === 'admin' && isOverLimit && subscriptionStatus !== 'SUSPENDED' && (
-         <div className="bg-orange-500 text-white px-4 py-2 text-sm font-bold flex justify-center items-center shadow-sm z-[55]">
-            <Icons.Alert className="w-4 h-4 mr-2" />
-            <span>PLAN LIMIT EXCEEDED: You have more active employees than your plan allows. Some features are locked.</span>
-            <button onClick={() => onNavigate('settings')} className="ml-4 underline hover:text-orange-100">Upgrade Now</button>
+        <div className="bg-orange-500 text-white px-4 py-2 text-sm font-bold flex justify-center items-center shadow-sm z-[55]">
+          <Icons.Alert className="w-4 h-4 mr-2" />
+          <span>PLAN LIMIT EXCEEDED: You have more active employees than your plan allows. Some features are locked.</span>
+          <button onClick={() => onNavigate('settings')} className="ml-4 underline hover:text-orange-100">Upgrade Now</button>
         </div>
       )}
 
       {/* 4. Impersonation Banner */}
       {isImpersonating && (
-        <div className={`px-4 py-2 text-sm font-bold flex justify-between items-center shadow-md z-50 ${
-            isSuperAdminImpersonating 
-                ? 'bg-red-900 text-white' 
-                : 'bg-jam-black text-jam-yellow'
-        }`}>
-            <div className="flex items-center">
-                <Icons.Shield className="w-4 h-4 mr-2" />
-                <span className="uppercase tracking-wider">
-                    {isSuperAdminImpersonating ? 'Super Admin Mode' : 'Reseller Mode'}: Managing {managingCompanyName}
-                </span>
-            </div>
-            <button 
-                onClick={stopImpersonation}
-                className={`px-3 py-1 rounded text-xs transition-colors flex items-center ${
-                    isSuperAdminImpersonating
-                        ? 'bg-white text-red-900 hover:bg-gray-200'
-                        : 'bg-jam-yellow text-jam-black hover:bg-white'
-                }`}
-            >
-                <Icons.Back className="w-3 h-3 mr-1" /> Return to Console
-            </button>
+        <div className={`px-4 py-2 text-sm font-bold flex justify-between items-center shadow-md z-50 ${isSuperAdminImpersonating
+            ? 'bg-red-900 text-white'
+            : 'bg-jam-black text-jam-yellow'
+          }`}>
+          <div className="flex items-center">
+            <Icons.Shield className="w-4 h-4 mr-2" />
+            <span className="uppercase tracking-wider">
+              {isSuperAdminImpersonating ? 'Super Admin Mode' : 'Reseller Mode'}: Managing {managingCompanyName}
+            </span>
+          </div>
+          <button
+            onClick={stopImpersonation}
+            className={`px-3 py-1 rounded text-xs transition-colors flex items-center ${isSuperAdminImpersonating
+                ? 'bg-white text-red-900 hover:bg-gray-200'
+                : 'bg-jam-yellow text-jam-black hover:bg-white'
+              }`}
+          >
+            <Icons.Back className="w-3 h-3 mr-1" /> Return to Console
+          </button>
         </div>
       )}
 
       <div id="main-layout" className="flex flex-1 overflow-hidden">
-      <aside className="hidden md:flex flex-col w-64 bg-jam-black text-white h-full flex-shrink-0 no-print">
-        <div className="p-6 flex flex-col items-center justify-center border-b border-gray-800 flex-shrink-0">
-          <img 
-            src="/assets/icons/android-chrome-192x192.png" 
-            alt="Payroll-Jam Logo" 
-            className="w-12 h-12 mb-3"
-          />
-          <h1 className="text-2xl font-bold tracking-wider text-white">
-            {variant === 'portal' ? 'My' : variant === 'super_admin' ? 'Admin' : (user?.role === Role.RESELLER && !user.originalRole) ? 'Partner' : 'Payroll'}
-            <span className="text-jam-orange">{variant === 'portal' ? 'Portal' : (user?.role === Role.RESELLER && !user.originalRole) ? 'Hub' : '-Jam'}</span>
-          </h1>
-        </div>
-        <nav className="flex-1 py-6 px-3 space-y-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent">
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => onNavigate(item.id)}
-              className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${
-                currentPath === item.id
-                  ? 'bg-jam-orange text-jam-black font-semibold'
-                  : 'text-gray-400 hover:bg-gray-900 hover:text-white'
-              }`}
-            >
-              <item.icon className="w-5 h-5 mr-3 flex-shrink-0" />
-              {item.label}
-            </button>
-          ))}
-        </nav>
-        <div className="p-4 border-t border-gray-800 flex-shrink-0">
-          <div 
-            onClick={() => onNavigate('profile')}
-            className="flex items-center mb-4 cursor-pointer hover:bg-gray-700 rounded-lg p-2 -mx-2 transition-colors"
-          >
-            {user?.avatarUrl ? (
-              <img 
-                src={user.avatarUrl} 
-                alt={user.name} 
-                className="w-8 h-8 rounded-full object-cover flex-shrink-0"
-              />
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-jam-yellow text-jam-black flex items-center justify-center font-bold text-sm flex-shrink-0">
-                {user?.name.split(' ').map(n => n[0]).join('').substring(0, 2) || 'JD'}
-              </div>
-            )}
-            <div className="ml-3 overflow-hidden">
-              <p className="text-sm font-medium text-white truncate">{user?.name || 'User'}</p>
-              <p className="text-xs text-gray-500">{user?.role}</p>
-            </div>
+        <aside className="hidden md:flex flex-col w-64 bg-jam-black text-white h-full flex-shrink-0 no-print">
+          <div className="p-6 flex flex-col items-center justify-center border-b border-gray-800 flex-shrink-0">
+            <img
+              src="/assets/icons/android-chrome-192x192.png"
+              alt="Payroll-Jam Logo"
+              className="w-12 h-12 mb-3"
+            />
+            <h1 className="text-2xl font-bold tracking-wider text-white">
+              {variant === 'portal' ? 'My' : variant === 'super_admin' ? 'Admin' : (user?.role === Role.RESELLER && !user.originalRole) ? 'Partner' : 'Payroll'}
+              <span className="text-jam-orange">{variant === 'portal' ? 'Portal' : (user?.role === Role.RESELLER && !user.originalRole) ? 'Hub' : '-Jam'}</span>
+            </h1>
           </div>
-          <button 
-            type="button"
-            onClick={handleLogout}
-            className="w-full flex items-center px-2 py-2 text-sm text-gray-400 hover:text-white"
-          >
-            <Icons.Logout className="w-4 h-4 mr-2" />
-            Sign Out
-          </button>
-        </div>
-      </aside>
-
-      <div className="flex-1 flex flex-col h-full overflow-hidden w-full print:h-auto print:overflow-visible">
-        <header className="md:hidden bg-jam-black text-white flex items-center justify-between p-4 flex-shrink-0 z-20 no-print">
-          <h1 className="text-xl font-bold">{appTitle}</h1>
-          <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
-            {isMobileMenuOpen ? <Icons.Close /> : <Icons.Menu />}
-          </button>
-        </header>
-
-        {isMobileMenuOpen && (
-          <div className="md:hidden absolute top-16 left-0 w-full bg-jam-black z-50 border-t border-gray-800 max-h-[calc(100vh-4rem)] overflow-y-auto no-print">
-            <nav className="p-4 space-y-2 pb-20">
-              {navItems.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    onNavigate(item.id);
-                    setIsMobileMenuOpen(false);
-                  }}
-                  className={`w-full flex items-center px-4 py-3 rounded-lg ${
-                    currentPath === item.id
-                      ? 'bg-jam-orange text-jam-black'
-                      : 'text-gray-400'
+          <nav className="flex-1 py-6 px-3 space-y-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent">
+            {navItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => onNavigate(item.id)}
+                className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${currentPath === item.id
+                    ? 'bg-jam-orange text-jam-black font-semibold'
+                    : 'text-gray-400 hover:bg-gray-900 hover:text-white'
                   }`}
-                >
-                  <item.icon className="w-5 h-5 mr-3" />
-                  {item.label}
-                </button>
-              ))}
-              <button 
-                type="button"
-                onClick={handleLogout}
-                className="w-full flex items-center px-4 py-3 text-gray-400 border-t border-gray-800 mt-4"
               >
-                <Icons.Logout className="w-5 h-5 mr-3" />
-                Sign Out
+                <item.icon className="w-5 h-5 mr-3 flex-shrink-0" />
+                {item.label}
               </button>
-            </nav>
+            ))}
+          </nav>
+          <div className="p-4 border-t border-gray-800 flex-shrink-0">
+            <div
+              onClick={() => onNavigate('profile')}
+              className="flex items-center mb-4 cursor-pointer hover:bg-gray-700 rounded-lg p-2 -mx-2 transition-colors"
+            >
+              {user?.avatarUrl ? (
+                <img
+                  src={user.avatarUrl}
+                  alt={user.name}
+                  className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-jam-yellow text-jam-black flex items-center justify-center font-bold text-sm flex-shrink-0">
+                  {user?.name.split(' ').map(n => n[0]).join('').substring(0, 2) || 'JD'}
+                </div>
+              )}
+              <div className="ml-3 overflow-hidden">
+                <p className="text-sm font-medium text-white truncate">{user?.name || 'User'}</p>
+                <p className="text-xs text-gray-500">{user?.role}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="w-full flex items-center px-2 py-2 text-sm text-gray-400 hover:text-white"
+            >
+              <Icons.Logout className="w-4 h-4 mr-2" />
+              Sign Out
+            </button>
           </div>
-        )}
+        </aside>
 
-        <main className="flex-1 overflow-auto p-4 md:p-8 print:h-auto print:overflow-visible">
-          {children}
-        </main>
-      </div>
+        <div className="flex-1 flex flex-col h-full overflow-hidden w-full print:h-auto print:overflow-visible">
+          <header className="md:hidden bg-jam-black text-white flex items-center justify-between p-4 flex-shrink-0 z-20 no-print">
+            <h1 className="text-xl font-bold">{appTitle}</h1>
+            <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
+              {isMobileMenuOpen ? <Icons.Close /> : <Icons.Menu />}
+            </button>
+          </header>
+
+          {isMobileMenuOpen && (
+            <div className="md:hidden absolute top-16 left-0 w-full bg-jam-black z-50 border-t border-gray-800 max-h-[calc(100vh-4rem)] overflow-y-auto no-print">
+              <nav className="p-4 space-y-2 pb-20">
+                {navItems.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      onNavigate(item.id);
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className={`w-full flex items-center px-4 py-3 rounded-lg ${currentPath === item.id
+                        ? 'bg-jam-orange text-jam-black'
+                        : 'text-gray-400'
+                      }`}
+                  >
+                    <item.icon className="w-5 h-5 mr-3" />
+                    {item.label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="w-full flex items-center px-4 py-3 text-gray-400 border-t border-gray-800 mt-4"
+                >
+                  <Icons.Logout className="w-5 h-5 mr-3" />
+                  Sign Out
+                </button>
+              </nav>
+            </div>
+          )}
+
+          <main className="flex-1 overflow-auto p-4 md:p-8 print:h-auto print:overflow-visible">
+            {children}
+          </main>
+        </div>
       </div>
     </div>
   );
