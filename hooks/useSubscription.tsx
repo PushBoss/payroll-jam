@@ -2,12 +2,15 @@ import { useMemo } from 'react';
 import { Employee, CompanySettings, PricingPlan } from '../types';
 
 export const useSubscription = (
-    employees: Employee[], 
-    companyData: CompanySettings, 
+    employees: Employee[],
+    companyData: CompanySettings,
     plans: PricingPlan[]
 ) => {
     const limits = useMemo(() => {
-        const activePlan = plans.find(p => p.name === companyData.plan) || plans[0]; // Default to Free
+        // Normalize plan name (Backend uses 'Professional', Frontend UI often uses 'Pro')
+        const normalizedPlanName = companyData.plan === 'Professional' ? 'Pro' : companyData.plan;
+
+        const activePlan = plans.find(p => p.name === normalizedPlanName) || plans[0]; // Default to Free
         if (!activePlan || !activePlan.limit) {
             // Fallback: treat as unlimited if no plan or limit
             return {
@@ -22,7 +25,7 @@ export const useSubscription = (
             };
         }
         // Count employees that count towards the limit (Active only, usually)
-        const currentCount = employees.filter(e => 
+        const currentCount = employees.filter(e =>
             e.status !== 'TERMINATED' && e.status !== 'ARCHIVED'
         ).length;
         // Parse limit string "5 Employees" -> 5
