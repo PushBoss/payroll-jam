@@ -1,27 +1,271 @@
-// All helpers and logic must be inside the PayRun function, after state declarations.
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Icons } from '../components/Icons';
-import { Employee, WeeklyTimesheet, LeaveRequest, PayRun as PayRunType, CompanySettings, IntegrationConfig, PayFrequency, PayRunLineItem } from '../types';
-import { featureFlags } from '../utils/featureFlags';
-import { auditService } from '../services/auditService';
-import { toast } from 'sonner';
+import { Employee, WeeklyTimesheet, LeaveRequest, PayRun as PayRunType, CompanySettings, IntegrationConfig, PayFrequency, PayRunLineItem, StatutoryDeductions } from '../types';
 import { usePayroll } from '../hooks/usePayroll';
+import { generateNCBFile, generateBNSFile, generateGLCSV } from '../utils/exportHelpers';
+import { auditService } from '../services/auditService';
+import { emailService } from '../services/emailService';
 import { PayslipView } from '../components/PayslipView';
+import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
+import { generateUUID } from '../utils/uuid';
+
+// Progress Bar Component
+const ProgressBar: React.FC<{ currentStep: 'SETUP' | 'DRAFT' | 'FINALIZE' }> = ({ currentStep }) => {
+    const steps = [
+        { id: 'SETUP', label: 'Select Period', icon: Icons.Calendar },
+        { id: 'DRAFT', label: 'Enter Details', icon: Icons.FileEdit },
+        { id: 'FINALIZE', label: 'Finalize', icon: Icons.Check }
+    ];
+
+    const currentIndex = steps.findIndex(s => s.id === currentStep);
+
+    return (
+        <div className="mb-8">
+            <div className="flex items-center justify-between max-w-3xl mx-auto">
+                {steps.map((step, index) => {
+                    const StepIcon = step.icon;
+                    const isActive = index === currentIndex;
+                    const isCompleted = index < currentIndex;
+
+                    return (
+                        <React.Fragment key={step.id}>
+                            <div className="flex flex-col items-center flex-1">
+                                <div className={`w-12 h-12 rounded-full flex items-center justify-center border-2 transition-all ${isActive ? 'bg-jam-orange border-jam-orange text-jam-black' :
+                                        isCompleted ? 'bg-green-600 border-green-600 text-white' :
+                                            'bg-gray-100 border-gray-300 text-gray-400'
+                                    }`}>
+                                    {isCompleted ? <Icons.Check className="w-6 h-6" /> : <StepIcon className="w-6 h-6" />}
+                                </div>
+                                <p className={`mt-2 text-sm font-medium ${isActive ? 'text-jam-orange' :
+                                        isCompleted ? 'text-green-600' :
+                                            'text-gray-400'
+                                    }`}>
+                                    {step.label}
+                                </p>
+                            </div>
+                            {index < steps.length - 1 && (
+                                <div className={`flex-1 h-0.5 mx-4 mb-8 transition-all ${index < currentIndex ? 'bg-green-600' : 'bg-gray-300'
+                                    }`} />
+                            )}
+                        </React.Fragment>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
 
 interface PayRunProps {
     employees: Employee[];
-    timesheets?: WeeklyTimesheet[];
-    leaveRequests?: LeaveRequest[];
+    timesheets: WeeklyTimesheet[];
+    leaveRequests: LeaveRequest[];
     onSave: (run: PayRunType) => void;
     companyData: CompanySettings;
     integrationConfig: IntegrationConfig;
     payRunHistory: PayRunType[];
-    editRunId?: string;
-    onNavigate?: (path: string, params?: any) => void;
+    editRunId?: string; // ID of pay run to edit
+    onNavigate?: (path: string) => void; // For navigation after save
 }
 
+// Extracted row component to isolate logic and avoid parser ambiguity
+const PayRunRow = ({
+    item,
+    updateLineItemGross,
+    openAdHocModal,
+    openTaxModal,
+    removeEmployeeFromRun,
+    removeAdHocItem
+}: {
+    item: PayRunLineItem,
+    updateLineItemGross: (id: string, val: string) => void,
+    openAdHocModal: (id: string, type: 'ADDITIONS' | 'DEDUCTIONS') => void,
+    openTaxModal: (item: PayRunLineItem) => void,
+    removeEmployeeFromRun: (id: string) => void,
+    removeAdHocItem: (employeeId: string, itemId: string) => void
+}) => {
+    // Pre-calculate booleans
+    const hasAdditions = item.additions > 0;
+    const hasDeductions = item.deductions > 0;
+    const isManualTax = item.isTaxOverridden === true;
+    const [showAdditionsMenu, setShowAdditionsMenu] = React.useState(false);
+    const [showDeductionsMenu, setShowDeductionsMenu] = React.useState(false);
 
+    return (
+        <tr className="hover:bg-gray-50 group">
+            <td className="px-6 py-4">
+                <p className="font-bold text-gray-900 text-sm">{item.employeeName}</p>
+                <p className="text-xs text-gray-400">{item.employeeCustomId || 'No ID'}</p>
+            </td>
+            <td className="px-6 py-4 text-right">
+                <div className="flex items-center justify-end">
+                    <input
+                        type="number"
+                        value={item.grossPay}
+                        onChange={(e) => updateLineItemGross(item.employeeId, e.target.value)}
+                        className="w-28 text-right border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-jam-orange focus:border-jam-orange bg-white shadow-sm"
+                    />
+                </div>
+            </td>
+            <td className="px-6 py-4 text-center overflow-visible">
+                <div className="flex flex-col items-center relative">
+                    {hasAdditions ? (
+                        <div className="flex flex-col items-center relative">
+                            <button
+                                onClick={() => setShowAdditionsMenu(!showAdditionsMenu)}
+                                className="text-green-600 font-bold text-sm mb-1 hover:text-green-700 cursor-pointer"
+                            >
+                                +${item.additions.toLocaleString()}
+                            </button>
+                            {showAdditionsMenu && (
+                                <div className="absolute top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl p-3 z-[100] min-w-[250px] left-1/2 transform -translate-x-1/2">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <span className="text-xs font-bold text-gray-700">Additions</span>
+                                        <button
+                                            onClick={() => setShowAdditionsMenu(false)}
+                                            className="text-gray-400 hover:text-gray-600"
+                                        >
+                                            <Icons.Close className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                    <div className="space-y-1 max-h-60 overflow-y-auto">
+                                        {item.additionsBreakdown?.map((add) => (
+                                            <div key={add.id} className="flex justify-between items-center text-xs p-2 hover:bg-gray-50 rounded">
+                                                <div className="flex-1">
+                                                    <div className="font-medium text-gray-900">{add.name}</div>
+                                                    <div className="text-gray-500 text-[10px]">{add.isTaxable === false ? 'Non-taxable' : 'Taxable'}</div>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-green-600 font-bold">${add.amount.toLocaleString()}</span>
+                                                    <button
+                                                        onClick={() => {
+                                                            removeAdHocItem(item.employeeId, add.id);
+                                                            if (item.additionsBreakdown?.length === 1) setShowAdditionsMenu(false);
+                                                        }}
+                                                        className="text-red-500 hover:text-red-700"
+                                                        title="Delete"
+                                                    >
+                                                        <Icons.Trash className="w-3 h-3" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            setShowAdditionsMenu(false);
+                                            openAdHocModal(item.employeeId, 'ADDITIONS');
+                                        }}
+                                        className="w-full mt-2 text-xs text-jam-orange hover:text-jam-black flex items-center justify-center border-t border-gray-200 pt-2"
+                                    >
+                                        <Icons.Plus className="w-3 h-3 mr-1" /> Add Another
+                                    </button>
+                                </div>
+                            )}
+                            <button onClick={() => setShowAdditionsMenu(!showAdditionsMenu)} className="text-xs text-gray-400 hover:text-jam-orange flex items-center">
+                                <Icons.ChevronDown className="w-3 h-3 mr-1" /> View
+                            </button>
+                        </div>
+                    ) : (
+                        <button onClick={() => openAdHocModal(item.employeeId, 'ADDITIONS')} className="text-gray-400 hover:text-jam-orange text-sm flex items-center">
+                            <Icons.Plus className="w-3 h-3 mr-1" /> Add
+                        </button>
+                    )}
+                </div>
+            </td>
+            <td className="px-6 py-4 text-center overflow-visible">
+                <div className="flex flex-col items-center relative">
+                    {hasDeductions ? (
+                        <div className="flex flex-col items-center relative">
+                            <button
+                                onClick={() => setShowDeductionsMenu(!showDeductionsMenu)}
+                                className="text-red-600 font-bold text-sm mb-1 hover:text-red-700 cursor-pointer"
+                            >
+                                -${item.deductions.toLocaleString()}
+                            </button>
+                            {showDeductionsMenu && (
+                                <div className="absolute top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl p-3 z-[100] min-w-[250px] left-1/2 transform -translate-x-1/2">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <span className="text-xs font-bold text-gray-700">Deductions</span>
+                                        <button
+                                            onClick={() => setShowDeductionsMenu(false)}
+                                            className="text-gray-400 hover:text-gray-600"
+                                        >
+                                            <Icons.Close className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                    <div className="space-y-1 max-h-60 overflow-y-auto">
+                                        {item.deductionsBreakdown?.map((ded) => (
+                                            <div key={ded.id} className="flex justify-between items-center text-xs p-2 hover:bg-gray-50 rounded">
+                                                <div className="flex-1">
+                                                    <div className="font-medium text-gray-900">{ded.name}</div>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-red-600 font-bold">${ded.amount.toLocaleString()}</span>
+                                                    <button
+                                                        onClick={() => {
+                                                            removeAdHocItem(item.employeeId, ded.id);
+                                                            if (item.deductionsBreakdown?.length === 1) setShowDeductionsMenu(false);
+                                                        }}
+                                                        className="text-red-500 hover:text-red-700"
+                                                        title="Delete"
+                                                    >
+                                                        <Icons.Trash className="w-3 h-3" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            setShowDeductionsMenu(false);
+                                            openAdHocModal(item.employeeId, 'DEDUCTIONS');
+                                        }}
+                                        className="w-full mt-2 text-xs text-jam-orange hover:text-jam-black flex items-center justify-center border-t border-gray-200 pt-2"
+                                    >
+                                        <Icons.Plus className="w-3 h-3 mr-1" /> Add Another
+                                    </button>
+                                </div>
+                            )}
+                            <button onClick={() => setShowDeductionsMenu(!showDeductionsMenu)} className="text-xs text-gray-400 hover:text-jam-orange flex items-center">
+                                <Icons.ChevronDown className="w-3 h-3 mr-1" /> View
+                            </button>
+                        </div>
+                    ) : (
+                        <button onClick={() => openAdHocModal(item.employeeId, 'DEDUCTIONS')} className="text-gray-400 hover:text-jam-orange text-sm flex items-center">
+                            <Icons.Plus className="w-3 h-3 mr-1" /> Add
+                        </button>
+                    )}
+                </div>
+            </td>
+            <td className="px-6 py-4 text-right relative">
+                <div className="text-xs text-gray-500 space-y-0.5">
+                    <div className="flex justify-end space-x-2"><span>PAYE:</span> <span className="font-medium text-gray-700">{item.paye.toLocaleString()}</span></div>
+                    <div className="flex justify-end space-x-2"><span>NIS:</span> <span className="font-medium text-gray-700">{item.nis.toLocaleString()}</span></div>
+                    <div className="flex justify-end space-x-2"><span>Ed:</span> <span className="font-medium text-gray-700">{item.edTax.toLocaleString()}</span></div>
+                    <div className="mt-1 flex justify-end">
+                        <button onClick={() => openTaxModal(item)} className="text-[10px] bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-0.5 rounded flex items-center" title="Manually Override Taxes">
+                            <Icons.FileEdit className="w-3 h-3 mr-1" /> Edit Taxes
+                        </button>
+                    </div>
+                    {isManualTax && (
+                        <div className="absolute top-2 right-2">
+                            <span className="bg-red-100 text-red-600 text-[9px] font-bold px-1 rounded border border-red-200">MANUAL</span>
+                        </div>
+                    )}
+                </div>
+            </td>
+            <td className="px-6 py-4 text-right">
+                <span className="font-bold text-lg text-gray-900">${item.netPay.toLocaleString()}</span>
+            </td>
+            <td className="px-6 py-4 text-center">
+                <button onClick={() => removeEmployeeFromRun(item.employeeId)} className="text-gray-300 hover:text-red-500 p-2 rounded-full hover:bg-red-50 transition-colors" title="Remove from Pay Run">
+                    <Icons.Trash className="w-4 h-4" />
+                </button>
+            </td>
+        </tr>
+    );
+};
 
 export const PayRun: React.FC<PayRunProps> = ({
     employees,
@@ -30,190 +274,302 @@ export const PayRun: React.FC<PayRunProps> = ({
     onSave,
     companyData,
     integrationConfig,
-    payRunHistory
+    payRunHistory,
+    editRunId,
+    onNavigate
 }) => {
-    // Payroll logic hook
-    const { draftItems, totals, updateLineItemTaxes, addAdHocItem, addEmployeeToRun, removeEmployeeFromRun, clearDraft } = usePayroll(employees, timesheets, leaveRequests, payRunHistory);
     const { user: currentUser } = useAuth();
-
-    // All required state variables
     const [step, setStep] = useState<'SETUP' | 'DRAFT' | 'FINALIZE'>('SETUP');
     const [payCycle, setPayCycle] = useState<PayFrequency | 'ALL'>('ALL');
     const [payPeriod, setPayPeriod] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
-    const [currentRun, setCurrentRun] = useState<PayRunType | null>(null);
+    const [editingRun, setEditingRun] = useState<PayRunType | null>(null);
+    const [hasLoadedEdit, setHasLoadedEdit] = useState(false);
 
-    // Modal states
-    const [adHocModal, setAdHocModal] = useState<{ isOpen: boolean, employeeId: string, type: 'ADDITIONS' | 'DEDUCTIONS' }>({ isOpen: false, employeeId: '', type: 'ADDITIONS' });
+    // Modal States
+    const [adHocModal, setAdHocModal] = useState<{
+        isOpen: boolean;
+        employeeId: string;
+        type: 'ADDITIONS' | 'DEDUCTIONS';
+    }>({ isOpen: false, employeeId: '', type: 'ADDITIONS' });
     const [newItemName, setNewItemName] = useState('');
     const [newItemAmount, setNewItemAmount] = useState('');
-    const [taxModalOpen, setTaxModalOpen] = useState(false);
-    const [selectedTaxItem] = useState<PayRunLineItem | null>(null);
-    const [taxOverrideForm, setTaxOverrideForm] = useState({ nis: 0, nht: 0, edTax: 0, paye: 0, totalDeductions: 0, netPay: 0 });
+
     const [addEmployeeModalOpen, setAddEmployeeModalOpen] = useState(false);
     const [viewingPayslip, setViewingPayslip] = useState<PayRunLineItem | null>(null);
 
-    // Loading states
+    // Tax Override Modal State
+    const [taxModalOpen, setTaxModalOpen] = useState(false);
+    const [selectedTaxItem, setSelectedTaxItem] = useState<PayRunLineItem | null>(null);
+    const [taxOverrideForm, setTaxOverrideForm] = useState<StatutoryDeductions>({
+        nis: 0, nht: 0, edTax: 0, paye: 0, totalDeductions: 0, netPay: 0
+    });
+
+    // Loading States
     const [isCalculating, setIsCalculating] = useState(false);
     const [isFinalizing, setIsFinalizing] = useState(false);
-    const [isEmailing] = useState(false);
-    const [isSuspended] = useState(false); // TODO: Get from companyData or subscription status
-    const [_editingRun, setEditingRun] = useState<PayRunType | null>(null);
+    const [isEmailing, setIsEmailing] = useState(false);
+    const [currentRun, setCurrentRun] = useState<PayRunType | null>(null);
+    const [isPayRunConfirmed, setIsPayRunConfirmed] = useState(false);
 
-    // Pay period options
-    const payPeriodOptions = (() => {
+    const {
+        draftItems,
+        totals,
+        initializeRun,
+        updateLineItemGross,
+        updateLineItemTaxes,
+        addAdHocItem,
+        addEmployeeToRun,
+        removeEmployeeFromRun,
+        clearDraft,
+        loadDraftItems,
+        removeAdHocItem
+    } = usePayroll(employees, timesheets, leaveRequests, payRunHistory);
+
+    const isSuspended = companyData.subscriptionStatus === 'SUSPENDED';
+
+    // Load run for editing - only once when editRunId changes
+    useEffect(() => {
+        // Only load if we have an editRunId and haven't loaded yet
+        if (editRunId && !hasLoadedEdit && payRunHistory.length > 0) {
+            const runToEdit = payRunHistory.find(r => r.id === editRunId);
+            if (runToEdit && (runToEdit.status === 'DRAFT' || runToEdit.status === 'APPROVED')) {
+                setEditingRun(runToEdit);
+                // Convert periodStart to YYYY-MM format if it's in YYYY-MM-DD format
+                let period = runToEdit.periodStart;
+                if (period.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                    period = period.substring(0, 7); // Extract YYYY-MM from YYYY-MM-DD
+                }
+                setPayPeriod(period);
+                setCurrentRun(runToEdit);
+                // Load the line items into draft
+                if (runToEdit.lineItems && runToEdit.lineItems.length > 0) {
+                    loadDraftItems(runToEdit.lineItems);
+                }
+                setStep('DRAFT'); // Always load to DRAFT for editing
+                setHasLoadedEdit(true); // Mark as loaded
+                toast.success(`Loaded pay run for editing`);
+            } else if (runToEdit && runToEdit.status === 'FINALIZED') {
+                toast.error('Cannot edit finalized pay runs');
+                setHasLoadedEdit(true);
+            }
+        } else if (editRunId && !hasLoadedEdit && payRunHistory.length === 0) {
+            toast.error('Pay run not found');
+            setHasLoadedEdit(true);
+        }
+
+        // Reset hasLoadedEdit when editRunId changes
+        if (!editRunId && hasLoadedEdit) {
+            setHasLoadedEdit(false);
+        }
+        // Only depend on editRunId and hasLoadedEdit to prevent re-triggering on payRunHistory updates
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editRunId, hasLoadedEdit]);
+
+    // Generate Pay Period Options
+    const payPeriodOptions = useMemo(() => {
         const options = [];
-        const now = new Date();
-        for (let i = 0; i < 12; i++) {
-            const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-            const value = date.toISOString().slice(0, 7);
-            const label = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+        const today = new Date();
+        for (let i = -6; i <= 3; i++) {
+            const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
+            const value = d.toISOString().slice(0, 7);
+            const label = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
             options.push({ value, label });
         }
-        return options;
-    })();
+        return options.reverse();
+    }, []);
 
-    // Handler functions
-    const handleInitializeSystem = async () => {
-        setIsCalculating(true);
-        try {
-            // Initialize pay run logic here
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            setStep('DRAFT');
-        } finally {
-            setIsCalculating(false);
-        }
-    };
+    // Calculate Bank Totals for Distribution Summary
+    const bankTotals = useMemo(() => {
+        if (!currentRun) return { ncb: 0, bns: 0, other: 0, total: 0 };
+        let ncb = 0;
+        let bns = 0;
+        let other = 0;
 
-    const handleContinueToFinalize = async () => {
-        setIsFinalizing(true);
-        try {
-            await new Promise(resolve => setTimeout(resolve, 500));
-            setStep('FINALIZE');
-        } finally {
-            setIsFinalizing(false);
-        }
-    };
+        currentRun.lineItems.forEach(line => {
+            const emp = employees.find(e => e.id === line.employeeId);
+            const bank = emp?.bankDetails?.bankName || 'OTHER';
 
-    const handleFinalizeRun = async () => {
-        if (!currentRun) return;
-        setIsFinalizing(true);
-        try {
-            // Update status to FINALIZED
-            const finalized: PayRunType = {
-                ...currentRun,
-                status: 'FINALIZED',
-                periodEnd: currentRun.periodEnd || payPeriod
-            };
+            if (bank === 'NCB') ncb += line.netPay;
+            else if (bank === 'BNS') bns += line.netPay;
+            else other += line.netPay;
+        });
 
-            onSave(finalized);
-            auditService.log(currentUser, 'UPDATE', 'PayRun', `Finalized payroll for ${finalized.periodStart}`);
-            setCurrentRun(finalized);
-            toast.success('Pay Run Finalized Successfully!');
-        } catch (error) {
-            console.error(error);
-            toast.error('Failed to finalize pay run');
-        } finally {
-            setIsFinalizing(false);
-        }
-    };
+        return { ncb, bns, other, total: ncb + bns + other };
+    }, [currentRun, employees]);
 
-    // Bank file/accounting card helpers (must be after currentRun is declared)
-    const bankTotals = {
-        ncb: currentRun?.lineItems?.filter((i: PayRunLineItem) => i.bankName === 'NCB').reduce((sum: number, i: PayRunLineItem) => sum + i.netPay, 0) || 0,
-        bns: currentRun?.lineItems?.filter((i: PayRunLineItem) => i.bankName === 'BNS').reduce((sum: number, i: PayRunLineItem) => sum + i.netPay, 0) || 0,
-        other: currentRun?.lineItems?.filter((i: PayRunLineItem) => i.bankName !== 'NCB' && i.bankName !== 'BNS').reduce((sum: number, i: PayRunLineItem) => sum + i.netPay, 0) || 0
-    };
-    const ncbCardClass = bankTotals.ncb > 0 ? 'border-green-500' : 'border-gray-200';
-    const bnsCardClass = bankTotals.bns > 0 ? 'border-green-500' : 'border-gray-200';
+    // Pre-calculate booleans for Finalize Step
     const showNcbCard = bankTotals.ncb > 0;
     const showBnsCard = bankTotals.bns > 0;
     const showOtherCard = bankTotals.other > 0;
 
-    const handleDownloadBankFile = (bank: 'NCB' | 'BNS') => {
+    const ncbCardClass = showNcbCard ? 'border-gray-200 hover:border-jam-orange bg-white' : 'border-gray-100 bg-gray-50 opacity-60';
+    const bnsCardClass = showBnsCard ? 'border-gray-200 hover:border-jam-orange bg-white' : 'border-gray-100 bg-gray-50 opacity-60';
+
+    const handleInitializeSystem = () => {
+        setIsCalculating(true);
+        setTimeout(() => {
+            const hasData = initializeRun(payCycle, payPeriod);
+            if (hasData) {
+                setStep('DRAFT');
+                toast.success("Payroll calculated from system data (Cumulative YTD Applied)");
+            } else {
+                toast.error("No eligible employees found for this selection.");
+            }
+            setIsCalculating(false);
+        }, 800);
+    };
+
+    const handleContinueToFinalize = async () => {
+        if (draftItems.length === 0) {
+            toast.error("No employees in pay run. Add employees first.");
+            return;
+        }
+
+        // Auto-save draft before moving to finalize
+        const draftRun: PayRunType = {
+            id: editingRun?.id || generateUUID(),
+            periodStart: payPeriod,
+            periodEnd: payPeriod,
+            payDate: new Date().toISOString().split('T')[0],
+            payFrequency: editingRun?.payFrequency || getPayFrequency(),
+            status: 'DRAFT',
+            totalGross: totals.gross,
+            totalNet: totals.net,
+            lineItems: draftItems
+        };
+
+        // Update editingRun state
+        setEditingRun(draftRun);
+        setCurrentRun(draftRun);
+        onSave(draftRun);
+
+        // Move to finalize step (but not finalized yet)
+        setStep('FINALIZE');
+        setIsPayRunConfirmed(false);
+        toast.success("Review your pay run and click Finalize to complete");
+    };
+
+    // Determine pay frequency from payCycle
+    const getPayFrequency = (): 'WEEKLY' | 'FORTNIGHTLY' | 'MONTHLY' => {
+        if (payCycle === 'WEEKLY') return 'WEEKLY';
+        if (payCycle === 'FORTNIGHTLY') return 'FORTNIGHTLY';
+        // Default to MONTHLY for 'ALL' or 'MONTHLY'
+        return 'MONTHLY';
+    };
+
+    // Removed handleSaveDraft - using auto-save with handleContinueToFinalize now
+
+    // Removed handleSaveAsApproved - merging approval into finalize step
+
+    const handleConfirmFinalize = async () => {
+        setIsFinalizing(true);
+
+        const newRun: PayRunType = {
+            id: editingRun?.id || currentRun?.id || generateUUID(),
+            periodStart: payPeriod,
+            periodEnd: payPeriod,
+            payDate: new Date().toISOString().split('T')[0],
+            payFrequency: editingRun?.payFrequency || getPayFrequency(),
+            status: 'FINALIZED',
+            totalGross: totals.gross,
+            totalNet: totals.net,
+            lineItems: draftItems
+        };
+
+        // Don't send emails automatically - wait for user to click "Email All"
+        onSave(newRun);
+        auditService.log(currentUser, 'CREATE', 'PayRun', `Finalized payroll for ${payPeriod}`);
+        setCurrentRun(newRun);
+        setIsPayRunConfirmed(true);
+        setIsFinalizing(false);
+        toast.success("Payroll finalized successfully! You can now download, email, or print payslips.");
+    };
+
+    const handleDownloadBankFile = (type: 'NCB' | 'BNS') => {
         if (!currentRun) return;
-        if (bank === 'NCB') {
-            // Download logic here (stub)
-            toast.success('NCB file generated');
-        } else if (bank === 'BNS') {
-            // Download logic here (stub)
-            toast.success('BNS file generated');
+        if (type === 'NCB') {
+            if (bankTotals.ncb === 0) {
+                toast.error("No employees found with NCB accounts.");
+                return;
+            }
+            generateNCBFile(currentRun, companyData, employees);
+        } else if (type === 'BNS') {
+            if (bankTotals.bns === 0) {
+                toast.error("No employees found with Scotiabank accounts.");
+                return;
+            }
+            generateBNSFile(currentRun, companyData, employees);
         }
     };
 
     const handleDownloadGL = () => {
         if (!currentRun) return;
-        // Download logic here (stub)
-        toast.success('GL CSV generated');
-    };
+        generateGLCSV(currentRun, integrationConfig);
+        toast.success("GL CSV Exported");
+    }
 
     const handleEmailPayslips = async () => {
         if (!currentRun) return;
-        // Email payslips logic here (stub)
-        toast.success('Payslips emailed');
-    };
+        setIsEmailing(true);
+        let sentCount = 0;
 
-    // Generate a simple HTML representation of all payslips for printing/downloading
-    const generatePayslipsHTML = (run: PayRunType) => {
-        const rows = run.lineItems.map(item => {
-            return `
-                <section style="page-break-after:always;padding:20px;border-bottom:1px solid #eee;">
-                    <h2 style="margin:0 0 6px 0;">${companyData.name} — Payslip</h2>
-                    <div style="font-size:14px;margin-bottom:8px;">
-                        <strong>Period:</strong> ${run.periodStart} &nbsp; | &nbsp; <strong>Employee:</strong> ${item.employeeName} (${item.employeeId})
-                    </div>
-                    <div style="font-size:13px;margin-bottom:6px;">
-                        <div><strong>Gross:</strong> $${item.grossPay.toLocaleString()}</div>
-                        <div><strong>Total Deductions:</strong> $${item.totalDeductions.toLocaleString()}</div>
-                        <div><strong>Net Pay:</strong> $${item.netPay.toLocaleString()}</div>
-                    </div>
-                    <div style="font-size:12px;color:#666;margin-top:8px;">Generated from Payroll Jam</div>
-                </section>
-            `;
-        }).join('\n');
+        // Check company plan for employee portal access
+        const companyPlan = companyData?.plan || 'Free';
+        const hasPortalAccess = companyPlan === 'Starter' || companyPlan === 'Pro' || companyPlan === 'Professional';
 
-        return `<!doctype html><html><head><meta charset="utf-8"><title>Payslips ${run.periodStart}</title></head><body>${rows}</body></html>`;
-    };
+        try {
+            for (const line of currentRun.lineItems) {
+                const emp = employees.find(e => e.id === line.employeeId);
+                if (emp?.email) {
+                    // Generate download token for Free plan users
+                    let downloadToken = '';
+                    if (!hasPortalAccess) {
+                        const tokenData = {
+                            employeeId: line.employeeId,
+                            period: currentRun.periodStart,
+                            runId: currentRun.id
+                        };
+                        downloadToken = btoa(JSON.stringify(tokenData));
+                        console.log('🔑 Generated download token for Free plan:', {
+                            employeeId: line.employeeId,
+                            token: downloadToken,
+                            decoded: tokenData
+                        });
+                    }
 
-    const downloadAllPayslips = (run?: PayRunType) => {
-        if (!featureFlags.payslipExport) {
-            toast.error('Payslip export is currently disabled.');
-            return;
+                    console.log('📧 Sending payslip email:', {
+                        email: emp.email,
+                        hasPortalAccess,
+                        downloadToken: downloadToken || 'N/A (portal access)'
+                    });
+
+                    await emailService.sendPayslipNotification(
+                        emp.email,
+                        emp.firstName,
+                        currentRun.periodStart,
+                        `$${line.netPay.toLocaleString()}`,
+                        hasPortalAccess,
+                        downloadToken
+                    );
+                    sentCount++;
+                }
+            }
+            toast.success(`Payslips emailed to ${sentCount} employees`);
+        } catch (error) {
+            console.error('Error sending payslips:', error);
+            toast.error('Some emails failed to send. Check logs.');
+        } finally {
+            setIsEmailing(false);
         }
-        if (!run) return;
-        const html = generatePayslipsHTML(run);
-        const blob = new Blob([html], { type: 'text/html' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `payslips-${run.periodStart}.html`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-    };
-
-    const printAllPayslips = (run?: PayRunType) => {
-        if (!featureFlags.payslipExport) {
-            toast.error('Payslip print is currently disabled.');
-            return;
-        }
-        if (!run) return;
-        const html = generatePayslipsHTML(run);
-        const w = window.open('', '_blank', 'width=900,height=700');
-        if (!w) {
-            toast.error('Unable to open print window.');
-            return;
-        }
-        w.document.open();
-        w.document.write(html);
-        w.document.close();
-        w.focus();
-        setTimeout(() => {
-            w.print();
-        }, 500);
     };
 
     // Ad-Hoc Logic
+    const openAdHocModal = (empId: string, type: 'ADDITIONS' | 'DEDUCTIONS') => {
+        setAdHocModal({ isOpen: true, employeeId: empId, type });
+        setNewItemName('');
+        setNewItemAmount('');
+    };
+
     const submitAdHocItem = (e: React.FormEvent) => {
         e.preventDefault();
         if (!newItemName || !newItemAmount) return;
@@ -230,6 +586,19 @@ export const PayRun: React.FC<PayRunProps> = ({
     };
 
     // Tax Override Logic
+    const openTaxModal = (item: PayRunLineItem) => {
+        setSelectedTaxItem(item);
+        setTaxOverrideForm({
+            nis: item.nis,
+            nht: item.nht,
+            edTax: item.edTax,
+            paye: item.paye,
+            totalDeductions: item.totalDeductions,
+            netPay: item.netPay
+        });
+        setTaxModalOpen(true);
+    };
+
     const submitTaxOverride = (e: React.FormEvent) => {
         e.preventDefault();
         if (!selectedTaxItem) return;
@@ -251,159 +620,45 @@ export const PayRun: React.FC<PayRunProps> = ({
         !draftItems.find(item => item.employeeId === e.id)
     );
 
-    // StepIndicator Component
-    const StepIndicator = ({ currentStep, isFinalized }: { currentStep: 'SETUP' | 'DRAFT' | 'FINALIZE', isFinalized?: boolean }) => {
-        const steps = [
-            { id: 'SETUP', label: 'Select Period', icon: Icons.Check },
-            { id: 'DRAFT', label: 'Enter Details', icon: Icons.Check },
-            { id: 'FINALIZE', label: 'Finalize', icon: Icons.Check } // Icons dynamic based on state below
-        ];
-
-        const getStatus = (stepId: string) => {
-            if (isFinalized) return 'complete';
-            if (stepId === 'SETUP') return currentStep === 'SETUP' ? 'active' : 'complete';
-            if (stepId === 'DRAFT') {
-                if (currentStep === 'SETUP') return 'pending';
-                if (currentStep === 'DRAFT') return 'active';
-                return 'complete';
-            }
-            if (stepId === 'FINALIZE') return currentStep === 'FINALIZE' ? 'active' : 'pending';
-            return 'pending';
-        };
-
-        return (
-            <div className="flex justify-center items-center mb-10 w-full max-w-3xl mx-auto px-4">
-                <div className="relative flex justify-between w-full">
-                    {/* Connecting Lines */}
-                    <div className="absolute top-1/2 left-0 w-full h-1 bg-gray-200 -z-10 transform -translate-y-1/2 rounded-full" />
-
-                    {/* Steps */}
-                    <div className="flex justify-between w-full">
-                        {/* Step 1 */}
-                        <StepItem
-                            label="Select Period"
-                            status={getStatus('SETUP')}
-                            icon={Icons.Calendar} // Use specific icon
-                            isLast={false}
-                        />
-                        {/* Step 2 */}
-                        <StepItem
-                            label="Enter Details"
-                            status={getStatus('DRAFT')}
-                            icon={Icons.FileEdit} // Use specific icon
-                            isLast={false}
-                        />
-                        {/* Step 3 */}
-                        <StepItem
-                            label="Finalize"
-                            status={getStatus('FINALIZE')}
-                            icon={Icons.Check} // Use specific icon
-                            isLast={true}
-                        />
-                    </div>
-                </div>
-            </div>
-        );
-    };
-
-    const StepItem = ({ label, status, icon: Icon, isLast }: { label: string, status: string, icon: any, isLast: boolean }) => {
-        const isComplete = status === 'complete';
-        const isActive = status === 'active';
-
-        let bgColor = 'bg-white';
-        let borderColor = 'border-gray-300';
-        let textColor = 'text-gray-400';
-        let iconColor = 'text-gray-400';
-
-        if (isComplete) {
-            bgColor = 'bg-green-500';
-            borderColor = 'border-green-500';
-            textColor = 'text-green-600';
-            iconColor = 'text-white';
-        } else if (isActive) {
-            bgColor = 'bg-jam-orange'; // Yellow/Orange
-            borderColor = 'border-jam-orange';
-            textColor = 'text-jam-orange'; // Text color matches theme
-            iconColor = 'text-jam-black';
-        }
-
-        return (
-            <div className="flex flex-col items-center bg-gray-50 px-4 z-10">
-                {/* Z-10 and bg-gray-50 to hide the line behind the circle/text. Wait, transparent circle? 
-                    Better: Circle has bg-white/color. The line is absolute. 
-                    We need to space them properly. Flex justify-between handles spacing. 
-                  */}
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${borderColor} ${bgColor}`}>
-                    {isComplete ? <Icons.Check className="w-6 h-6 text-white" /> : <Icon className={`w-5 h-5 ${isActive ? 'text-jam-black' : 'text-gray-400'}`} />}
-                </div>
-                <span className={`mt-2 text-xs font-bold uppercase tracking-wide ${isComplete ? 'text-green-600' : isActive ? 'text-green-600' : 'text-gray-400'} ${isActive ? '!text-green-600' : ''}`}>
-                    {label}
-                </span>
-                {/* Fix text color: Active -> Green in screenshot? No, Active -> Green text "Select Period" in screenshot 2? 
-                     Screenshot 1 (Select Period Active): Icon Orange, Text Orange.
-                     Screenshot 2 (Finalize Ready): Select/Enter Green-Check. Finalize Orange-Check.
-                     I'll stick to Orange for Active. */}
-            </div>
-        );
-    };
-
-    // PayRunRow component
-    const PayRunRow = ({ item, removeEmployeeFromRun: _removeEmployeeFromRun }: { item: PayRunLineItem, removeEmployeeFromRun?: (employeeId: string) => void }) => (
-        <tr>
-            <td>{item.employeeName}</td>
-            <td>{item.grossPay}</td>
-            <td>{item.additions}</td>
-            <td>{item.deductions}</td>
-            <td>{item.totalDeductions}</td>
-            <td>{item.netPay}</td>
-        </tr>
-    );
-
     if (step === 'SETUP') {
         return (
-            <div className="max-w-6xl mx-auto mt-10 animate-fade-in px-4">
-                <StepIndicator currentStep="SETUP" />
-                <div className="bg-white p-12 rounded-2xl shadow-xl border border-gray-100 text-center max-w-2xl mx-auto mt-12">
-                    <div className="w-20 h-20 bg-orange-50 rounded-full flex items-center justify-center mx-auto mb-8 shadow-sm border border-orange-100">
-                        <span className="text-4xl text-jam-orange font-bold">$</span>
+            <div className="max-w-4xl mx-auto mt-10 animate-fade-in">
+                <ProgressBar currentStep="SETUP" />
+                <div className="bg-white p-8 rounded-xl shadow-xl border border-gray-100 text-center max-w-xl mx-auto">
+                    <div className="w-16 h-16 bg-orange-50 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm border border-orange-100">
+                        <span className="text-3xl text-jam-orange font-bold">$</span>
                     </div>
 
-                    <h2 className="text-3xl font-bold text-gray-900 mb-4">Start a New Pay Run</h2>
-                    <p className="text-gray-500 text-base mb-10 max-w-md mx-auto leading-relaxed">
+                    <h2 className="text-2xl font-bold text-gray-900 mb-2">Start a New Pay Run</h2>
+                    <p className="text-gray-500 text-sm mb-8 max-w-sm mx-auto leading-relaxed">
                         Select the pay period and group. You can calculate from system data or import a CSV file.
                     </p>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-left mb-10">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left mb-8">
                         <div>
-                            <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide">Pay Period</label>
-                            <div className="relative">
-                                <select
-                                    value={payPeriod}
-                                    onChange={(e) => setPayPeriod(e.target.value)}
-                                    className="w-full appearance-none border border-gray-300 rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-jam-orange focus:border-jam-orange transition-shadow bg-white pr-10"
-                                >
-                                    {payPeriodOptions.map(opt => (
-                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                    ))}
-                                </select>
-                                <Icons.ChevronDown className="absolute right-4 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                            </div>
+                            <label className="block text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">Pay Period</label>
+                            <select
+                                value={payPeriod}
+                                onChange={(e) => setPayPeriod(e.target.value)}
+                                className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange transition-shadow bg-white"
+                            >
+                                {payPeriodOptions.map(opt => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                            </select>
                         </div>
                         <div>
-                            <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide">Pay Cycle Filter</label>
-                            <div className="relative">
-                                <select
-                                    value={payCycle}
-                                    onChange={(e) => setPayCycle(e.target.value as any)}
-                                    className="w-full appearance-none border border-gray-300 rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-jam-orange focus:border-jam-orange transition-shadow bg-white pr-10"
-                                >
-                                    <option value={PayFrequency.MONTHLY}>Monthly (Salaried)</option>
-                                    <option value={PayFrequency.FORTNIGHTLY}>Fortnightly</option>
-                                    <option value={PayFrequency.WEEKLY}>Weekly</option>
-                                    <option value="ALL">All Employees (Mixed)</option>
-                                </select>
-                                <Icons.ChevronDown className="absolute right-4 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                            </div>
+                            <label className="block text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">Pay Cycle Filter</label>
+                            <select
+                                value={payCycle}
+                                onChange={(e) => setPayCycle(e.target.value as any)}
+                                className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange transition-shadow bg-white"
+                            >
+                                <option value={PayFrequency.MONTHLY}>Monthly (Salaried)</option>
+                                <option value={PayFrequency.FORTNIGHTLY}>Fortnightly</option>
+                                <option value={PayFrequency.WEEKLY}>Weekly</option>
+                                <option value="ALL">All Employees (Mixed)</option>
+                            </select>
                         </div>
                     </div>
 
@@ -419,9 +674,9 @@ export const PayRun: React.FC<PayRunProps> = ({
                     <button
                         onClick={handleInitializeSystem}
                         disabled={isSuspended || isCalculating}
-                        className={`w-full py-4 rounded-xl font-bold text-lg transition-all shadow-lg flex justify-center items-center ${isSuspended || isCalculating
-                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                            : 'bg-jam-black text-white hover:bg-gray-900 hover:shadow-xl transform hover:-translate-y-0.5'
+                        className={`w-full py-4 rounded-lg font-bold transition-all shadow-md flex justify-center items-center text-base ${isSuspended || isCalculating
+                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                : 'bg-jam-black text-white hover:bg-gray-900 hover:shadow-lg transform hover:-translate-y-0.5'
                             }`}
                     >
                         {isCalculating ? (
@@ -430,32 +685,6 @@ export const PayRun: React.FC<PayRunProps> = ({
                             <span className="flex items-center"><Icons.Zap className="w-5 h-5 mr-2 text-jam-yellow" /> Start Pay Run</span>
                         )}
                     </button>
-
-                    {/* Resume Draft Helper - Only show if a draft actually exists */}
-                    {payRunHistory?.some(r => r.status === 'DRAFT') && (
-                        <div className="mt-6 pt-6 border-t border-gray-100">
-                            <p className="text-sm text-gray-500 mb-3">You have an unfinished draft pay run.</p>
-                            <button
-                                onClick={async () => {
-                                    const draft = payRunHistory?.slice().reverse().find(r => r.status === 'DRAFT');
-                                    if (draft) {
-                                        // Logic to resume: load draft
-                                        // But for now, just finalize it as per old button? Or resume editing?
-                                        // The old button was "Finalize". I'll assume resume -> edit.
-                                        // But logic is missing to load draft into 'currentRun'.
-                                        // For safety, I'll direct user to "Select Period" which matches draft.
-                                        setPayPeriod(draft.periodStart || payPeriod);
-                                        setCurrentRun(draft);
-                                        setStep('DRAFT');
-                                        toast.success("Resumed draft pay run");
-                                    }
-                                }}
-                                className="text-jam-orange font-bold text-sm hover:underline"
-                            >
-                                Resume Draft
-                            </button>
-                        </div>
-                    )}
                 </div>
             </div>
         );
@@ -463,8 +692,8 @@ export const PayRun: React.FC<PayRunProps> = ({
 
     if (step === 'DRAFT') {
         return (
-            <div className="space-y-6 animate-fade-in relative px-4">
-                <StepIndicator currentStep="DRAFT" />
+            <div className="space-y-6 animate-fade-in relative">
+                <ProgressBar currentStep="DRAFT" />
                 {/* Wizard Stepper */}
                 {/* Ad Hoc Modal */}
                 {adHocModal.isOpen && (
@@ -563,6 +792,9 @@ export const PayRun: React.FC<PayRunProps> = ({
                                 setStep('SETUP');
                                 clearDraft();
                                 setEditingRun(null);
+                                if (onNavigate) {
+                                    onNavigate('reports');
+                                }
                             }
                         }} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm font-medium">
                             Cancel
@@ -583,7 +815,7 @@ export const PayRun: React.FC<PayRunProps> = ({
                     <div className="bg-jam-black text-white p-6 rounded-xl shadow-lg"><p className="text-xs text-jam-yellow font-bold uppercase tracking-wider">Total Net Pay</p><p className="text-3xl font-bold mt-1">${totals.net.toLocaleString()}</p></div>
                 </div>
                 {/* Review Table */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead className="bg-gray-50 border-b border-gray-200">
                             <tr>
@@ -601,7 +833,11 @@ export const PayRun: React.FC<PayRunProps> = ({
                                 <PayRunRow
                                     key={item.employeeId}
                                     item={item}
+                                    updateLineItemGross={updateLineItemGross}
+                                    openAdHocModal={openAdHocModal}
+                                    openTaxModal={openTaxModal}
                                     removeEmployeeFromRun={removeEmployeeFromRun}
+                                    removeAdHocItem={removeAdHocItem}
                                 />
                             ))}
                         </tbody>
@@ -612,10 +848,10 @@ export const PayRun: React.FC<PayRunProps> = ({
         );
     }
 
-    // FINALIZE STEP (Handles both Review and Success states)
+    // FINALIZE STEP
     return (
-        <div className="animate-fade-in relative pb-12 px-4">
-            <StepIndicator currentStep="FINALIZE" isFinalized={currentRun?.status === 'FINALIZED'} />
+        <div className="animate-fade-in relative pb-12">
+            <ProgressBar currentStep="FINALIZE" />
 
             {/* Payslip View Modal */}
             {viewingPayslip && (
@@ -628,11 +864,10 @@ export const PayRun: React.FC<PayRunProps> = ({
                 />
             )}
 
-            {/* STATUS BANNERS - Two states: Review (Blue) or Success (Green) */}
-            {currentRun && currentRun.status !== 'FINALIZED' ? (
-                /* REVIEW MODE - Blue Banner */
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 flex flex-col md:flex-row justify-between items-center mb-8 shadow-sm">
-                    <div className="flex items-center mb-4 md:mb-0">
+            {/* Banner - Different based on confirmation status */}
+            {!isPayRunConfirmed ? (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 flex justify-between items-center mb-8 shadow-sm">
+                    <div className="flex items-center">
                         <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mr-4">
                             <Icons.Calendar className="w-6 h-6" />
                         </div>
@@ -641,27 +876,29 @@ export const PayRun: React.FC<PayRunProps> = ({
                             <p className="text-blue-700 text-sm">Review the payroll details below. Once finalized, payslips will be generated and you can export files.</p>
                         </div>
                     </div>
-                    <div className="flex items-center space-x-3 w-full md:w-auto">
+                    <div className="flex items-center space-x-3">
                         <button
-                            onClick={() => setStep('DRAFT')}
-                            className="bg-white border border-gray-300 text-gray-700 px-4 py-2.5 rounded-lg hover:bg-gray-50 shadow-sm flex items-center text-sm font-medium transition-colors"
+                            onClick={() => { setStep('DRAFT'); }}
+                            className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 shadow-sm flex items-center text-sm font-medium"
                         >
-                            <Icons.Back className="w-4 h-4 mr-2" /> Back to Edit
+                            <Icons.ArrowLeft className="w-4 h-4 mr-2" /> Back to Edit
                         </button>
                         <button
-                            onClick={handleFinalizeRun}
+                            onClick={handleConfirmFinalize}
                             disabled={isFinalizing}
-                            className={`bg-jam-orange text-jam-black px-6 py-2.5 rounded-lg hover:bg-yellow-500 shadow-lg font-bold text-sm transition-colors flex items-center ${isFinalizing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            className="bg-jam-orange text-jam-black px-6 py-2.5 rounded-lg hover:bg-yellow-400 shadow-md font-bold text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                         >
-                            {isFinalizing ? <Icons.Refresh className="w-4 h-4 mr-2 animate-spin" /> : <Icons.Check className="w-4 h-4 mr-2" />}
-                            {isFinalizing ? 'Finalizing...' : 'Finalize Pay Run'}
+                            {isFinalizing ? (
+                                <><Icons.Refresh className="w-4 h-4 mr-2 animate-spin" /> Finalizing...</>
+                            ) : (
+                                <><Icons.Check className="w-4 h-4 mr-2" /> Finalize Pay Run</>
+                            )}
                         </button>
                     </div>
                 </div>
             ) : (
-                /* SUCCESS MODE - Green Banner */
-                <div className="bg-green-50 border border-green-200 rounded-xl p-6 flex flex-col md:flex-row justify-between items-center mb-8 shadow-sm">
-                    <div className="flex items-center mb-4 md:mb-0">
+                <div className="bg-green-50 border border-green-200 rounded-xl p-6 flex justify-between items-center mb-8 shadow-sm">
+                    <div className="flex items-center">
                         <div className="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mr-4">
                             <Icons.Check className="w-6 h-6" />
                         </div>
@@ -672,10 +909,9 @@ export const PayRun: React.FC<PayRunProps> = ({
                     </div>
                     <div className="flex items-center space-x-3">
                         <button
-                            onClick={() => { setStep('SETUP'); clearDraft(); setCurrentRun(null); }}
-                            className="bg-green-600 text-white px-6 py-2.5 rounded-lg hover:bg-green-700 shadow-md font-bold text-sm transition-colors flex items-center"
+                            onClick={() => { setStep('SETUP'); clearDraft(); setIsPayRunConfirmed(false); }}
+                            className="bg-green-600 text-white px-6 py-2.5 rounded-lg hover:bg-green-700 shadow-md font-medium text-sm transition-colors"
                         >
-                            <Icons.Next className="w-4 h-4 mr-2" />
                             Start New Run
                         </button>
                     </div>
@@ -705,8 +941,8 @@ export const PayRun: React.FC<PayRunProps> = ({
                             </div>
                             <button
                                 onClick={() => handleDownloadBankFile('NCB')}
-                                disabled={!showNcbCard}
-                                className="w-full py-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded text-xs font-medium text-gray-700 disabled:cursor-not-allowed disabled:bg-gray-50"
+                                disabled={!showNcbCard || !isPayRunConfirmed}
+                                className="w-full py-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded text-xs font-medium text-gray-700 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:opacity-50"
                             >
                                 Download File
                             </button>
@@ -726,8 +962,8 @@ export const PayRun: React.FC<PayRunProps> = ({
                             </div>
                             <button
                                 onClick={() => handleDownloadBankFile('BNS')}
-                                disabled={!showBnsCard}
-                                className="w-full py-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded text-xs font-medium text-gray-700 disabled:cursor-not-allowed disabled:bg-gray-50"
+                                disabled={!showBnsCard || !isPayRunConfirmed}
+                                className="w-full py-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded text-xs font-medium text-gray-700 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:opacity-50"
                             >
                                 Download File
                             </button>
@@ -756,7 +992,8 @@ export const PayRun: React.FC<PayRunProps> = ({
                         <p className="text-xs text-blue-700 mb-4">Post payroll costs to your GL automatically.</p>
                         <button
                             onClick={handleDownloadGL}
-                            className="w-full py-2 bg-white border border-blue-200 text-blue-700 rounded font-medium text-sm hover:bg-blue-50 flex items-center justify-center"
+                            disabled={!isPayRunConfirmed}
+                            className="w-full py-2 bg-white border border-blue-200 text-blue-700 rounded font-medium text-sm hover:bg-blue-50 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <Icons.Link className="w-3 h-3 mr-2" /> Sync to GL
                         </button>
@@ -767,38 +1004,108 @@ export const PayRun: React.FC<PayRunProps> = ({
             {/* Generated Payslips List */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                 <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <h3 className="font-bold text-gray-900">Generated Payslips</h3>
-                    <div className="flex space-x-3">
-                        {featureFlags.payslipExport ? (
+                    <h3 className="font-bold text-gray-900">{isPayRunConfirmed ? 'Generated Payslips' : 'Payslips Preview'}</h3>
+                    {isPayRunConfirmed && (
+                        <div className="flex space-x-3">
                             <button
-                                onClick={() => downloadAllPayslips(currentRun || undefined)}
-                                disabled={!currentRun || currentRun.status !== 'FINALIZED'}
-                                className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                onClick={() => {
+                                    if (!currentRun || currentRun.lineItems.length === 0) {
+                                        toast.error('No payslips to download');
+                                        return;
+                                    }
+
+                                    toast.success(`Downloading ${currentRun.lineItems.length} payslips. Save each as PDF, then close the dialog to continue.`);
+
+                                    // Download payslips sequentially as PDFs
+                                    let currentIndex = 0;
+
+                                    const downloadNext = () => {
+                                        if (currentIndex >= currentRun.lineItems.length) {
+                                            setViewingPayslip(null);
+                                            toast.success('All payslips downloaded successfully!');
+                                            return;
+                                        }
+
+                                        // Show the current payslip
+                                        setViewingPayslip(currentRun.lineItems[currentIndex]);
+
+                                        // Wait for the payslip to render, then open print dialog for saving as PDF
+                                        setTimeout(() => {
+                                            // Set up listener for when print/save dialog closes
+                                            const handleAfterPrint = () => {
+                                                window.removeEventListener('afterprint', handleAfterPrint);
+                                                currentIndex++;
+                                                // Small delay before showing next payslip
+                                                setTimeout(downloadNext, 300);
+                                            };
+
+                                            window.addEventListener('afterprint', handleAfterPrint);
+                                            // Open print dialog - user can choose "Save as PDF" as destination
+                                            window.print();
+                                        }, 500);
+                                    };
+
+                                    downloadNext();
+                                }}
+                                className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-100"
                             >
                                 <Icons.Download className="w-4 h-4 mr-2" />
                                 Download All
                             </button>
-                        ) : null}
-                        {/* Email All button remains always visible */}
-                        <button
-                            onClick={handleEmailPayslips}
-                            disabled={isEmailing || !currentRun || currentRun.status !== 'FINALIZED'}
-                            className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            <Icons.Mail className="w-4 h-4 mr-2" />
-                            {isEmailing ? 'Sending...' : 'Email All'}
-                        </button>
-                        {featureFlags.payslipExport ? (
                             <button
-                                onClick={() => printAllPayslips(currentRun || undefined)}
-                                disabled={!currentRun || currentRun.status !== 'FINALIZED'}
-                                className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                onClick={handleEmailPayslips}
+                                disabled={isEmailing}
+                                className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-100 disabled:opacity-50"
+                            >
+                                <Icons.Mail className="w-4 h-4 mr-2" />
+                                {isEmailing ? 'Sending...' : 'Email All'}
+                            </button>
+                            <button
+                                onClick={() => {
+                                    if (!currentRun || currentRun.lineItems.length === 0) {
+                                        toast.error('No payslips to print');
+                                        return;
+                                    }
+
+                                    toast.success(`Printing ${currentRun.lineItems.length} payslips. Close each print dialog to continue to the next.`);
+
+                                    // Print payslips sequentially, waiting for each print dialog to close
+                                    let currentIndex = 0;
+
+                                    const printNext = () => {
+                                        if (currentIndex >= currentRun.lineItems.length) {
+                                            setViewingPayslip(null);
+                                            toast.success('All payslips printed successfully!');
+                                            return;
+                                        }
+
+                                        // Show the current payslip
+                                        setViewingPayslip(currentRun.lineItems[currentIndex]);
+
+                                        // Wait for the payslip to render, then open print dialog
+                                        setTimeout(() => {
+                                            // Set up listener for when print dialog closes
+                                            const handleAfterPrint = () => {
+                                                window.removeEventListener('afterprint', handleAfterPrint);
+                                                currentIndex++;
+                                                // Small delay before showing next payslip
+                                                setTimeout(printNext, 300);
+                                            };
+
+                                            window.addEventListener('afterprint', handleAfterPrint);
+                                            window.print();
+                                        }, 500);
+                                    };
+
+                                    printNext();
+                                }}
+                                className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-100"
                             >
                                 <Icons.Printer className="w-4 h-4 mr-2" />
                                 Print All
                             </button>
-                        ) : null}
-                    </div>
+                        </div>
+                    )}
                 </div>
 
                 <div className="divide-y divide-gray-100">
