@@ -93,10 +93,14 @@ export const Layout: React.FC<LayoutProps> = ({
   } else if (variant === 'super_admin') {
     navItems = superAdminNavItems;
     appTitle = 'Super Admin';
-  } else if (user?.role === Role.RESELLER && !user.originalRole) {
+  } else if (user?.role === Role.RESELLER && currentPath === 'reseller-dashboard' && !user.originalRole) {
     navItems = resellerNavItems;
     appTitle = 'Partner Portal';
   }
+
+  // --- Reseller Managing Own Company Logic ---
+  const isResellerManagingSelf = user?.role === Role.RESELLER && currentPath !== 'reseller-dashboard' && !user.originalRole;
+
 
   const isImpersonating = !!user?.originalRole;
   const isSuperAdminImpersonating = user?.originalRole === Role.SUPER_ADMIN;
@@ -110,6 +114,28 @@ export const Layout: React.FC<LayoutProps> = ({
 
   return (
     <div className="flex flex-col h-screen bg-gray-100 font-sans text-slate-900 overflow-hidden print:h-auto print:overflow-visible">
+      {/* Reseller Managing Self Banner */}
+      {isResellerManagingSelf && (
+        <div className="bg-gray-900 text-white px-4 py-3 text-sm font-bold flex justify-between items-center shadow-md z-[70] relative border-b border-gray-800">
+          <div className="flex items-center">
+            <div className="w-8 h-8 rounded-full bg-jam-orange bg-opacity-20 flex items-center justify-center mr-3">
+              <Icons.Settings className="w-4 h-4 text-jam-orange" />
+            </div>
+            <div>
+              <span className="uppercase tracking-wider text-xs text-jam-orange block mb-0.5">Partner Console</span>
+              <span>Editing My Company</span>
+            </div>
+          </div>
+          <button
+            onClick={() => onNavigate('reseller-dashboard')}
+            className="p-1 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white transition-all transform hover:rotate-90"
+            title="Close and return to Partner Console"
+          >
+            <Icons.Close className="w-5 h-5" />
+          </button>
+        </div>
+      )}
+
 
       {/* 1. Global System Banner (Super Admin) */}
       {systemBanner?.active && (
