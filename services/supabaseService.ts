@@ -218,7 +218,8 @@ export const supabaseService = {
       subscriptionStatus: data.status || 'ACTIVE',
       plan: mapPlanFromDbFormat(data.plan) as any,
       billingCycle: data.billing_cycle === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY',
-      employeeLimit: data.employee_limit
+      // Convert DB integer back to string format
+      employeeLimit: (data.employee_limit >= 999999) ? 'Unlimited' : `${data.employee_limit} Employees`
     };
   },
 
@@ -251,6 +252,16 @@ export const supabaseService = {
 
     const dbPlan = mapPlanToDbFormat(settings.plan);
 
+    // Parse employee limit to integer for DB
+    // Handle "Unlimited" -> 999999, "5 Employees" -> 5
+    let dbLimit = 999999;
+    if (settings.employeeLimit && settings.employeeLimit.toLowerCase() !== 'unlimited') {
+      const match = settings.employeeLimit.match(/(\d+)/);
+      if (match) {
+        dbLimit = parseInt(match[1]);
+      }
+    }
+
     const { data, error } = await supabase
       .from('companies')
       .upsert({
@@ -262,7 +273,7 @@ export const supabaseService = {
         status: settings.subscriptionStatus,
         plan: dbPlan, // Map to database format
         billing_cycle: settings.billingCycle || 'MONTHLY', // Save billing cycle
-        employee_limit: settings.employeeLimit || 'Unlimited' // Save employee limit
+        employee_limit: dbLimit // Save employee limit as integer
       }, {
         onConflict: 'id'
       })
