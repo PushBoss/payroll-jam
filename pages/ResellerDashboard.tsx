@@ -21,7 +21,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
     const [financialData, setFinancialData] = useState<any[]>([]);
     const [billingHistory, setBillingHistory] = useState<any[]>([]);
     const [isLoadingData, setIsLoadingData] = useState(true);
-    const [complianceMap, setComplianceMap] = useState<Record<string, any>>({});
+    const [_complianceMap, setComplianceMap] = useState<Record<string, any>>({});
 
     const [activeTab, setActiveTab] = useState<'dashboard' | 'partners' | 'manage' | 'compliance' | 'financials'>('dashboard');
     const [searchTerm, setSearchTerm] = useState('');
@@ -68,11 +68,6 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                             year: date.getFullYear()
                         });
                     }
-
-                    // Get baseFee and perUserFee for calculations
-                    const resellerPlan = plans.find(p => p.priceConfig.type === 'base' || p.name === 'Reseller');
-                    const baseFee = resellerPlan?.priceConfig.baseFee ?? 3000;
-                    const perUserFee = resellerPlan?.priceConfig.perUserFee ?? 100;
 
                     const calculatedFinancialData = last6Months.map(({ name, month, year }) => {
                         const monthEnd = new Date(year, month + 1, 0);
