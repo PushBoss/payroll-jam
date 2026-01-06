@@ -53,10 +53,10 @@ const INITIAL_TAX_CONFIG: TaxConfig = {
 };
 
 const INITIAL_PLANS: PricingPlan[] = [
-  { id: 'p1', name: 'Free', priceConfig: { type: 'free', monthly: 0, annual: 0 }, description: 'For small businesses (<5 emp)', limit: '5', features: ['Basic Payroll', 'Payslip PDF'], cta: 'Start Free', highlight: false, color: 'bg-white', textColor: 'text-gray-900', isActive: true },
-  { id: 'p2', name: 'Starter', priceConfig: { type: 'flat', monthly: 5000, annual: 50000 }, description: 'Growing teams needing compliance', limit: '25', features: ['S01/S02 Reports', 'ACH Bank Files', 'Email Support'], cta: 'Get Started', highlight: true, color: 'bg-jam-black', textColor: 'text-white', isActive: true },
-  { id: 'p3', name: 'Pro', priceConfig: { type: 'per_emp', monthly: 500, annual: 5000 }, description: 'Larger organizations', limit: 'Unlimited', features: ['GL Integration', 'Employee Portal', 'Advanced HR'], cta: 'Get Started', highlight: false, color: 'bg-white', textColor: 'text-gray-900', isActive: true },
-  { id: 'p4', name: 'Reseller', priceConfig: { type: 'base', monthly: 0, annual: 0, baseFee: 5000, perUserFee: 500, resellerCommission: 20 }, description: 'For Accountants & Payroll Bureaus', limit: 'Unlimited', features: ['White Label', 'Client Management', '20% Commission'], cta: 'Get Started', highlight: false, color: 'bg-gray-100', textColor: 'text-gray-900', isActive: true }
+  { id: 'p1', name: 'Free', priceConfig: { type: 'free', monthly: 0, annual: 0 }, description: 'For small businesses', limit: '5 Employees & Users', features: ['Basic Payroll', 'Payslip PDF', 'Email Support'], cta: 'Start Free', highlight: false, color: 'bg-white', textColor: 'text-gray-900', isActive: true },
+  { id: 'p2', name: 'Starter', priceConfig: { type: 'flat', monthly: 5000, annual: 50000 }, description: 'Growing teams needing compliance', limit: '25 Employees & Users', features: ['S01/S02 Reports', 'ACH Bank Files', 'Priority Support'], cta: 'Get Started', highlight: true, color: 'bg-jam-black', textColor: 'text-white', isActive: true },
+  { id: 'p3', name: 'Pro', priceConfig: { type: 'per_emp', monthly: 500, annual: 5000 }, description: 'Larger organizations', limit: 'Unlimited Employees & Users', features: ['GL Integration', 'Employee Portal', 'Advanced HR'], cta: 'Get Started', highlight: false, color: 'bg-white', textColor: 'text-gray-900', isActive: true },
+  { id: 'p4', name: 'Reseller', priceConfig: { type: 'base', monthly: 0, annual: 0, baseFee: 5000, perUserFee: 500, resellerCommission: 20 }, description: 'For Accountants & Payroll Bureaus', limit: 'Unlimited Employees & Users', features: ['White Label', 'Client Management', '20% Commission'], cta: 'Get Started', highlight: false, color: 'bg-gray-100', textColor: 'text-gray-900', isActive: true }
 ];
 
 function AppContent() {
@@ -125,10 +125,11 @@ function AppContent() {
   const [designations, setDesignations] = useState<Designation[]>(storage.getDesignations() || []);
   const [assets, setAssets] = useState<Asset[]>(storage.getAssets() || []);
   const [reviews, setReviews] = useState<PerformanceReview[]>(storage.getReviews() || []);
+  const [users, setUsers] = useState<User[]>(storage.getCompanyUsers() || []);
   const [employeeAccountSetup, setEmployeeAccountSetup] = useState<{ employee: Employee; companyName: string; companyId?: string } | null>(null);
 
   // --- SUBSCRIPTION LOGIC ---
-  const subscription = useSubscription(employees, companyData || { plan: 'Free' } as CompanySettings, plans);
+  const subscription = useSubscription(employees, companyData || { plan: 'Free' } as CompanySettings, plans, users);
 
   const navigateTo = (path: string, params?: { editRunId?: string }) => {
     setCurrentPath(path);
@@ -352,6 +353,11 @@ function AppContent() {
           if (dbEmps) setEmployees(dbEmps);
           if (dbRuns) setPayRunHistory(dbRuns);
           if (dbLeaves) setLeaveRequests(dbLeaves);
+
+          // Load users
+          const dbUsers = await supabaseService.getCompanyUsers(user.companyId);
+          if (dbUsers) setUsers(dbUsers);
+
           toast.success("Sync complete: Loaded data from Supabase Cloud");
         } catch (error) {
           console.error("Failed to load cloud data", error);
@@ -372,11 +378,11 @@ function AppContent() {
   useEffect(() => storage.saveTaxConfig(taxConfig), [taxConfig]);
   useEffect(() => storage.saveIntegrationConfig(integrationConfig), [integrationConfig]);
   useEffect(() => storage.saveTemplates(templates), [templates]);
+  useEffect(() => storage.saveCompanyUsers(users), [users]);
   // Load plans from Supabase backend on app load (NOT localStorage)
   useEffect(() => {
     async function loadPlansFromBackend() {
       if (!isSupabaseMode) {
-        // Fallback to INITIAL_PLANS if not in Supabase mode
         setPlans(INITIAL_PLANS);
         return;
       }
@@ -385,12 +391,23 @@ function AppContent() {
         const globalConfig = await supabaseService.getGlobalConfig();
 
         if (globalConfig?.pricingPlans && Array.isArray(globalConfig.pricingPlans) && globalConfig.pricingPlans.length > 0) {
-          console.log('✅ Loaded pricing plans from Supabase backend:', globalConfig.pricingPlans.length);
-          setPlans(globalConfig.pricingPlans);
+          // Check if prices are 'wrong' (e.g. Pro having a base fee or Starter having per-emp fee when it should be flat)
+          const proPlan = globalConfig.pricingPlans.find(p => p.name === 'Pro');
+          const isProWrong = proPlan && (proPlan.priceConfig.type === 'base' || proPlan.priceConfig.monthly === 15000);
+          const needsRepair = isProWrong || globalConfig.pricingPlans.some(p => !p.limit.includes('& Users'));
+
+          if (needsRepair) {
+            console.log('⚠️ Detected incorrect plans in backend, performing auto-repair...');
+            setPlans(INITIAL_PLANS);
+            await updateGlobalConfig({ pricingPlans: INITIAL_PLANS });
+            console.log('✅ Plans repaired in backend');
+          } else {
+            console.log('✅ Loaded pricing plans from Supabase backend:', globalConfig.pricingPlans.length);
+            setPlans(globalConfig.pricingPlans);
+          }
         } else {
           console.log('⚠️ No plans in backend, using INITIAL_PLANS');
           setPlans(INITIAL_PLANS);
-          // Save initial plans to backend
           await updateGlobalConfig({ pricingPlans: INITIAL_PLANS });
         }
       } catch (error) {
@@ -399,7 +416,8 @@ function AppContent() {
       }
     }
     loadPlansFromBackend();
-  }, [isSupabaseMode]); // Run once on mount
+  }, [isSupabaseMode]);
+
   useEffect(() => storage.saveDepartments(departments), [departments]);
   useEffect(() => storage.saveDesignations(designations), [designations]);
   useEffect(() => storage.saveAssets(assets), [assets]);
@@ -755,7 +773,7 @@ function AppContent() {
 
     switch (currentPath) {
       case 'dashboard': return <Dashboard employees={employees} leaveRequests={leaveRequests} payRunHistory={payRunHistory} onNavigate={navigateTo} companyData={companyData || undefined} />;
-      case 'employees': return <Employees employees={employees} payRunHistory={payRunHistory} companyData={companyData!} onAddEmployee={handleAddEmployee} onUpdateEmployee={handleUpdateEmployee} onDeleteEmployee={handleDeleteEmployee} onSimulateOnboarding={e => alert(`Link: ${window.location.origin}/?token=${e.onboardingToken}`)} departments={departments} designations={designations} assets={assets} onUpdateAssets={setAssets} reviews={reviews} onUpdateReviews={setReviews} plans={plans} onNavigate={navigateTo} />;
+      case 'employees': return <Employees employees={employees} payRunHistory={payRunHistory} companyData={companyData!} onAddEmployee={handleAddEmployee} onUpdateEmployee={handleUpdateEmployee} onDeleteEmployee={handleDeleteEmployee} onSimulateOnboarding={e => alert(`Link: ${window.location.origin}/?token=${e.onboardingToken}`)} departments={departments} designations={designations} assets={assets} onUpdateAssets={setAssets} reviews={reviews} onUpdateReviews={setReviews} plans={plans} users={users} onNavigate={navigateTo} />;
       case 'payrun': return <PayRun employees={employees} timesheets={timesheets} leaveRequests={leaveRequests} onSave={handleSavePayRun} companyData={companyData!} integrationConfig={integrationConfig} payRunHistory={payRunHistory} editRunId={editRunId} onNavigate={navigateTo} />;
       case 'leave': return <Leave requests={leaveRequests} employees={employees} onStatusChange={handleUpdateLeaveStatus} onAddRequest={handleSaveLeaveRequest} onUpdateEmployee={handleUpdateEmployee} />;
       case 'documents':

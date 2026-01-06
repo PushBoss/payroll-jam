@@ -4,9 +4,11 @@
  */
 export const isValidTRN = (trn: string): boolean => {
     if (!trn) return false;
+    const normalized = trn.toUpperCase().trim();
+    if (normalized === 'PENDING') return true;
     // Remove dashes and spaces
     const cleanTRN = trn.replace(/[^0-9]/g, '');
-    
+
     if (cleanTRN.length !== 9) return false;
 
     // Optional: Implement Luhn algorithm or specific TRN checksum if required by strict auditing
@@ -21,8 +23,10 @@ export const isValidTRN = (trn: string): boolean => {
  */
 export const isValidNIS = (nis: string): boolean => {
     if (!nis) return false;
-    const cleanNIS = nis.toUpperCase().replace(/[^A-Z0-9]/g, '');
-    
+    const normalized = nis.toUpperCase().trim();
+    if (normalized === 'PENDING') return true;
+    const cleanNIS = normalized.replace(/[^A-Z0-9]/g, '');
+
     // Standard Regex: Starts with a letter, followed by 6 digits
     const nisRegex = /^[A-Z]\d{6}$/;
     return nisRegex.test(cleanNIS);

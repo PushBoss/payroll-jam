@@ -32,14 +32,14 @@ const ProgressBar: React.FC<{ currentStep: 'SETUP' | 'DRAFT' | 'FINALIZE' }> = (
                         <React.Fragment key={step.id}>
                             <div className="flex flex-col items-center flex-1">
                                 <div className={`w-12 h-12 rounded-full flex items-center justify-center border-2 transition-all ${isActive ? 'bg-jam-orange border-jam-orange text-jam-black' :
-                                        isCompleted ? 'bg-green-600 border-green-600 text-white' :
-                                            'bg-gray-100 border-gray-300 text-gray-400'
+                                    isCompleted ? 'bg-green-600 border-green-600 text-white' :
+                                        'bg-gray-100 border-gray-300 text-gray-400'
                                     }`}>
                                     {isCompleted ? <Icons.Check className="w-6 h-6" /> : <StepIcon className="w-6 h-6" />}
                                 </div>
                                 <p className={`mt-2 text-sm font-medium ${isActive ? 'text-jam-orange' :
-                                        isCompleted ? 'text-green-600' :
-                                            'text-gray-400'
+                                    isCompleted ? 'text-green-600' :
+                                        'text-gray-400'
                                     }`}>
                                     {step.label}
                                 </p>
@@ -425,6 +425,21 @@ export const PayRun: React.FC<PayRunProps> = ({
             return;
         }
 
+        // Check for "PENDING" or missing data
+        const incompleteEmployees = draftItems
+            .map(item => employees.find(e => e.id === item.employeeId))
+            .filter(emp => emp && (
+                !emp.trn || emp.trn.trim() === '' || emp.trn.toUpperCase() === 'PENDING' ||
+                !emp.nis || emp.nis.trim() === '' || emp.nis.toUpperCase() === 'PENDING' ||
+                !emp.bankDetails?.accountNumber || emp.bankDetails.accountNumber.trim() === '' || emp.bankDetails.accountNumber.toUpperCase() === 'PENDING'
+            ));
+
+        if (incompleteEmployees.length > 0) {
+            const names = incompleteEmployees.map(e => `${e!.firstName} ${e!.lastName}`).join(', ');
+            toast.error(`Cannot proceed. The following employees have missing or PENDING data: ${names}`);
+            return;
+        }
+
         // Auto-save draft before moving to finalize
         const draftRun: PayRunType = {
             id: editingRun?.id || generateUUID(),
@@ -462,6 +477,21 @@ export const PayRun: React.FC<PayRunProps> = ({
     // Removed handleSaveAsApproved - merging approval into finalize step
 
     const handleConfirmFinalize = async () => {
+        // Double check for "PENDING" or missing data
+        const incompleteEmployees = draftItems
+            .map(item => employees.find(e => e.id === item.employeeId))
+            .filter(emp => emp && (
+                !emp.trn || emp.trn.trim() === '' || emp.trn.toUpperCase() === 'PENDING' ||
+                !emp.nis || emp.nis.trim() === '' || emp.nis.toUpperCase() === 'PENDING' ||
+                !emp.bankDetails?.accountNumber || emp.bankDetails.accountNumber.trim() === '' || emp.bankDetails.accountNumber.toUpperCase() === 'PENDING'
+            ));
+
+        if (incompleteEmployees.length > 0) {
+            const names = incompleteEmployees.map(e => `${e!.firstName} ${e!.lastName}`).join(', ');
+            toast.error(`Finalization blocked. Please complete data for: ${names}`);
+            return;
+        }
+
         setIsFinalizing(true);
 
         const newRun: PayRunType = {
@@ -675,8 +705,8 @@ export const PayRun: React.FC<PayRunProps> = ({
                         onClick={handleInitializeSystem}
                         disabled={isSuspended || isCalculating}
                         className={`w-full py-4 rounded-lg font-bold transition-all shadow-md flex justify-center items-center text-base ${isSuspended || isCalculating
-                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                : 'bg-jam-black text-white hover:bg-gray-900 hover:shadow-lg transform hover:-translate-y-0.5'
+                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                            : 'bg-jam-black text-white hover:bg-gray-900 hover:shadow-lg transform hover:-translate-y-0.5'
                             }`}
                     >
                         {isCalculating ? (

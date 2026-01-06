@@ -135,9 +135,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ employees, leaveRequests, 
   // Compliance audit data
   const complianceAudit = useMemo(() => {
     const activeEmployees = employees.filter(e => e.status === 'ACTIVE');
-    const missingTRN = activeEmployees.filter(e => !e.trn || e.trn.length < 9);
-    const missingNIS = activeEmployees.filter(e => !e.nis || e.nis.trim() === '');
-    const missingBank = activeEmployees.filter(e => !e.bankDetails?.accountNumber || e.bankDetails.accountNumber.trim() === '');
+    const missingTRN = activeEmployees.filter(e => !e.trn || e.trn.length < 9 || e.trn.toUpperCase() === 'PENDING');
+    const missingNIS = activeEmployees.filter(e => !e.nis || e.nis.trim() === '' || e.nis.toUpperCase() === 'PENDING');
+    const missingBank = activeEmployees.filter(e => !e.bankDetails?.accountNumber || e.bankDetails.accountNumber.trim() === '' || e.bankDetails.accountNumber.toUpperCase() === 'PENDING');
+
     return { missingTRN, missingNIS, missingBank };
   }, [employees]);
 
@@ -233,7 +234,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ employees, leaveRequests, 
                   <p className={`text-xs mt-1 ${complianceAudit.missingTRN.length === 0 ? 'text-green-700' : 'text-red-700'}`}>
                     {complianceAudit.missingTRN.length === 0
                       ? 'All Clear - Required for all active employees'
-                      : `${complianceAudit.missingTRN.length} employee(s) missing TRN`}
+                      : `${complianceAudit.missingTRN.length} employee(s) missing TRN: ${complianceAudit.missingTRN.map(e => `${e.firstName} ${e.lastName}`).join(', ')}`}
                   </p>
                 </div>
               </div>
@@ -260,10 +261,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ employees, leaveRequests, 
                   <h4 className={`text-sm font-semibold ${complianceAudit.missingNIS.length === 0 ? 'text-green-800' : 'text-yellow-800'}`}>
                     National Insurance (NIS)
                   </h4>
-                  <p className={`text-xs mt-1 ${complianceAudit.missingNIS.length === 0 ? 'text-green-700' : 'text-yellow-700'}`}>
+                  <p className={`text-xs mt-1 ${complianceAudit.missingNIS.length === 0 ? 'text-green-700' : 'text-red-700'}`}>
                     {complianceAudit.missingNIS.length === 0
-                      ? 'All Clear - Required for S01 filing'
-                      : `${complianceAudit.missingNIS.length} employee(s) missing NIS`}
+                      ? 'All Clear - Required for all active employees'
+                      : `${complianceAudit.missingNIS.length} employee(s) missing NIS: ${complianceAudit.missingNIS.map(e => `${e.firstName} ${e.lastName}`).join(', ')}`}
                   </p>
                 </div>
               </div>
@@ -290,10 +291,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ employees, leaveRequests, 
                   <h4 className={`text-sm font-semibold ${complianceAudit.missingBank.length === 0 ? 'text-green-800' : 'text-orange-800'}`}>
                     Bank Account Details
                   </h4>
-                  <p className={`text-xs mt-1 ${complianceAudit.missingBank.length === 0 ? 'text-green-700' : 'text-orange-700'}`}>
+                  <p className={`text-xs mt-1 ${complianceAudit.missingBank.length === 0 ? 'text-green-700' : 'text-red-700'}`}>
                     {complianceAudit.missingBank.length === 0
-                      ? 'All Clear - Required for ACH generation'
-                      : `${complianceAudit.missingBank.length} employee(s) missing bank details`}
+                      ? 'All Clear - Required for all electronic payments'
+                      : `${complianceAudit.missingBank.length} employee(s) missing bank details: ${complianceAudit.missingBank.map(e => `${e.firstName} ${e.lastName}`).join(', ')}`}
                   </p>
                 </div>
               </div>
