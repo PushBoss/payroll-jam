@@ -51,13 +51,14 @@ export async function searchUserByEmail(email: string): Promise<{ exists: boolea
 
 /**
  * Invite a user to an account (only Reseller accounts can have team members)
+ * If invitee already manages a non-Reseller account, warn them to upgrade
  */
 export async function inviteUserToAccount(payload: {
   accountId: string;
   email: string;
   role: MemberRole;
   invitedBy: string;
-}): Promise<{ success: boolean; error?: string; member?: AccountMember }> {
+}): Promise<{ success: boolean; error?: string; member?: AccountMember; requiresUpgrade?: boolean }> {
   try {
     // Verify account exists and is a Reseller account
     // Only Reseller accounts can have team members invited
@@ -80,6 +81,23 @@ export async function inviteUserToAccount(payload: {
 
     if (!exists) {
       return { success: false, error: 'User not found. They need to sign up first.' };
+    }
+
+    // Check if invitee already manages a non-Reseller account
+    // Users can only manage one account unless they are a Reseller
+    let requiresUpgrade = false;
+    const { data: inviteeAccounts } = await supabaseService.supabase
+      .from('accounts')
+      .select('id, subscription_plan')
+      .eq('owner_id', userId);
+
+    if (inviteeAccounts && inviteeAccounts.length > 0) {
+      // Invitee already manages account(s)
+      const hasNonResellerAccount = inviteeAccounts.some(acc => acc.subscription_plan !== 'Reseller');
+      if (hasNonResellerAccount) {
+        requiresUpgrade = true;
+        // Will warn them in the email to upgrade to Reseller to manage multiple accounts
+      }
     }
 
     // Check if already a member
@@ -117,6 +135,10 @@ export async function inviteUserToAccount(payload: {
 
     // Send invitation email
     try {
+      const emailMessage = requiresUpgrade
+        ? `You've been invited to manage a Reseller account. Note: You currently manage another account. To manage multiple accounts, you'll need to upgrade your account to Reseller.`
+        : undefined;
+      
       await emailService.sendInvite(
         payload.email,
         payload.email.split('@')[0],
@@ -126,7 +148,7 @@ export async function inviteUserToAccount(payload: {
       console.warn('Failed to send invitation email, but member was created:', emailError);
     }
 
-    return { success: true, member: data as AccountMember };
+    return { success: true, member: data as AccountMember, requiresUpgrade };
   } catch (error) {
     console.error('Error in inviteUserToAccount:', error);
     return { success: false, error: 'Failed to send invitation' };
