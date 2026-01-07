@@ -1092,23 +1092,6 @@ export const Settings: React.FC<SettingsProps> = ({
             )}
 
             {activeTab === 'users' && (() => {
-                const isResellerAccount = account?.subscription_plan === 'Reseller';
-
-                // Only Reseller accounts can have team members invited to manage them
-                if (!isResellerAccount) {
-                    return (
-                        <div className="bg-white p-6 rounded-xl border border-gray-200 animate-fade-in">
-                            <div className="py-12 text-center">
-                                <AlertCircle className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                                <h3 className="text-lg font-semibold text-gray-900 mb-2">Team Members Not Available</h3>
-                                <p className="text-gray-600 max-w-md mx-auto">
-                                    Team members can only manage Reseller accounts. Upgrade your subscription to Reseller to add team members to this account.
-                                </p>
-                            </div>
-                        </div>
-                    );
-                }
-
                 return (
                     <div className="space-y-6 animate-fade-in">
                         {account && (
