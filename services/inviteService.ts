@@ -65,17 +65,18 @@ export async function inviteUserToAccount(payload: {
   
   try {
     // Verify account exists (any tier can have team members invited)
-    const { data: account, error: accountError } = await supabase
+    const { data: accountsData, error: accountError } = await supabase
       .from('accounts')
       .select('id, subscription_plan, owner_id')
-      .eq('id', payload.accountId)
-      .single();
+      .eq('id', payload.accountId);
 
     if (accountError) {
       console.error('❌ Account lookup failed:', accountError);
       return { success: false, error: 'Account not found.' };
     }
 
+    const account = Array.isArray(accountsData) && accountsData.length > 0 ? accountsData[0] : null;
+    
     if (!account) {
       return { success: false, error: 'Account not found.' };
     }
