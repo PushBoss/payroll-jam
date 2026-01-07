@@ -1109,10 +1109,6 @@ export const Settings: React.FC<SettingsProps> = ({
                     );
                 }
 
-                // Count includes the main account owner (currentUser)
-                // Filter out currentUser from users list to avoid duplicates
-                const filteredUsers = users.filter(u => u.id !== currentUser?.id && u.email !== currentUser?.email);
-
                 return (
                     <div className="space-y-6 animate-fade-in">
                         {account && (

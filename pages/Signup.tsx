@@ -6,7 +6,7 @@ import { getPlanPriceDetails } from '../utils/pricing';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { storage } from '../services/storage';
 import { dimePayService } from '../services/dimePayService';
-import { supabaseService } from '../services/supabaseService';
+import { supabase } from '../services/supabaseClient';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { generateUUID } from '../utils/uuid';
