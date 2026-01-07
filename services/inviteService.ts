@@ -1,4 +1,4 @@
-import { supabaseService } from './supabaseService';
+import { supabase } from './supabaseClient';
 import { emailService } from './emailService';
 
 export type MemberRole = 'admin' | 'manager';
@@ -29,8 +29,10 @@ export interface AccountMember {
  * Search for an existing user by email in Supabase auth
  */
 export async function searchUserByEmail(email: string): Promise<{ exists: boolean; userId?: string }> {
+  if (!supabase) return { exists: false };
+  
   try {
-    const { data, error } = await supabaseService.supabase
+    const { data, error } = await supabase
       .from('profiles')
       .select('id, email')
       .eq('email', email.toLowerCase())
@@ -59,10 +61,12 @@ export async function inviteUserToAccount(payload: {
   role: MemberRole;
   invitedBy: string;
 }): Promise<{ success: boolean; error?: string; member?: AccountMember; requiresUpgrade?: boolean }> {
+  if (!supabase) return { success: false, error: 'Database connection unavailable' };
+  
   try {
     // Verify account exists and is a Reseller account
     // Only Reseller accounts can have team members invited
-    const { data: account, error: accountError } = await supabaseService.supabase
+    const { data: account, error: accountError } = await supabase
       .from('accounts')
       .select('id, subscription_plan, owner_id')
       .eq('id', payload.accountId)
@@ -86,14 +90,14 @@ export async function inviteUserToAccount(payload: {
     // Check if invitee already manages a non-Reseller account
     // Users can only manage one account unless they are a Reseller
     let requiresUpgrade = false;
-    const { data: inviteeAccounts } = await supabaseService.supabase
+    const { data: inviteeAccounts } = await supabase
       .from('accounts')
       .select('id, subscription_plan')
       .eq('owner_id', userId);
 
     if (inviteeAccounts && inviteeAccounts.length > 0) {
       // Invitee already manages account(s)
-      const hasNonResellerAccount = inviteeAccounts.some(acc => acc.subscription_plan !== 'Reseller');
+      const hasNonResellerAccount = inviteeAccounts.some((acc: any) => acc.subscription_plan !== 'Reseller');
       if (hasNonResellerAccount) {
         requiresUpgrade = true;
         // Will warn them in the email to upgrade to Reseller to manage multiple accounts
@@ -101,7 +105,7 @@ export async function inviteUserToAccount(payload: {
     }
 
     // Check if already a member
-    const { data: existing } = await supabaseService.supabase
+    const { data: existing } = await supabase
       .from('account_members')
       .select('id')
       .eq('account_id', payload.accountId)
@@ -113,7 +117,7 @@ export async function inviteUserToAccount(payload: {
     }
 
     // Create invitation
-    const { data, error } = await supabaseService.supabase
+    const { data, error } = await supabase
       .from('account_members')
       .insert([
         {
@@ -135,9 +139,10 @@ export async function inviteUserToAccount(payload: {
 
     // Send invitation email
     try {
-      const emailMessage = requiresUpgrade
-        ? `You've been invited to manage a Reseller account. Note: You currently manage another account. To manage multiple accounts, you'll need to upgrade your account to Reseller.`
-        : undefined;
+      // Include upgrade message for invitees who already manage non-Reseller accounts
+      if (requiresUpgrade) {
+        console.log('ℹ️ Invitee will need to upgrade to Reseller to manage multiple accounts');
+      }
       
       await emailService.sendInvite(
         payload.email,
@@ -159,8 +164,10 @@ export async function inviteUserToAccount(payload: {
  * Get all members of an account
  */
 export async function getAccountMembers(accountId: string): Promise<AccountMember[]> {
+  if (!supabase) return [];
+  
   try {
-    const { data, error } = await supabaseService.supabase
+    const { data, error } = await supabase
       .from('account_members')
       .select('*')
       .eq('account_id', accountId)
@@ -185,8 +192,10 @@ export async function getUserRoleInAccount(
   accountId: string,
   userId: string
 ): Promise<MemberRole | null> {
+  if (!supabase) return null;
+  
   try {
-    const { data, error } = await supabaseService.supabase
+    const { data, error } = await supabase
       .from('account_members')
       .select('role')
       .eq('account_id', accountId)
@@ -209,8 +218,10 @@ export async function getUserRoleInAccount(
  * Accept an invitation
  */
 export async function acceptInvitation(accountId: string, userId: string): Promise<boolean> {
+  if (!supabase) return false;
+  
   try {
-    const { error } = await supabaseService.supabase
+    const { error } = await supabase
       .from('account_members')
       .update({ status: 'accepted', accepted_at: new Date().toISOString() })
       .eq('account_id', accountId)
@@ -232,8 +243,10 @@ export async function acceptInvitation(accountId: string, userId: string): Promi
  * Decline an invitation
  */
 export async function declineInvitation(accountId: string, userId: string): Promise<boolean> {
+  if (!supabase) return false;
+  
   try {
-    const { error } = await supabaseService.supabase
+    const { error } = await supabase
       .from('account_members')
       .update({ status: 'declined' })
       .eq('account_id', accountId)
@@ -258,8 +271,10 @@ export async function removeMemberFromAccount(
   accountId: string,
   memberId: string
 ): Promise<{ success: boolean; error?: string }> {
+  if (!supabase) return { success: false, error: 'Database connection unavailable' };
+  
   try {
-    const { error } = await supabaseService.supabase
+    const { error } = await supabase
       .from('account_members')
       .delete()
       .eq('account_id', accountId)
