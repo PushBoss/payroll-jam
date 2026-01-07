@@ -3,6 +3,7 @@ import React, { useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { Footer } from '../components/Footer';
 import { PricingPlan } from '../types';
+import { getPlanPriceDetails } from '../utils/pricing';
 interface LandingPageProps {
   plans?: PricingPlan[];
   onLogin: () => void;
@@ -86,52 +87,21 @@ export const LandingPage: React.FC<LandingPageProps> = ({ plans = [], onLogin, o
   
   // Helper function to render pricing
   const renderPrice = (plan: PricingPlan) => {
-    if (plan.priceConfig.type === 'free') {
-      return (
-        <div className="flex items-baseline">
-          <span className="text-4xl font-bold">$0</span>
-        </div>
-      );
-    }
+    const { formattedAmount, suffix, perEmpFee } = getPlanPriceDetails(plan, 'monthly');
     
-    if (plan.priceConfig.type === 'flat') {
-      const amount = plan.priceConfig.monthly;
-      return (
-        <div>
-          <div className="text-4xl font-bold">${amount.toLocaleString()}</div>
-          <div className={`text-sm mt-1 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>/month</div>
+    return (
+      <div>
+        <div className="text-4xl font-bold">{formattedAmount}</div>
+        <div className={`text-sm mt-1 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>
+          {suffix}
+          {plan.priceConfig.type === 'base' && perEmpFee > 0 && (
+            <div className="text-xs mt-1 opacity-75">
+              + ${perEmpFee.toLocaleString()} per employee
+            </div>
+          )}
         </div>
-      );
-    }
-    
-    if (plan.priceConfig.type === 'per_emp') {
-      const amount = plan.priceConfig.monthly;
-      return (
-        <div>
-          <div className="text-4xl font-bold">${amount.toLocaleString()}</div>
-          <div className={`text-sm mt-1 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>per employee/month</div>
-        </div>
-      );
-    }
-    
-    if (plan.priceConfig.type === 'base') {
-      // Base fee plans (Starter, Pro, Reseller) - all show base + per employee
-      const baseFee = plan.priceConfig.monthly || plan.priceConfig.baseFee || 0;
-      const perEmpFee = plan.priceConfig.perUserFee || 0;
-      return (
-        <div>
-          <div className="text-4xl font-bold">${baseFee.toLocaleString()}</div>
-          <div className={`text-sm mt-1 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>
-            per month base
-            {perEmpFee > 0 && (
-              <div className="text-xs mt-1 opacity-75">
-                + ${perEmpFee.toLocaleString()} per employee
-              </div>
-            )}
-          </div>
-        </div>
-      );
-    }
+      </div>
+    );
   };
   
   const faqs = [
@@ -402,37 +372,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ plans = [], onLogin, o
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-              {/* Fallback to static plans if no plans available */}
-              <div className="bg-white rounded-2xl border border-gray-200 p-8 shadow-sm hover:shadow-md transition-shadow">
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">Free</h3>
-                <div className="flex items-baseline mb-6">
-                  <span className="text-4xl font-bold text-gray-900">$0</span>
-                </div>
-                <p className="text-sm text-gray-500 mb-6">For up to 5 employees. No credit card required.</p>
-                <button onClick={() => onSignup('Free')} className="w-full py-3 border border-gray-300 rounded-lg font-semibold text-gray-900 hover:bg-gray-50">Start Free</button>
-              </div>
-
-              <div className="bg-jam-black rounded-2xl border border-gray-900 p-8 shadow-xl transform md:-translate-y-4 relative">
-                <div className="absolute top-0 right-0 -mt-2 -mr-2 bg-jam-orange text-jam-black text-xs font-bold px-2 py-1 rounded-full">POPULAR</div>
-                <h3 className="text-lg font-semibold text-white mb-2">Starter</h3>
-                <div className="flex items-baseline mb-6">
-                  <span className="text-4xl font-bold text-white">$5,000</span>
-                  <span className="text-gray-400 ml-1">/mo</span>
-                </div>
-                <p className="text-sm text-gray-400 mb-6">For growing teams. Full compliance.</p>
-                <button onClick={() => onSignup('Starter')} className="w-full py-3 bg-jam-orange text-jam-black rounded-lg font-bold hover:bg-yellow-500">Get Started</button>
-              </div>
-
-              <div className="bg-white rounded-2xl border border-gray-200 p-8 shadow-sm hover:shadow-md transition-shadow">
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">Pro</h3>
-                <div className="flex items-baseline mb-6">
-                  <span className="text-4xl font-bold text-gray-900">$500</span>
-                  <span className="text-gray-500 ml-1">/emp</span>
-                </div>
-                <p className="text-sm text-gray-500 mb-6">For larger teams. Advanced features.</p>
-                <button onClick={() => onSignup('Pro')} className="w-full py-3 border border-gray-300 rounded-lg font-semibold text-gray-900 hover:bg-gray-50">View Features</button>
-              </div>
+            <div className="text-center py-12">
+              <p className="text-gray-500">No pricing plans available at the moment. Please contact support.</p>
             </div>
           )}
         </div>

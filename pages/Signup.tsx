@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Icons } from '../components/Icons';
 import { Role, User, PricingPlan } from '../types';
+import { getPlanPriceDetails } from '../utils/pricing';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { storage } from '../services/storage';
 import { dimePayService } from '../services/dimePayService';
@@ -117,41 +118,10 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
     // Pricing Logic 
     const getPricing = () => {
         const selectedPlan = plans.find(p => p.name === formData.plan);
-        let basePrice = 0;
-        let perEmpPrice = 0;
-        let type = 'flat';
+        if (!selectedPlan) return { basePrice: 0, perEmpPrice: 0, type: 'flat', subtotal: 0, tax: 0, total: 0 };
 
-        if (selectedPlan) {
-            type = selectedPlan.priceConfig.type;
-            if (type === 'free') {
-                basePrice = 0;
-            } else if (type === 'flat') {
-                // Flat rate plans - use the monthly/annual price directly
-                basePrice = formData.billingCycle === 'monthly' ? selectedPlan.priceConfig.monthly : selectedPlan.priceConfig.annual;
-            } else if (type === 'per_emp') {
-                // Per-employee plans - price is per employee
-                perEmpPrice = formData.billingCycle === 'monthly' ? selectedPlan.priceConfig.monthly : selectedPlan.priceConfig.annual;
-            } else if (type === 'base') {
-                // Base fee plans (Starter, Pro, Reseller)
-                // All base plans (Starter, Pro, Reseller) use monthly/annual based on billing cycle
-                basePrice = formData.billingCycle === 'monthly'
-                    ? (selectedPlan.priceConfig.monthly || selectedPlan.priceConfig.baseFee || 0)
-                    : (selectedPlan.priceConfig.annual || (selectedPlan.priceConfig.baseFee || 0) * 10 || 0);
-                perEmpPrice = selectedPlan.priceConfig.perUserFee || 0;
-
-                // Debug logging for Reseller pricing
-                if (formData.plan === 'Reseller') {
-                    console.log('🔍 Reseller Pricing Debug:', {
-                        planConfig: selectedPlan.priceConfig,
-                        basePrice,
-                        perEmpPrice,
-                        billingCycle: formData.billingCycle,
-                        numCompanies: formData.numCompanies,
-                        numEmployees: formData.numEmployees
-                    });
-                }
-            }
-        }
+        const { amount: basePrice, perEmpFee: perEmpPrice } = getPlanPriceDetails(selectedPlan, formData.billingCycle);
+        const type = selectedPlan.priceConfig.type;
 
         let subtotal = 0;
         if (type === 'free') {

@@ -3,6 +3,7 @@ declare const process: any;
 import React, { useState, useEffect, useRef } from 'react';
 import { Icons } from '../components/Icons';
 import { GLMapping, IntegrationConfig, CompanySettings, TaxConfig, User, Role, Department, Designation, PricingPlan, PaymentRecord } from '../types';
+import { getPlanPriceDetails } from '../utils/pricing';
 import { storage } from '../services/storage';
 import { auditService } from '../services/auditService';
 import { checkDbConnection } from '../services/supabaseClient';
@@ -42,10 +43,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ plan, currentUser, onClos
     const [paymentSuccess, setPaymentSuccess] = useState(false);
     const isMountedRef = useRef(true);
 
-    // Calculate price based on plan type
-    const price = plan.priceConfig.type === 'free' ? 0 :
-        plan.priceConfig.type === 'base' ? (plan.priceConfig.baseFee || 0) :
-            plan.priceConfig.monthly;
+    // Calculate price based on plan type - settings always monthly
+    const { amount: price } = getPlanPriceDetails(plan, 'monthly');
     const isPaid = price > 0;
 
     useEffect(() => {
@@ -802,32 +801,33 @@ export const Settings: React.FC<SettingsProps> = ({
                                         return p.isActive;
                                     });
                                     console.log('🎯 Filtered plans for display (current:', currentPlan, '):', filtered.map(p => ({ name: p.name, monthly: p.priceConfig.monthly, baseFee: p.priceConfig.baseFee })));
-                                    return filtered.map(plan => (
-                                        <div key={plan.id} className="border border-gray-200 rounded-lg p-4 hover:border-jam-orange transition-colors">
-                                            <h4 className="font-bold text-lg mb-2">{plan.name}</h4>
-                                            <div className="text-2xl font-bold mb-1">
-                                                {plan.priceConfig.type === 'free' ? '$0' :
-                                                    plan.priceConfig.type === 'base' ? `$${(plan.priceConfig.baseFee || 0).toLocaleString()}` :
-                                                        `$${(plan.priceConfig.monthly || 0).toLocaleString()}`}
-                                                <span className="text-sm text-gray-500 font-normal">/mo{plan.priceConfig.type === 'base' ? ' base' : plan.priceConfig.type === 'per_emp' ? ' per employee' : ''}</span>
+                                    return filtered.map(plan => {
+                                        const { formattedAmount, suffix } = getPlanPriceDetails(plan, 'monthly');
+                                        return (
+                                            <div key={plan.id} className="border border-gray-200 rounded-lg p-4 hover:border-jam-orange transition-colors">
+                                                <h4 className="font-bold text-lg mb-2">{plan.name}</h4>
+                                                <div className="text-2xl font-bold mb-1">
+                                                    {formattedAmount}
+                                                    <span className="text-sm text-gray-500 font-normal">{suffix}</span>
+                                                </div>
+                                                <div className="text-xs font-bold text-jam-orange mb-2 uppercase tracking-wider">
+                                                    {plan.limit.toLowerCase().includes('employee') ? plan.limit : `${plan.limit} Employees`}
+                                                </div>
+                                                <p className="text-xs text-gray-500 mb-3">{plan.description}</p>
+                                                <ul className="text-sm text-gray-600 mb-4 space-y-1">
+                                                    {plan.features.slice(0, 3).map((feature, idx) => (
+                                                        <li key={idx}>• {feature}</li>
+                                                    ))}
+                                                </ul>
+                                                <button
+                                                    onClick={() => handleUpgradeClick(plan.name)}
+                                                    className="w-full bg-jam-black text-white py-2 rounded font-semibold hover:bg-gray-800 transition-colors"
+                                                >
+                                                    Upgrade to {plan.name}
+                                                </button>
                                             </div>
-                                            <div className="text-xs font-bold text-jam-orange mb-2 uppercase tracking-wider">
-                                                {plan.limit.toLowerCase().includes('employee') ? plan.limit : `${plan.limit} Employees`}
-                                            </div>
-                                            <p className="text-xs text-gray-500 mb-3">{plan.description}</p>
-                                            <ul className="text-sm text-gray-600 mb-4 space-y-1">
-                                                {plan.features.slice(0, 3).map((feature, idx) => (
-                                                    <li key={idx}>• {feature}</li>
-                                                ))}
-                                            </ul>
-                                            <button
-                                                onClick={() => handleUpgradeClick(plan.name)}
-                                                className="w-full bg-jam-black text-white py-2 rounded font-semibold hover:bg-gray-800 transition-colors"
-                                            >
-                                                Upgrade to {plan.name}
-                                            </button>
-                                        </div>
-                                    ));
+                                        );
+                                    });
                                 })()}
                             </div>
                         </div>
@@ -1101,8 +1101,8 @@ export const Settings: React.FC<SettingsProps> = ({
                                 onClick={() => setIsInviteModalOpen(true)}
                                 disabled={!canAddMore}
                                 className={`px-3 py-1.5 rounded text-sm font-medium ${canAddMore
-                                        ? 'bg-jam-black text-white hover:bg-gray-800'
-                                        : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                                    ? 'bg-jam-black text-white hover:bg-gray-800'
+                                    : 'bg-gray-200 text-gray-500 cursor-not-allowed'
                                     }`}
                             >
                                 {canAddMore ? 'Invite User' : 'Upgrade to Add More'}

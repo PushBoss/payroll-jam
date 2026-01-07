@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { ResellerClient, PricingPlan } from '../types';
+import { getPlanPriceDetails } from '../utils/pricing';
 import { supabaseService } from '../services/supabaseService';
 import { emailService } from '../services/emailService';
 import { useAuth } from '../context/AuthContext';
@@ -671,14 +672,10 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                                         onChange={e => setFormData({ ...formData, plan: e.target.value as any })}
                                     >
                                         {plans.filter(p => p.isActive && p.name !== 'Reseller').map(plan => {
-                                            const price = plan.priceConfig.type === 'free' ? 'Free' :
-                                                plan.priceConfig.type === 'flat' ? `$${plan.priceConfig.monthly.toLocaleString()}` :
-                                                    plan.priceConfig.type === 'per_emp' ? `$${plan.priceConfig.monthly.toLocaleString()}/emp` :
-                                                        plan.priceConfig.type === 'base' ? `$${plan.priceConfig.baseFee?.toLocaleString() || 0}` :
-                                                            '';
+                                            const { formattedAmount, suffix } = getPlanPriceDetails(plan, 'monthly');
                                             return (
                                                 <option key={plan.id} value={plan.name}>
-                                                    {plan.name} ({price})
+                                                    {plan.name} ({formattedAmount}{suffix})
                                                 </option>
                                             );
                                         })}

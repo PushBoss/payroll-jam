@@ -6,6 +6,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { storage } from './services/storage';
 import { updateGlobalConfig } from './services/updateGlobalConfig';
 import { supabaseService } from './services/supabaseService';
+import { INITIAL_PLANS } from './services/planService';
 import { supabase } from './services/supabaseClient';
 import { initializeCacheValidation } from './utils/cacheUtils';
 import { User, Role, Employee, PayRun as PayRunType, LeaveRequest, WeeklyTimesheet, CompanySettings, IntegrationConfig, TaxConfig, DocumentTemplate, PricingPlan, Department, Designation, Asset, PerformanceReview } from './types';
@@ -51,13 +52,6 @@ const INITIAL_TAX_CONFIG: TaxConfig = {
   payeThreshold: 1500096,
   payeRateStd: 0.25, payeRateHigh: 0.30
 };
-
-const INITIAL_PLANS: PricingPlan[] = [
-  { id: 'p1', name: 'Free', priceConfig: { type: 'free', monthly: 0, annual: 0 }, description: 'For small businesses', limit: '5 Employees & Users', features: ['Basic Payroll', 'Payslip PDF', 'Email Support'], cta: 'Start Free', highlight: false, color: 'bg-white', textColor: 'text-gray-900', isActive: true },
-  { id: 'p2', name: 'Starter', priceConfig: { type: 'flat', monthly: 5000, annual: 50000 }, description: 'Growing teams needing compliance', limit: '25 Employees & Users', features: ['S01/S02 Reports', 'ACH Bank Files', 'Priority Support'], cta: 'Get Started', highlight: true, color: 'bg-jam-black', textColor: 'text-white', isActive: true },
-  { id: 'p3', name: 'Pro', priceConfig: { type: 'per_emp', monthly: 500, annual: 5000 }, description: 'Larger organizations', limit: 'Unlimited Employees & Users', features: ['GL Integration', 'Employee Portal', 'Advanced HR'], cta: 'Get Started', highlight: false, color: 'bg-white', textColor: 'text-gray-900', isActive: true },
-  { id: 'p4', name: 'Reseller', priceConfig: { type: 'base', monthly: 0, annual: 0, baseFee: 5000, perUserFee: 500, resellerCommission: 20 }, description: 'For Accountants & Payroll Bureaus', limit: 'Unlimited Employees & Users', features: ['White Label', 'Client Management', '20% Commission'], cta: 'Get Started', highlight: false, color: 'bg-gray-100', textColor: 'text-gray-900', isActive: true }
-];
 
 function AppContent() {
   const { user, impersonate, updateUser, isLoading } = useAuth();
@@ -391,20 +385,8 @@ function AppContent() {
         const globalConfig = await supabaseService.getGlobalConfig();
 
         if (globalConfig?.pricingPlans && Array.isArray(globalConfig.pricingPlans) && globalConfig.pricingPlans.length > 0) {
-          // Check if prices are 'wrong' (e.g. Pro having a base fee or Starter having per-emp fee when it should be flat)
-          const proPlan = globalConfig.pricingPlans.find(p => p.name === 'Pro');
-          const isProWrong = proPlan && (proPlan.priceConfig.type === 'base' || proPlan.priceConfig.monthly === 15000);
-          const needsRepair = isProWrong || globalConfig.pricingPlans.some(p => !p.limit.includes('& Users'));
-
-          if (needsRepair) {
-            console.log('⚠️ Detected incorrect plans in backend, performing auto-repair...');
-            setPlans(INITIAL_PLANS);
-            await updateGlobalConfig({ pricingPlans: INITIAL_PLANS });
-            console.log('✅ Plans repaired in backend');
-          } else {
-            console.log('✅ Loaded pricing plans from Supabase backend:', globalConfig.pricingPlans.length);
-            setPlans(globalConfig.pricingPlans);
-          }
+          console.log('✅ Loaded pricing plans from Supabase backend:', globalConfig.pricingPlans.length);
+          setPlans(globalConfig.pricingPlans);
         } else {
           console.log('⚠️ No plans in backend, using INITIAL_PLANS');
           setPlans(INITIAL_PLANS);

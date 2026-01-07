@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Icons } from '../components/Icons';
 import { Footer } from '../components/Footer';
 import { PricingPlan } from '../types';
+import { getPlanPriceDetails } from '../utils/pricing';
 
 interface PricingProps {
   onSignup: (plan: string, cycle: 'monthly' | 'annual') => void;
@@ -42,44 +43,21 @@ export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onF
   }
 
   const renderPrice = (plan: PricingPlan) => {
-    if (plan.priceConfig.type === 'free') return <span className="text-4xl font-bold">$0</span>;
-
-    const amount = cycle === 'monthly' ? plan.priceConfig.monthly : plan.priceConfig.annual;
-    const period = cycle === 'monthly' ? '/month' : '/year';
-
-    if (plan.priceConfig.type === 'flat') {
-      return (
-        <div>
-          <div className="text-4xl font-bold">${amount.toLocaleString()}</div>
-          <div className={`text-sm mt-1 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>{period} base</div>
-        </div>
-      );
-    }
-    if (plan.priceConfig.type === 'per_emp') {
-      return (
-        <div>
-          <div className="text-4xl font-bold">${amount.toLocaleString()}</div>
-          <div className={`text-sm mt-1 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>{period} per employee</div>
-        </div>
-      );
-    }
-    if (plan.priceConfig.type === 'base') {
-      const baseFee = cycle === 'monthly'
-        ? (plan.priceConfig.monthly || plan.priceConfig.baseFee || 0)
-        : (plan.priceConfig.annual || (plan.priceConfig.baseFee || 0) * 10 || 0);
-      const perEmpFee = plan.priceConfig.perUserFee || 500; // Fallback to default per-emp fee if not specified
-      return (
-        <div>
-          <div className="text-4xl font-bold">${baseFee.toLocaleString()}</div>
-          <div className={`text-sm mt-1 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>
-            {period} base
+    const { formattedAmount, suffix, perEmpFee } = getPlanPriceDetails(plan, cycle);
+    
+    return (
+      <div>
+        <div className="text-4xl font-bold">{formattedAmount}</div>
+        <div className={`text-sm mt-1 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>
+          {suffix}
+          {plan.priceConfig.type === 'base' && perEmpFee > 0 && (
             <div className="text-xs mt-1 opacity-75">
               + ${perEmpFee.toLocaleString()} per employee
             </div>
-          </div>
+          )}
         </div>
-      );
-    }
+      </div>
+    );
   };
 
   return (
