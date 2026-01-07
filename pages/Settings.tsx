@@ -1097,6 +1097,23 @@ export const Settings: React.FC<SettingsProps> = ({
 
             {activeTab === 'users' && (() => {
                 const plan = companyData?.plan || 'Free';
+                const isResellerAccount = plan === 'Reseller';
+
+                // Only Reseller accounts can have team members
+                if (!isResellerAccount) {
+                    return (
+                        <div className="bg-white p-6 rounded-xl border border-gray-200 animate-fade-in">
+                            <div className="py-12 text-center">
+                                <Icons.AlertCircle className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                                <h3 className="text-lg font-semibold text-gray-900 mb-2">Team Members Not Available</h3>
+                                <p className="text-gray-600 max-w-md mx-auto">
+                                    Only Reseller accounts can invite team members. Upgrade your subscription to Reseller to collaborate with your team.
+                                </p>
+                            </div>
+                        </div>
+                    );
+                }
+
                 let maxUsers = 5; // Free
                 if (plan === 'Starter') maxUsers = 25;
                 if (plan === 'Pro' || plan === 'Professional') maxUsers = 99999; // Unlimited
@@ -1112,42 +1129,20 @@ export const Settings: React.FC<SettingsProps> = ({
                     <div className="bg-white p-6 rounded-xl border border-gray-200 animate-fade-in">
                         <div className="flex justify-between items-center mb-4">
                             <div>
-                                <h3 className="font-bold">User Management</h3>
+                                <h3 className="font-bold">Team Members</h3>
                                 <p className="text-xs text-gray-500 mt-1">
-                                    {currentUserCount} of {maxUsers === 99999 ? 'Unlimited' : maxUsers} users ({remainingSeats > 0 ? `${remainingSeats} seats remaining` : 'Limit reached'})
+                                    Manage who has access to your Reseller account
                                 </p>
                             </div>
+                        </div>
+                        <div className="mb-4">
                             <button
                                 onClick={() => setIsInviteModalOpen(true)}
-                                disabled={!canAddMore}
-                                className={`px-3 py-1.5 rounded text-sm font-medium ${canAddMore
-                                    ? 'bg-jam-black text-white hover:bg-gray-800'
-                                    : 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                                    }`}
+                                className="px-4 py-2 rounded text-sm font-medium bg-jam-orange text-white hover:bg-orange-600"
                             >
-                                {canAddMore ? 'Invite User' : 'Upgrade to Add More'}
+                                Invite Team Member
                             </button>
                         </div>
-                        {!canAddMore && (
-                            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                                <p className="text-sm text-yellow-800">
-                                    <strong>User limit reached.</strong> You have {currentUserCount} users (including the account owner).
-                                    {plan === 'Free' && ' Upgrade to Starter (25 users) or Pro (Unlimited) to add more users.'}
-                                    {plan === 'Starter' && ' Upgrade to Pro for unlimited users.'}
-                                </p>
-                            </div>
-                        )}
-                        <table className="w-full text-left">
-                            <thead>
-                                <tr className="border-b">
-                                    <th className="pb-2 text-xs text-gray-500">Name</th>
-                                    <th className="pb-2 text-xs text-gray-500">Email</th>
-                                    <th className="pb-2 text-xs text-gray-500">Role</th>
-                                    <th className="pb-2 text-xs text-gray-500 text-right">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {/* Show account owner */}
                                 {currentUser && (
                                     <tr className="border-b border-gray-50">
                                         <td className="py-3 text-sm font-medium">{currentUser.name}</td>

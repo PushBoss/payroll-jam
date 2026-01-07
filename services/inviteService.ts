@@ -59,6 +59,21 @@ export async function inviteUserToAccount(payload: {
   invitedBy: string;
 }): Promise<{ success: boolean; error?: string; member?: AccountMember }> {
   try {
+    // Verify account exists and is a reseller account
+    const { data: account, error: accountError } = await supabaseService.supabase
+      .from('accounts')
+      .select('id, subscription_plan, owner_id')
+      .eq('id', payload.accountId)
+      .single();
+
+    if (accountError || !account) {
+      return { success: false, error: 'Account not found.' };
+    }
+
+    if (account.subscription_plan !== 'Reseller') {
+      return { success: false, error: 'Only Reseller accounts can invite team members.' };
+    }
+
     // Check if user exists
     const { exists, userId } = await searchUserByEmail(payload.email);
 
