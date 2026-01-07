@@ -30,16 +30,11 @@ CREATE INDEX IF NOT EXISTS idx_accounts_is_disabled ON public.accounts(is_disabl
 ALTER TABLE public.accounts ENABLE ROW LEVEL SECURITY;
 
 -- 3. CREATE RLS POLICIES FOR ACCOUNTS TABLE
--- Users can view their own account
+-- Users can read any account (needed for invitations and team member features)
+-- Write access is still restricted to account owner
 DROP POLICY IF EXISTS "users_view_own_account" ON public.accounts;
-CREATE POLICY "users_view_own_account" ON public.accounts
-  FOR SELECT
-  USING (owner_id = auth.uid());
-
--- Users can view any account for validation purposes (invitation system)
--- The inviteService validates ownership on the backend
 DROP POLICY IF EXISTS "users_view_accounts_for_invites" ON public.accounts;
-CREATE POLICY "users_view_accounts_for_invites" ON public.accounts
+CREATE POLICY "accounts_read_all" ON public.accounts
   FOR SELECT
   USING (true);
 

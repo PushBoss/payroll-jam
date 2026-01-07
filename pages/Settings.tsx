@@ -1091,13 +1091,15 @@ export const Settings: React.FC<SettingsProps> = ({
             )}
 
             {activeTab === 'users' && (() => {
-                // Only show invite UI if account exists
-                if (!account?.id) {
+                // Use account.id if available, fallback to currentUser.id for invitations
+                // The account record will be created via trigger or manually if needed
+                const accountId = account?.id || currentUser?.id;
+                
+                if (!accountId) {
                     return (
                         <div className="bg-white p-6 rounded-xl border border-gray-200 animate-fade-in">
                             <div className="py-12 text-center">
-                                <p className="text-gray-600 font-medium">Creating your account...</p>
-                                <p className="text-sm text-gray-500 mt-2">Please refresh the page in a moment</p>
+                                <p className="text-gray-500">Loading...</p>
                             </div>
                         </div>
                     );
