@@ -5,15 +5,16 @@ import { useAuth } from '../context/AuthContext';
 export interface Account {
   id: string;
   owner_id: string;
-  company_name: string;
-  email: string;
+  name: string;
+  email?: string;
   phone?: string;
-  subscription_plan?: string;
-  created_at: string;
+  plan?: string;
+  created_at?: string;
 }
 
 /**
- * Hook to fetch the current user's account
+ * Hook to fetch the current user's company/account
+ * Queries the companies table where owner_id matches the authenticated user
  */
 export function useAccount() {
   const { user } = useAuth();
@@ -30,7 +31,7 @@ export function useAccount() {
 
       try {
         const { data, error: supabaseError } = await supabase
-          .from('accounts')
+          .from('companies')
           .select('*')
           .eq('owner_id', user.id);
 
@@ -38,7 +39,7 @@ export function useAccount() {
           throw supabaseError;
         }
 
-        // Get the first account if it exists
+        // Get the first company owned by the user
         const accountData = Array.isArray(data) && data.length > 0 ? data[0] : null;
         setAccount(accountData as Account | null);
         setError(null);
@@ -59,7 +60,7 @@ export function useAccount() {
     setLoading(true);
     try {
       const { data, error: supabaseError } = await supabase
-        .from('accounts')
+        .from('companies')
         .select('*')
         .eq('owner_id', user.id);
 
@@ -67,7 +68,7 @@ export function useAccount() {
         throw supabaseError;
       }
 
-      // Get the first account if it exists
+      // Get the first company owned by the user
       const accountData = Array.isArray(data) && data.length > 0 ? data[0] : null;
       setAccount(accountData as Account | null);
       setError(null);

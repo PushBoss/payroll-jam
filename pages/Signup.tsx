@@ -339,39 +339,40 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
             await signup(newUser);
             console.log('✅ Signup completed successfully');
 
-            // Auto-create account in Supabase
+            // Auto-create company in Supabase
             // Note: If RLS is enabled and user doesn't have permission, this will fail
-            // In that case, the Supabase auth trigger should create the account
+            // In that case, the Supabase auth trigger should create the company
             if (supabase) {
                 try {
-                    const { data, error: accountError } = await supabase
-                        .from('accounts')
+                    const { data, error: companyError } = await supabase
+                        .from('companies')
                         .insert([
                             {
                                 owner_id: newUser.id,
-                                company_name: formData.companyName || formData.name + "'s Company",
+                                name: formData.companyName || formData.name + "'s Company",
                                 email: formData.email,
                                 phone: formData.phone || null,
-                                subscription_plan: formData.plan,
+                                plan: formData.plan,
+                                billing_cycle: formData.billingCycle,
                                 created_at: new Date().toISOString(),
                             },
                         ])
                         .select();
 
-                    if (accountError) {
+                    if (companyError) {
                         // Check if it's an RLS error (401, 403, 406)
-                        if (accountError.code === '401' || accountError.code === '403' || accountError.code === '406') {
-                            console.warn('⚠️ Account creation blocked by RLS policy:', accountError.message);
-                            console.info('ℹ️ Auth trigger will create account if configured. If not, users can create account manually in settings.');
+                        if (companyError.code === '401' || companyError.code === '403' || companyError.code === '406') {
+                            console.warn('⚠️ Company creation blocked by RLS policy:', companyError.message);
+                            console.info('ℹ️ Auth trigger will create company if configured. If not, users can create company manually in settings.');
                         } else {
-                            console.warn('⚠️ Account creation failed (non-fatal):', accountError);
+                            console.warn('⚠️ Company creation failed (non-fatal):', companyError);
                         }
                     } else if (data && data.length > 0) {
-                        console.log('✅ Account created in Supabase:', data[0]);
+                        console.log('✅ Company created in Supabase:', data[0]);
                     }
-                } catch (accountError: any) {
-                    console.warn('⚠️ Account creation exception (non-fatal):', accountError.message);
-                    // Don't throw - account creation is optional and shouldn't block signup
+                } catch (companyError: any) {
+                    console.warn('⚠️ Company creation exception (non-fatal):', companyError.message);
+                    // Don't throw - company creation is optional and shouldn't block signup
                 }
             }
 

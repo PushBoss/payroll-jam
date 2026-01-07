@@ -64,21 +64,21 @@ export async function inviteUserToAccount(payload: {
   if (!supabase) return { success: false, error: 'Database connection unavailable' };
   
   try {
-    // Verify account exists (any tier can have team members invited)
-    const { data: accountsData, error: accountError } = await supabase
-      .from('accounts')
-      .select('id, subscription_plan, owner_id')
+    // Verify company exists
+    const { data: companiesData, error: companyError } = await supabase
+      .from('companies')
+      .select('id, plan, owner_id')
       .eq('id', payload.accountId);
 
-    if (accountError) {
-      console.error('❌ Account lookup failed:', accountError);
-      return { success: false, error: 'Account not found.' };
+    if (companyError) {
+      console.error('❌ Company lookup failed:', companyError);
+      return { success: false, error: 'Company not found.' };
     }
 
-    const account = Array.isArray(accountsData) && accountsData.length > 0 ? accountsData[0] : null;
+    const company = Array.isArray(companiesData) && companiesData.length > 0 ? companiesData[0] : null;
     
-    if (!account) {
-      return { success: false, error: 'Account not found.' };
+    if (!company) {
+      return { success: false, error: 'Company not found.' };
     }
 
     // Check if user exists
@@ -89,20 +89,20 @@ export async function inviteUserToAccount(payload: {
       return { success: false, error: 'User not found. They need to sign up first.' };
     }
 
-    // Check if invitee already manages a non-Reseller account
-    // Users can only manage one account unless they are a Reseller
+    // Check if invitee already manages a non-Reseller company
+    // Users can only manage one company unless they are a Reseller
     let requiresUpgrade = false;
-    const { data: inviteeAccounts } = await supabase
-      .from('accounts')
-      .select('id, subscription_plan')
+    const { data: inviteeCompanies } = await supabase
+      .from('companies')
+      .select('id, plan')
       .eq('owner_id', userId);
 
-    if (inviteeAccounts && inviteeAccounts.length > 0) {
-      // Invitee already manages account(s)
-      const hasNonResellerAccount = inviteeAccounts.some((acc: any) => acc.subscription_plan !== 'Reseller');
-      if (hasNonResellerAccount) {
+    if (inviteeCompanies && inviteeCompanies.length > 0) {
+      // Invitee already owns company/companies
+      const hasNonResellerCompany = inviteeCompanies.some((comp: any) => comp.plan !== 'Reseller');
+      if (hasNonResellerCompany) {
         requiresUpgrade = true;
-        // Will warn them in the email to upgrade to Reseller to manage multiple accounts
+        // Will warn them in the email to upgrade to Reseller to manage multiple companies
       }
     }
 
@@ -115,7 +115,7 @@ export async function inviteUserToAccount(payload: {
       .single();
 
     if (existing) {
-      return { success: false, error: 'User is already a member of this account.' };
+      return { success: false, error: 'User is already a member of this company.' };
     }
 
     // Create invitation
@@ -141,9 +141,9 @@ export async function inviteUserToAccount(payload: {
 
     // Send invitation email
     try {
-      // Include upgrade message for invitees who already manage non-Reseller accounts
+      // Include upgrade message for invitees who already manage non-Reseller companies
       if (requiresUpgrade) {
-        console.log('ℹ️ Invitee will need to upgrade to Reseller to manage multiple accounts');
+        console.log('ℹ️ Invitee will need to upgrade to Reseller to manage multiple companies');
       }
       
       await emailService.sendInvite(
