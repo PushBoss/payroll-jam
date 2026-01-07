@@ -6,6 +6,7 @@ import { getPlanPriceDetails } from '../utils/pricing';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { storage } from '../services/storage';
 import { dimePayService } from '../services/dimePayService';
+import { supabaseService } from '../services/supabaseService';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { generateUUID } from '../utils/uuid';
@@ -50,6 +51,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
         name: '',
         email: '',
         companyName: '',
+        phone: '',
         password: '',
         confirmPassword: '',
         plan: initialPlan,
@@ -333,6 +335,31 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
 
             await signup(newUser);
             console.log('✅ Signup completed successfully');
+
+            // Auto-create account in Supabase
+            try {
+                const { error: accountError } = await supabaseService.supabase
+                    .from('accounts')
+                    .insert([
+                        {
+                            owner_id: newUser.id,
+                            company_name: formData.companyName || formData.name + "'s Company",
+                            email: formData.email,
+                            phone: formData.phone || null,
+                            subscription_plan: formData.plan,
+                            created_at: new Date().toISOString(),
+                        },
+                    ]);
+
+                if (accountError) {
+                    console.warn('⚠️ Account creation failed (non-fatal):', accountError);
+                } else {
+                    console.log('✅ Account created in Supabase');
+                }
+            } catch (accountError) {
+                console.warn('⚠️ Account creation failed (non-fatal):', accountError);
+                // Don't throw - account creation is optional and shouldn't block signup
+            }
 
             // All signups redirect to verify email page
             if (requiresApproval) {

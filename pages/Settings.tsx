@@ -14,6 +14,8 @@ import { generateUUID } from '../utils/uuid';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { downloadFile } from '../utils/exportHelpers';
+import { useAccount } from '../hooks/useAccount';
+import { getUserRoleInAccount } from '../services/inviteService';
 
 interface SettingsProps {
     companyData?: CompanySettings;
@@ -167,6 +169,8 @@ export const Settings: React.FC<SettingsProps> = ({
     plans = []
 }) => {
     const { user: currentUser, updateUser } = useAuth();
+    const { account } = useAccount();
+    const [userRole, setUserRole] = useState<'admin' | 'manager' | null>(null);
     const [activeTab, setActiveTab] = useState<'company' | 'billing' | 'organization' | 'taxes' | 'integrations' | 'users'>('organization');
 
     // Debug: Log plans when component mounts or plans change
@@ -182,13 +186,29 @@ export const Settings: React.FC<SettingsProps> = ({
             console.warn('⚠️ Settings received EMPTY plans array!');
         }
     }, [plans]);
-    const [isSavingCompany, setIsSavingCompany] = useState(false);
+
+    // Fetch user's role in account
+    useEffect(() => {
+        const fetchUserRole = async () => {
+            if (currentUser?.id && account?.id) {
+                const role = await getUserRoleInAccount(account.id, currentUser.id);
+                setUserRole(role);
+            }
+        };
+        fetchUserRole();
+    }, [currentUser?.id, account?.id]);
+
+    // Define which tabs are visible based on role
+    const visibleTabs = userRole === 'manager' 
+        ? ['company', 'billing', 'organization', 'taxes'] // Manager: no integrations or users
+        : ['company', 'billing', 'organization', 'taxes', 'integrations', 'users']; // Admin: all tabs
 
     // User Management State
     const [users, setUsers] = useState<User[]>([]);
     const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
     const [inviteForm, setInviteForm] = useState({ name: '', email: '', role: Role.MANAGER });
     const [isSendingInvite, setIsSendingInvite] = useState(false);
+    const [isSavingCompany, setIsSavingCompany] = useState(false);
 
     // Organization Management State
     const [newDept, setNewDept] = useState('');
@@ -709,7 +729,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
             <div className="border-b border-gray-200">
                 <nav className="-mb-px flex space-x-8 overflow-x-auto no-scrollbar">
-                    {['company', 'billing', 'organization', 'taxes', 'integrations', 'users'].map((tab) => (
+                    {visibleTabs.map((tab) => (
                         <button key={tab} onClick={() => setActiveTab(tab as any)} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm capitalize ${activeTab === tab ? 'border-jam-orange text-jam-black' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
                             {tab === 'taxes' ? 'Statutory Rates' : tab}
                         </button>
