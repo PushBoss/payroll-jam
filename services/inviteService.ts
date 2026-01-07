@@ -71,14 +71,20 @@ export async function inviteUserToAccount(payload: {
       .eq('id', payload.accountId)
       .single();
 
-    if (accountError || !account) {
+    if (accountError) {
+      console.error('❌ Account lookup failed:', accountError);
+      return { success: false, error: 'Account not found.' };
+    }
+
+    if (!account) {
       return { success: false, error: 'Account not found.' };
     }
 
     // Check if user exists
     const { exists, userId } = await searchUserByEmail(payload.email);
 
-    if (!exists) {
+    if (!exists || !userId) {
+      console.error('❌ User search failed for email:', payload.email);
       return { success: false, error: 'User not found. They need to sign up first.' };
     }
 

@@ -36,6 +36,13 @@ CREATE POLICY "users_view_own_account" ON public.accounts
   FOR SELECT
   USING (owner_id = auth.uid());
 
+-- Users can view any account for validation purposes (invitation system)
+-- The inviteService validates ownership on the backend
+DROP POLICY IF EXISTS "users_view_accounts_for_invites" ON public.accounts;
+CREATE POLICY "users_view_accounts_for_invites" ON public.accounts
+  FOR SELECT
+  USING (true);
+
 -- Users can insert their own account
 DROP POLICY IF EXISTS "users_insert_own_account" ON public.accounts;
 CREATE POLICY "users_insert_own_account" ON public.accounts
