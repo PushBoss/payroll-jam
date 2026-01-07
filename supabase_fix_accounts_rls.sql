@@ -10,12 +10,15 @@ CREATE TABLE IF NOT EXISTS public.accounts (
   email VARCHAR(255),
   phone VARCHAR(20),
   subscription_plan VARCHAR(50) DEFAULT 'Free',
-  last_active TIMESTAMP DEFAULT NOW(),
-  is_disabled BOOLEAN DEFAULT FALSE,
-  disabled_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
+
+-- 1a. ADD INACTIVITY TRACKING COLUMNS IF THEY DON'T EXIST
+ALTER TABLE public.accounts
+ADD COLUMN IF NOT EXISTS last_active TIMESTAMP DEFAULT NOW(),
+ADD COLUMN IF NOT EXISTS is_disabled BOOLEAN DEFAULT FALSE,
+ADD COLUMN IF NOT EXISTS disabled_at TIMESTAMP;
 
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_accounts_owner_id ON public.accounts(owner_id);
