@@ -32,14 +32,15 @@ export function useAccount() {
         const { data, error: supabaseError } = await supabase
           .from('accounts')
           .select('*')
-          .eq('owner_id', user.id)
-          .single();
+          .eq('owner_id', user.id);
 
-        if (supabaseError && supabaseError.code !== 'PGRST116') {
+        if (supabaseError) {
           throw supabaseError;
         }
 
-        setAccount(data as Account);
+        // Get the first account if it exists
+        const accountData = Array.isArray(data) && data.length > 0 ? data[0] : null;
+        setAccount(accountData as Account | null);
         setError(null);
       } catch (err: any) {
         console.error('Error fetching account:', err);
@@ -60,14 +61,15 @@ export function useAccount() {
       const { data, error: supabaseError } = await supabase
         .from('accounts')
         .select('*')
-        .eq('owner_id', user.id)
-        .single();
+        .eq('owner_id', user.id);
 
-      if (supabaseError && supabaseError.code !== 'PGRST116') {
+      if (supabaseError) {
         throw supabaseError;
       }
 
-      setAccount(data as Account);
+      // Get the first account if it exists
+      const accountData = Array.isArray(data) && data.length > 0 ? data[0] : null;
+      setAccount(accountData as Account | null);
       setError(null);
     } catch (err: any) {
       console.error('Error refetching account:', err);
