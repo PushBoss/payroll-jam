@@ -337,28 +337,30 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
             console.log('✅ Signup completed successfully');
 
             // Auto-create account in Supabase
-            try {
-                const { error: accountError } = await supabase
-                    .from('accounts')
-                    .insert([
-                        {
-                            owner_id: newUser.id,
-                            company_name: formData.companyName || formData.name + "'s Company",
-                            email: formData.email,
-                            phone: formData.phone || null,
-                            subscription_plan: formData.plan,
-                            created_at: new Date().toISOString(),
-                        },
-                    ]);
+            if (supabase) {
+                try {
+                    const { error: accountError } = await supabase
+                        .from('accounts')
+                        .insert([
+                            {
+                                owner_id: newUser.id,
+                                company_name: formData.companyName || formData.name + "'s Company",
+                                email: formData.email,
+                                phone: formData.phone || null,
+                                subscription_plan: formData.plan,
+                                created_at: new Date().toISOString(),
+                            },
+                        ]);
 
-                if (accountError) {
+                    if (accountError) {
+                        console.warn('⚠️ Account creation failed (non-fatal):', accountError);
+                    } else {
+                        console.log('✅ Account created in Supabase');
+                    }
+                } catch (accountError) {
                     console.warn('⚠️ Account creation failed (non-fatal):', accountError);
-                } else {
-                    console.log('✅ Account created in Supabase');
+                    // Don't throw - account creation is optional and shouldn't block signup
                 }
-            } catch (accountError) {
-                console.warn('⚠️ Account creation failed (non-fatal):', accountError);
-                // Don't throw - account creation is optional and shouldn't block signup
             }
 
             // All signups redirect to verify email page
