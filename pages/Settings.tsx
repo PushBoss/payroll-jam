@@ -1091,23 +1091,32 @@ export const Settings: React.FC<SettingsProps> = ({
             )}
 
             {activeTab === 'users' && (() => {
+                // Use account.id if available, otherwise use currentUser.id as fallback
+                const accountId = account?.id || currentUser?.id;
+                
+                if (!accountId) {
+                    return (
+                        <div className="bg-white p-6 rounded-xl border border-gray-200 animate-fade-in">
+                            <div className="py-12 text-center">
+                                <p className="text-gray-500">Loading account information...</p>
+                            </div>
+                        </div>
+                    );
+                }
+
                 return (
                     <div className="space-y-6 animate-fade-in">
-                        {account && (
-                            <>
-                                <InviteUserCard 
-                                    accountId={account.id}
-                                    onInviteSent={() => {
-                                        // Refresh members list
-                                        toast.success('Invitation sent successfully!');
-                                    }}
-                                />
-                                <AccountMembersCard
-                                    accountId={account.id}
-                                    isAdmin={userRole === 'admin'}
-                                />
-                            </>
-                        )}
+                        <InviteUserCard 
+                            accountId={accountId}
+                            onInviteSent={() => {
+                                // Refresh members list
+                                toast.success('Invitation sent successfully!');
+                            }}
+                        />
+                        <AccountMembersCard
+                            accountId={accountId}
+                            isAdmin={userRole === 'admin'}
+                        />
                     </div>
                 );
             })()}
