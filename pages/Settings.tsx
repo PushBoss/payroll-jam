@@ -1,7 +1,6 @@
 declare const process: any;
 
 import React, { useState, useEffect, useRef } from 'react';
-import { AlertCircle } from 'lucide-react';
 import { Icons } from '../components/Icons';
 import { GLMapping, IntegrationConfig, CompanySettings, TaxConfig, User, Role, Department, Designation, PricingPlan, PaymentRecord } from '../types';
 import { getPlanPriceDetails } from '../utils/pricing';
