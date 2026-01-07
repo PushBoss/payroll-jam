@@ -16,6 +16,8 @@ import { useAuth } from '../context/AuthContext';
 import { downloadFile } from '../utils/exportHelpers';
 import { useAccount } from '../hooks/useAccount';
 import { getUserRoleInAccount } from '../services/inviteService';
+import { InviteUserCard } from '../components/InviteUserCard';
+import { AccountMembersCard } from '../components/AccountMembersCard';
 
 interface SettingsProps {
     companyData?: CompanySettings;
@@ -1126,60 +1128,24 @@ export const Settings: React.FC<SettingsProps> = ({
                 const remainingSeats = maxUsers - currentUserCount;
 
                 return (
-                    <div className="bg-white p-6 rounded-xl border border-gray-200 animate-fade-in">
-                        <div className="flex justify-between items-center mb-4">
-                            <div>
-                                <h3 className="font-bold">Team Members</h3>
-                                <p className="text-xs text-gray-500 mt-1">
-                                    Manage who has access to your Reseller account
-                                </p>
-                            </div>
-                        </div>
-                        <div className="mb-4">
-                            <button
-                                onClick={() => setIsInviteModalOpen(true)}
-                                className="px-4 py-2 rounded text-sm font-medium bg-jam-orange text-white hover:bg-orange-600"
-                            >
-                                Invite Team Member
-                            </button>
-                        </div>
-                                {currentUser && (
-                                    <tr className="border-b border-gray-50">
-                                        <td className="py-3 text-sm font-medium">{currentUser.name}</td>
-                                        <td className="py-3 text-sm text-gray-500">{currentUser.email}</td>
-                                        <td className="py-3">
-                                            <span className="text-xs bg-jam-orange/20 text-jam-black px-2 py-1 rounded font-medium">
-                                                {currentUser.role} (Owner)
-                                            </span>
-                                        </td>
-                                        <td className="py-3 text-right text-xs text-gray-400">Account Owner</td>
-                                    </tr>
-                                )}
-                                {users.filter(u => u.id !== currentUser?.id && u.email !== currentUser?.email).map(u => (
-                                    <tr key={u.id} className="border-b border-gray-50 last:border-0">
-                                        <td className="py-3 text-sm">{u.name}</td>
-                                        <td className="py-3 text-sm text-gray-500">{u.email}</td>
-                                        <td className="py-3"><span className="text-xs bg-gray-100 px-2 py-1 rounded">{u.role}</span></td>
-                                        <td className="py-3 text-right">
-                                            <button
-                                                onClick={() => handleDeleteUser(u.id)}
-                                                className="text-red-500 hover:text-red-700"
-                                            >
-                                                <Icons.Trash className="w-4 h-4" />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                                {filteredUsers.length === 0 && (
-                                    <tr>
-                                        <td colSpan={4} className="py-8 text-center text-sm text-gray-500">
-                                            No additional users. Invite team members to collaborate.
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
+                    <div className="space-y-6 animate-fade-in">
+                        {account && (
+                            <>
+                                <InviteUserCard 
+                                    accountId={account.id}
+                                    onInviteSent={() => {
+                                        // Refresh members list
+                                        toast.success('Invitation sent successfully!');
+                                    }}
+                                />
+                                <AccountMembersCard
+                                    accountId={account.id}
+                                    isAdmin={userRole === 'admin'}
+                                />
+                            </>
+                        )}
                     </div>
+                );
                 );
             })()}
         </div>
