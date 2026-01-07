@@ -50,7 +50,7 @@ export async function searchUserByEmail(email: string): Promise<{ exists: boolea
 }
 
 /**
- * Invite a user to an account
+ * Invite a user to an account (only Reseller accounts can have team members)
  */
 export async function inviteUserToAccount(payload: {
   accountId: string;
@@ -59,7 +59,8 @@ export async function inviteUserToAccount(payload: {
   invitedBy: string;
 }): Promise<{ success: boolean; error?: string; member?: AccountMember }> {
   try {
-    // Verify account exists and is a reseller account
+    // Verify account exists and is a Reseller account
+    // Only Reseller accounts can have team members invited
     const { data: account, error: accountError } = await supabaseService.supabase
       .from('accounts')
       .select('id, subscription_plan, owner_id')
@@ -71,7 +72,7 @@ export async function inviteUserToAccount(payload: {
     }
 
     if (account.subscription_plan !== 'Reseller') {
-      return { success: false, error: 'Only Reseller accounts can invite team members.' };
+      return { success: false, error: 'Team members can only be added to Reseller accounts.' };
     }
 
     // Check if user exists

@@ -1099,7 +1099,7 @@ export const Settings: React.FC<SettingsProps> = ({
                 const plan = companyData?.plan || 'Free';
                 const isResellerAccount = plan === 'Reseller';
 
-                // Only Reseller accounts can have team members
+                // Only Reseller accounts can have team members invited to manage them
                 if (!isResellerAccount) {
                     return (
                         <div className="bg-white p-6 rounded-xl border border-gray-200 animate-fade-in">
@@ -1107,7 +1107,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                 <Icons.AlertCircle className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                                 <h3 className="text-lg font-semibold text-gray-900 mb-2">Team Members Not Available</h3>
                                 <p className="text-gray-600 max-w-md mx-auto">
-                                    Only Reseller accounts can invite team members. Upgrade your subscription to Reseller to collaborate with your team.
+                                    Team members can only manage Reseller accounts. Upgrade your subscription to Reseller to add team members to this account.
                                 </p>
                             </div>
                         </div>
