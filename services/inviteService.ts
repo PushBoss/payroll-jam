@@ -33,7 +33,7 @@ export async function searchUserByEmail(email: string): Promise<{ exists: boolea
   
   try {
     const { data, error } = await supabase
-      .from('profiles')
+      .from('app_users')
       .select('id, email')
       .eq('email', email.toLowerCase())
       .single();

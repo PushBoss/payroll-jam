@@ -144,16 +144,19 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
             subtotal = count * perEmpPrice;
         } else if (type === 'base') {
             // Base fee plans (Starter, Pro, Reseller)
+            // Use baseFee from priceConfig directly
+            const baseFeeAmount = selectedPlan.priceConfig.baseFee || basePrice || 0;
+            
             if (formData.plan === 'Reseller') {
                 // For resellers: (companies × baseFee) + (employees × perUserFee)
                 // User's own company is always included, so numCompanies is 1 + additional companies
                 const numCompanies = Math.max(1, parseInt(formData.numCompanies) || 1); // Ensure at least 1 (their own company)
                 const numEmployees = parseInt(formData.numEmployees) || 1;
-                subtotal = (numCompanies * basePrice) + (numEmployees * perEmpPrice);
+                subtotal = (numCompanies * baseFeeAmount) + (numEmployees * perEmpPrice);
             } else {
                 // For Starter/Pro: basePrice + (employees × perEmpPrice)
                 const count = parseInt(formData.numEmployees) || 1;
-                subtotal = basePrice + (count * perEmpPrice);
+                subtotal = baseFeeAmount + (count * perEmpPrice);
             }
         }
 
