@@ -1146,7 +1146,6 @@ export const Settings: React.FC<SettingsProps> = ({
                         )}
                     </div>
                 );
-                );
             })()}
         </div>
     );
