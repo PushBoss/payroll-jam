@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { inviteUserToAccount, searchUserByEmail, MemberRole } from '../services/inviteService';
-import { toast } from 'react-toastify';
+import { toast } from 'sonner';
 
 interface InviteUserCardProps {
   accountId: string;

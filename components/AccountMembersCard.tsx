@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getAccountMembers, removeMemberFromAccount, AccountMember } from '../services/inviteService';
-import { toast } from 'react-toastify';
+import { toast } from 'sonner';
 
 interface AccountMembersCardProps {
   accountId: string;

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { supabaseService } from '../services/supabaseService';
-import { useAuth } from './useAuth';
+import { supabase } from '../services/supabaseClient';
+import { useAuth } from '../context/AuthContext';
 
 export interface Account {
   id: string;
@@ -23,13 +23,13 @@ export function useAccount() {
 
   useEffect(() => {
     const fetchAccount = async () => {
-      if (!user?.id) {
+      if (!user?.id || !supabase) {
         setLoading(false);
         return;
       }
 
       try {
-        const { data, error: supabaseError } = await supabaseService.supabase
+        const { data, error: supabaseError } = await supabase
           .from('accounts')
           .select('*')
           .eq('owner_id', user.id)
@@ -53,11 +53,11 @@ export function useAccount() {
   }, [user?.id]);
 
   const refetch = async () => {
-    if (!user?.id) return;
+    if (!user?.id || !supabase) return;
 
     setLoading(true);
     try {
-      const { data, error: supabaseError } = await supabaseService.supabase
+      const { data, error: supabaseError } = await supabase
         .from('accounts')
         .select('*')
         .eq('owner_id', user.id)
