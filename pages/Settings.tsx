@@ -1,6 +1,7 @@
 declare const process: any;
 
 import React, { useState, useEffect, useRef } from 'react';
+import { AlertCircle } from 'lucide-react';
 import { Icons } from '../components/Icons';
 import { GLMapping, IntegrationConfig, CompanySettings, TaxConfig, User, Role, Department, Designation, PricingPlan, PaymentRecord } from '../types';
 import { getPlanPriceDetails } from '../utils/pricing';
@@ -515,14 +516,7 @@ export const Settings: React.FC<SettingsProps> = ({
         setIsSendingInvite(false);
     };
 
-    const handleDeleteUser = (id: string) => {
-        if (confirm('Revoke access for this user?')) {
-            const updatedUsers = users.filter(u => u.id !== id);
-            setUsers(updatedUsers);
-            storage.saveCompanyUsers(updatedUsers);
-            toast.success("User removed");
-        }
-    };
+
 
     const handleAddDepartment = (e: React.FormEvent) => {
         e.preventDefault();
@@ -1098,15 +1092,14 @@ export const Settings: React.FC<SettingsProps> = ({
             )}
 
             {activeTab === 'users' && (() => {
-                const plan = companyData?.plan || 'Free';
-                const isResellerAccount = plan === 'Reseller';
+                const isResellerAccount = account?.subscription_plan === 'Reseller';
 
                 // Only Reseller accounts can have team members invited to manage them
                 if (!isResellerAccount) {
                     return (
                         <div className="bg-white p-6 rounded-xl border border-gray-200 animate-fade-in">
                             <div className="py-12 text-center">
-                                <Icons.AlertCircle className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                                <AlertCircle className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                                 <h3 className="text-lg font-semibold text-gray-900 mb-2">Team Members Not Available</h3>
                                 <p className="text-gray-600 max-w-md mx-auto">
                                     Team members can only manage Reseller accounts. Upgrade your subscription to Reseller to add team members to this account.
@@ -1116,16 +1109,9 @@ export const Settings: React.FC<SettingsProps> = ({
                     );
                 }
 
-                let maxUsers = 5; // Free
-                if (plan === 'Starter') maxUsers = 25;
-                if (plan === 'Pro' || plan === 'Professional') maxUsers = 99999; // Unlimited
-
                 // Count includes the main account owner (currentUser)
                 // Filter out currentUser from users list to avoid duplicates
                 const filteredUsers = users.filter(u => u.id !== currentUser?.id && u.email !== currentUser?.email);
-                const currentUserCount = filteredUsers.length + 1; // +1 for the account owner
-                const canAddMore = currentUserCount < maxUsers;
-                const remainingSeats = maxUsers - currentUserCount;
 
                 return (
                     <div className="space-y-6 animate-fade-in">

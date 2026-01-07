@@ -338,7 +338,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
 
             // Auto-create account in Supabase
             try {
-                const { error: accountError } = await supabaseService.supabase
+                const { error: accountError } = await supabase
                     .from('accounts')
                     .insert([
                         {
