@@ -1105,8 +1105,6 @@ export const Settings: React.FC<SettingsProps> = ({
                     );
                 }
 
-                const accountId = account.id;
-
                 return (
                     <div className="space-y-6 animate-fade-in">
                         <InviteUserCard 
