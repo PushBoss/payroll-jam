@@ -113,8 +113,8 @@ function AppContent() {
   const [taxConfig, setTaxConfig] = useState<TaxConfig>(storage.getTaxConfig() || INITIAL_TAX_CONFIG);
   const [integrationConfig, setIntegrationConfig] = useState<IntegrationConfig>(storage.getIntegrationConfig() || { provider: 'CSV', mappings: [] });
   const [templates, setTemplates] = useState<DocumentTemplate[]>(storage.getTemplates() || []);
-  // Initialize plans with INITIAL_PLANS as temporary fallback - backend will load immediately
-  const [plans, setPlans] = useState<PricingPlan[]>(INITIAL_PLANS);
+  // Initialize plans with cached plans or INITIAL_PLANS as fallback
+  const [plans, setPlans] = useState<PricingPlan[]>(() => storage.getPricingPlans() || INITIAL_PLANS);
   const [departments, setDepartments] = useState<Department[]>(storage.getDepartments() || []);
   const [designations, setDesignations] = useState<Designation[]>(storage.getDesignations() || []);
   const [assets, setAssets] = useState<Asset[]>(storage.getAssets() || []);
@@ -387,14 +387,18 @@ function AppContent() {
         if (globalConfig?.pricingPlans && Array.isArray(globalConfig.pricingPlans) && globalConfig.pricingPlans.length > 0) {
           console.log('✅ Loaded pricing plans from Supabase backend:', globalConfig.pricingPlans.length);
           setPlans(globalConfig.pricingPlans);
+          storage.savePricingPlans(globalConfig.pricingPlans); // Persist as local fallback
         } else {
           console.log('⚠️ No plans in backend, using INITIAL_PLANS');
           setPlans(INITIAL_PLANS);
+          storage.savePricingPlans(INITIAL_PLANS);
           await updateGlobalConfig({ pricingPlans: INITIAL_PLANS });
         }
       } catch (error) {
-        console.error('❌ Failed to load plans from backend, using INITIAL_PLANS:', error);
-        setPlans(INITIAL_PLANS);
+        console.error('❌ Failed to load plans from backend, using cached plans or INITIAL_PLANS:', error);
+        const cached = storage.getPricingPlans();
+        if (cached) setPlans(cached);
+        else setPlans(INITIAL_PLANS);
       }
     }
     loadPlansFromBackend();
@@ -410,6 +414,7 @@ function AppContent() {
     console.log('🔍 handleUpdatePlans called with:', updatedPlans.length, 'plans');
     console.log('🔍 Plans preview:', updatedPlans.map(p => ({ id: p.id, name: p.name, features: p.features.length })));
     setPlans(updatedPlans);
+    storage.savePricingPlans(updatedPlans); // Update local fallback cache
 
     // Save to Supabase backend only (not localStorage)
     console.log('🔍 isSupabaseMode:', isSupabaseMode);
