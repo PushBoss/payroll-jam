@@ -340,9 +340,11 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
             console.log('✅ Signup completed successfully');
 
             // Auto-create account in Supabase
+            // Note: If RLS is enabled and user doesn't have permission, this will fail
+            // In that case, the Supabase auth trigger should create the account
             if (supabase) {
                 try {
-                    const { error: accountError } = await supabase
+                    const { data, error: accountError } = await supabase
                         .from('accounts')
                         .insert([
                             {
@@ -353,15 +355,22 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                 subscription_plan: formData.plan,
                                 created_at: new Date().toISOString(),
                             },
-                        ]);
+                        ])
+                        .select();
 
                     if (accountError) {
-                        console.warn('⚠️ Account creation failed (non-fatal):', accountError);
-                    } else {
-                        console.log('✅ Account created in Supabase');
+                        // Check if it's an RLS error (401, 403, 406)
+                        if (accountError.code === '401' || accountError.code === '403' || accountError.code === '406') {
+                            console.warn('⚠️ Account creation blocked by RLS policy:', accountError.message);
+                            console.info('ℹ️ Auth trigger will create account if configured. If not, users can create account manually in settings.');
+                        } else {
+                            console.warn('⚠️ Account creation failed (non-fatal):', accountError);
+                        }
+                    } else if (data && data.length > 0) {
+                        console.log('✅ Account created in Supabase:', data[0]);
                     }
-                } catch (accountError) {
-                    console.warn('⚠️ Account creation failed (non-fatal):', accountError);
+                } catch (accountError: any) {
+                    console.warn('⚠️ Account creation exception (non-fatal):', accountError.message);
                     // Don't throw - account creation is optional and shouldn't block signup
                 }
             }
