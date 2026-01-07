@@ -118,7 +118,16 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
     // Pricing Logic 
     const getPricing = () => {
         const selectedPlan = plans.find(p => p.name === formData.plan);
-        if (!selectedPlan) return { basePrice: 0, perEmpPrice: 0, type: 'flat', subtotal: 0, tax: 0, total: 0 };
+        if (!selectedPlan) return { 
+            type: 'flat', 
+            basePrice: 0, 
+            perEmpPrice: 0, 
+            subtotal: 0, 
+            billableAmount: 0, 
+            platformFees: 0, 
+            total: 0, 
+            totalUSD: '0.00' 
+        };
 
         const { amount: basePrice, perEmpFee: perEmpPrice } = getPlanPriceDetails(selectedPlan, formData.billingCycle);
         const type = selectedPlan.priceConfig.type;
