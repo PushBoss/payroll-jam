@@ -8,6 +8,7 @@ import { updateGlobalConfig } from './services/updateGlobalConfig';
 import { supabaseService } from './services/supabaseService';
 import { INITIAL_PLANS } from './services/planService';
 import { supabase } from './services/supabaseClient';
+import { getAuthRedirectUrl } from './utils/domainConfig';
 import { initializeCacheValidation } from './utils/cacheUtils';
 import { User, Role, Employee, PayRun as PayRunType, LeaveRequest, WeeklyTimesheet, CompanySettings, IntegrationConfig, TaxConfig, DocumentTemplate, PricingPlan, Department, Designation, Asset, PerformanceReview } from './types';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -642,6 +643,9 @@ function AppContent() {
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: employee.email,
         password: password,
+        options: {
+          emailRedirectTo: getAuthRedirectUrl('?page=verify-email'),
+        },
       });
 
       if (authError) {

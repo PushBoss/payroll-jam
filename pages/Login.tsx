@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 import { supabase } from '../services/supabaseClient';
 import { storage } from '../services/storage';
+import { getAuthRedirectUrl } from '../utils/domainConfig';
 
 interface LoginProps {
   onLogin?: (user: User) => void;
@@ -117,8 +118,8 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBack, onRegister
 
       console.log('🔄 Requesting password reset for:', resetEmail);
       
-      // Use the full URL with hash for better compatibility
-      const redirectUrl = `${window.location.origin}/?page=reset-password`;
+      // Use getAuthRedirectUrl to ensure www.payrolljam.com is used for email verification
+      const redirectUrl = getAuthRedirectUrl('?page=reset-password');
       console.log('Redirect URL:', redirectUrl);
       
       const { data, error } = await supabase.auth.resetPasswordForEmail(resetEmail, {

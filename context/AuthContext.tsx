@@ -4,6 +4,7 @@ import { User, Role, ResellerClient, CompanySettings } from '../types';
 import { storage } from '../services/storage';
 import { supabaseService } from '../services/supabaseService';
 import { supabase } from '../services/supabaseClient';
+import { getAuthRedirectUrl } from '../utils/domainConfig';
 import { toast } from 'sonner';
 
 interface AuthContextType {
@@ -222,6 +223,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: userData.email,
         password: userData.password,
+        options: {
+          emailRedirectTo: getAuthRedirectUrl('?page=verify-email'),
+        },
       });
 
       if (authError) {
