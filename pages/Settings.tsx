@@ -1091,18 +1091,19 @@ export const Settings: React.FC<SettingsProps> = ({
             )}
 
             {activeTab === 'users' && (() => {
-                // Use account.id if available, otherwise use currentUser.id as fallback
-                const accountId = account?.id || currentUser?.id;
-                
-                if (!accountId) {
+                // Only show invite UI if account exists
+                if (!account?.id) {
                     return (
                         <div className="bg-white p-6 rounded-xl border border-gray-200 animate-fade-in">
                             <div className="py-12 text-center">
-                                <p className="text-gray-500">Loading account information...</p>
+                                <p className="text-gray-600 font-medium">Creating your account...</p>
+                                <p className="text-sm text-gray-500 mt-2">Please refresh the page in a moment</p>
                             </div>
                         </div>
                     );
                 }
+
+                const accountId = account.id;
 
                 return (
                     <div className="space-y-6 animate-fade-in">
