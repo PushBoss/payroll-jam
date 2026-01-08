@@ -5,17 +5,20 @@ import { storage } from '../services/storage';
 import { supabaseService } from '../services/supabaseService';
 import { supabase } from '../services/supabaseClient';
 import { getAuthRedirectUrl } from '../utils/domainConfig';
+import { getPendingInvitationsByEmail, AccountMember } from '../services/inviteService';
 import { toast } from 'sonner';
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  signup: (user: User & { password: string; companyName?: string; plan?: string }) => Promise<void>;
+  signup: (user: User & { password: string; companyName?: string; plan?: string }) => Promise<{
+    pendingInvitations: (AccountMember & { company_name?: string; inviter_name?: string; company_plan?: string })[];
+  }>;
   logout: () => Promise<void>;
   updateUser: (updates: Partial<User>) => void;
   impersonate: (client: ResellerClient) => void;
-  stopImpersonation: () => void;
+  stopImpersonation: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -57,8 +60,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           // Load user profile from app_users table
           const appUser = await supabaseService.getUserByEmail(session.user.email!);
           if (appUser && isMounted) {
-            setUser(appUser);
-            storage.saveUser(appUser);
+            
+            // Check for active impersonation in storage to restore it
+            const storedUser = storage.getUser();
+            if (storedUser && storedUser.email === appUser.email && storedUser.originalRole) {
+                console.log('🔄 Restoring impersonation session');
+                const restoredUser = {
+                    ...appUser, // Keep fresh profile data
+                    role: storedUser.role, // Use impersonated role
+                    companyId: storedUser.companyId, // Use impersonated company
+                    originalRole: storedUser.originalRole // Keep persistence flag
+                };
+                setUser(restoredUser);
+                storage.saveUser(restoredUser);
+            } else {
+                setUser(appUser);
+                storage.saveUser(appUser);
+            }
+
           } else if (!appUser && isMounted) {
             // User authenticated but no profile - sign out
             console.warn('User authenticated but no profile found');
@@ -287,7 +306,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           paymentMethod: (userData as any).paymentMethod || 'card'
         };
 
-        const savedCompany = await supabaseService.saveCompany(userData.companyId, companyData);
+        const savedCompany = await supabaseService.saveCompany(userData.companyId, companyData, authData.user.id);
         if (!savedCompany) {
           throw new Error('Failed to create company record');
         }
@@ -340,11 +359,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         throw new Error(`Profile creation failed: ${(profileError as any).message || 'Unknown error'}`);
       }
 
-      // 4. Update local state
+      // 4. Check for pending invitations before updating local state
+      console.log('🔍 Checking for pending invitations for:', userData.email);
+      const pendingInvitations = await getPendingInvitationsByEmail(userData.email);
+      console.log('📬 Found pending invitations:', pendingInvitations.length);
+
+      // 5. Update local state
       setUser(appUser);
       storage.saveUser(appUser);
 
-      console.log('✅ Signup completed successfully - user will receive confirmation email');
+      console.log('✅ Signup completed successfully - checking for pending invitations');
+
+      // Return pending invitations for the signup component to handle
+      return { pendingInvitations };
 
     } catch (error) {
       console.error('❌ Signup failed:', error);
@@ -377,29 +404,60 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     supabaseService.saveUser(updatedUser).catch(err => console.warn("Auth update sync failed", err));
   };
 
-  const impersonate = (client: ResellerClient) => {
+  const impersonate = (client: any) => {
     if (!user) return;
+    console.log('🎭 Impersonating client:', client.companyName);
+    
+    // Safety check: ensure we are capturing the TRUE original role
     const originalRole = user.originalRole || user.role;
+    
     const impersonatedUser = {
       ...user,
       originalRole: originalRole,
       companyId: client.id,
       role: Role.ADMIN
     };
+    
     setUser(impersonatedUser);
     storage.saveUser(impersonatedUser);
+    
+    // Force a small delay to ensure state propagates before nav (though sync state updates should be fine)
   };
 
-  const stopImpersonation = () => {
+  const stopImpersonation = async () => {
     if (!user || !user.originalRole) return;
-    const restoredUser = {
-      ...user,
-      role: user.originalRole,
-      originalRole: undefined,
-      companyId: undefined // Clear context
-    };
-    setUser(restoredUser);
-    storage.saveUser(restoredUser);
+    
+    try {
+        // Fetch fresh user profile to restore original companyId
+        const freshUser = await supabaseService.getUserByEmail(user.email);
+        
+        if (freshUser) {
+            setUser(freshUser);
+            storage.saveUser(freshUser);
+            console.log('✅ Personation stopped. User context restored.');
+        } else {
+             // Fallback if fetch fails (should allow minimal restore)
+            const restoredUser = {
+                ...user,
+                role: user.originalRole,
+                originalRole: undefined,
+                companyId: undefined // Warning: this might leave resellers without companyId temporarily
+            };
+            setUser(restoredUser);
+            storage.saveUser(restoredUser);
+        }
+    } catch (e) {
+        console.error('Error restoring user context:', e);
+         // Fallback
+        const restoredUser = {
+            ...user,
+            role: user.originalRole,
+            originalRole: undefined,
+            companyId: undefined 
+        };
+        setUser(restoredUser);
+        storage.saveUser(restoredUser);
+    }
   };
 
   return (

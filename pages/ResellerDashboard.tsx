@@ -4,6 +4,7 @@ import { Icons } from '../components/Icons';
 import { ResellerClient, PricingPlan } from '../types';
 import { getPlanPriceDetails } from '../utils/pricing';
 import { supabaseService } from '../services/supabaseService';
+import { dimePayService } from '../services/dimePayService';
 import { emailService } from '../services/emailService';
 import { useAuth } from '../context/AuthContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -12,22 +13,22 @@ import { toast } from 'sonner';
 interface ResellerDashboardProps {
     onManageClient?: (client: ResellerClient) => void;
     plans?: PricingPlan[];
-    onNavigate?: (path: string) => void;
 }
 
-export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageClient, plans = [], onNavigate }) => {
+export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageClient, plans = [] }) => {
     const { user } = useAuth();
     const [clients, setClients] = useState<ResellerClient[]>([]);
     const [pendingInvites, setPendingInvites] = useState<any[]>([]);
     const [financialData, setFinancialData] = useState<any[]>([]);
     const [billingHistory, setBillingHistory] = useState<any[]>([]);
     const [isLoadingData, setIsLoadingData] = useState(true);
-    const [_complianceMap, setComplianceMap] = useState<Record<string, any>>({});
+    const [complianceMap, setComplianceMap] = useState<Record<string, any>>({});
 
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'partners' | 'manage' | 'compliance' | 'financials'>('dashboard');
+    const [activeTab, setActiveTab] = useState<'clients' | 'compliance' | 'financials'>('clients');
     const [searchTerm, setSearchTerm] = useState('');
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [currentClient, setCurrentClient] = useState<ResellerClient | null>(null);
 
     // Form State
@@ -93,9 +94,8 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                     });
                     setFinancialData(calculatedFinancialData);
                 } else {
-                    // Fallback to all companies if no reseller relationship
-                    const data = await supabaseService.getAllCompanies();
-                    setClients(Array.isArray(data) ? data : []);
+                    console.warn('ResellerDashboard: No companyId found for user. Cannot load clients.');
+                    setClients([]);
                     setFinancialData([]);
                     setBillingHistory([]);
                 }
@@ -113,29 +113,55 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
     }, [user?.companyId, plans]);
 
     // Stats Calculation
-    const totalRev = clients.reduce((acc, curr) => curr.status === 'ACTIVE' ? acc + curr.mrr : acc, 0);
     const totalEmployees = clients.reduce((acc, curr) => acc + curr.employeeCount, 0);
 
-    // Wholesale Fee Calculation (Dynamic from Reseller Plan if available)
-    const resellerPlan = plans.find(p => p.priceConfig.type === 'base' || p.name === 'Reseller');
-    const baseFee = resellerPlan?.priceConfig.baseFee ?? 3000;
-    const perUserFee = resellerPlan?.priceConfig.perUserFee ?? 100;
+    // Reseller Pricing Model:
+    // Client Pays: $3000 Base + $500 per Employee
+    // Reseller Cost: 20% of Total Revenue (Commission to Platform)
+    
+    // Constants for pricing
+    const BASE_FEE_CLIENT = 3000;
+    const PER_EMP_FEE_CLIENT = 500;
+    const PLATFORM_COMMISSION_RATE = 0.20;
 
     const activeClientsList = clients.filter(c => c.status === 'ACTIVE');
-    const activeEmpCount = activeClientsList.reduce((acc, c) => acc + c.employeeCount, 0);
-    const platformFees = (activeClientsList.length * baseFee) + (activeEmpCount * perUserFee);
-    const netProfit = totalRev - platformFees;
 
-    // Get compliance status from backend (placeholder - compliance tracking not yet implemented)
-    const getComplianceStatus = () => {
-        // TODO: Fetch real compliance data from database once compliance tracking is implemented
-        // For now, return placeholder data
+    // Calculate standardized revenue based on the active clients and their employee counts
+    const calculatedTotalRevenue = activeClientsList.reduce((sum, client) => {
+        return sum + BASE_FEE_CLIENT + (client.employeeCount * PER_EMP_FEE_CLIENT);
+    }, 0);
+
+    const platformFees = calculatedTotalRevenue * PLATFORM_COMMISSION_RATE;
+    
+    // Note: We use calculatedTotalRevenue for consistency in the dashboard view, 
+    // overriding the 'mrr' field from DB for display purposes if they differ.
+    const netProfit = calculatedTotalRevenue - platformFees;
+
+    // Use calculated revenue for the Summary Cards as well
+    const totalRev = calculatedTotalRevenue;
+
+    // Get compliance status - use real data map if available
+    const getComplianceStatus = (clientId: string) => {
         const nextMonth = new Date();
         nextMonth.setMonth(nextMonth.getMonth() + 1);
+        nextMonth.setDate(15);
+        const nextDueDate = nextMonth.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); // SO1 usually due on 15th
+
+        const clientData = complianceMap[clientId];
+        if (clientData) {
+            // Logic: If last pay run was in current month or last month, SO1 is likely filed or pending processing
+            // For now, if we have a record, we mark SO1 as FILED for the previous period
+             return {
+                so1: 'FILED', 
+                s02: 'PENDING', // Annual is usually pending until year end
+                nextDue: nextDueDate
+            };
+        }
+
         return {
             so1: 'PENDING',
             s02: 'PENDING',
-            nextDue: nextMonth.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+            nextDue: nextDueDate
         };
     };
 
@@ -172,13 +198,9 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
     };
 
     const calculateMRR = (plan: string, empCount: number) => {
-        switch (plan) {
-            case 'Free': return 0;
-            case 'Starter': return 2000;
-            case 'Pro': return empCount * 500;
-            case 'Enterprise': return 60000; // Base estimate
-            default: return 0;
-        }
+        // Updated Reseller Model: $3000 Base + $500 per Employee
+        if (plan === 'Free') return 0;
+        return 3000 + (empCount * 500);
     };
 
     const saveNewClient = async (e: React.FormEvent) => {
@@ -243,6 +265,142 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
         setClients(clients.map(c => c.id === currentClient.id ? updated : c));
         setIsEditModalOpen(false);
         setCurrentClient(null);
+    };
+
+    const handlePaymentSuccess = (data: any) => {
+        setIsPaymentModalOpen(false);
+        toast.success(`Payment of $${platformFees.toLocaleString()} processed successfully!`);
+        
+        // Add billing entry to history
+        const newPayment = {
+            id: data?.id || `pay_${Date.now()}`,
+            paymentDate: new Date().toISOString(),
+            invoiceNumber: data?.order_id || `INV-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`,
+            paymentMethod: 'DimePay', 
+            amount: platformFees,
+            status: 'completed'
+        };
+        setBillingHistory(prev => [newPayment, ...prev]);
+    };
+
+    const handlePaymentError = (error: any) => {
+        console.error("Payment failed", error);
+        toast.error("Payment initialization failed. Please try again.");
+    };
+
+    // Initialize DimePay when modal opens
+    useEffect(() => {
+        if (isPaymentModalOpen && platformFees > 0) {
+            // Small delay to ensure DOM element is ready
+            const timer = setTimeout(() => {
+                dimePayService.renderPaymentWidget({
+                    mountId: 'dimepay-mount',
+                    email: user?.email || '',
+                    amount: platformFees,
+                    currency: 'JMD', 
+                    description: 'Platform Commission Fee',
+                    onSuccess: handlePaymentSuccess,
+                    onError: handlePaymentError,
+                    metadata: {
+                        plan: 'Reseller Commission',
+                        companyId: user?.companyId,
+                        name: (user as any)?.user_metadata?.full_name || 'Reseller'
+                    }
+                });
+            }, 100);
+            return () => clearTimeout(timer);
+        }
+    }, [isPaymentModalOpen, platformFees, user]);
+
+    const handleViewInvoice = () => {
+        const w = window.open('', '_blank');
+        if (w) {
+            w.document.write(`
+                <html>
+                    <head>
+                        <title>Invoice - Payroll Jam</title>
+                        <style>
+                            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 40px; color: #1f2937; max-width: 800px; margin: 0 auto; }
+                            .header { display: flex; justify-content: space-between; margin-bottom: 60px; border-bottom: 2px solid #f3f4f6; padding-bottom: 20px; }
+                            .logo { font-size: 24px; font-weight: 800; color: #1f2937; }
+                            .meta { text-align: right; font-size: 14px; color: #6b7280; line-height: 1.5; }
+                            h2 { font-size: 20px; margin-bottom: 20px; }
+                            table { width: 100%; border-collapse: collapse; margin-top: 30px; }
+                            th { text-align: left; border-bottom: 2px solid #e5e7eb; padding: 12px; font-size: 12px; text-transform: uppercase; color: #6b7280; }
+                            td { padding: 16px 12px; border-bottom: 1px solid #f3f4f6; font-size: 14px; }
+                            .amount { font-weight: 600; text-align: right; }
+                            .total-section { margin-top: 40px; border-top: 2px solid #e5e7eb; padding-top: 20px; display: flex; justify-content: flex-end; }
+                            .total-row { display: flex; justify-content: space-between; width: 300px; margin-bottom: 10px; }
+                            .total-label { font-weight: 500; color: #6b7280; }
+                            .total-value { font-weight: 800; font-size: 24px; color: #1f2937; }
+                            .footer { margin-top: 80px; text-align: center; color: #9ca3af; font-size: 12px; }
+                            .btn-print { background: #1f2937; color: white; border: none; padding: 10px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px; transition: background 0.2s; }
+                            .btn-print:hover { background: #111827; }
+                            @media print { .no-print { display: none; } }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="header">
+                            <div class="logo">PAYROLL JAM</div>
+                            <div class="meta">
+                                <p><strong>Invoice #:</strong> INV-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}</p>
+                                <p><strong>Date:</strong> ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                                <p><strong>Due Date:</strong> ${new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString()}</p>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 40px;">
+                            <p style="color: #6b7280; font-size: 12px; text-transform: uppercase; font-weight: 600; margin-bottom: 8px;">Bill To</p>
+                            <p style="font-weight: 600; font-size: 16px;">${user?.email || 'Reseller Partner'}</p>
+                        </div>
+
+                        <h2>Platform Commission Statement</h2>
+                        
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Description</th>
+                                    <th>Details</th>
+                                    <th style="text-align: right;">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>Platform Commission (20%)</strong></td>
+                                    <td style="color: #6b7280;">Based on Total Managed Revenue of $${totalRev.toLocaleString()}</td>
+                                    <td class="amount">$${platformFees.toLocaleString()}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <div class="total-section">
+                            <div>
+                                <div class="total-row">
+                                    <span class="total-label">Subtotal</span>
+                                    <span>$${platformFees.toLocaleString()}</span>
+                                </div>
+                                <div class="total-row" style="align-items: center;">
+                                    <span class="total-label">Total Due</span>
+                                    <span class="total-value">$${platformFees.toLocaleString()}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="footer">
+                            <p>Thank you for your partnership with Payroll Jam.</p>
+                            <p>Questions? Contact support@payrolljam.com</p>
+                        </div>
+
+                        <div class="no-print" style="margin-top: 60px; text-align: center;">
+                            <button onclick="window.print()" class="btn-print">Print Invoice</button>
+                        </div>
+                    </body>
+                </html>
+            `);
+            w.document.close();
+        } else {
+            toast.error('Pop-up blocked. Please allow pop-ups to view invoice.');
+        }
     };
 
     const filteredClients = clients.filter(c =>
@@ -364,7 +522,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                                     </span>
                                 </td>
                                 <td className="px-6 py-4 font-medium text-gray-900">
-                                    ${client.mrr.toLocaleString()}
+                                    ${(client.plan === 'Free' ? 0 : 3000 + (client.employeeCount * 500)).toLocaleString()}
                                 </td>
                                 <td className="px-6 py-4">
                                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
@@ -421,7 +579,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                     <div className="flex justify-between items-start">
                         <div>
                             <p className="text-xs text-gray-500 uppercase font-bold">Upcoming SO1s</p>
-                            <p className="text-3xl font-bold text-gray-900 mt-2">{filteredClients.length}</p>
+                            <p className="text-3xl font-bold text-gray-900 mt-2">{filteredClients.filter(c => getComplianceStatus(c.id).so1 !== 'FILED').length}</p>
                         </div>
                         <div className="p-2 bg-orange-50 rounded-lg">
                             <Icons.CalendarDays className="w-6 h-6 text-jam-orange" />
@@ -472,9 +630,10 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                         {filteredClients.map(client => {
-                            const status = getComplianceStatus();
+                            const status = getComplianceStatus(client.id);
                             return (
-                                <tr key={client.id} className="hover:bg-gray-50">\n                                <td className="px-6 py-4 font-medium text-gray-900">{client.companyName}</td>
+                                <tr key={client.id} className="hover:bg-gray-50">
+                                    <td className="px-6 py-4 font-medium text-gray-900">{client.companyName}</td>
                                     <td className="px-6 py-4">
                                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
                                         ${status.so1 === 'FILED' ? 'bg-green-100 text-green-800' :
@@ -538,20 +697,26 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
 
                     <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 text-sm text-gray-600 mb-6">
                         <div className="flex justify-between mb-2">
-                            <span>Company Base Fees ({activeClientsList.length} x ${baseFee})</span>
-                            <span>${(activeClientsList.length * baseFee).toLocaleString()}</span>
+                            <span>Total Client Revenue</span>
+                            <span>${totalRev.toLocaleString()}</span>
                         </div>
-                        <div className="flex justify-between">
-                            <span>Per Employee Fees ({activeEmpCount} x ${perUserFee})</span>
-                            <span>${(activeEmpCount * perUserFee).toLocaleString()}</span>
+                        <div className="flex justify-between pt-2 border-t border-gray-200 mt-2">
+                            <span className="font-semibold text-gray-900">Platform Commission (20%)</span>
+                            <span className="font-bold text-red-600">${platformFees.toLocaleString()}</span>
                         </div>
                     </div>
 
                     <div className="space-y-3 mt-auto">
-                        <button className="w-full py-2.5 bg-jam-black text-white font-bold rounded-lg hover:bg-gray-800">
+                        <button 
+                            onClick={() => setIsPaymentModalOpen(true)} 
+                            className="w-full py-2.5 bg-jam-black text-white font-bold rounded-lg hover:bg-gray-800 transition-colors"
+                        >
                             Pay Now
                         </button>
-                        <button className="w-full py-2.5 bg-white border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50">
+                        <button 
+                            onClick={handleViewInvoice} 
+                            className="w-full py-2.5 bg-white border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                        >
                             View Invoice
                         </button>
                     </div>
@@ -745,22 +910,13 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                 <div className="border-b border-gray-200 px-6">
                     <nav className="-mb-px flex space-x-8">
                         {[
-                            { key: 'dashboard', label: 'My Dashboard' },
-                            { key: 'partners', label: 'Partner Console' },
-                            { key: 'manage', label: 'Manage My Company' },
+                            { key: 'clients', label: 'Client Management' },
                             { key: 'compliance', label: 'Compliance' },
                             { key: 'financials', label: 'Revenue & Costs' }
                         ].map((tab) => (
                             <button
                                 key={tab.key}
-                                onClick={() => {
-                                    if (tab.key === 'manage') {
-                                        if (onNavigate) onNavigate('dashboard');
-                                        else window.location.href = '/?page=dashboard';
-                                    } else {
-                                        setActiveTab(tab.key as any);
-                                    }
-                                }}
+                                onClick={() => setActiveTab(tab.key as any)}
                                 className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === tab.key
                                     ? 'border-jam-orange text-jam-black'
                                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -773,37 +929,8 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                 </div>
 
                 <div className="p-6 bg-gray-50">
-                    {activeTab === 'dashboard' && (
-                        <div className="space-y-4">
-                            <p className="text-sm text-gray-600 mb-6">
-                                Manage your own company's employees, run payroll, and access all standard admin features.
-                            </p>
-                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                                <div className="flex items-start">
-                                    <Icons.Alert className="w-5 h-5 text-blue-600 mr-3 mt-0.5" />
-                                    <div>
-                                        <h4 className="text-sm font-semibold text-blue-900 mb-1">Coming Soon: Employee Management</h4>
-                                        <p className="text-sm text-blue-700">
-                                            Full employee dashboard integration is being finalized. For now, please use the main admin dashboard
-                                            to manage your employees. Use the "Partner Console" tab to manage your client companies.
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="bg-white rounded-lg border border-gray-200 p-6 text-center">
-                                <Icons.Users className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                                <h3 className="text-lg font-semibold text-gray-900 mb-2">Employee Management Dashboard</h3>
-                                <p className="text-gray-600 mb-4">Navigate to the main Dashboard to manage your own employees</p>
-                                <button
-                                    onClick={() => window.location.href = '/?page=dashboard'}
-                                    className="px-6 py-2 bg-jam-orange text-white rounded-lg hover:bg-yellow-600 transition-colors"
-                                >
-                                    Go to Dashboard
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                    {activeTab === 'partners' && (
+
+                    {activeTab === 'clients' && (
                         <>
                             {/* Stats Cards - Only show on Clients tab */}
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
@@ -875,6 +1002,47 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                     {activeTab === 'financials' && renderFinancialsTab()}
                 </div>
             </div>
+
+            {/* Payment Modal */}
+            {isPaymentModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
+                        <div className="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                            <h3 className="text-xl font-bold text-gray-900">Process Payment</h3>
+                            <button 
+                                onClick={() => setIsPaymentModalOpen(false)}
+                                className="text-gray-400 hover:text-gray-600"
+                            >
+                                <Icons.Close className="w-6 h-6" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 mb-4">
+                                <div className="flex justify-between items-center mb-1">
+                                    <span className="text-gray-600">Total Amount Due</span>
+                                    <span className="text-2xl font-bold text-gray-900">${platformFees.toLocaleString()}</span>
+                                </div>
+                                <p className="text-xs text-gray-500">Includes 20% platform commission fees</p>
+                            </div>
+
+                            <div 
+                                id="dimepay-mount" 
+                                className="w-full min-h-[400px] flex items-center justify-center bg-white rounded-lg border border-gray-100"
+                            >
+                                <div className="text-center text-gray-400">
+                                    <Icons.Spinner className="w-8 h-8 mx-auto mb-2 animate-spin text-jam-orange" />
+                                    <p className="text-sm">Loading Payment Gateway...</p>
+                                </div>
+                            </div>
+                            
+                            <p className="text-xs text-center text-gray-400 mt-4">
+                                <Icons.Lock className="w-3 h-3 inline mr-1" />
+                                Payments are secure and encrypted by DimePay
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

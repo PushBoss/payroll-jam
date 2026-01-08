@@ -1,12 +1,14 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Icons } from '../components/Icons';
+import { PendingInvitationsUI } from '../components/PendingInvitationsUI';
 import { Role, User, PricingPlan } from '../types';
 import { getPlanPriceDetails } from '../utils/pricing';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { storage } from '../services/storage';
 import { dimePayService } from '../services/dimePayService';
 import { supabase } from '../services/supabaseClient';
+import { acceptMultipleInvitations, AccountMember } from '../services/inviteService';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { generateUUID } from '../utils/uuid';
@@ -32,6 +34,8 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [paymentMethod, setPaymentMethod] = useState<'card' | 'direct-deposit'>('card');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [pendingInvitations, setPendingInvitations] = useState<(AccountMember & { company_name?: string; inviter_name?: string; company_plan?: string })[]>([]);
+    const [newUserId, setNewUserId] = useState<string | null>(null);
 
     // Timer Ref for cleanup
     const timerRef = useRef<any>(null);
@@ -326,7 +330,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                 email: formData.email,
                 password: formData.password,
                 role: role,
-                companyId: companyId, // Use pre-generated companyId for DimePay webhook linking
+                companyId: generateUUID(), // Use pre-generated companyId for DimePay webhook linking
                 isOnboarded: false,
                 companyName: formData.name + "'s Company", // Temporary name, will be set in onboarding
                 plan: formData.plan,
@@ -336,8 +340,18 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                 resellerInviteToken: resellerInviteToken || undefined // Pass reseller invite token if present
             };
 
-            await signup(newUser);
+            // Call signup and get pending invitations
+            const signupResult = await signup(newUser);
             console.log('✅ Signup completed successfully');
+            setNewUserId(newUser.id);
+
+            // Check if there are pending invitations
+            if (signupResult && signupResult.pendingInvitations && signupResult.pendingInvitations.length > 0) {
+                console.log('📬 Found pending invitations:', signupResult.pendingInvitations.length);
+                setPendingInvitations(signupResult.pendingInvitations);
+                // Show the invitations UI - component will handle auto-accept if only one
+                return; // Don't proceed to email verification yet
+            }
 
             // Auto-create company in Supabase
             // Note: If RLS is enabled and user doesn't have permission, this will fail
@@ -420,7 +434,14 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
 
             // Check if email already exists
             if (error.message?.includes('already registered') || error.code === '23505') {
-                toast.error('Email already exists. Please login instead.');
+                if (resellerInviteToken) {
+                    toast.info('Account exists! Redirecting to login to accept your invitation...');
+                    setTimeout(() => {
+                        onLoginClick();
+                    }, 2000);
+                } else {
+                    toast.error('Email already exists. Please login instead.');
+                }
             } else {
                 toast.error(error.message || 'Signup failed. Please try again.');
             }
@@ -429,8 +450,63 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
         }
     };
 
+    const handleInvitationsAccepted = async (acceptedInvitations: typeof pendingInvitations) => {
+        if (!newUserId) {
+            console.error('❌ User ID not found');
+            toast.error('Error accepting invitations');
+            return;
+        }
+
+        try {
+            // Accept all the selected invitations
+            const invitationIds = acceptedInvitations.map(inv => inv.id);
+            const result = await acceptMultipleInvitations(invitationIds, newUserId, true);
+
+            if (result.success) {
+                console.log('✅ Invitations accepted:', result.acceptedCount);
+                toast.success(`Accepted ${result.acceptedCount} invitation${result.acceptedCount !== 1 ? 's' : ''}!`);
+                
+                // Clear pending invitations and proceed to verification
+                setPendingInvitations([]);
+                
+                setTimeout(() => {
+                    console.log('🔄 Redirecting to dashboard...');
+                    // Instead of going to verify email, go directly to dashboard since email is verified
+                    if (onNavigate) {
+                        onNavigate('dashboard');
+                    } else {
+                        onVerifyEmailClick(formData.email);
+                    }
+                }, 1000);
+            } else {
+                toast.error(`Failed to accept ${result.failedCount} invitation${result.failedCount !== 1 ? 's' : ''}`);
+            }
+        } catch (error) {
+            console.error('❌ Error accepting invitations:', error);
+            toast.error('Failed to accept invitations');
+        }
+    };
+
+    const handleSkipInvitations = () => {
+        setPendingInvitations([]);
+        setTimeout(() => {
+            console.log('🔄 Redirecting to verify email page...');
+            onVerifyEmailClick(formData.email);
+        }, 500);
+    };
+
     return (
-        <div className="min-h-screen bg-gray-50 flex">
+        <>
+            {/* Show Pending Invitations UI if there are invitations waiting */}
+            {pendingInvitations.length > 0 && newUserId && (
+                <PendingInvitationsUI
+                    invitations={pendingInvitations}
+                    onInvitationsAccepted={handleInvitationsAccepted}
+                    onSkip={handleSkipInvitations}
+                />
+            )}
+
+            <div className="min-h-screen bg-gray-50 flex">
             {/* Left Side - Form */}
             <div className="flex-1 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-20 xl:px-24 bg-white">
                 <div className="mx-auto w-full max-w-sm lg:w-96">
@@ -907,6 +983,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                     </div>
                 </div>
             </div>
-        </div>
+            </div>
+        </>
     );
 };

@@ -223,8 +223,20 @@ export const supabaseService = {
     };
   },
 
-  saveCompany: async (companyId: string, settings: CompanySettings) => {
+  saveCompany: async (companyId: string, settings: CompanySettings, userId?: string) => {
     if (!supabase) return null;
+
+    // Get owner ID - use provided userId or fetch from auth
+    let ownerId = userId;
+    if (!ownerId) {
+      const { data: authData } = await supabase.auth.getUser();
+      ownerId = authData.user?.id;
+    }
+
+    if (!ownerId) {
+      console.error('Unable to determine user ID for company owner');
+      return null;
+    }
 
     // Map plan names to match database constraint: ('Free', 'Starter', 'Professional', 'Enterprise')
     const mapPlanToDbFormat = (plan: string | undefined): string => {
@@ -266,6 +278,7 @@ export const supabaseService = {
       .from('companies')
       .upsert({
         id: companyId,
+        owner_id: ownerId,
         name: settings.name,
         trn: settings.trn,
         address: settings.address,
@@ -2249,7 +2262,8 @@ export const supabaseService = {
             email,
             plan,
             status,
-            settings
+            settings,
+            employees(count)
           )
         `)
         .eq('reseller_id', resellerId)
@@ -2272,7 +2286,7 @@ export const supabaseService = {
           contactName: company?.email || '',
           email: company?.email || '',
           plan: company?.plan || 'Free',
-          employeeCount: company?.settings?.employeeCount || 0,
+          employeeCount: company?.employees?.[0]?.count || company?.settings?.employeeCount || 0,
           status: rc.status || 'ACTIVE',
           mrr: (rc.monthly_base_fee || 0) + ((rc.per_employee_fee || 0) * (company?.settings?.employeeCount || 0)),
           createdAt: rc.created_at

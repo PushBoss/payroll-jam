@@ -50,12 +50,17 @@ export const Layout: React.FC<LayoutProps> = ({
       { id: 'settings', label: 'Settings', icon: Icons.Settings, feature: null },
     ];
 
+    // Add Partner Console item if user is Reseller
+    if (user?.role === Role.RESELLER) {
+        allItems.unshift({ id: 'reseller-dashboard', label: 'Partner Console', icon: Icons.LayoutGrid, feature: null });
+    }
+
     // Filter out items that require features the plan doesn't have
     return allItems.filter(item => {
       if (!item.feature) return true; // Always show items without feature requirements
       return hasFeatureAccess(companyData, item.feature);
     });
-  }, [companyData]);
+  }, [companyData, user?.role]);
 
   if (variant === 'blank') {
     return <div className="min-h-screen bg-gray-50">{children}</div>;
@@ -81,7 +86,8 @@ export const Layout: React.FC<LayoutProps> = ({
   ];
 
   const resellerNavItems = [
-    { id: 'reseller-dashboard', label: 'Partner Console', icon: Icons.Dashboard, feature: null },
+    { id: 'reseller-dashboard', label: 'Partner Console', icon: Icons.LayoutGrid, feature: null },
+    { id: 'dashboard', label: 'My Company', icon: Icons.Building, feature: null },
   ];
 
   let navItems = adminNavItems;
@@ -168,24 +174,34 @@ export const Layout: React.FC<LayoutProps> = ({
 
       {/* 4. Impersonation Banner */}
       {isImpersonating && (
-        <div className={`px-4 py-2 text-sm font-bold flex justify-between items-center shadow-md z-50 ${isSuperAdminImpersonating
+        <div className={`px-4 py-3 text-sm font-bold flex justify-between items-center shadow-md z-[70] relative border-b border-gray-800 ${isSuperAdminImpersonating
           ? 'bg-red-900 text-white'
-          : 'bg-jam-black text-jam-yellow'
+          : 'bg-gray-900 text-white' 
           }`}>
           <div className="flex items-center">
-            <Icons.Shield className="w-4 h-4 mr-2" />
-            <span className="uppercase tracking-wider">
-              {isSuperAdminImpersonating ? 'Super Admin Mode' : 'Reseller Mode'}: Managing {managingCompanyName}
-            </span>
+             <div className={`w-8 h-8 rounded-full bg-opacity-20 flex items-center justify-center mr-3 ${isSuperAdminImpersonating ? 'bg-red-500' : 'bg-jam-orange'}`}>
+                {isSuperAdminImpersonating ? <Icons.Shield className="w-4 h-4 text-red-200" /> : <Icons.Settings className="w-4 h-4 text-jam-orange" />}
+            </div>
+            <div>
+              <span className={`uppercase tracking-wider text-xs block mb-0.5 ${isSuperAdminImpersonating ? 'text-red-200' : 'text-jam-orange'}`}>
+                {isSuperAdminImpersonating ? 'Super Admin Mode' : 'Partner Console'}
+              </span>
+              <span>Managing: {managingCompanyName}</span>
+            </div>
           </div>
           <button
-            onClick={stopImpersonation}
-            className={`px-3 py-1 rounded text-xs transition-colors flex items-center ${isSuperAdminImpersonating
-              ? 'bg-white text-red-900 hover:bg-gray-200'
-              : 'bg-jam-yellow text-jam-black hover:bg-white'
-              }`}
+            onClick={() => {
+                stopImpersonation();
+                if (!isSuperAdminImpersonating) {
+                    onNavigate('reseller-dashboard');
+                } else {
+                    onNavigate('sa-overview');
+                }
+            }}
+            className="p-1 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white transition-all transform hover:rotate-90"
+            title="Return to Console"
           >
-            <Icons.Back className="w-3 h-3 mr-1" /> Return to Console
+            <Icons.Close className="w-5 h-5" />
           </button>
         </div>
       )}

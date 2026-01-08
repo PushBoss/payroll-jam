@@ -1,8 +1,11 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { Employee, LeaveRequest, PayRun, PayType, CompanySettings } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { useAuth } from '../context/AuthContext';
+import { getPendingInvitationsByEmail, acceptMultipleInvitations } from '../services/inviteService';
+import { PendingInvitationsUI } from '../components/PendingInvitationsUI';
 
 interface DashboardProps {
   employees: Employee[];
@@ -13,6 +16,33 @@ interface DashboardProps {
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ employees, leaveRequests, payRunHistory = [], onNavigate, companyData }) => {
+  const { user } = useAuth();
+  const [pendingInvites, setPendingInvites] = useState<any[]>([]);
+
+  // Check for pending invites on mount
+  useEffect(() => {
+    const checkInvites = async () => {
+      if (user?.email) {
+        const invites = await getPendingInvitationsByEmail(user.email);
+        if (invites && invites.length > 0) {
+          setPendingInvites(invites);
+        }
+      }
+    };
+    checkInvites();
+  }, [user?.email]);
+
+  const handleInvitesAccepted = async (acceptedInvites: any[]) => {
+    if (!user) return;
+    const inviteIds = acceptedInvites.map(i => i.id);
+    const result = await acceptMultipleInvitations(inviteIds, user.id);
+    if (result.success) {
+      setPendingInvites([]);
+      // Reload to reflect changes (e.g. enable switching to new company)
+      window.location.reload();
+    }
+  };
+
   const pendingLeaveCount = leaveRequests.filter(r => r.status === 'PENDING').length;
 
   // Get available years from pay run history
@@ -144,6 +174,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ employees, leaveRequests, 
 
   return (
     <div className="space-y-6">
+      <PendingInvitationsUI 
+        invitations={pendingInvites}
+        onInvitationsAccepted={handleInvitesAccepted}
+        onSkip={() => setPendingInvites([])}
+      />
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
         <div>
           <h2 className="text-3xl font-bold text-gray-900">Dashboard</h2>

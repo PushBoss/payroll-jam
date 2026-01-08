@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getAccountMembers, removeMemberFromAccount, AccountMember } from '../services/inviteService';
+import { getAccountMembers, removeMemberFromAccount, resendInvitation, AccountMember } from '../services/inviteService';
 import { toast } from 'sonner';
 
 interface AccountMembersCardProps {
@@ -16,6 +16,7 @@ export const AccountMembersCard: React.FC<AccountMembersCardProps> = ({
   const [members, setMembers] = useState<AccountMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [removing, setRemoving] = useState<string | null>(null);
+  const [resending, setResending] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchMembers = async () => {
@@ -33,6 +34,23 @@ export const AccountMembersCard: React.FC<AccountMembersCardProps> = ({
 
     fetchMembers();
   }, [accountId, refreshTrigger]);
+
+  const handleResendInvite = async (memberId: string) => {
+    setResending(memberId);
+    try {
+      const result = await resendInvitation(memberId);
+      if (result.success) {
+        toast.success('Invitation resent successfully');
+      } else {
+        toast.error(result.error || 'Failed to resend invitation');
+      }
+    } catch (error) {
+      console.error('Error resending invite:', error);
+      toast.error('Failed to resend invitation');
+    } finally {
+      setResending(null);
+    }
+  };
 
   const handleRemoveMember = async (memberId: string, email: string) => {
     if (!confirm(`Remove ${email} from the team?`)) {
@@ -91,13 +109,25 @@ export const AccountMembersCard: React.FC<AccountMembersCardProps> = ({
               </div>
 
               {isAdmin && (
-                <button
-                  onClick={() => handleRemoveMember(member.id, member.email)}
-                  disabled={removing === member.id}
-                  className="ml-4 px-3 py-1 text-sm text-red-600 hover:bg-red-50 rounded disabled:text-gray-400 font-medium"
-                >
-                  {removing === member.id ? 'Removing...' : 'Remove'}
-                </button>
+                <div className="flex items-center">
+                  {member.status === 'pending' && (
+                    <button
+                      onClick={() => handleResendInvite(member.id)}
+                      disabled={resending === member.id}
+                      className="ml-4 px-3 py-1 text-sm text-jam-orange hover:bg-orange-50 rounded disabled:text-gray-400 font-medium border border-jam-orange hover:border-jam-orange"
+                    >
+                      {resending === member.id ? 'Sending...' : 'Resend Invite'}
+                    </button>
+                  )}
+                  
+                  <button
+                    onClick={() => handleRemoveMember(member.id, member.email)}
+                    disabled={removing === member.id}
+                    className="ml-4 px-3 py-1 text-sm text-red-600 hover:bg-red-50 rounded disabled:text-gray-400 font-medium"
+                  >
+                    {removing === member.id ? 'Removing...' : 'Remove'}
+                  </button>
+                </div>
               )}
             </div>
           ))}

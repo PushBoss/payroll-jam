@@ -62,7 +62,8 @@ import {
   FileCheck,
   ShieldCheck,
   Eye,
-  EyeOff
+  EyeOff,
+  LayoutGrid
 } from 'lucide-react';
 
 export const Icons = {
@@ -131,5 +132,8 @@ export const Icons = {
   FileCheck: FileCheck,
   ShieldCheck: ShieldCheck,
   Eye: Eye,
-  EyeOff: EyeOff
+  EyeOff: EyeOff,
+  LayoutGrid: LayoutGrid,
+  Spinner: RefreshCw, // Fallback to existing icon if Loader2 not imported
+  Lock: Shield // Fallback to Shield if Lock doesn't exist
 };

@@ -24,12 +24,12 @@ export const InviteUserCard: React.FC<InviteUserCardProps> = ({ accountId, onInv
     try {
       const { exists } = await searchUserByEmail(email);
       if (exists) {
-        setUserFound(true);
         toast.success('User found!');
       } else {
-        setUserFound(false);
-        toast.error('User not found. They need to sign up first.');
+        toast.info('User not on the platform yet. They will receive an email invite.');
       }
+      // Always allow proceeding with the invite, regardless of whether they exist locally
+      setUserFound(true); 
     } catch (error) {
       console.error('Search error:', error);
       toast.error('Failed to search for user');

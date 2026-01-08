@@ -104,6 +104,58 @@ export const emailService = {
   },
 
   /**
+   * Sends a manager/admin invitation email.
+   */
+  sendManagerInvite: async (email: string, contactName: string, invitingCompanyName: string, link: string, role: string) => {
+    // Try SMTP first (if API URL is configured)
+    const apiUrl = import.meta.env.VITE_API_URL;
+    if (apiUrl) {
+      console.log('📧 Sending manager invite via SMTP...');
+      const result = await smtpEmailService.sendManagerInvite(email, contactName, invitingCompanyName, link, role);
+      if (result.success) {
+        return result;
+      }
+      console.warn('⚠️ SMTP failed, falling back to EmailJS');
+    }
+
+    // Fallback to EmailJS (using generic template for now or simulation)
+    const config = storage.getGlobalConfig();
+    
+    if (!config?.emailjs?.publicKey) {
+      console.log(`[Email Simulation] Manager Invite`);
+      console.log(`To: ${email}`);
+      console.log(`Company: ${invitingCompanyName}`);
+      console.log(`Role: ${role}`);
+      console.log(`Link: ${link}`);
+      return { success: true, message: 'Simulation: Email logged to console.' };
+    }
+
+    // For EmailJS fallback, we use the standard invite template but with updated message
+    try {
+      const templateParams = {
+        to_email: email,
+        to_name: contactName,
+        message: `${invitingCompanyName} has invited you to join their team as a ${role}. Click the link below to accept the invitation.`,
+        link: link,
+        company_name: invitingCompanyName,
+        action_type: 'MANAGER_INVITE'
+      };
+
+      await emailjs.send(
+        config.emailjs.serviceId,
+        config.emailjs.templateId,
+        templateParams,
+        config.emailjs.publicKey
+      );
+
+      return { success: true, message: 'Email sent successfully.' };
+    } catch (error) {
+      console.error('EmailJS Error:', error);
+      return { success: false, message: 'Failed to send email.' };
+    }
+  },
+
+  /**
    * Sends a company invitation email.
    */
   sendCompanyInvite: async (email: string, contactName: string, invitingCompanyName: string, link: string) => {

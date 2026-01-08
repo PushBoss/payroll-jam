@@ -209,6 +209,79 @@ This invitation was sent by ${companyName} via Payroll-Jam
   },
 
   /**
+   * Send manager/admin invitation email
+   */
+  sendManagerInvite: async (
+    email: string,
+    contactName: string,
+    invitingCompanyName: string,
+    inviteLink: string,
+    role: string
+  ): Promise<{ success: boolean; message?: string }> => {
+    const roleDisplay = role.charAt(0).toUpperCase() + role.slice(1);
+    
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #f97316 0%, #fbbf24 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+          .content { background: #ffffff; padding: 30px; border: 1px solid #e5e7eb; }
+          .button { display: inline-block; padding: 12px 30px; background: #f97316; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 20px 0; }
+          .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>You've Been Invited to Manage ${invitingCompanyName}</h1>
+          </div>
+          <div class="content">
+            <p>Hi ${contactName},</p>
+            <p><strong>${invitingCompanyName}</strong> has invited you to join their team on Payroll-Jam as a <strong>${roleDisplay}</strong>.</p>
+            <p>As a ${roleDisplay}, you'll have access to manage payroll, employees, and company settings.</p>
+            <center>
+              <a href="${inviteLink}" class="button">Accept Invitation</a>
+            </center>
+            <p style="color: #6b7280; font-size: 14px; margin-top: 20px;">
+              Or copy and paste this link into your browser:<br>
+              <span style="word-break: break-all;">${inviteLink}</span>
+            </p>
+          </div>
+          <div class="footer">
+            <p>This invitation was sent by ${invitingCompanyName} via Payroll-Jam</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const textContent = `
+You've Been Invited to Manage ${invitingCompanyName}
+
+Hi ${contactName},
+
+${invitingCompanyName} has invited you to join their team on Payroll-Jam as a ${roleDisplay}.
+
+As a ${roleDisplay}, you'll have access to manage payroll, employees, and company settings.
+
+Accept your invitation here: ${inviteLink}
+
+---
+This invitation was sent by ${invitingCompanyName} via Payroll-Jam
+    `;
+
+    return await smtpEmailService.sendEmail({
+      to: email,
+      subject: `You've been invited to manage ${invitingCompanyName}`,
+      html: htmlContent,
+      text: textContent,
+    });
+  },
+
+  /**
    * Send company invitation email
    */
   sendCompanyInvite: async (
