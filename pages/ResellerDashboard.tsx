@@ -441,7 +441,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
              const emailResult = await emailService.sendResellerInvite(
                 invite.invite_email,
                 invite.contact_name || 'Valued Client',
-                user?.companyName || 'Our Partner',
+                (user as any)?.companyName || 'Our Partner',
                 inviteLink
             );
 

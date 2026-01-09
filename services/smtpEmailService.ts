@@ -192,7 +192,7 @@ This invitation was sent by ${companyName} via Payroll-Jam
     contactName: string,
     resellerCompanyName: string,
     inviteLink: string
-  ): Promise<{ success: boolean; message?: string }> => {
+  ): Promise<{ success: boolean; message?: string; error?: string }> => {
     const htmlContent = `
       <!DOCTYPE html>
       <html>
