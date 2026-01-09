@@ -78,6 +78,21 @@ supabase secrets set SMTP_USER=9dea0e001@smtp-brevo.com
 echo "Setting SMTP_PASS..."
 supabase secrets set SMTP_PASS=g5JHWNhvBUqp49yw
 
+echo "--------------------------------------------"
+echo "🔑 checking Brevo API Key Configuration..."
+echo "To send emails reliably, we need the Brevo V3 API Key (starts with xkeysib-)."
+echo "This is DIFFERENT from the SMTP password above."
+echo ""
+read -p "Enter your Brevo API Key: " BREVO_API_KEY
+
+if [ ! -z "$BREVO_API_KEY" ]; then
+    echo "Setting BREVO_API_KEY..."
+    supabase secrets set BREVO_API_KEY="$BREVO_API_KEY"
+else
+    echo "⚠️  No API Key provided. The email function may fail if it relies on the web API."
+fi
+echo "--------------------------------------------"
+
 echo "Setting SMTP_FROM_NAME..."
 supabase secrets set SMTP_FROM_NAME="Payroll-Jam"
 

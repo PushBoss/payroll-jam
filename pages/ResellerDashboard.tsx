@@ -433,6 +433,27 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
         }
     };
 
+    const handleResendInvite = async (invite: any) => {
+        try {
+             const inviteLink = `${window.location.origin}/?token=${invite.invite_token}&email=${encodeURIComponent(invite.invite_email || '')}&reseller=true`;
+             
+             const emailResult = await emailService.sendInvite(
+                invite.invite_email,
+                invite.contact_name || 'Valued Client',
+                inviteLink
+            );
+
+            if (emailResult.success) {
+                toast.success(`Invitation resent to ${invite.invite_email}`);
+            } else {
+                toast.error('Failed to resend invitation email');
+            }
+        } catch (error) {
+            console.error('Error resending invite:', error);
+            toast.error('Failed to resend invitation');
+        }
+    };
+
     const renderClientsTab = () => (
         <>
             {/* Pending Invites Section */}
@@ -462,6 +483,13 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                                     <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
                                         Pending
                                     </span>
+                                    <button
+                                        onClick={() => handleResendInvite(invite)}
+                                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                        title="Resend invitation"
+                                    >
+                                        <Icons.Refresh className="w-4 h-4" />
+                                    </button>
                                     <button
                                         onClick={() => handleCancelInvite(invite.id, invite.invite_email)}
                                         className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
