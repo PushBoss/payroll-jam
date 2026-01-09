@@ -96,8 +96,22 @@ echo "--------------------------------------------"
 echo "Setting SMTP_FROM_NAME..."
 supabase secrets set SMTP_FROM_NAME="Payroll-Jam"
 
-echo "Setting SMTP_FROM_EMAIL..."
-supabase secrets set SMTP_FROM_EMAIL=9dea0e001@smtp-brevo.com
+echo "--------------------------------------------"
+echo "📧 Sender Email Configuration"
+echo "Brevo requires a Verified Sender Email Address."
+echo "Using an unverified address will cause emails to be dropped silently."
+echo ""
+read -p "Enter your Verified Sender Email (e.g., info@yourdomain.com): " SENDER_EMAIL
+
+if [ ! -z "$SENDER_EMAIL" ]; then
+    echo "Setting SMTP_FROM_EMAIL to $SENDER_EMAIL..."
+    supabase secrets set SMTP_FROM_EMAIL="$SENDER_EMAIL"
+else
+    echo "⚠️  No Sender Email provided. Using default (likely to fail)."
+    echo "Setting default SMTP_FROM_EMAIL..."
+    supabase secrets set SMTP_FROM_EMAIL=9dea0e001@smtp-brevo.com
+fi
+echo "--------------------------------------------"
 
 echo ""
 echo "✅ All secrets set successfully"

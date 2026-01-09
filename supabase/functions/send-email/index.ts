@@ -99,7 +99,7 @@ serve(async (req) => {
     console.log('Email sent successfully:', result);
 
     return new Response(
-      JSON.stringify({ success: true, message: 'Email sent successfully', messageId: result.messageId }),
+      JSON.stringify(result),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
