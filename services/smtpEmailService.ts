@@ -113,7 +113,7 @@ export const smtpEmailService = {
     firstName: string,
     companyName: string,
     inviteLink: string
-  ): Promise<{ success: boolean; message?: string }> => {
+  ): Promise<{ success: boolean; message?: string; error?: string }> => {
     const htmlContent = `
       <!DOCTYPE html>
       <html>
