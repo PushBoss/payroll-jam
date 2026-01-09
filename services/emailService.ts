@@ -17,7 +17,7 @@ export const emailService = {
       if (result.success) {
         return result;
       }
-      console.warn('⚠️ SMTP failed, falling back to EmailJS');
+      console.warn('⚠️ SMTP failed, falling back to EmailJS. Reason:', result.error);
     }
 
     // Fallback to EmailJS

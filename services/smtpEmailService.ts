@@ -58,6 +58,12 @@ export const smtpEmailService = {
       const { data: sessionData } = await supabase?.auth.getSession() || { data: { session: null } };
       const token = sessionData?.session?.access_token;
       
+      console.log('📧 Preparing SMTP Payload:', { 
+        url: apiUrl, 
+        hasToken: !!token,
+        hasAnon: !!import.meta.env.VITE_SUPABASE_ANON_KEY 
+      });
+
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       };
@@ -74,14 +80,18 @@ export const smtpEmailService = {
         }
       }
 
+      console.log('📧 Sending fetch request...');
       const response = await fetch(`${apiUrl}`, {
         method: 'POST',
         headers: headers,
         body: JSON.stringify(payload),
       });
 
+      console.log('📧 API Response Status:', response.status);
+
       if (!response.ok) {
         const error = await response.text();
+        console.error('📧 API Error Body:', error);
         throw new Error(error || 'Failed to send email');
       }
 
