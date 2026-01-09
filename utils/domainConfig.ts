@@ -1,13 +1,13 @@
 /**
  * Domain Configuration Utility
- * Ensures all redirect URLs use www.payrolljam.com for email verification and auth
+ * Ensures all redirect URLs use payrolljam.com (no www) for email verification and auth
  */
 
-export const PRODUCTION_DOMAIN = 'www.payrolljam.com';
+export const PRODUCTION_DOMAIN = 'payrolljam.com';
 
 /**
  * Get the proper base URL for redirects
- * Always uses www.payrolljam.com in production, localhost in development
+ * Always uses payrolljam.com (no www) in production, localhost in development
  */
 export const getBaseUrl = (): string => {
   if (typeof window === 'undefined') {
@@ -16,10 +16,10 @@ export const getBaseUrl = (): string => {
 
   const origin = window.location.origin;
   
-  // In production: ensure www is included
+  // In production: ensure www is NOT included
   if (origin.includes('payrolljam.com')) {
-    // If it's payrolljam.com (without www), redirect to www version
-    if (!origin.includes('www.')) {
+    // If it's www.payrolljam.com, fallback to non-www
+    if (origin.includes('www.')) {
       return `https://${PRODUCTION_DOMAIN}`;
     }
     return origin;
