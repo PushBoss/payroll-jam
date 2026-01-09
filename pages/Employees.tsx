@@ -128,6 +128,26 @@ export const Employees: React.FC<EmployeesProps> = ({
         }
     };
 
+    const handleResendInvite = async (emp: Employee) => {
+        setIsSendingInvite(true);
+        const inviteLink = `${window.location.origin}/?token=${emp.onboardingToken}&email=${encodeURIComponent(emp.email)}&type=employee`;
+
+        const emailResult = await emailService.sendEmployeeInvite(
+            emp.email,
+            emp.firstName,
+            companyData?.name || 'Your Company',
+            inviteLink
+        );
+
+        if (emailResult.success) {
+            toast.success(`Invitation resent to ${emp.email}`);
+            auditService.log(currentUser, 'UPDATE', 'Employee', `Resent invitation to ${emp.email}`);
+        } else {
+             toast.error('Failed to resend email.');
+        }
+        setIsSendingInvite(false);
+    };
+
     const filteredEmployees = employees.filter(e => {
         const matchesSearch = e.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
             e.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -1106,6 +1126,15 @@ export const Employees: React.FC<EmployeesProps> = ({
                                     <td className="px-6 py-4 text-right text-sm font-medium">
                                         {emp.status === 'PENDING_ONBOARDING' ? (
                                             <div className="flex justify-end space-x-2">
+                                                <button
+                                                    onClick={() => handleResendInvite(emp)}
+                                                    disabled={isSendingInvite}
+                                                    className="bg-jam-orange text-jam-black px-2 py-1.5 rounded text-xs hover:bg-yellow-500 shadow-sm flex items-center"
+                                                    title="Resend Invitation Email"
+                                                >
+                                                    <Icons.Mail className="w-3 h-3 mr-1" />
+                                                    Resend
+                                                </button>
                                                 {onSimulateOnboarding && (
                                                     <button
                                                         onClick={() => onSimulateOnboarding(emp)}
@@ -1121,7 +1150,6 @@ export const Employees: React.FC<EmployeesProps> = ({
                                                 >
                                                     <Icons.Close className="w-4 h-4" />
                                                 </button>
-                                                <span className="text-xs text-gray-400 px-2 py-1">Pending</span>
                                             </div>
                                         ) : emp.status === 'PENDING_VERIFICATION' ? (
                                             <button
