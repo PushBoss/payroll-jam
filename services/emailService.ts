@@ -104,6 +104,29 @@ export const emailService = {
   },
 
   /**
+   * Sends a reseller invitation email.
+   */
+  sendResellerInvite: async (email: string, contactName: string, resellerCompanyName: string, link: string) => {
+    // Try SMTP first (if API URL is configured)
+    const apiUrl = import.meta.env.VITE_API_URL;
+    if (apiUrl) {
+      console.log('📧 Sending reseller invite via SMTP...');
+      const result = await smtpEmailService.sendResellerInvite(email, contactName, resellerCompanyName, link);
+      if (result.success) {
+        return result;
+      }
+      console.warn('⚠️ SMTP failed for reseller invite.', result.error);
+    }
+
+    // Fallback to simulation (Reseller invites not supported on EmailJS fallback in this version)
+    console.log(`[Email Simulation] Reseller Invite`);
+    console.log(`To: ${email}`);
+    console.log(`From: ${resellerCompanyName}`);
+    console.log(`Link: ${link}`);
+    return { success: true, message: 'Simulation: Email logged to console.' };
+  },
+
+  /**
    * Sends a manager/admin invitation email.
    */
   sendManagerInvite: async (email: string, contactName: string, invitingCompanyName: string, link: string, role: string) => {

@@ -437,9 +437,11 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
         try {
              const inviteLink = `${window.location.origin}/?token=${invite.invite_token}&email=${encodeURIComponent(invite.invite_email || '')}&reseller=true`;
              
-             const emailResult = await emailService.sendInvite(
+             // Use the specific Reseller Invite method, not the generic employee one
+             const emailResult = await emailService.sendResellerInvite(
                 invite.invite_email,
                 invite.contact_name || 'Valued Client',
+                user?.companyName || 'Our Partner',
                 inviteLink
             );
 

@@ -2059,6 +2059,20 @@ export const supabaseService = {
   acceptResellerInvite: async (token: string, clientCompanyId: string): Promise<boolean> => {
     if (!supabase) return false;
     try {
+      // Use the Secure RPC function first (bypasses RLS)
+      const { data, error } = await supabase.rpc('accept_reseller_invite_v2', {
+        p_invite_token: token,
+        p_client_company_id: clientCompanyId
+      });
+
+      if (!error && data === true) {
+        console.log('✅ Reseller invite accepted via RPC');
+        return true;
+      }
+
+      console.warn('⚠️ RPC accept failed, trying direct table access fallback...', error);
+
+      // FALLBACK: Old logic (might fail due to RLS if user is not the reseller)
       // Get the invite
       const { data: invite, error: fetchError } = await supabase
         .from('reseller_invites')
