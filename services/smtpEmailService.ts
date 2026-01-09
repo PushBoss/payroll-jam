@@ -32,6 +32,8 @@ export interface EmailPayload {
   text?: string;
 }
 
+import { supabase } from './supabaseClient';
+
 /**
  * Send email via backend API endpoint
  */
@@ -51,11 +53,30 @@ export const smtpEmailService = {
 
       // Call backend API endpoint (Supabase Edge Function)
       // SMTP credentials are stored in Supabase secrets, not in global config
-      const response = await fetch(`${apiUrl}/send-email`, {
+
+      // Get current auth session to include in call
+      const { data: sessionData } = await supabase?.auth.getSession() || { data: { session: null } };
+      const token = sessionData?.session?.access_token;
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      
+      // If we have a token, include it to pass Supabase Auth verification
+      // (This fixes the 401 Missing authorization header error)
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      } else {
+        // Fallback for public calls (should rely on Anon Key if properly configured server-side)
+        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        if (anonKey) {
+           headers['Authorization'] = `Bearer ${anonKey}`;
+        }
+      }
+
+      const response = await fetch(`${apiUrl}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: headers,
         body: JSON.stringify(payload),
       });
 
