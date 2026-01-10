@@ -32,19 +32,17 @@ export async function searchUserByEmail(email: string): Promise<{ exists: boolea
   if (!supabase) return { exists: false };
   
   try {
-    const { data, error } = await supabase
-      .from('app_users')
-      .select('id, email')
-      .eq('email', email.toLowerCase())
-      .single();
+    // UPDATED: Use RPC helper to bypass RLS and find user safely
+    const { data: userId, error } = await supabase.rpc('get_user_id_by_email', { 
+      email_input: email.toLowerCase() 
+    });
 
-    if (error && error.code !== 'PGRST116') {
-      // PGRST116 = no rows found (not an error)
-      console.error('Error searching user:', error);
-      return { exists: false };
+    if (error) {
+       console.error('Error searching user (RPC):', error);
+       return { exists: false };
     }
 
-    return { exists: !!data, userId: data?.id };
+    return { exists: !!userId, userId: userId || undefined };
   } catch (error) {
     console.error('Error in searchUserByEmail:', error);
     return { exists: false };

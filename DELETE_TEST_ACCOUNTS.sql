@@ -1,84 +1,44 @@
 -- =====================================================
--- DELETE TEST ACCOUNTS AND RELATED RECORDS
+-- SQL TO DELETE TEST ACCOUNTS COMPLETELY
+-- Run this in the Supabase Dashboard SQL Editor
 -- =====================================================
--- This script cleans up test accounts and all their related data
 
--- STEP 1: GET USER IDS (for reference)
-SELECT id, email FROM public.app_users 
-WHERE email IN ('info@pushtechsolutions.com', 'aarongardiner6@gmail.com');
-
--- STEP 2: DELETE ACCOUNT_MEMBERS (invitations) for these users
-DELETE FROM public.account_members
-WHERE user_id IN (
-  SELECT id FROM public.app_users 
-  WHERE email IN ('info@pushtechsolutions.com', 'aarongardiner6@gmail.com')
+-- 1. DELETE FROM AUTH (The root source)
+-- This cascades to 'companies' (via owner_id) and 'app_users' (via auth_user_id)
+-- Reference: supabase_add_owner_id_to_companies.sql and supabase_auth_integration.sql
+DELETE FROM auth.users 
+WHERE email IN (
+  'aarongardiner6@gmail.com', 
+  'info@pushtechsolutions.com'
 );
 
--- STEP 3: DELETE ACCOUNT_MEMBERS (invitations TO their companies)
-DELETE FROM public.account_members
-WHERE account_id IN (
-  SELECT id FROM public.companies
-  WHERE owner_id IN (
-    SELECT id FROM public.app_users 
-    WHERE email IN ('info@pushtechsolutions.com', 'aarongardiner6@gmail.com')
-  )
+-- 2. ORPHAN CLEANUP (Public Tables)
+-- Just in case the cascade didn't catch everything (e.g. broken links)
+
+-- Delete orphaned app_users
+DELETE FROM public.app_users 
+WHERE email IN (
+  'aarongardiner6@gmail.com', 
+  'info@pushtechsolutions.com'
 );
 
--- STEP 4: DELETE EMPLOYEES in their companies (cascade should handle this)
-DELETE FROM public.employees
-WHERE company_id IN (
-  SELECT id FROM public.companies
-  WHERE owner_id IN (
-    SELECT id FROM public.app_users 
-    WHERE email IN ('info@pushtechsolutions.com', 'aarongardiner6@gmail.com')
-  )
+-- Delete orphaned companies (where these emails are the contact email)
+DELETE FROM public.companies 
+WHERE email IN (
+  'aarongardiner6@gmail.com', 
+  'info@pushtechsolutions.com'
 );
 
--- STEP 5: DELETE COMPANIES owned by these users
-DELETE FROM public.companies
-WHERE owner_id IN (
-  SELECT id FROM public.app_users 
-  WHERE email IN ('info@pushtechsolutions.com', 'aarongardiner6@gmail.com')
+-- Delete orphaned reseller invites (where invite was sent to these emails)
+DELETE FROM public.reseller_invites
+WHERE invite_email IN (
+  'aarongardiner6@gmail.com', 
+  'info@pushtechsolutions.com'
 );
 
--- STEP 6: DELETE APP_USERS
-DELETE FROM public.app_users
-WHERE email IN ('info@pushtechsolutions.com', 'aarongardiner6@gmail.com');
-
--- STEP 7: DELETE FROM AUTH.USERS (must be done via Supabase Dashboard or admin API)
--- ⚠️ MANUAL STEP: Go to Supabase Dashboard → Authentication → Users
--- Find and delete the auth records for:
--- - info@pushtechsolutions.com
--- - aarongardiner6@gmail.com
-
--- VERIFY DELETION
-SELECT 'Deleted successfully if no results below:' as status;
-
-SELECT 'auth.users' as table_name, COUNT(*) as remaining_records
-FROM public.app_users
-WHERE email IN ('info@pushtechsolutions.com', 'aarongardiner6@gmail.com')
-
-UNION ALL
-
-SELECT 'companies' as table_name, COUNT(*)
-FROM public.companies
-WHERE owner_id IN (
-  SELECT id FROM public.app_users 
-  WHERE email IN ('info@pushtechsolutions.com', 'aarongardiner6@gmail.com')
-)
-
-UNION ALL
-
-SELECT 'account_members' as table_name, COUNT(*)
-FROM public.account_members
-WHERE user_id IN (
-  SELECT id FROM public.app_users 
-  WHERE email IN ('info@pushtechsolutions.com', 'aarongardiner6@gmail.com')
-)
-OR account_id IN (
-  SELECT id FROM public.companies
-  WHERE owner_id IN (
-    SELECT id FROM public.app_users 
-    WHERE email IN ('info@pushtechsolutions.com', 'aarongardiner6@gmail.com')
-  )
-);
+-- =====================================================
+-- QUICK CHECK
+-- =====================================================
+-- Verify they are gone
+SELECT 'Auth Users Remaining' as check, count(*) FROM auth.users WHERE email IN ('aarongardiner6@gmail.com', 'info@pushtechsolutions.com');
+SELECT 'App Users Remaining' as check, count(*) FROM public.app_users WHERE email IN ('aarongardiner6@gmail.com', 'info@pushtechsolutions.com');
