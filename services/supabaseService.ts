@@ -294,6 +294,30 @@ export const supabaseService = {
       .single();
 
     if (error) {
+      // Fallback: If 401/42501 (Permission Denied) likely due to missing session during signup
+      // Use the Secure RPC as fallback
+      if (error.code === '401' || error.code === '42501' || error.code === '403') {
+          console.warn("Direct upsert failed (likely no session), using RPC fallback...", error);
+          const { data: rpcData, error: rpcError } = await supabase.rpc('create_company_secure', {
+             p_company_id: companyId,
+             p_owner_id: ownerId,
+             p_name: settings.name,
+             p_trn: settings.trn || null,
+             p_address: settings.address || null,
+             p_status: settings.subscriptionStatus,
+             p_plan: dbPlan,
+             p_billing_cycle: settings.billingCycle || 'MONTHLY',
+             p_employee_limit: dbLimit,
+             p_settings: settingsJson
+          });
+
+          if (rpcError) {
+             console.error("RPC Fallback failed:", rpcError);
+             return null;
+          }
+          return rpcData;
+      }
+
       console.error("Error saving company:", error);
       return null;
     }
