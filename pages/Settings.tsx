@@ -362,7 +362,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     if (currentUser.companyId) {
                         try {
                             await supabaseService.saveResellerClientWithServiceRole(
-                                currentUser.id,
+                                currentUser.companyId,
                                 currentUser.companyId,
                                 {
                                     status: 'ACTIVE',

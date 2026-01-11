@@ -255,10 +255,11 @@ export async function getUserRoleInAccount(
 export async function getPendingInvitationsByEmail(
   email: string
 ): Promise<(AccountMember & { company_name?: string; inviter_name?: string; company_plan?: string })[]> {
-  if (!supabase) return [];
+  const client = supabase;
+  if (!client) return [];
 
   try {
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from('account_members')
       .select(
         `id, account_id, user_id, email, role, status, invited_at, accepted_at,
@@ -284,8 +285,8 @@ export async function getPendingInvitationsByEmail(
         
         if (invite.inviter && Array.isArray(invite.inviter) && invite.inviter.length > 0) {
           const ownerId = invite.inviter[0].owner_id;
-          if (ownerId && supabase) {
-            const { data: inviterUser } = await supabase
+          if (ownerId) {
+            const { data: inviterUser } = await client
               .from('app_users')
               .select('name')
               .eq('id', ownerId)
@@ -294,10 +295,31 @@ export async function getPendingInvitationsByEmail(
           }
         }
 
+        let companyName = invite.companies?.[0]?.name as string | undefined;
+        let companyPlan = invite.companies?.[0]?.plan as string | undefined;
+
+          if (!companyName && invite.account_id) {
+          try {
+              const { data: summary, error: summaryError } = await client.rpc('get_company_invite_summary', {
+              p_company_id: invite.account_id
+            });
+
+            if (!summaryError && summary) {
+              const summaryRow = Array.isArray(summary) ? summary[0] : summary;
+              companyName = summaryRow?.company_name || companyName;
+              companyPlan = summaryRow?.company_plan || companyPlan;
+            } else if (summaryError) {
+              console.warn('Could not load company invite summary:', summaryError);
+            }
+          } catch (summaryException) {
+            console.warn('Exception fetching company invite summary:', summaryException);
+          }
+        }
+
         return {
           ...invite,
-          company_name: invite.companies?.[0]?.name || 'Unknown Company',
-          company_plan: invite.companies?.[0]?.plan || 'Free',
+          company_name: companyName || 'Unknown Company',
+          company_plan: companyPlan || 'Free',
           inviter_name: inviterName
         };
       })

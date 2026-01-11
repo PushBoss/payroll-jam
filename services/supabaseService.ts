@@ -2086,7 +2086,7 @@ export const supabaseService = {
       // Use the Secure RPC function first (bypasses RLS)
       const { data, error } = await supabase.rpc('accept_reseller_invite_v2', {
         p_invite_token: token,
-        p_client_company_id: clientCompanyId
+        p_client_company_id: clientCompanyId || null
       });
 
       if (!error && data === true) {
@@ -2117,11 +2117,27 @@ export const supabaseService = {
       }
 
       // Create the reseller-client relationship
+      let targetCompanyId = clientCompanyId;
+      if (!targetCompanyId) {
+        const { data: inviteeCompany } = await supabase
+          .from('app_users')
+          .select('company_id')
+          .eq('email', invite.invite_email)
+          .maybeSingle();
+
+        targetCompanyId = inviteeCompany?.company_id || null;
+      }
+
+      if (!targetCompanyId) {
+        console.error('Unable to resolve client company for invite acceptance');
+        return false;
+      }
+
       const { error: clientError } = await supabase
         .from('reseller_clients')
         .insert({
           reseller_id: invite.reseller_id,
-          client_company_id: clientCompanyId,
+          client_company_id: targetCompanyId,
           status: 'ACTIVE',
           access_level: 'FULL',
         });
@@ -2269,6 +2285,19 @@ export const supabaseService = {
   cancelResellerInvite: async (inviteId: string): Promise<boolean> => {
     if (!supabase) return false;
     try {
+      // Try secure RPC first (bypasses RLS while validating ownership)
+      const { data: rpcResult, error: rpcError } = await supabase.rpc('cancel_reseller_invite_secure', {
+        p_invite_id: inviteId
+      });
+
+      if (!rpcError && rpcResult === true) {
+        return true;
+      }
+
+      if (rpcError) {
+        console.warn('RPC cancel failed, falling back to direct delete...', rpcError);
+      }
+
       const { error } = await supabase
         .from('reseller_invites')
         .delete()
@@ -2282,6 +2311,50 @@ export const supabaseService = {
       return true;
     } catch (e) {
       console.error('Exception in cancelResellerInvite:', e);
+      return false;
+    }
+  },
+
+  removeResellerClient: async (resellerId: string, clientCompanyId: string): Promise<boolean> => {
+    if (!supabase) return false;
+    try {
+      const { data: rpcResult, error: rpcError } = await supabase.rpc('remove_reseller_client_secure', {
+        p_reseller_id: resellerId,
+        p_client_company_id: clientCompanyId
+      });
+
+      if (!rpcError && rpcResult === true) {
+        return true;
+      }
+
+      if (rpcError) {
+        console.warn('RPC remove_reseller_client_secure failed, attempting direct delete...', rpcError);
+      }
+
+      const { error } = await supabase
+        .from('reseller_clients')
+        .delete()
+        .eq('reseller_id', resellerId)
+        .eq('client_company_id', clientCompanyId);
+
+      if (error) {
+        console.error('Error deleting reseller client relationship:', error);
+        return false;
+      }
+
+      const { error: companyUpdateError } = await supabase
+        .from('companies')
+        .update({ reseller_id: null })
+        .eq('id', clientCompanyId)
+        .eq('reseller_id', resellerId);
+
+      if (companyUpdateError) {
+        console.warn('Warning: company reseller_id reset failed:', companyUpdateError);
+      }
+
+      return true;
+    } catch (e) {
+      console.error('Exception in removeResellerClient:', e);
       return false;
     }
   },

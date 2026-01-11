@@ -185,9 +185,31 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
         setIsEditModalOpen(true);
     };
 
-    const handleDelete = (id: string) => {
-        if (confirm('Are you sure you want to remove this client? This action cannot be undone.')) {
-            setClients(clients.filter(c => c.id !== id));
+    const handleDelete = async (clientCompanyId: string) => {
+        const client = clients.find(c => c.id === clientCompanyId);
+        const clientLabel = client?.companyName || 'this client';
+
+        if (!window.confirm(`Remove ${clientLabel} from your portfolio? This will revoke their reseller access.`)) {
+            return;
+        }
+
+        if (!user?.companyId) {
+            toast.error('Reseller company ID not found');
+            return;
+        }
+
+        try {
+            const success = await supabaseService.removeResellerClient(user.companyId, clientCompanyId);
+
+            if (success) {
+                setClients(prev => prev.filter(c => c.id !== clientCompanyId));
+                toast.success(`${clientLabel} removed from portfolio`);
+            } else {
+                toast.error('Failed to remove client');
+            }
+        } catch (error) {
+            console.error('Error removing reseller client:', error);
+            toast.error('Failed to remove client');
         }
     };
 

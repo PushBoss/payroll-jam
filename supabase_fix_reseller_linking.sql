@@ -2,11 +2,12 @@
 -- Function to accept reseller invite securely (bypassing Client RLS for this specific action)
 CREATE OR REPLACE FUNCTION accept_reseller_invite_v2(
     p_invite_token TEXT,
-    p_client_company_id UUID
+    p_client_company_id UUID DEFAULT NULL
 ) RETURNS BOOLEAN AS $$
 DECLARE
     v_invite RECORD;
     v_reseller_id UUID;
+    v_client_company_id UUID;
 BEGIN
     -- 1. Find the invite (and ensure it's still PENDING and NOT EXPIRED)
     SELECT * INTO v_invite
@@ -21,11 +22,39 @@ BEGIN
 
     v_reseller_id := v_invite.reseller_id;
 
+    -- Prefer passed company id, but fall back to the invitee's actual company
+    v_client_company_id := p_client_company_id;
+
+    IF v_client_company_id IS NULL THEN
+        SELECT company_id INTO v_client_company_id
+        FROM app_users
+        WHERE lower(email) = lower(v_invite.invite_email)
+        ORDER BY updated_at DESC NULLS LAST
+        LIMIT 1;
+    END IF;
+
+    IF v_client_company_id IS NULL THEN
+        SELECT id INTO v_client_company_id
+        FROM companies
+        WHERE lower(email) = lower(v_invite.invite_email)
+        ORDER BY created_at DESC NULLS LAST
+        LIMIT 1;
+    END IF;
+
+    IF v_client_company_id IS NULL THEN
+        RETURN FALSE;
+    END IF;
+
     -- 2. Create the reseller_client relationship
     -- We use ON CONFLICT DO NOTHING just in case it was already created but invite status wasn't updated
     INSERT INTO reseller_clients (reseller_id, client_company_id, status, access_level)
-    VALUES (v_reseller_id, p_client_company_id, 'ACTIVE', 'FULL')
+    VALUES (v_reseller_id, v_client_company_id, 'ACTIVE', 'FULL')
     ON CONFLICT (reseller_id, client_company_id) DO NOTHING;
+
+    -- 2b. Make sure the company points back to the reseller
+    UPDATE companies
+    SET reseller_id = v_reseller_id
+    WHERE id = v_client_company_id;
 
     -- 3. Mark the invite as ACCEPTED
     UPDATE reseller_invites
