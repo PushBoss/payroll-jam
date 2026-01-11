@@ -110,7 +110,7 @@ export async function inviteUserToAccount(payload: {
       .select('id')
       .eq('account_id', payload.accountId)
       .eq('user_id', userId)
-      .single();
+      .maybeSingle();
 
     if (existing) {
       return { success: false, error: 'User is already a member of this company.' };
