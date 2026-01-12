@@ -2208,6 +2208,20 @@ export const supabaseService = {
           access_level: 'FULL'
         }, { onConflict: 'reseller_id,client_company_id' });
 
+        // Ensure Reseller User is in team members (Admin can do this)
+        if (resellerUserId && resellerEmail) {
+            console.log('👥 Admin adding reseller as team member:', resellerEmail);
+            await adminClient.from('account_members').upsert({
+              account_id: clientCompanyId,
+              user_id: resellerUserId,
+              email: resellerEmail.toLowerCase(),
+              role: 'manager',
+              status: 'accepted',
+              accepted_at: new Date().toISOString(),
+              invited_at: new Date().toISOString(),
+            }, { onConflict: 'account_id,email' });
+        }
+
         // Ensure invite is marked as accepted
         await adminClient.from('reseller_invites').update({
           status: 'ACCEPTED',
@@ -2224,6 +2238,60 @@ export const supabaseService = {
       return true;
     } catch (e) {
       console.error('Exception in acceptResellerInvite:', e);
+      return false;
+    }
+  },
+
+  // NEW: Robust Join Team function for Resellers to manually sync their access
+  joinClientTeam: async (clientCompanyId: string, resellerUserId: string, resellerEmail: string): Promise<boolean> => {
+    if (!supabase) return false;
+    try {
+      console.log('🔗 Reseller requesting to join client team:', { clientCompanyId, resellerUserId, resellerEmail });
+      
+      const adminClient = await supabaseService.getAdminClient();
+      if (!adminClient) {
+        console.error('❌ Admin client not available for joinClientTeam');
+        return false;
+      }
+
+      // Add Reseller as Team Member (Admin bypasses RLS)
+      const { error: memberError } = await adminClient.from('account_members').upsert({
+        account_id: clientCompanyId,
+        user_id: resellerUserId,
+        email: resellerEmail.toLowerCase(),
+        role: 'manager',
+        status: 'accepted',
+        accepted_at: new Date().toISOString(),
+        invited_at: new Date().toISOString(),
+      }, {
+        onConflict: 'account_id,email',
+        ignoreDuplicates: false
+      });
+
+      if (memberError) {
+        console.error('❌ Failed to add reseller as team member via admin:', memberError);
+        return false;
+      }
+
+      // Ensure the company is linked to the reseller in the companies table too
+      // First find the reseller's company ID
+      const { data: userData } = await adminClient.from('app_users').select('company_id').eq('id', resellerUserId).maybeSingle();
+      if (userData?.company_id) {
+          await adminClient.from('companies').update({
+              reseller_id: userData.company_id
+          }).eq('id', clientCompanyId);
+          
+          await adminClient.from('reseller_clients').upsert({
+              reseller_id: userData.company_id,
+              client_company_id: clientCompanyId,
+              status: 'ACTIVE',
+              access_level: 'FULL'
+          }, { onConflict: 'reseller_id,client_company_id' });
+      }
+
+      return true;
+    } catch (e) {
+      console.error('Exception in joinClientTeam:', e);
       return false;
     }
   },

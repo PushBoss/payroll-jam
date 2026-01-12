@@ -7,7 +7,6 @@ import { supabaseService } from '../services/supabaseService';
 import { dimePayService } from '../services/dimePayService';
 import { emailService } from '../services/emailService';
 import { useAuth } from '../context/AuthContext';
-import { supabase } from '../services/supabaseClient';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { toast } from 'sonner';
 
@@ -220,6 +219,28 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
         }
     };
 
+    const handleJoinTeam = async (client: ResellerClient) => {
+        if (!user?.id || !user?.email) {
+            toast.error('Reseller user information missing');
+            return;
+        }
+
+        try {
+            toast.loading(`Joining ${client.companyName} team...`, { id: 'join-team' });
+            const success = await supabaseService.joinClientTeam(client.id, user.id, user.email);
+
+            if (success) {
+                toast.success(`You are now a manager of ${client.companyName}`, { id: 'join-team' });
+                // Optional: trigger a refresh or just rely on the next navigation to work
+            } else {
+                toast.error('Failed to join team. Please try again.', { id: 'join-team' });
+            }
+        } catch (error) {
+            console.error('Error joining team:', error);
+            toast.error('Failed to join team', { id: 'join-team' });
+        }
+    };
+
     const calculateMRR = (plan: string, empCount: number) => {
         // Updated Reseller Model: $3000 Base + $500 per Employee
         if (plan === 'Free') return 0;
@@ -248,23 +269,8 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                 const clientCompanyId = existingUser.companyId;
                 
                 // 1. Add reseller user as team member (manager role) to the existing company directly (accepted status)
-                // Note: This may fail due to RLS if the reseller is not the owner of the client company
-                if (supabase) {
-                    await supabase
-                        .from('account_members')
-                        .upsert({
-                            account_id: clientCompanyId,
-                            user_id: user.id,
-                            email: user.email.toLowerCase(),
-                            role: 'manager',
-                            status: 'accepted',
-                            accepted_at: new Date().toISOString(),
-                            invited_at: new Date().toISOString(),
-                        }, {
-                            onConflict: 'account_id,email',
-                            ignoreDuplicates: false
-                        });
-                }
+                // Use the service-role admin client to bypass RLS since the reseller isn't a member yet
+                await supabaseService.joinClientTeam(clientCompanyId, user.id, user.email);
 
                 // 2. Create reseller_clients relationship (add company to reseller's portfolio)
                 const clientSaved = await supabaseService.saveResellerClient(user.companyId, clientCompanyId, {
@@ -760,14 +766,31 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                                     </td>
                                     <td className="px-6 py-4 text-sm text-gray-500">{status.nextDue}</td>
                                     <td className="px-6 py-4 text-right">
-                                        {status.so1 !== 'FILED' && (
+                                        <div className="flex flex-col gap-2 items-end">
                                             <button
-                                                onClick={() => alert(`Reminder sent to ${client.email}`)}
-                                                className="text-jam-orange hover:text-yellow-600 text-sm font-medium flex items-center justify-end w-full"
+                                                onClick={() => handleManage(client)}
+                                                className="text-jam-black hover:text-gray-700 text-sm font-bold flex items-center justify-end"
                                             >
-                                                <Icons.Mail className="w-3 h-3 mr-1" /> Send Reminder
+                                                <Icons.ExternalLink className="w-3 h-3 mr-1" /> Manage
                                             </button>
-                                        )}
+                                            
+                                            <button
+                                                onClick={() => handleJoinTeam(client)}
+                                                className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center justify-end"
+                                                title="Ensure you have access to this client's team"
+                                            >
+                                                <Icons.Users className="w-3 h-3 mr-1" /> Sync Access
+                                            </button>
+
+                                            {status.so1 !== 'FILED' && (
+                                                <button
+                                                    onClick={() => alert(`Reminder sent to ${client.email}`)}
+                                                    className="text-jam-orange hover:text-yellow-600 text-sm font-medium flex items-center justify-end"
+                                                >
+                                                    <Icons.Mail className="w-3 h-3 mr-1" /> Send Reminder
+                                                </button>
+                                            )}
+                                        </div>
                                     </td>
                                 </tr>
                             );
