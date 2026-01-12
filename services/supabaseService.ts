@@ -2104,6 +2104,8 @@ export const supabaseService = {
 
       // Helper function to add reseller as team member
       const addResellerAsTeamMember = async (targetCompanyId: string) => {
+        if (!supabase) return;
+        
         // Get reseller user ID (find user with RESELLER role and matching company_id)
         const { data: resellerUser } = await supabase
           .from('app_users')
