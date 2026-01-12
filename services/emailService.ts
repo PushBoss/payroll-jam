@@ -128,13 +128,14 @@ export const emailService = {
 
   /**
    * Sends a manager/admin invitation email.
+   * @param requiresUpgrade - If true, includes message about upgrading to Reseller plan to manage multiple companies
    */
-  sendManagerInvite: async (email: string, contactName: string, invitingCompanyName: string, link: string, role: string) => {
+  sendManagerInvite: async (email: string, contactName: string, invitingCompanyName: string, link: string, role: string, requiresUpgrade?: boolean) => {
     // Try SMTP first (if API URL is configured)
     const apiUrl = import.meta.env.VITE_API_URL;
     if (apiUrl) {
       console.log('📧 Sending manager invite via SMTP...');
-      const result = await smtpEmailService.sendManagerInvite(email, contactName, invitingCompanyName, link, role);
+      const result = await smtpEmailService.sendManagerInvite(email, contactName, invitingCompanyName, link, role, requiresUpgrade);
       if (result.success) {
         return result;
       }
@@ -150,15 +151,21 @@ export const emailService = {
       console.log(`Company: ${invitingCompanyName}`);
       console.log(`Role: ${role}`);
       console.log(`Link: ${link}`);
+      console.log(`Requires Upgrade: ${requiresUpgrade ? 'Yes' : 'No'}`);
       return { success: true, message: 'Simulation: Email logged to console.' };
     }
 
     // For EmailJS fallback, we use the standard invite template but with updated message
     try {
+      let message = `${invitingCompanyName} has invited you to join their team as a ${role}. Click the link below to accept the invitation.`;
+      if (requiresUpgrade) {
+        message += `\n\nNote: To manage multiple companies, you'll need to upgrade to the Reseller plan.`;
+      }
+      
       const templateParams = {
         to_email: email,
         to_name: contactName,
-        message: `${invitingCompanyName} has invited you to join their team as a ${role}. Click the link below to accept the invitation.`,
+        message: message,
         link: link,
         company_name: invitingCompanyName,
         action_type: 'MANAGER_INVITE'

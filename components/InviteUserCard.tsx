@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { inviteUserToAccount, searchUserByEmail, MemberRole } from '../services/inviteService';
 import { toast } from 'sonner';
+import { useAuth } from '../context/AuthContext';
 
 interface InviteUserCardProps {
   accountId: string;
@@ -8,8 +9,9 @@ interface InviteUserCardProps {
 }
 
 export const InviteUserCard: React.FC<InviteUserCardProps> = ({ accountId, onInviteSent }) => {
+  const { user } = useAuth();
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<MemberRole>('manager');
+  const [role, setRole] = useState<MemberRole>('admin');
   const [isSearching, setIsSearching] = useState(false);
   const [userFound, setUserFound] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -24,23 +26,30 @@ export const InviteUserCard: React.FC<InviteUserCardProps> = ({ accountId, onInv
     try {
       const { exists } = await searchUserByEmail(email);
       if (exists) {
-        toast.success('User found!');
+        toast.success('User found! You can proceed to send the invitation.');
       } else {
-        toast.info('User not on the platform yet. They will receive an email invite.');
+        toast.info('User not on the platform yet. They will receive an email invite and can sign up to join.');
       }
-      // Always allow proceeding with the invite, regardless of whether they exist locally
+      // Always allow proceeding with the invite, regardless of whether they exist
       setUserFound(true); 
     } catch (error) {
       console.error('Search error:', error);
       toast.error('Failed to search for user');
+      // Still allow proceeding - the invite will work for new users too
+      setUserFound(true);
     } finally {
       setIsSearching(false);
     }
   };
 
   const handleInvite = async () => {
-    if (!email.trim() || !userFound) {
-      toast.error('Please search and verify the user first');
+    if (!email.trim()) {
+      toast.error('Please enter an email address');
+      return;
+    }
+
+    if (!user?.id) {
+      toast.error('You must be logged in to send invitations');
       return;
     }
 
@@ -50,14 +59,14 @@ export const InviteUserCard: React.FC<InviteUserCardProps> = ({ accountId, onInv
         accountId,
         email: email.trim(),
         role,
-        invitedBy: 'current-user', // Will be replaced with actual user ID
+        invitedBy: user.id,
       });
 
       if (result.success) {
         toast.success('Invitation sent successfully!');
         setEmail('');
         setUserFound(false);
-        setRole('manager');
+        setRole('admin');
         if (onInviteSent) {
           onInviteSent();
         }
@@ -117,14 +126,25 @@ export const InviteUserCard: React.FC<InviteUserCardProps> = ({ accountId, onInv
               disabled={isSending}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-jam-orange disabled:bg-gray-100"
             >
-              <option value="manager">Manager - View payslips and reports</option>
               <option value="admin">Admin - Full access to all settings</option>
+              <option value="manager">Manager - View payslips and reports</option>
             </select>
           </div>
         )}
 
         {/* Invite Button */}
         {userFound && (
+          <button
+            onClick={handleInvite}
+            disabled={isSending}
+            className="w-full px-4 py-2 bg-jam-orange text-white rounded-lg hover:bg-orange-600 disabled:bg-gray-400 font-medium"
+          >
+            {isSending ? 'Sending Invitation...' : 'Send Invitation'}
+          </button>
+        )}
+        
+        {/* Direct Invite Button (skip search for faster flow) */}
+        {!userFound && email.trim() && (
           <button
             onClick={handleInvite}
             disabled={isSending}

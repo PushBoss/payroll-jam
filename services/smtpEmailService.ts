@@ -247,9 +247,16 @@ This invitation was sent by ${companyName} via Payroll-Jam
     contactName: string,
     invitingCompanyName: string,
     inviteLink: string,
-    role: string
+    role: string,
+    requiresUpgrade?: boolean
   ): Promise<{ success: boolean; message?: string }> => {
     const roleDisplay = role.charAt(0).toUpperCase() + role.slice(1);
+    
+    const upgradeMessage = requiresUpgrade ? `
+            <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px;">
+              <p style="margin: 0; color: #92400e; font-weight: 600;">Important:</p>
+              <p style="margin: 5px 0 0 0; color: #78350f;">You currently manage another company. To manage multiple companies, you'll need to upgrade to the Reseller plan. You can do this after accepting the invitation.</p>
+            </div>` : '';
     
     const htmlContent = `
       <!DOCTYPE html>
@@ -273,6 +280,7 @@ This invitation was sent by ${companyName} via Payroll-Jam
             <p>Hi ${contactName},</p>
             <p><strong>${invitingCompanyName}</strong> has invited you to join their team on Payroll-Jam as a <strong>${roleDisplay}</strong>.</p>
             <p>As a ${roleDisplay}, you'll have access to manage payroll, employees, and company settings.</p>
+            ${upgradeMessage}
             <center>
               <a href="${inviteLink}" class="button">Accept Invitation</a>
             </center>
@@ -289,6 +297,8 @@ This invitation was sent by ${companyName} via Payroll-Jam
       </html>
     `;
 
+    const upgradeTextMessage = requiresUpgrade ? `\n\nIMPORTANT: You currently manage another company. To manage multiple companies, you'll need to upgrade to the Reseller plan. You can do this after accepting the invitation.` : '';
+    
     const textContent = `
 You've Been Invited to Manage ${invitingCompanyName}
 
@@ -296,7 +306,7 @@ Hi ${contactName},
 
 ${invitingCompanyName} has invited you to join their team on Payroll-Jam as a ${roleDisplay}.
 
-As a ${roleDisplay}, you'll have access to manage payroll, employees, and company settings.
+As a ${roleDisplay}, you'll have access to manage payroll, employees, and company settings.${upgradeTextMessage}
 
 Accept your invitation here: ${inviteLink}
 

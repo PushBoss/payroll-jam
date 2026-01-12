@@ -7,6 +7,7 @@ import { supabaseService } from '../services/supabaseService';
 import { dimePayService } from '../services/dimePayService';
 import { emailService } from '../services/emailService';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../services/supabaseClient';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { toast } from 'sonner';
 
@@ -227,48 +228,107 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
 
     const saveNewClient = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!user?.companyId) {
+        if (!user?.companyId || !user?.id) {
             toast.error('Reseller company ID not found');
             return;
         }
 
-        // Generate invite token
-        const inviteToken = `reseller-invite-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        const inviteLink = `${window.location.origin}/?token=${inviteToken}&email=${encodeURIComponent(formData.email || '')}&reseller=true`;
-
-        // Save the invite to database
-        const inviteSaved = await supabaseService.saveResellerInvite(
-            user.companyId,
-            formData.email || '',
-            inviteToken,
-            formData.contactName,
-            formData.companyName
-        );
-
-        if (!inviteSaved) {
-            toast.error('Failed to create invitation');
+        const clientEmail = formData.email?.trim().toLowerCase();
+        if (!clientEmail) {
+            toast.error('Email is required');
             return;
         }
 
-        // Send invite email
-        const emailResult = await emailService.sendInvite(
-            formData.email || '',
-            formData.contactName || 'Admin',
-            inviteLink
-        );
+        try {
+            // Check if user/company exists
+            const existingUser = await supabaseService.getUserByEmail(clientEmail);
+            
+            if (existingUser && existingUser.companyId) {
+                // Company exists - add reseller as team member (manager role) and link to portfolio
+                const clientCompanyId = existingUser.companyId;
+                
+                // 1. Add reseller user as team member (manager role) to the existing company directly (accepted status)
+                if (supabase) {
+                    const { error: memberError } = await supabase
+                        .from('account_members')
+                        .upsert({
+                            account_id: clientCompanyId,
+                            user_id: user.id,
+                            email: user.email.toLowerCase(),
+                            role: 'manager',
+                            status: 'accepted',
+                            accepted_at: new Date().toISOString(),
+                            invited_at: new Date().toISOString(),
+                        }, {
+                            onConflict: 'account_id,email',
+                            ignoreDuplicates: false
+                        });
 
-        if (emailResult.success) {
-            toast.success(`Invitation sent to ${formData.email}. They will appear in your portfolio once they accept.`);
+                    if (memberError && !memberError.message.includes('duplicate')) {
+                        console.warn('Failed to add reseller as team member:', memberError);
+                        // Continue anyway - we can still create the portfolio relationship
+                    }
+                }
 
-            // Reload pending invites
-            const invites = await supabaseService.getResellerInvites(user.companyId);
-            setPendingInvites(Array.isArray(invites) ? invites : []);
-        } else {
-            toast.error('Failed to send invitation email');
+                // 2. Create reseller_clients relationship (add company to reseller's portfolio)
+                const clientSaved = await supabaseService.saveResellerClient(user.companyId, clientCompanyId, {
+                    status: 'ACTIVE',
+                    accessLevel: 'FULL'
+                });
+
+                if (clientSaved) {
+                    toast.success(`${formData.companyName || 'Company'} added to your portfolio!`);
+                    
+                    // Reload clients
+                    const resellerClients = await supabaseService.getResellerClients(user.companyId);
+                    setClients(Array.isArray(resellerClients) ? resellerClients : []);
+                } else {
+                    toast.error('Failed to add company to portfolio');
+                }
+            } else {
+                // Company doesn't exist - create reseller invite with plan info
+                const inviteToken = `reseller-invite-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                const signupLink = `${window.location.origin}/?page=signup&token=${inviteToken}&email=${encodeURIComponent(clientEmail)}&reseller=true&plan=${encodeURIComponent(formData.plan || 'Starter')}`;
+
+                // Save the invite to database
+                const inviteSaved = await supabaseService.saveResellerInvite(
+                    user.companyId,
+                    clientEmail,
+                    inviteToken,
+                    formData.contactName,
+                    formData.companyName
+                );
+
+                if (!inviteSaved) {
+                    toast.error('Failed to create invitation');
+                    return;
+                }
+
+                // Send reseller invite email
+                const emailResult = await emailService.sendResellerInvite(
+                    clientEmail,
+                    formData.contactName || 'Admin',
+                    (user as any)?.companyName || 'Our Partner',
+                    signupLink
+                );
+
+                if (emailResult.success) {
+                    toast.success(`Invitation sent to ${clientEmail}. They will appear in your portfolio once they sign up and accept.`);
+
+                    // Reload pending invites
+                    const invites = await supabaseService.getResellerInvites(user.companyId);
+                    setPendingInvites(Array.isArray(invites) ? invites : []);
+                } else {
+                    toast.error('Failed to send invitation email');
+                }
+            }
+
+            setIsAddModalOpen(false);
+            setFormData({});
+        } catch (error: any) {
+            console.error('Error adding client:', error);
+            toast.error(error.message || 'Failed to add client');
         }
-
-        setIsAddModalOpen(false);
-        setFormData({});
     };
 
     const updateClient = (e: React.FormEvent) => {

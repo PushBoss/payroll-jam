@@ -5,7 +5,7 @@ import { storage } from '../services/storage';
 import { supabaseService } from '../services/supabaseService';
 import { supabase } from '../services/supabaseClient';
 import { getAuthRedirectUrl } from '../utils/domainConfig';
-import { getPendingInvitationsByEmail, AccountMember } from '../services/inviteService';
+import { getPendingInvitationsByEmail, acceptMultipleInvitations, AccountMember } from '../services/inviteService';
 import { toast } from 'sonner';
 
 interface AuthContextType {
@@ -359,18 +359,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         throw new Error(`Profile creation failed: ${(profileError as any).message || 'Unknown error'}`);
       }
 
-      // 4. Check for pending invitations before updating local state
+      // 4. Check for pending team member invitations and accept them automatically
       console.log('🔍 Checking for pending invitations for:', userData.email);
       const pendingInvitations = await getPendingInvitationsByEmail(userData.email);
       console.log('📬 Found pending invitations:', pendingInvitations.length);
+
+      // Automatically accept all pending team member invitations
+      if (pendingInvitations.length > 0) {
+        const invitationIds = pendingInvitations.map(inv => inv.id);
+        const acceptResult = await acceptMultipleInvitations(invitationIds, authData.user.id, true, userData.email);
+        console.log(`✅ Accepted ${acceptResult.acceptedCount} team member invitation(s)`);
+      }
 
       // 5. Update local state
       setUser(appUser);
       storage.saveUser(appUser);
 
-      console.log('✅ Signup completed successfully - checking for pending invitations');
+      console.log('✅ Signup completed successfully');
 
-      // Return pending invitations for the signup component to handle
+      // Return pending invitations (now accepted) for the signup component to handle
       return { pendingInvitations };
 
     } catch (error) {

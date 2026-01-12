@@ -50,8 +50,10 @@ export async function searchUserByEmail(email: string): Promise<{ exists: boolea
 }
 
 /**
- * Invite a user to manage an account
- * If invitee already manages a non-Reseller account, warn them to upgrade to Reseller
+ * Invite a user to manage an account (Team Members feature)
+ * Supports two scenarios:
+ * 1. If user exists: Check if they need to upgrade to Reseller to manage multiple companies
+ * 2. If user doesn't exist: Create invitation with email only, link on signup
  */
 export async function inviteUserToAccount(payload: {
   accountId: string;
@@ -65,7 +67,7 @@ export async function inviteUserToAccount(payload: {
     // Verify company exists
     const { data: companiesData, error: companyError } = await supabase
       .from('companies')
-      .select('id, plan, owner_id')
+      .select('id, plan, owner_id, name')
       .eq('id', payload.accountId);
 
     if (companyError) {
@@ -79,98 +81,100 @@ export async function inviteUserToAccount(payload: {
       return { success: false, error: 'Company not found.' };
     }
 
-    // Check if user exists
-    const { exists, userId } = await searchUserByEmail(payload.email);
+    const companyName = company.name || 'Payroll-Jam';
+    const normalizedEmail = payload.email.toLowerCase();
 
-    if (!exists || !userId) {
-      console.error('❌ User search failed for email:', payload.email);
-      return { success: false, error: 'User not found. They need to sign up first.' };
+    // Check if user exists
+    const { exists, userId } = await searchUserByEmail(normalizedEmail);
+
+    // Check if already a member (by email, since user might not exist yet)
+    const { data: existingByEmail } = await supabase
+      .from('account_members')
+      .select('id, user_id, status')
+      .eq('account_id', payload.accountId)
+      .eq('email', normalizedEmail)
+      .maybeSingle();
+
+    if (existingByEmail) {
+      if (existingByEmail.status === 'accepted') {
+        return { success: false, error: 'User is already a member of this company.' };
+      }
+      // If pending, we can still proceed (might be resending)
     }
 
-    // Check if invitee already manages a non-Reseller company
-    // Users can only manage one company unless they are a Reseller
+    // If user exists, check for upgrade requirement and existing membership by user_id
     let requiresUpgrade = false;
-    const { data: inviteeCompanies } = await supabase
-      .from('companies')
-      .select('id, plan')
-      .eq('owner_id', userId);
+    if (exists && userId) {
+      // Check if invitee already manages a non-Reseller company
+      const { data: inviteeCompanies } = await supabase
+        .from('companies')
+        .select('id, plan')
+        .eq('owner_id', userId);
 
-    if (inviteeCompanies && inviteeCompanies.length > 0) {
-      // Invitee already owns company/companies
-      const hasNonResellerCompany = inviteeCompanies.some((comp: any) => comp.plan !== 'Reseller');
-      if (hasNonResellerCompany) {
-        requiresUpgrade = true;
-        // Will warn them in the email to upgrade to Reseller to manage multiple companies
+      if (inviteeCompanies && inviteeCompanies.length > 0) {
+        const hasNonResellerCompany = inviteeCompanies.some((comp: any) => comp.plan !== 'Reseller' && comp.plan !== 'Enterprise');
+        if (hasNonResellerCompany) {
+          requiresUpgrade = true;
+        }
+      }
+
+      // Check if already a member by user_id
+      const { data: existingByUserId } = await supabase
+        .from('account_members')
+        .select('id')
+        .eq('account_id', payload.accountId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (existingByUserId) {
+        return { success: false, error: 'User is already a member of this company.' };
       }
     }
 
-    // Check if already a member
-    const { data: existing } = await supabase
-      .from('account_members')
-      .select('id')
-      .eq('account_id', payload.accountId)
-      .eq('user_id', userId)
-      .maybeSingle();
+    // Create or update invitation (user_id can be null if user doesn't exist yet)
+    const invitationData: any = {
+      account_id: payload.accountId,
+      email: normalizedEmail,
+      role: payload.role,
+      status: 'pending',
+      invited_at: new Date().toISOString(),
+    };
 
-    if (existing) {
-      return { success: false, error: 'User is already a member of this company.' };
+    if (userId) {
+      invitationData.user_id = userId;
     }
 
-    // Create invitation
+    // Use upsert to handle resending invites
     const { data, error } = await supabase
       .from('account_members')
-      .insert([
+      .upsert(
+        invitationData,
         {
-          account_id: payload.accountId,
-          user_id: userId,
-          email: payload.email.toLowerCase(),
-          role: payload.role,
-          status: 'pending',
-          invited_at: new Date().toISOString(),
-        },
-      ])
+          onConflict: 'account_id,email',
+          ignoreDuplicates: false
+        }
+      )
       .select()
       .single();
 
     if (error) {
-      console.error('Error creating invitation:', error);
+      console.error('Error creating/updating invitation:', error);
       return { success: false, error: error.message };
     }
 
     // Send invitation email
     try {
-      // Include upgrade message for invitees who already manage non-Reseller companies
-      if (requiresUpgrade) {
-        console.log('ℹ️ Invitee will need to upgrade to Reseller to manage multiple companies');
-      }
+      const inviteLink = `${window.location.origin}/?page=settings&section=team`;
       
-      // Send the appropriate type of invitation email based on role
-      if (payload.role === 'admin' || payload.role === 'manager') {
-        // This is a management invitation (reseller/manager/admin)
-        // Get company name first
-        const { data: companyData } = await supabase
-          .from('companies')
-          .select('name')
-          .eq('id', payload.accountId)
-          .single();
-          
-        const companyName = companyData?.name || 'Payroll-Jam';
-        
-        await emailService.sendManagerInvite(
-          payload.email,
-          payload.email.split('@')[0], // Use email prefix as name if unknown
-          companyName,
-          `${window.location.origin}/?page=dashboard`, // Direct to dashboard where invite UI exists
-          payload.role
-        );
-      } else {
-        // Standard employee invite (existing flow)
-        await emailService.sendInvite(
-          payload.email,
-          payload.email.split('@')[0],
-          `${window.location.origin}/?page=settings&section=team`
-        );
-      }
+      // Send manager invite email (for team member invitations)
+      await emailService.sendManagerInvite(
+        normalizedEmail,
+        normalizedEmail.split('@')[0], // Use email prefix as name if unknown
+        companyName,
+        inviteLink,
+        payload.role,
+        requiresUpgrade // Pass upgrade requirement flag
+      );
     } catch (emailError) {
       console.warn('Failed to send invitation email, but member was created:', emailError);
     }
@@ -423,11 +427,13 @@ export async function acceptInvitation(
 
 /**
  * Accept multiple invitations at once (for when user has multiple pending)
+ * Updates invitations by ID and sets user_id (works even if user_id was null when invitation was created)
  */
 export async function acceptMultipleInvitations(
   invitationIds: string[],
   userId: string,
-  verifyEmail = true
+  verifyEmail = true,
+  userEmail?: string
 ): Promise<{ success: boolean; acceptedCount: number; failedCount: number }> {
   if (!supabase) return { success: false, acceptedCount: 0, failedCount: 0 };
 
@@ -435,7 +441,9 @@ export async function acceptMultipleInvitations(
   let failedCount = 0;
 
   try {
-    const { error: updateError } = await supabase
+    // Update invitations by ID (this works even if user_id was null when created)
+    // We match by ID and optionally by email to ensure we're updating the right invitations
+    let query = supabase
       .from('account_members')
       .update({ 
         status: 'accepted', 
@@ -443,6 +451,13 @@ export async function acceptMultipleInvitations(
         accepted_at: new Date().toISOString() 
       })
       .in('id', invitationIds);
+
+    // If email is provided, also match by email for extra safety
+    if (userEmail) {
+      query = query.eq('email', userEmail.toLowerCase());
+    }
+
+    const { error: updateError } = await query;
 
     if (updateError) {
       console.error('Error accepting invitations:', updateError);
