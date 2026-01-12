@@ -2090,7 +2090,7 @@ export const supabaseService = {
     if (!supabase) return false;
     try {
       // Use the Secure RPC function first (handles linking company to reseller in DB)
-      const { data, error } = await supabase.rpc('accept_reseller_invite_v2', {
+      const { error } = await supabase.rpc('accept_reseller_invite_v2', {
         p_invite_token: token,
         p_client_company_id: clientCompanyId || null
       });
