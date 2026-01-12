@@ -2083,10 +2083,10 @@ export const supabaseService = {
   acceptResellerInvite: async (token: string, clientCompanyId: string): Promise<boolean> => {
     if (!supabase) return false;
     try {
-      // Get the invite first to access reseller_id
+      // Get the invite first to access reseller_id and other details
       const { data: invite, error: fetchInviteError } = await supabase
         .from('reseller_invites')
-        .select('reseller_id, invite_email')
+        .select('*')
         .eq('invite_token', token)
         .eq('status', 'PENDING')
         .single();
@@ -2095,6 +2095,48 @@ export const supabaseService = {
         console.error('Invite not found or already accepted:', fetchInviteError);
         return false;
       }
+
+      // Check if expired
+      if (new Date(invite.expires_at) < new Date()) {
+        console.error('Invite has expired');
+        return false;
+      }
+
+      // Helper function to add reseller as team member
+      const addResellerAsTeamMember = async (targetCompanyId: string) => {
+        // Get reseller user ID (find user with RESELLER role and matching company_id)
+        const { data: resellerUser } = await supabase
+          .from('app_users')
+          .select('id, email')
+          .eq('company_id', invite.reseller_id)
+          .eq('role', 'RESELLER')
+          .limit(1)
+          .maybeSingle();
+
+        if (resellerUser) {
+          // Add reseller user as team member (manager role) to the client company
+          const { error: memberError } = await supabase
+            .from('account_members')
+            .upsert({
+              account_id: targetCompanyId,
+              user_id: resellerUser.id,
+              email: resellerUser.email.toLowerCase(),
+              role: 'manager',
+              status: 'accepted',
+              accepted_at: new Date().toISOString(),
+              invited_at: new Date().toISOString(),
+            }, {
+              onConflict: 'account_id,email',
+              ignoreDuplicates: false
+            });
+
+          if (memberError) {
+            console.warn('Warning: Failed to add reseller as team member:', memberError);
+          } else {
+            console.log('✅ Reseller added as team member to client company');
+          }
+        }
+      };
 
       // Use the Secure RPC function first (bypasses RLS)
       const { data, error } = await supabase.rpc('accept_reseller_invite_v2', {
@@ -2106,50 +2148,19 @@ export const supabaseService = {
         console.log('✅ Reseller invite accepted via RPC');
         
         // After RPC succeeds, add reseller as team member to client company
-        // Get reseller user ID (find user with RESELLER role and matching company_id)
-        const { data: resellerUser, error: resellerUserError } = await supabase
-          .from('app_users')
-          .select('id, email')
-          .eq('company_id', invite.reseller_id)
-          .eq('role', 'RESELLER')
-          .limit(1)
-          .maybeSingle();
+        // Resolve client company ID if not provided
+        let targetCompanyId = clientCompanyId;
+        if (!targetCompanyId) {
+          const { data: inviteeCompany } = await supabase
+            .from('app_users')
+            .select('company_id')
+            .eq('email', invite.invite_email)
+            .maybeSingle();
+          targetCompanyId = inviteeCompany?.company_id || null;
+        }
 
-        if (resellerUser) {
-          // Resolve client company ID if not provided
-          let targetCompanyId = clientCompanyId;
-          if (!targetCompanyId) {
-            const { data: inviteeCompany } = await supabase
-              .from('app_users')
-              .select('company_id')
-              .eq('email', invite.invite_email)
-              .maybeSingle();
-            targetCompanyId = inviteeCompany?.company_id || null;
-          }
-
-          if (targetCompanyId) {
-            // Add reseller user as team member (manager role) to the client company
-            const { error: memberError } = await supabase
-              .from('account_members')
-              .upsert({
-                account_id: targetCompanyId,
-                user_id: resellerUser.id,
-                email: resellerUser.email.toLowerCase(),
-                role: 'manager',
-                status: 'accepted',
-                accepted_at: new Date().toISOString(),
-                invited_at: new Date().toISOString(),
-              }, {
-                onConflict: 'account_id,email',
-                ignoreDuplicates: false
-              });
-
-            if (memberError) {
-              console.warn('Warning: Failed to add reseller as team member after RPC:', memberError);
-            } else {
-              console.log('✅ Reseller added as team member to client company');
-            }
-          }
+        if (targetCompanyId) {
+          await addResellerAsTeamMember(targetCompanyId);
         }
         
         return true;
@@ -2157,27 +2168,8 @@ export const supabaseService = {
 
       console.warn('⚠️ RPC accept failed, trying direct table access fallback...', error);
 
-      // FALLBACK: Old logic (might fail due to RLS if user is not the reseller)
-      // Get the invite
-      const { data: invite, error: fetchError } = await supabase
-        .from('reseller_invites')
-        .select('*')
-        .eq('invite_token', token)
-        .eq('status', 'PENDING')
-        .single();
-
-      if (fetchError || !invite) {
-        console.error('Invite not found or already accepted:', fetchError);
-        return false;
-      }
-
-      // Check if expired
-      if (new Date(invite.expires_at) < new Date()) {
-        console.error('Invite has expired');
-        return false;
-      }
-
-      // Create the reseller-client relationship
+      // FALLBACK: Direct table access (might fail due to RLS if user is not the reseller)
+      // Resolve client company ID if not provided
       let targetCompanyId = clientCompanyId;
       if (!targetCompanyId) {
         const { data: inviteeCompany } = await supabase
@@ -2192,19 +2184,6 @@ export const supabaseService = {
       if (!targetCompanyId) {
         console.error('Unable to resolve client company for invite acceptance');
         return false;
-      }
-
-      // Get reseller user ID (find user with RESELLER role and matching company_id)
-      const { data: resellerUser, error: resellerUserError } = await supabase
-        .from('app_users')
-        .select('id, email')
-        .eq('company_id', invite.reseller_id)
-        .eq('role', 'RESELLER')
-        .limit(1)
-        .maybeSingle();
-
-      if (resellerUserError || !resellerUser) {
-        console.warn('Could not find reseller user, will still create client relationship:', resellerUserError);
       }
 
       // Create the reseller-client relationship
@@ -2223,29 +2202,7 @@ export const supabaseService = {
       }
 
       // Add reseller user as team member (manager role) to the client company
-      if (resellerUser) {
-        const { error: memberError } = await supabase
-          .from('account_members')
-          .upsert({
-            account_id: targetCompanyId,
-            user_id: resellerUser.id,
-            email: resellerUser.email.toLowerCase(),
-            role: 'manager',
-            status: 'accepted',
-            accepted_at: new Date().toISOString(),
-            invited_at: new Date().toISOString(),
-          }, {
-            onConflict: 'account_id,email',
-            ignoreDuplicates: false
-          });
-
-        if (memberError) {
-          console.warn('Warning: Failed to add reseller as team member:', memberError);
-          // Don't fail the whole operation if this fails
-        } else {
-          console.log('✅ Reseller added as team member to client company');
-        }
-      }
+      await addResellerAsTeamMember(targetCompanyId);
 
       // Mark invite as accepted
       const { error: updateError } = await supabase
