@@ -45,6 +45,8 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
 
     // State to store reseller invite token
     const [resellerInviteToken, setResellerInviteToken] = useState<string | null>(null);
+    const [resellerUserId, setResellerUserId] = useState<string | null>(null);
+    const [resellerEmail, setResellerEmail] = useState<string | null>(null);
 
     // Fetch Global Payment Configuration
     const paymentConfig = storage.getGlobalConfig();
@@ -89,6 +91,8 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
         const params = new URLSearchParams(window.location.search);
         const token = params.get('token');
         const email = params.get('email');
+        const rUserId = params.get('resellerUserId');
+        const rEmail = params.get('resellerEmail');
         const isResellerInvite = params.get('reseller') === 'true';
 
         // Pre-fill email if provided
@@ -96,10 +100,12 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
             setFormData(prev => ({ ...prev, email: decodeURIComponent(email) }));
         }
 
-        // Store reseller invite token if this is a reseller invite
+        // Store reseller invite info if this is a reseller invite
         if (token && isResellerInvite) {
-            console.log('🔗 Reseller invite token detected:', token);
+            console.log('🔗 Reseller invite detected:', { token, rUserId, rEmail });
             setResellerInviteToken(token);
+            if (rUserId) setResellerUserId(rUserId);
+            if (rEmail) setResellerEmail(decodeURIComponent(rEmail));
             toast.info('You\'re signing up through a reseller invitation!', { duration: 5000 });
         }
 
@@ -337,7 +343,9 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                 billingCycle: formData.billingCycle, // Pass billing cycle (monthly/annual)
                 employeeLimit: employeeLimit, // Pass employee limit from plan config
                 paymentMethod: paymentMethod,
-                resellerInviteToken: resellerInviteToken || undefined // Pass reseller invite token if present
+                resellerInviteToken: resellerInviteToken || undefined, // Pass reseller invite token if present
+                resellerUserId: resellerUserId || undefined,
+                resellerEmail: resellerEmail || undefined
             };
 
             // Call signup and get pending invitations

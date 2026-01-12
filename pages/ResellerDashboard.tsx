@@ -248,8 +248,9 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                 const clientCompanyId = existingUser.companyId;
                 
                 // 1. Add reseller user as team member (manager role) to the existing company directly (accepted status)
+                // Note: This may fail due to RLS if the reseller is not the owner of the client company
                 if (supabase) {
-                    const { error: memberError } = await supabase
+                    await supabase
                         .from('account_members')
                         .upsert({
                             account_id: clientCompanyId,
@@ -263,11 +264,6 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                             onConflict: 'account_id,email',
                             ignoreDuplicates: false
                         });
-
-                    if (memberError && !memberError.message.includes('duplicate')) {
-                        console.warn('Failed to add reseller as team member:', memberError);
-                        // Continue anyway - we can still create the portfolio relationship
-                    }
                 }
 
                 // 2. Create reseller_clients relationship (add company to reseller's portfolio)
@@ -288,7 +284,10 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
             } else {
                 // Company doesn't exist - create reseller invite with plan info
                 const inviteToken = `reseller-invite-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                const signupLink = `${window.location.origin}/?page=signup&token=${inviteToken}&email=${encodeURIComponent(clientEmail)}&reseller=true&plan=${encodeURIComponent(formData.plan || 'Starter')}`;
+                
+                // Include Reseller's own user ID and email in the signup link 
+                // This allows the client to add the reseller as a team member during signup without RLS blocks
+                const signupLink = `${window.location.origin}/?page=signup&token=${inviteToken}&resellerUserId=${user.id}&resellerEmail=${encodeURIComponent(user.email)}&email=${encodeURIComponent(clientEmail)}&reseller=true&plan=${encodeURIComponent(formData.plan || 'Starter')}`;
 
                 // Save the invite to database
                 const inviteSaved = await supabaseService.saveResellerInvite(

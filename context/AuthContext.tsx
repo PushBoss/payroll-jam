@@ -222,7 +222,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const signup = async (userData: User & { password: string; companyName?: string; plan?: string; resellerInviteToken?: string }) => {
+  const signup = async (userData: User & { 
+    password: string; 
+    companyName?: string; 
+    plan?: string; 
+    resellerInviteToken?: string;
+    resellerUserId?: string;
+    resellerEmail?: string;
+  }) => {
     if (!supabase) {
       throw new Error('Supabase not initialized');
     }
@@ -318,7 +325,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         // If there's a reseller invite token, accept it
         if (userData.resellerInviteToken) {
-          const accepted = await supabaseService.acceptResellerInvite(userData.resellerInviteToken, userData.companyId);
+          const accepted = await supabaseService.acceptResellerInvite(
+            userData.resellerInviteToken, 
+            userData.companyId,
+            userData.resellerUserId,
+            userData.resellerEmail
+          );
           if (accepted) {
             console.log('✅ Reseller invitation accepted during signup');
           } else {
