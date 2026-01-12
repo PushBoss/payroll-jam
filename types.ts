@@ -351,6 +351,7 @@ export interface IntegrationConfig {
 export interface CompanySettings {
   id?: string; // Optional company ID
   name: string;
+  email?: string; // Added for associations
   trn: string;
   address: string;
   phone: string;

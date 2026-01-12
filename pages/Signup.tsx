@@ -7,7 +7,6 @@ import { getPlanPriceDetails } from '../utils/pricing';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { storage } from '../services/storage';
 import { dimePayService } from '../services/dimePayService';
-import { supabase } from '../services/supabaseClient';
 import { acceptMultipleInvitations, AccountMember } from '../services/inviteService';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
@@ -363,43 +362,6 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                 setPendingInvitations(signupResult.pendingInvitations);
                 // Show the invitations UI - component will handle auto-accept if only one
                 return; // Don't proceed to email verification yet
-            }
-
-            // Auto-create company in Supabase
-            // Note: If RLS is enabled and user doesn't have permission, this will fail
-            // In that case, the Supabase auth trigger should create the company
-            if (supabase) {
-                try {
-                    const { data, error: companyError } = await supabase
-                        .from('companies')
-                        .insert([
-                            {
-                                owner_id: newUser.id,
-                                name: formData.companyName || formData.name + "'s Company",
-                                email: formData.email,
-                                phone: formData.phone || null,
-                                plan: formData.plan,
-                                billing_cycle: formData.billingCycle,
-                                created_at: new Date().toISOString(),
-                            },
-                        ])
-                        .select();
-
-                    if (companyError) {
-                        // Check if it's an RLS error (401, 403, 406)
-                        if (companyError.code === '401' || companyError.code === '403' || companyError.code === '406') {
-                            console.warn('⚠️ Company creation blocked by RLS policy:', companyError.message);
-                            console.info('ℹ️ Auth trigger will create company if configured. If not, users can create company manually in settings.');
-                        } else {
-                            console.warn('⚠️ Company creation failed (non-fatal):', companyError);
-                        }
-                    } else if (data && data.length > 0) {
-                        console.log('✅ Company created in Supabase:', data[0]);
-                    }
-                } catch (companyError: any) {
-                    console.warn('⚠️ Company creation exception (non-fatal):', companyError.message);
-                    // Don't throw - company creation is optional and shouldn't block signup
-                }
             }
 
             // All signups redirect to verify email page

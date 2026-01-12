@@ -20,7 +20,7 @@ export const supabaseService = {
   // Helper to create an admin client (service role) for operations that bypass RLS
   // Only available if VITE_SUPABASE_SERVICE_ROLE_KEY is in environment
   getAdminClient: async () => {
-    const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY;
+    const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY || import.meta.env?.SUPABASE_SERVICE_ROLE_KEY || localStorage.getItem('VITE_SUPABASE_SERVICE_ROLE_KEY');
     const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
     
     if (serviceRoleKey && supabaseUrl) {
@@ -35,6 +35,9 @@ export const supabaseService = {
       } catch (e) {
         console.error('Failed to create admin client:', e);
       }
+    } else {
+        if (!serviceRoleKey) console.warn('⚠️ Admin client requested but VITE_SUPABASE_SERVICE_ROLE_KEY is missing from environment.');
+        if (!supabaseUrl) console.warn('⚠️ Admin client requested but VITE_SUPABASE_URL is missing.');
     }
     return null;
   },
@@ -125,6 +128,10 @@ export const supabaseService = {
 
     console.log("💾 Saving user to Supabase:", { id: user.id, email: user.email, companyId: user.companyId });
 
+    // Use admin client for high-privilege write during signup/sync
+    const adminClient = await supabaseService.getAdminClient();
+    const effectiveClient = adminClient || supabase;
+
     // Prepare preferences JSONB with onboardingToken if present
     const preferences: any = {};
     if (user.onboardingToken) {
@@ -132,7 +139,7 @@ export const supabaseService = {
     }
 
     // Check if user exists by ID or email
-    const { data: existing } = await supabase
+    const { data: existing } = await effectiveClient
       .from('app_users')
       .select('id, preferences')
       .or(`id.eq.${user.id},email.eq.${user.email}`)
@@ -145,7 +152,7 @@ export const supabaseService = {
 
       // Update existing user (use the existing ID if different from the provided one)
       const updateId = existing.id;
-      const { data, error } = await supabase
+      const { data, error } = await effectiveClient
         .from('app_users')
         .update({
           id: user.id, // Update to new auth ID if changed
@@ -168,7 +175,7 @@ export const supabaseService = {
     } else {
       // Insert new user
       console.log("📝 Inserting new user into app_users table...");
-      const { data, error } = await supabase
+      const { data, error } = await effectiveClient
         .from('app_users')
         .upsert({
           id: user.id,
@@ -188,12 +195,6 @@ export const supabaseService = {
 
       if (error) {
         console.error("❌ Error inserting user into app_users:", error);
-        console.error("Error details:", {
-          message: error.message,
-          code: error.code,
-          details: error.details,
-          hint: error.hint
-        });
         throw error;
       }
       console.log("✅ User created successfully in app_users table:", data);
@@ -263,6 +264,10 @@ export const supabaseService = {
   saveCompany: async (companyId: string, settings: CompanySettings, userId?: string) => {
     if (!supabase) return null;
 
+    // Use admin client for high-privilege write during signup/sync
+    const adminClient = await supabaseService.getAdminClient();
+    const effectiveClient = adminClient || supabase;
+
     // Get owner ID - use provided userId or fetch from auth
     let ownerId = userId;
     if (!ownerId) {
@@ -311,7 +316,7 @@ export const supabaseService = {
       }
     }
 
-    const { data, error } = await supabase
+    const { data: companyData, error } = await effectiveClient
       .from('companies')
       .upsert({
         id: companyId,
@@ -332,11 +337,9 @@ export const supabaseService = {
 
     if (error) {
       console.error('❌ Error saving company:', error);
-      // Fallback: If 401/42501 (Permission Denied) likely due to missing session during signup
-      // Use the Secure RPC as fallback
-      if (error.code === '401' || error.code === '42501' || error.code === '403') {
-          console.warn("Direct upsert failed (likely no session), using RPC fallback...", error);
-          const { data: rpcData, error: rpcError } = await supabase.rpc('create_company_secure', {
+      // Fallback: Use the Secure RPC if direct upsert failed despite admin client attempt
+      console.warn("Retrying company creation via RPC fallback...");
+      const { data: rpcData, error: rpcError } = await effectiveClient.rpc('create_company_secure', {
              p_company_id: companyId,
              p_owner_id: ownerId,
              p_name: settings.name,
@@ -349,18 +352,29 @@ export const supabaseService = {
              p_settings: settingsJson
           });
 
-          if (rpcError) {
-             console.error("RPC Fallback failed:", rpcError);
-             return null;
-          }
-          return rpcData;
+      if (rpcError) {
+         console.error("RPC Fallback failed:", rpcError);
+         return null;
       }
-
-      console.error("Error saving company:", error);
-      return null;
+      return rpcData;
     }
 
-    return data;
+    // CRITICAL: Explicitly ensure the owner is in account_members table
+    // This solves situations where the DB trigger might be failing or RLS blocks the user.
+    if (ownerId && companyId) {
+        console.log('👥 Ensuring owner is added to account_members...');
+        await effectiveClient.from('account_members').upsert({
+            account_id: companyId,
+            user_id: ownerId,
+            email: settings.email || '',
+            role: 'owner',
+            status: 'accepted',
+            accepted_at: new Date().toISOString(),
+            invited_at: new Date().toISOString()
+        }, { onConflict: 'account_id,user_id' });
+    }
+
+    return companyData;
   },
 
   // Save payment gateway settings to company settings JSONB
@@ -2129,12 +2143,17 @@ export const supabaseService = {
     try {
       console.log('🔗 Accepting reseller invite...', { token, clientCompanyId, resellerUserId, resellerCompanyId });
 
-      // 1. Resolve Reseller Company ID
+      // Get admin client for looking up invite and creating records
+      const adminClient = await supabaseService.getAdminClient();
+      const effectiveClient = adminClient || supabase;
+
+      // 1. Resolve Reseller Company ID (using effective client for RLS bypass)
       let rId = resellerCompanyId;
       
       if (!rId) {
         // Fetch the invite info for reseller_id if not provided
-        const { data: invite } = await supabase
+        // Use effectiveClient (admin if available) to bypass RLS
+        const { data: invite } = await effectiveClient
           .from('reseller_invites')
           .select('reseller_id')
           .eq('invite_token', token)
@@ -2144,24 +2163,21 @@ export const supabaseService = {
       }
 
       // 2. Use the Secure RPC function first (handles linking in DB)
-      // We still try this as it's the official way
-      const { error: rpcError } = await supabase.rpc('accept_reseller_invite_v2', {
+      const { error: rpcError } = await effectiveClient.rpc('accept_reseller_invite_v2', {
         p_invite_token: token,
         p_client_company_id: clientCompanyId || null
       });
 
       if (rpcError) {
-        console.warn('⚠️ RPC accept_reseller_invite_v2 failed:', rpcError);
+        console.warn('⚠️ RPC accept_reseller_invite_v2 warning:', rpcError);
       }
 
       // 3. FORCE ASSOCIATIONS via Code (Direct Upserts)
-      // Since the user is signed in as the Client, they can write to 'companies' (themselves)
-      // and 'account_members' (their own team).
       if (rId) {
         console.log('🔄 Linking company to reseller:', rId);
         
-        // A. Update company's reseller_id (Client has perm to update own company)
-        const { error: companyLinkError } = await supabase
+        // A. Update company's reseller_id (Use effectiveClient to bypass RLS)
+        const { error: companyLinkError } = await effectiveClient
           .from('companies')
           .update({ reseller_id: rId })
           .eq('id', clientCompanyId);
@@ -2170,10 +2186,10 @@ export const supabaseService = {
             console.error('❌ Failed to link reseller to company:', companyLinkError);
         }
 
-        // B. Add Reseller as Team Member
+        // B. Add Reseller as Team Member (Use effectiveClient/Admin)
         if (resellerUserId && resellerEmail) {
           console.log('👥 Adding reseller to team members:', resellerEmail);
-          const { error: memberError } = await supabase
+          const { error: memberError } = await effectiveClient
             .from('account_members')
             .upsert({
               account_id: clientCompanyId,
@@ -2192,48 +2208,21 @@ export const supabaseService = {
             console.error('❌ Failed to add reseller as team member:', memberError);
           }
         }
-      }
 
-      // 4. ADMIN FALLBACK (If admin client is available)
-      // This is for things the client cannot do, like writing to 'reseller_clients'
-      const adminClient = await supabaseService.getAdminClient();
-      if (adminClient && rId) {
-        console.log('🛡️ Using Admin client for restricted operations...');
-        
-        // Ensure reseller_clients record exists (Client cannot do this)
-        await adminClient.from('reseller_clients').upsert({
+        // C. Ensure reseller_clients record exists (Client cannot do this normally)
+        await effectiveClient.from('reseller_clients').upsert({
           reseller_id: rId,
           client_company_id: clientCompanyId,
           status: 'ACTIVE',
           access_level: 'FULL'
         }, { onConflict: 'reseller_id,client_company_id' });
-
-        // Ensure Reseller User is in team members (Admin can do this)
-        if (resellerUserId && resellerEmail) {
-            console.log('👥 Admin adding reseller as team member:', resellerEmail);
-            await adminClient.from('account_members').upsert({
-              account_id: clientCompanyId,
-              user_id: resellerUserId,
-              email: resellerEmail.toLowerCase(),
-              role: 'manager',
-              status: 'accepted',
-              accepted_at: new Date().toISOString(),
-              invited_at: new Date().toISOString(),
-            }, { onConflict: 'account_id,email' });
-        }
-
-        // Ensure invite is marked as accepted
-        await adminClient.from('reseller_invites').update({
-          status: 'ACCEPTED',
-          accepted_at: new Date().toISOString()
-        }).eq('invite_token', token);
-      } else {
-         // Best effort if no admin client
-         await supabase.from('reseller_invites').update({
-           status: 'ACCEPTED',
-           accepted_at: new Date().toISOString()
-         }).eq('invite_token', token);
       }
+
+      // 4. Mark invite as accepted
+      await effectiveClient.from('reseller_invites').update({
+        status: 'ACCEPTED',
+        accepted_at: new Date().toISOString()
+      }).eq('invite_token', token);
 
       return true;
     } catch (e) {

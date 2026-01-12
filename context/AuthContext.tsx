@@ -300,6 +300,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         const companyData: CompanySettings = {
           name: userData.companyName,
+          email: userData.email, // Added email
           trn: '',
           address: '',
           phone: '',
