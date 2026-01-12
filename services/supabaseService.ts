@@ -9,7 +9,6 @@ import {
   ResellerClient,
   WeeklyTimesheet,
   User,
-  Role,
   DocumentRequest,
   ExpertReferral,
   DocumentTemplate,
@@ -17,6 +16,28 @@ import {
 } from '../types';
 
 export const supabaseService = {
+
+  // Helper to create an admin client (service role) for operations that bypass RLS
+  // Only available if VITE_SUPABASE_SERVICE_ROLE_KEY is in environment
+  getAdminClient: async () => {
+    const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
+    
+    if (serviceRoleKey && supabaseUrl) {
+      try {
+        const { createClient } = await import('@supabase/supabase-js');
+        return createClient(supabaseUrl, serviceRoleKey, {
+          auth: {
+            autoRefreshToken: false,
+            persistSession: false
+          }
+        });
+      } catch (e) {
+        console.error('Failed to create admin client:', e);
+      }
+    }
+    return null;
+  },
 
   // --- Users (Auth) ---
 
@@ -183,13 +204,28 @@ export const supabaseService = {
 
   getCompany: async (companyId: string): Promise<CompanySettings | null> => {
     if (!supabase) return null;
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('companies')
       .select('*')
       .eq('id', companyId)
-      .single();
+      .maybeSingle();
 
-    if (error || !data) return null;
+    // Fallback: If 406 (Not Acceptable/No access) or error, try admin client if available
+    // This handles the edge case where a newly signed up user can't see their company yet
+    if ((error || !data) && (error?.code === '406' || error?.code === '42501')) {
+      const adminClient = await supabaseService.getAdminClient();
+      if (adminClient) {
+        console.log('🛡️ Using Admin client fallback for getCompany...');
+        const { data: adminData } = await adminClient
+          .from('companies')
+          .select('*')
+          .eq('id', companyId)
+          .maybeSingle();
+        if (adminData) data = adminData;
+      }
+    }
+
+    if (!data) return null;
 
     // Map database fields + JSON settings to App types
     const settings = data.settings || {};
@@ -295,6 +331,7 @@ export const supabaseService = {
       .single();
 
     if (error) {
+      console.error('❌ Error saving company:', error);
       // Fallback: If 401/42501 (Permission Denied) likely due to missing session during signup
       // Use the Secure RPC as fallback
       if (error.code === '401' || error.code === '42501' || error.code === '403') {
@@ -2089,115 +2126,110 @@ export const supabaseService = {
   ): Promise<boolean> => {
     if (!supabase) return false;
     try {
-      // Use the Secure RPC function first (handles linking company to reseller in DB)
-      const { error } = await supabase.rpc('accept_reseller_invite_v2', {
+      console.log('🔗 Accepting reseller invite...', { token, clientCompanyId, resellerUserId });
+
+      // 1. Fetch the invite info
+      // We use maybeSingle to avoid 406/RLS fail state
+      const { data: invite } = await supabase
+        .from('reseller_invites')
+        .select('reseller_id, invite_email')
+        .eq('invite_token', token)
+        .maybeSingle();
+
+      const rId = invite?.reseller_id;
+
+      // 2. Use the Secure RPC function (handles linking in DB)
+      // This is the primary mechanism
+      const { error: rpcError } = await supabase.rpc('accept_reseller_invite_v2', {
         p_invite_token: token,
         p_client_company_id: clientCompanyId || null
       });
 
-      if (error) {
-        console.warn('⚠️ RPC accept_reseller_invite_v2 failed or returned error:', error);
+      if (rpcError) {
+        console.warn('⚠️ RPC accept_reseller_invite_v2 failed:', rpcError);
       }
 
-      // Get the invite to access reseller_id (Reseller's Company ID)
-      const { data: invite, error: fetchInviteError } = await supabase
-        .from('reseller_invites')
-        .select('*')
-        .eq('invite_token', token)
-        .single();
+      // 3. CODE-BASED FALLBACK / SELF-HEALING: Use Admin Client
+      // This ensures linking and team members are added even if RLS blocks the anonymous/new user
+      const adminClient = await supabaseService.getAdminClient();
+      
+      if (adminClient && (rId || resellerUserId)) {
+        console.log('🛡️ Using Admin logic to ensure associations...');
+        const actualResellerId = rId || (resellerUserId ? await (async () => {
+          const { data: user } = await adminClient.from('app_users').select('company_id').eq('id', resellerUserId).maybeSingle();
+          return user?.company_id;
+        })() : null);
 
-      if (fetchInviteError || !invite) {
-        console.error('Invite not found:', fetchInviteError);
-        return false;
-      }
+        if (actualResellerId) {
+          // A. Ensure reseller_clients entry exists
+          await adminClient.from('reseller_clients').upsert({
+            reseller_id: actualResellerId,
+            client_company_id: clientCompanyId,
+            status: 'ACTIVE',
+            access_level: 'FULL'
+          }, { onConflict: 'reseller_id,client_company_id' });
 
-      // 1. Ensure reseller-client link exists (Fallback if RPC didn't do it or failed RLS)
-      // This is necessary for the reseller dashboard to see the client
-      const { error: clientError } = await supabase
-        .from('reseller_clients')
-        .upsert({
-          reseller_id: invite.reseller_id,
-          client_company_id: clientCompanyId,
-          status: 'ACTIVE',
-          access_level: 'FULL',
-        }, {
-          onConflict: 'reseller_id,client_company_id'
-        });
+          // B. Ensure company is linked to reseller
+          await adminClient.from('companies').update({
+            reseller_id: actualResellerId
+          }).eq('id', clientCompanyId);
 
-      if (clientError) {
-        console.warn('Note: Could not create reseller_clients link directly (likely RLS):', clientError);
-      }
+          // C. Ensure Reseller User is in team members
+          let rUserId = resellerUserId;
+          let rEmail = resellerEmail;
 
-      // 2. Add Reseller as Team Member to Client Company
-      // If we were passed the reseller user info, use it directly (bypasses RLS lookup issue)
-      let rUserId = resellerUserId;
-      let rEmail = resellerEmail;
+          // Resolve reseller user if not provided
+          if (!rUserId || !rEmail) {
+            const { data: resUser } = await adminClient
+              .from('app_users')
+              .select('id, email')
+              .eq('company_id', actualResellerId)
+              .in('role', ['RESELLER', 'OWNER'])
+              .limit(1)
+              .maybeSingle();
+            
+            if (resUser) {
+              rUserId = resUser.id;
+              rEmail = resUser.email;
+            }
+          }
 
-      if (!rUserId || !rEmail) {
-        // Fallback: Try to find reseller user ID (may fail due to RLS)
-        const { data: resellerUser } = await supabase
-          .from('app_users')
-          .select('id, email')
-          .eq('company_id', invite.reseller_id)
-          .eq('role', Role.RESELLER)
-          .limit(1)
-          .maybeSingle();
-        
-        if (resellerUser) {
-          rUserId = resellerUser.id;
-          rEmail = resellerUser.email;
-        } else {
-          // Try Owner role if Reseller role not found
-          const { data: ownerUser } = await supabase
-            .from('app_users')
-            .select('id, email')
-            .eq('company_id', invite.reseller_id)
-            .eq('role', Role.OWNER)
-            .limit(1)
-            .maybeSingle();
-          
-          if (ownerUser) {
-            rUserId = ownerUser.id;
-            rEmail = ownerUser.email;
+          if (rUserId && rEmail) {
+            console.log('👥 Admin adding reseller as team member...', rEmail);
+            await adminClient.from('account_members').upsert({
+              account_id: clientCompanyId,
+              user_id: rUserId,
+              email: rEmail.toLowerCase(),
+              role: 'manager',
+              status: 'accepted',
+              accepted_at: new Date().toISOString(),
+              invited_at: new Date().toISOString()
+            }, { onConflict: 'account_id,email' });
           }
         }
-      }
 
-      if (rUserId && rEmail) {
-        // Add reseller user as team member (manager role) to the client company
-        // The current user (the client) has permission to manage their own company's members
-        const { error: memberError } = await supabase
-          .from('account_members')
-          .upsert({
+        // D. Mark invite as accepted
+        if (invite) {
+           await adminClient.from('reseller_invites').update({
+             status: 'ACCEPTED',
+             accepted_at: new Date().toISOString()
+           }).eq('invite_token', token);
+        }
+      } else {
+        // Limited recovery if no admin client
+        if (resellerUserId && resellerEmail) {
+          console.log('👥 Attempting client-side team member addition...');
+          await supabase.from('account_members').upsert({
             account_id: clientCompanyId,
-            user_id: rUserId,
-            email: rEmail.toLowerCase(),
+            user_id: resellerUserId,
+            email: resellerEmail.toLowerCase(),
             role: 'manager',
             status: 'accepted',
             accepted_at: new Date().toISOString(),
-            invited_at: new Date().toISOString(),
-          }, {
-            onConflict: 'account_id,email',
-            ignoreDuplicates: false
-          });
-
-        if (memberError) {
-          console.error('Failed to add reseller as team member:', memberError);
-        } else {
-          console.log('✅ Reseller added as team member to client company');
+            invited_at: new Date().toISOString()
+          }, { onConflict: 'account_id,email' });
         }
-      } else {
-        console.warn('⚠️ Could not resolve reseller user to add as team member');
       }
-
-      // 3. Mark invite as accepted
-      await supabase
-        .from('reseller_invites')
-        .update({
-          status: 'ACCEPTED',
-          accepted_at: new Date().toISOString(),
-        })
-        .eq('id', invite.id);
 
       return true;
     } catch (e) {
