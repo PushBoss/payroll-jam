@@ -47,6 +47,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
     const [resellerInviteToken, setResellerInviteToken] = useState<string | null>(null);
     const [resellerUserId, setResellerUserId] = useState<string | null>(null);
     const [resellerEmail, setResellerEmail] = useState<string | null>(null);
+    const [resellerCompanyId, setResellerCompanyId] = useState<string | null>(null);
 
     // Fetch Global Payment Configuration
     const paymentConfig = storage.getGlobalConfig();
@@ -93,6 +94,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
         const email = params.get('email');
         const rUserId = params.get('resellerUserId');
         const rEmail = params.get('resellerEmail');
+        const rCompanyId = params.get('resellerCompanyId');
         const isResellerInvite = params.get('reseller') === 'true';
 
         // Pre-fill email if provided
@@ -102,10 +104,11 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
 
         // Store reseller invite info if this is a reseller invite
         if (token && isResellerInvite) {
-            console.log('🔗 Reseller invite detected:', { token, rUserId, rEmail });
+            console.log('🔗 Reseller invite detected:', { token, rUserId, rEmail, rCompanyId });
             setResellerInviteToken(token);
             if (rUserId) setResellerUserId(rUserId);
             if (rEmail) setResellerEmail(decodeURIComponent(rEmail));
+            if (rCompanyId) setResellerCompanyId(rCompanyId);
             toast.info('You\'re signing up through a reseller invitation!', { duration: 5000 });
         }
 
@@ -345,7 +348,8 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                 paymentMethod: paymentMethod,
                 resellerInviteToken: resellerInviteToken || undefined, // Pass reseller invite token if present
                 resellerUserId: resellerUserId || undefined,
-                resellerEmail: resellerEmail || undefined
+                resellerEmail: resellerEmail || undefined,
+                resellerCompanyId: resellerCompanyId || undefined
             };
 
             // Call signup and get pending invitations

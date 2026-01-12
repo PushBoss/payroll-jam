@@ -285,9 +285,10 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                 // Company doesn't exist - create reseller invite with plan info
                 const inviteToken = `reseller-invite-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
                 
-                // Include Reseller's own user ID and email in the signup link 
-                // This allows the client to add the reseller as a team member during signup without RLS blocks
-                const signupLink = `${window.location.origin}/?page=signup&token=${inviteToken}&resellerUserId=${user.id}&resellerEmail=${encodeURIComponent(user.email)}&email=${encodeURIComponent(clientEmail)}&reseller=true&plan=${encodeURIComponent(formData.plan || 'Starter')}`;
+                // Include Reseller's own user ID, email, and company ID in the signup link 
+                // This allows the client to link to the reseller and add them as a team member 
+                // during signup without needing to perform complex database lookups that RLS might block.
+                const signupLink = `${window.location.origin}/?page=signup&token=${inviteToken}&resellerUserId=${user.id}&resellerEmail=${encodeURIComponent(user.email)}&resellerCompanyId=${user.companyId}&email=${encodeURIComponent(clientEmail)}&reseller=true&plan=${encodeURIComponent(formData.plan || 'Starter')}`;
 
                 // Save the invite to database
                 const inviteSaved = await supabaseService.saveResellerInvite(

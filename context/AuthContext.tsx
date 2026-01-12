@@ -229,6 +229,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     resellerInviteToken?: string;
     resellerUserId?: string;
     resellerEmail?: string;
+    resellerCompanyId?: string;
   }) => {
     if (!supabase) {
       throw new Error('Supabase not initialized');
@@ -329,7 +330,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             userData.resellerInviteToken, 
             userData.companyId,
             userData.resellerUserId,
-            userData.resellerEmail
+            userData.resellerEmail,
+            userData.resellerCompanyId
           );
           if (accepted) {
             console.log('✅ Reseller invitation accepted during signup');
