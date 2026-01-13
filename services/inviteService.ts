@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient';
 import { emailService } from './emailService';
+import { supabaseService } from './supabaseService';
 
 export type MemberRole = 'admin' | 'manager';
 
@@ -106,14 +107,10 @@ export async function inviteUserToAccount(payload: {
     let requiresUpgrade = false;
     if (exists && userId) {
       // Use admin client to check upgrade requirements to bypass RLS
-      const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY || localStorage.getItem('VITE_SUPABASE_SERVICE_ROLE_KEY');
-      const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
+      const adminClient = await supabaseService.getAdminClient();
       
-      if (serviceRoleKey && supabaseUrl) {
+      if (adminClient) {
           try {
-              const { createClient } = await import('@supabase/supabase-js');
-              const adminClient = createClient(supabaseUrl, serviceRoleKey);
-              
               // 1. Check user profile
               const { data: userProfile } = await adminClient
                 .from('app_users')
@@ -123,50 +120,72 @@ export async function inviteUserToAccount(payload: {
               
               console.log('🛡️ Admin check - User Profile:', userProfile);
                 
-              const isResellerInfo = userProfile?.role === 'RESELLER' || userProfile?.role === 'Reseller';
+              const role = userProfile?.role?.toUpperCase();
+              const isReseller = role === 'RESELLER' || role === 'SUPERADMIN';
               
-              if (!isResellerInfo) {
-                  // 2. Check if they have a company_id in their profile
-                  if (userProfile?.company_id) {
-                      const { data: userCompany } = await adminClient
+              if (!isReseller) {
+                  // 2. Check all companies where they are OWNER or MEMBER
+                  
+                  // A. Find companies they own
+                  const { data: ownedCompanies } = await adminClient
+                    .from('companies')
+                    .select('id, plan, name')
+                    .eq('owner_id', userId);
+                    
+                  // B. Find companies where they are a member
+                  const { data: memberships } = await adminClient
+                    .from('account_members')
+                    .select('account_id')
+                    .eq('user_id', userId)
+                    .eq('status', 'accepted');
+                    
+                  const memberCompanyIds = memberships?.map(m => m.account_id) || [];
+                  
+                  let memberCompanies: any[] = [];
+                  if (memberCompanyIds.length > 0) {
+                      const { data: mComp } = await adminClient
                         .from('companies')
-                        .select('plan')
-                        .eq('id', userProfile.company_id)
-                        .maybeSingle();
-                      
-                      console.log('🛡️ Admin check - User Primary Company Plan:', userCompany?.plan);
-                      
-                      if (userCompany && userCompany.plan !== 'Enterprise') {
-                          requiresUpgrade = true;
-                          console.log('⚠️ Invitee has a primary company on a non-reseller plan.');
-                      }
+                        .select('id, plan, name')
+                        .in('id', memberCompanyIds);
+                      memberCompanies = mComp || [];
                   }
                   
-                  // 3. Double check all accepted memberships (in case company_id is null or they have more)
-                  if (!requiresUpgrade) {
-                      const { data: memberships } = await adminClient
-                        .from('account_members')
-                        .select('account_id')
-                        .eq('user_id', userId)
-                        .eq('status', 'accepted');
-                        
-                      console.log(`🛡️ Admin check - Other Memberships: ${memberships?.length || 0}`);
+                  const allCompanies = [
+                      ...(ownedCompanies || []),
+                      ...memberCompanies
+                  ];
 
-                      if (memberships && memberships.length > 0) {
-                          const companyIds = memberships.map(m => m.account_id);
-                          const { data: companies } = await adminClient
-                            .from('companies')
-                            .select('plan')
-                            .in('id', companyIds);
-                          
-                          if (companies && companies.some(c => c.plan !== 'Enterprise')) {
-                              requiresUpgrade = true;
-                              console.log('⚠️ Invitee belongs to an accepted company on a non-reseller plan.');
-                          }
+                  console.log(`🛡️ Admin check - Found ${allCompanies.length} relevant companies for user ${userId}`);
+                  console.log('🛡️ Admin check - Company details:', allCompanies);
+
+                  if (allCompanies.length > 0) {
+                      // If they already have any company AND none of them are Reseller/Enterprise plans, 
+                      // then joining another company requires a Reseller upgrade.
+                      const hasResellerPlan = allCompanies.some(c => 
+                          c.plan === 'Enterprise' || c.plan === 'Reseller'
+                      );
+                      
+                      if (!hasResellerPlan) {
+                          requiresUpgrade = true;
+                          console.log('⚠️ Invitee belongs to existing companies but none have a Reseller plan. Upgrade required.');
+                      }
+                  } else if (userProfile?.company_id) {
+                      // fallback to profile's company_id if no memberships found
+                      const { data: primaryComp } = await adminClient
+                        .from('companies')
+                        .select('id, plan, name')
+                        .eq('id', userProfile.company_id)
+                        .maybeSingle();
+                        
+                      console.log('🛡️ Admin check - Primary Company Fallback:', primaryComp);
+                      
+                      if (primaryComp && primaryComp.plan !== 'Enterprise') {
+                          requiresUpgrade = true;
+                          console.log('⚠️ Invitee primary company is non-reseller:', primaryComp.name);
                       }
                   }
               }
-              console.log(`🛡️ Admin check complete. Role: ${userProfile?.role}, Requires Upgrade: ${requiresUpgrade}`);
+              console.log(`🛡️ Admin check complete. Role: ${role}, Requires Upgrade: ${requiresUpgrade}`);
           } catch (adminErr) {
               console.error('Error in admin upgrade check:', adminErr);
           }

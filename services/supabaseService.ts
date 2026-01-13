@@ -23,6 +23,8 @@ export const supabaseService = {
     const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY || import.meta.env?.SUPABASE_SERVICE_ROLE_KEY || localStorage.getItem('VITE_SUPABASE_SERVICE_ROLE_KEY');
     const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
     
+    console.debug('🔑 Admin client request - URL:', supabaseUrl, 'Key present:', !!serviceRoleKey);
+    
     if (serviceRoleKey && supabaseUrl) {
       try {
         const { createClient } = await import('@supabase/supabase-js');
