@@ -22,6 +22,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
     const [financialData, setFinancialData] = useState<any[]>([]);
     const [billingHistory, setBillingHistory] = useState<any[]>([]);
     const [isLoadingData, setIsLoadingData] = useState(true);
+    const [isSyncing, setIsSyncing] = useState(false);
     const [complianceMap, setComplianceMap] = useState<Record<string, any>>({});
 
     const [activeTab, setActiveTab] = useState<'clients' | 'compliance' | 'financials'>('clients');
@@ -238,6 +239,35 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
         } catch (error) {
             console.error('Error joining team:', error);
             toast.error('Failed to join team', { id: 'join-team' });
+        }
+    };
+
+    const handleSyncPortfolio = async () => {
+        if (!user?.id) return;
+        setIsSyncing(true);
+        toast.loading('Syncing your client portfolio...', { id: 'sync-portfolio' });
+        
+        try {
+            const result = await supabaseService.syncResellerPortfolio(user.id);
+            if (result.success) {
+                if (result.syncedCount > 0) {
+                    toast.success(`Synced ${result.syncedCount} companies to your portfolio!`, { id: 'sync-portfolio' });
+                    // Reload clients
+                    if (user.companyId) {
+                        const resellerClients = await supabaseService.getResellerClients(user.companyId);
+                        setClients(Array.isArray(resellerClients) ? resellerClients : []);
+                    }
+                } else {
+                    toast.info('Portfolio is already up to date.', { id: 'sync-portfolio' });
+                }
+            } else {
+                toast.error(`Sync failed: ${result.error}`, { id: 'sync-portfolio' });
+            }
+        } catch (error) {
+            console.error('Error syncing portfolio:', error);
+            toast.error('An unexpected error occurred during sync.', { id: 'sync-portfolio' });
+        } finally {
+            setIsSyncing(false);
         }
     };
 
@@ -1024,6 +1054,15 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                     <p className="text-gray-500">Manage your clients and track commissions.</p>
                 </div>
                 <div className="flex space-x-3">
+                    <button
+                        onClick={handleSyncPortfolio}
+                        disabled={isSyncing}
+                        className="bg-white border border-gray-300 text-gray-700 px-4 py-2.5 rounded-lg hover:bg-gray-50 flex items-center shadow-sm transition-all disabled:opacity-50"
+                        title="Sync your client portfolio if companies you joined are missing"
+                    >
+                        <Icons.Refresh className={`w-4 h-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
+                        {isSyncing ? 'Syncing...' : 'Sync Portfolio'}
+                    </button>
                     <button
                         onClick={handleAddNew}
                         className="bg-jam-black text-white px-6 py-2.5 rounded-lg hover:bg-gray-800 flex items-center shadow-lg transition-transform hover:-translate-y-0.5"

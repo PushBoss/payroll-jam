@@ -2254,6 +2254,72 @@ export const supabaseService = {
     }
   },
 
+  // Sync all companies where this user is a member into their reseller portfolio
+  syncResellerPortfolio: async (resellerUserId: string): Promise<{ success: boolean; syncedCount: number; error?: string }> => {
+    if (!supabase) return { success: false, syncedCount: 0, error: 'Supabase not available' };
+    
+    try {
+      console.log('🔄 Syncing reseller portfolio for user:', resellerUserId);
+      const adminClient = await supabaseService.getAdminClient();
+      if (!adminClient) return { success: false, syncedCount: 0, error: 'Admin client not available' };
+
+      // 1. Get user's role and company_id
+      const { data: userData } = await adminClient.from('app_users').select('role, company_id').eq('id', resellerUserId).maybeSingle();
+      
+      if (!userData || (userData.role !== 'RESELLER' && userData.role !== 'Reseller')) {
+        return { success: false, syncedCount: 0, error: 'User is not a Reseller' };
+      }
+
+      if (!userData.company_id) {
+        return { success: false, syncedCount: 0, error: 'User has no Reseller Company ID' };
+      }
+
+      const resellerCompanyId = userData.company_id;
+
+      // 2. Find all companies where this user is an accepted member
+      const { data: memberships, error: memError } = await adminClient
+        .from('account_members')
+        .select('account_id')
+        .eq('user_id', resellerUserId)
+        .eq('status', 'accepted');
+
+      if (memError) throw memError;
+      if (!memberships || memberships.length === 0) {
+        return { success: true, syncedCount: 0 };
+      }
+
+      let syncedCount = 0;
+      for (const mem of memberships) {
+        // Skip syncing the Reseller's own company to their client portfolio
+        if (mem.account_id === resellerCompanyId) continue;
+
+        // 3. Create/Update link in reseller_clients
+        const { error: linkError } = await adminClient.from('reseller_clients').upsert({
+            reseller_id: resellerCompanyId,
+            client_company_id: mem.account_id,
+            status: 'ACTIVE',
+            access_level: 'FULL'
+        }, { onConflict: 'reseller_id,client_company_id' });
+
+        if (!linkError) {
+            // 4. Update company's reseller_id
+            await adminClient.from('companies').update({
+                reseller_id: resellerCompanyId
+            }).eq('id', mem.account_id);
+            
+            syncedCount++;
+        }
+      }
+
+      console.log(`✅ Synced ${syncedCount} companies to portfolio`);
+      return { success: true, syncedCount };
+
+    } catch (error: any) {
+      console.error('Error syncing reseller portfolio:', error);
+      return { success: false, syncedCount: 0, error: error.message };
+    }
+  },
+
   // NEW: Robust Join Team function for Resellers to manually sync their access
   joinClientTeam: async (clientCompanyId: string, resellerUserId: string, resellerEmail: string): Promise<boolean> => {
     if (!supabase) return false;

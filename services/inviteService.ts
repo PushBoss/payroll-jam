@@ -380,10 +380,16 @@ export async function acceptInvitation(
   userId: string,
   verifyEmail = true
 ): Promise<boolean> {
-  if (!supabase) return false;
+  const client = supabase;
+  if (!client) return false;
 
   try {
-    const { error: updateError } = await supabase
+    // Determine if we should match by user_id or if we need to find it by something else
+    // If the user already exists, they might be in account_members with their user_id
+    // If they just signed up, they might only be there by email.
+    
+    // First, try updating by user_id
+    const { error: updateError, data: updatedRows } = await client
       .from('account_members')
       .update({ 
         status: 'accepted', 
@@ -391,49 +397,118 @@ export async function acceptInvitation(
         accepted_at: new Date().toISOString() 
       })
       .eq('account_id', accountId)
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .select();
 
-    if (updateError) {
-      console.error('Error accepting invitation:', updateError);
+    let success = !updateError && updatedRows && updatedRows.length > 0;
+
+    // If that didn't work, maybe the invitation exists but user_id is null?
+    if (!success) {
+        // Get user's email to try matching by email
+        const { data: userAuth } = await client.auth.getUser();
+        const userEmail = userAuth.user?.email;
+        
+        if (userEmail) {
+            const { error: emailUpdateError, data: emailUpdatedRows } = await client
+                .from('account_members')
+                .update({ 
+                    status: 'accepted', 
+                    user_id: userId,
+                    accepted_at: new Date().toISOString() 
+                })
+                .eq('account_id', accountId)
+                .eq('email', userEmail.toLowerCase())
+                .is('user_id', null)
+                .select();
+            
+            success = !emailUpdateError && emailUpdatedRows && emailUpdatedRows.length > 0;
+        }
+    }
+
+    if (!success) {
+      console.error('Failed to accept invitation: No matching pending invitation found.');
       return false;
     }
 
     // NEW: If user is a Reseller, also add this company to their reseller portfolio
     // This allows clients to "Invite" their Reseller partner directly
     try {
-        const { data: userData } = await supabase.from('app_users').select('role, company_id').eq('id', userId).maybeSingle();
-        if (userData && userData.role === 'RESELLER' && userData.company_id) {
+        console.log(`🔍 Checking if user ${userId} is a Reseller...`);
+        // Use admin permissions to check user role to avoid RLS issues
+        const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY || localStorage.getItem('VITE_SUPABASE_SERVICE_ROLE_KEY');
+        const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
+        
+        let targetRole: string | null = null;
+        let targetCompanyId: string | null = null;
+
+        if (serviceRoleKey && supabaseUrl) {
+            console.log('🛡️ Using Admin Client for role check...');
+            const { createClient } = await import('@supabase/supabase-js');
+            const adminClient = createClient(supabaseUrl, serviceRoleKey);
+            const { data: userData, error: userError } = await adminClient.from('app_users').select('role, company_id').eq('id', userId).maybeSingle();
+            if (userError) console.error('❌ Error fetching user data via admin:', userError);
+            targetRole = userData?.role;
+            targetCompanyId = userData?.company_id;
+        } else {
+            console.log('👥 Using Standard Client for role check...');
+            const { data: userData, error: userError } = await client.from('app_users').select('role, company_id').eq('id', userId).maybeSingle();
+            if (userError) console.error('❌ Error fetching user data via standard client:', userError);
+            targetRole = userData?.role;
+            targetCompanyId = userData?.company_id;
+        }
+
+        console.log(`👤 User data found: role=${targetRole}, companyId=${targetCompanyId}`);
+
+        // Handle both 'RESELLER' and 'Reseller' just in case
+        const isReseller = targetRole === 'RESELLER' || targetRole === 'Reseller';
+
+        if (isReseller && targetCompanyId) {
             console.log('🔄 Accepting user is a Reseller, linking client company to portfolio...');
-            
-            // Get credentials for admin lookup
-            const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY || localStorage.getItem('VITE_SUPABASE_SERVICE_ROLE_KEY');
-            const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
             
             if (serviceRoleKey && supabaseUrl) {
                 const { createClient } = await import('@supabase/supabase-js');
                 const adminClient = createClient(supabaseUrl, serviceRoleKey);
                 
                 // 1. Create portfolio link
-                await adminClient.from('reseller_clients').upsert({
-                    reseller_id: userData.company_id,
+                console.log(`🔗 Creating reseller_clients link: reseller=${targetCompanyId}, client=${accountId}`);
+                const { error: linkError } = await adminClient.from('reseller_clients').upsert({
+                    reseller_id: targetCompanyId,
                     client_company_id: accountId,
                     status: 'ACTIVE',
                     access_level: 'FULL'
                 }, { onConflict: 'reseller_id,client_company_id' });
 
+                if (linkError) {
+                    console.error('❌ Error creating reseller_clients link:', linkError);
+                } else {
+                    console.log('✅ reseller_clients link created/updated');
+                }
+
                 // 2. Link company to reseller
-                await adminClient.from('companies').update({ reseller_id: userData.company_id }).eq('id', accountId);
-                console.log('✅ Portfolio link established for Reseller');
+                console.log(`🔗 Updating company reseller_id: company=${accountId}, reseller=${targetCompanyId}`);
+                const { error: companyUpdateError } = await adminClient.from('companies').update({ reseller_id: targetCompanyId }).eq('id', accountId);
+                
+                if (companyUpdateError) {
+                    console.error('❌ Error updating company reseller_id:', companyUpdateError);
+                } else {
+                    console.log('✅ Company reseller_id updated');
+                }
+                
+                console.log('✅ Portfolio link established for Reseller via Admin Client');
             } else {
+                console.warn('⚠️ No Admin Key available, attempting linkage via standard client...');
                 // Best effort if no admin key
-                await supabase.from('reseller_clients').upsert({
-                    reseller_id: userData.company_id,
+                await client.from('reseller_clients').upsert({
+                    reseller_id: targetCompanyId,
                     client_company_id: accountId,
                     status: 'ACTIVE',
                     access_level: 'FULL'
                 }, { onConflict: 'reseller_id,client_company_id' });
-                await supabase.from('companies').update({ reseller_id: userData.company_id }).eq('id', accountId);
+                await client.from('companies').update({ reseller_id: targetCompanyId }).eq('id', accountId);
             }
+        } else {
+            if (!isReseller) console.log('ℹ️ User is not a Reseller, skipping portfolio linking.');
+            if (!targetCompanyId) console.log('ℹ️ User has no company_id, skipping portfolio linking.');
         }
     } catch (assocError) {
         console.warn('Non-fatal error establishing reseller association:', assocError);
@@ -443,7 +518,7 @@ export async function acceptInvitation(
     // This proves they own the email since they received and accepted the invitation
     if (verifyEmail) {
       try {
-        const { error: verifyError } = await supabase.auth.admin.updateUserById(userId, {
+        const { error: verifyError } = await client.auth.admin.updateUserById(userId, {
           email_confirm: true
         });
 
@@ -509,8 +584,30 @@ export async function acceptMultipleInvitations(
 
     // NEW: If user is a Reseller, also link these companies to their reseller portfolio
     try {
-        const { data: userData } = await supabase.from('app_users').select('role, company_id').eq('id', userId).maybeSingle();
-        if (userData && userData.role === 'RESELLER' && userData.company_id) {
+        console.log(`🔍 Checking if accepting user ${userId} is a Reseller (Multiple)...`);
+        
+        // Use credentials for admin lookup to bypass potential RLS issues
+        const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY || localStorage.getItem('VITE_SUPABASE_SERVICE_ROLE_KEY');
+        const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
+        
+        let targetRole: string | null = null;
+        let targetCompanyId: string | null = null;
+
+        if (serviceRoleKey && supabaseUrl) {
+            const { createClient } = await import('@supabase/supabase-js');
+            const adminClient = createClient(supabaseUrl, serviceRoleKey);
+            const { data: userData } = await adminClient.from('app_users').select('role, company_id').eq('id', userId).maybeSingle();
+            targetRole = userData?.role;
+            targetCompanyId = userData?.company_id;
+        } else {
+            const { data: userData } = await supabase.from('app_users').select('role, company_id').eq('id', userId).maybeSingle();
+            targetRole = userData?.role;
+            targetCompanyId = userData?.company_id;
+        }
+
+        console.log(`👤 User data found (Multiple): role=${targetRole}, companyId=${targetCompanyId}`);
+
+        if (targetRole === 'RESELLER' && targetCompanyId) {
             console.log('🔄 Accepting user is a Reseller, linking accepted companies to portfolio...');
             
             // Fetch account_ids for the invitations we just accepted
@@ -520,26 +617,34 @@ export async function acceptMultipleInvitations(
                 .in('id', invitationIds);
                 
             if (acceptedInvites && acceptedInvites.length > 0) {
-                const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY || localStorage.getItem('VITE_SUPABASE_SERVICE_ROLE_KEY');
-                const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
-                
                 if (serviceRoleKey && supabaseUrl) {
                     const { createClient } = await import('@supabase/supabase-js');
                     const adminClient = createClient(supabaseUrl, serviceRoleKey);
                     
                     for (const invite of acceptedInvites) {
+                        console.log(`🔗 Linking company ${invite.account_id} to Reseller portfolio...`);
                         // 1. Create portfolio link
                         await adminClient.from('reseller_clients').upsert({
-                            reseller_id: userData.company_id,
+                            reseller_id: targetCompanyId,
                             client_company_id: invite.account_id,
                             status: 'ACTIVE',
                             access_level: 'FULL'
                         }, { onConflict: 'reseller_id,client_company_id' });
 
                         // 2. Link company to reseller
-                        await adminClient.from('companies').update({ reseller_id: userData.company_id }).eq('id', invite.account_id);
+                        await adminClient.from('companies').update({ reseller_id: targetCompanyId }).eq('id', invite.account_id);
                     }
-                    console.log(`✅ Portfolio links established for ${acceptedInvites.length} companies`);
+                    console.log(`✅ Portfolio links established for ${acceptedInvites.length} companies via Admin Client`);
+                } else {
+                    for (const invite of acceptedInvites) {
+                        await supabase.from('reseller_clients').upsert({
+                            reseller_id: targetCompanyId,
+                            client_company_id: invite.account_id,
+                            status: 'ACTIVE',
+                            access_level: 'FULL'
+                        }, { onConflict: 'reseller_id,client_company_id' });
+                        await supabase.from('companies').update({ reseller_id: targetCompanyId }).eq('id', invite.account_id);
+                    }
                 }
             }
         }
@@ -550,7 +655,7 @@ export async function acceptMultipleInvitations(
     // Mark email as verified in auth.users if flag is true
     if (verifyEmail) {
       try {
-        await supabase.auth.admin.updateUserById(userId, {
+        await supabase!.auth.admin.updateUserById(userId, {
           email_confirm: true
         });
         console.log('✅ Email marked as verified via invitation acceptance');
