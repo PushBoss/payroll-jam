@@ -295,10 +295,10 @@ DROP POLICY IF EXISTS "pay_runs_manage" ON public.pay_runs;
 CREATE POLICY "pay_runs_manage" ON public.pay_runs
   FOR ALL USING (check_is_company_owner(company_id) OR check_is_account_admin(company_id) OR check_is_reseller_for(company_id));
 
--- PAY_RUN_ITEMS
-ALTER TABLE public.pay_run_items ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "pay_run_items_select" ON public.pay_run_items;
-CREATE POLICY "pay_run_items_select" ON public.pay_run_items
+-- PAY_RUN_LINE_ITEMS
+ALTER TABLE public.pay_run_line_items ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "pay_run_line_items_select" ON public.pay_run_line_items;
+CREATE POLICY "pay_run_line_items_select" ON public.pay_run_line_items
   FOR SELECT USING (check_is_company_owner(company_id) OR check_is_accepted_member(company_id) OR check_is_reseller_for(company_id));
 
 -- 6. Verification - show all policies
