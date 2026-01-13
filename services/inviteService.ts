@@ -537,6 +537,23 @@ export async function acceptInvitation(
 
         console.log(`👤 User data found: role=${targetRole}, companyId=${targetCompanyId}`);
 
+        // NEW: If user doesn't have a primary company_id yet, set it to the accepted invitation's company
+        if (!targetCompanyId || targetCompanyId === '') {
+            console.log(`🏠 Setting primary company_id to ${accountId} for user ${userId}`);
+            const adminClient = await supabaseService.getAdminClient();
+            if (adminClient) {
+                await adminClient.from('app_users')
+                  .update({ company_id: accountId })
+                  .eq('id', userId);
+            } else {
+                await client.from('app_users')
+                  .update({ company_id: accountId })
+                  .eq('id', userId);
+            }
+            // Update local variable
+            targetCompanyId = accountId;
+        }
+
         // Handle both 'RESELLER' and 'Reseller' just in case
         const isReseller = targetRole === 'RESELLER' || targetRole === 'Reseller';
 
@@ -685,6 +702,32 @@ export async function acceptMultipleInvitations(
 
         console.log(`👤 User data found (Multiple): role=${targetRole}, companyId=${targetCompanyId}`);
 
+        // NEW: If user doesn't have a primary company_id yet, set it to the first accepted invitation's company
+        if (!targetCompanyId || targetCompanyId === '') {
+            const { data: firstInvite } = await supabase
+                .from('account_members')
+                .select('account_id')
+                .in('id', invitationIds)
+                .limit(1)
+                .maybeSingle();
+            
+            if (firstInvite) {
+                console.log(`🏠 Setting primary company_id to ${firstInvite.account_id} for user ${userId}`);
+                const adminClient = await supabaseService.getAdminClient();
+                if (adminClient) {
+                    await adminClient.from('app_users')
+                      .update({ company_id: firstInvite.account_id })
+                      .eq('id', userId);
+                } else {
+                    await supabase.from('app_users')
+                      .update({ company_id: firstInvite.account_id })
+                      .eq('id', userId);
+                }
+                // Update local variable for subsequent reseller check
+                targetCompanyId = firstInvite.account_id;
+            }
+        }
+
         if (targetRole === 'RESELLER' && targetCompanyId) {
             console.log('🔄 Accepting user is a Reseller, linking accepted companies to portfolio...');
             
@@ -733,10 +776,15 @@ export async function acceptMultipleInvitations(
     // Mark email as verified in auth.users if flag is true
     if (verifyEmail) {
       try {
-        await supabase!.auth.admin.updateUserById(userId, {
-          email_confirm: true
-        });
-        console.log('✅ Email marked as verified via invitation acceptance');
+        const adminClient = await supabaseService.getAdminClient();
+        if (adminClient) {
+            await adminClient.auth.admin.updateUserById(userId, {
+              email_confirm: true
+            });
+            console.log('✅ Email marked as verified via Admin Client');
+        } else {
+            console.warn('⚠️ Admin client not available for email verification bypass');
+        }
       } catch (verifyException) {
         console.warn('Warning: Exception marking email verified:', verifyException);
         // Non-fatal

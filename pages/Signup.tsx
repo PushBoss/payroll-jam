@@ -315,10 +315,11 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
             plan: formData.plan,
             pricingTotal: pricing.total,
             pricingType: pricing.type,
-            willSkipPayment: formData.plan === 'Free' || pricing.total === 0
+            isTeamInvitation,
+            willSkipPayment: isTeamInvitation || formData.plan === 'Free' || pricing.total === 0
         });
 
-        if (formData.plan === 'Free' || pricing.total === 0) {
+        if (isTeamInvitation || formData.plan === 'Free' || pricing.total === 0) {
             console.log('⏭️ Skipping payment step - proceeding directly to signup');
             handleSubmit();
         } else {
@@ -401,10 +402,21 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                 });
             }
 
-            // Redirect to verify email page after showing message
+            // Redirect to verify email page or dashboard after showing message
             setTimeout(() => {
-                console.log('🔄 Redirecting to verify email page...');
-                onVerifyEmailClick(formData.email);
+                if (isTeamInvitation) {
+                    console.log('🔄 Team member signup - redirecting to dashboard...');
+                    // Since we auto-verify email for invitations, we can go to dashboard
+                    if (onNavigate) {
+                        onNavigate('dashboard');
+                    } else {
+                        // Fallback to login if navigate not available, but should be there
+                        onLoginClick();
+                    }
+                } else {
+                    console.log('🔄 Redirecting to verify email page...');
+                    onVerifyEmailClick(formData.email);
+                }
             }, 1500);
         } catch (error: any) {
             console.error('❌ Signup failed:', error);
