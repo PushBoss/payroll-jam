@@ -5,6 +5,12 @@
 -- 0. Helper Functions (SECURITY DEFINER)
 -- These allow us to perform lookups across tables without triggering RLS recursively.
 
+-- Explicitly drop functions first to avoid parameter name mismatch errors
+DROP FUNCTION IF EXISTS public.check_is_accepted_member(UUID);
+DROP FUNCTION IF EXISTS public.check_is_account_admin(UUID);
+DROP FUNCTION IF EXISTS public.check_is_company_owner(UUID);
+DROP FUNCTION IF EXISTS public.check_is_reseller_for(UUID);
+
 CREATE OR REPLACE FUNCTION public.check_is_accepted_member(p_account_id UUID)
 RETURNS BOOLEAN AS $$
 BEGIN
