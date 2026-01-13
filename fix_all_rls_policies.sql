@@ -148,6 +148,19 @@ DROP POLICY IF EXISTS "reseller_clients_delete" ON public.reseller_clients;
 DROP POLICY IF EXISTS "Allow authenticated users to insert reseller_clients" ON public.reseller_clients;
 DROP POLICY IF EXISTS "Allow clients to view their reseller link" ON public.reseller_clients;
 
+-- 2.2 Drop GHOST policies discovered in verification (Critical for security)
+DROP POLICY IF EXISTS "Allow public access to app_users" ON public.app_users;
+DROP POLICY IF EXISTS "Company admins can view company users" ON public.app_users;
+DROP POLICY IF EXISTS "app_users_insert_own" ON public.app_users;
+DROP POLICY IF EXISTS "app_users_search_by_email" ON public.app_users;
+DROP POLICY IF EXISTS "app_users_update_own" ON public.app_users;
+DROP POLICY IF EXISTS "app_users_view_own" ON public.app_users;
+
+DROP POLICY IF EXISTS "Allow public access to employees" ON public.employees;
+DROP POLICY IF EXISTS "employees_company_isolation" ON public.employees;
+
+DROP POLICY IF EXISTS "Allow public access to pay_runs" ON public.pay_runs;
+
 -- 3. Enable RLS
 ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.account_members ENABLE ROW LEVEL SECURITY;
@@ -327,6 +340,15 @@ ALTER TABLE public.app_users ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "app_users_select" ON public.app_users;
 CREATE POLICY "app_users_select" ON public.app_users
   FOR SELECT USING (check_has_access_to_user_profile(id));
+
+CREATE POLICY "app_users_insert" ON public.app_users
+  FOR INSERT WITH CHECK (auth.uid() = id);
+
+CREATE POLICY "app_users_update" ON public.app_users
+  FOR UPDATE USING (auth.uid() = id);
+
+CREATE POLICY "app_users_search" ON public.app_users
+  FOR SELECT USING (auth.uid() IS NOT NULL);
 
 -- PAY_RUNS
 ALTER TABLE public.pay_runs ENABLE ROW LEVEL SECURITY;
