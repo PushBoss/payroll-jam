@@ -112,9 +112,17 @@ export async function inviteUserToAccount(payload: {
         .eq('owner_id', userId);
 
       if (inviteeCompanies && inviteeCompanies.length > 0) {
-        const hasNonResellerCompany = inviteeCompanies.some((comp: any) => comp.plan !== 'Reseller' && comp.plan !== 'Enterprise');
-        if (hasNonResellerCompany) {
+        // Map database plan names back to logical types for check
+        // ONLY 'Enterprise' (Mapped from Reseller/Enterprise) is allowed to manage multiple companies
+        const hasRestrictedCompany = inviteeCompanies.some((comp: any) => {
+            const dbPlan = comp.plan;
+            // Plans like 'Free', 'Starter', 'Professional' (Pro) require upgrade to Reseller (Enterprise)
+            return dbPlan !== 'Enterprise';
+        });
+        
+        if (hasRestrictedCompany) {
           requiresUpgrade = true;
+          console.log('⚠️ Invitee exists and has a non-reseller company, requires upgrade.');
         }
       }
 
