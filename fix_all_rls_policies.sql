@@ -1,4 +1,74 @@
--- Comprehensive RLS policy fix - drop all conflicting policies and recreate clean ones
+-- Comprehensive RLS policy fix - FINAL STABILITY VERSION
+-- Fixes "infinite recursion" by using SECURITY DEFINER helper functions.
+-- These functions bypass RLS to check relationships without triggering circular loops.
+
+-- 0. Helper Functions (SECURITY DEFINER)
+-- These allow us to perform lookups across tables without triggering RLS recursively.
+
+CREATE OR REPLACE FUNCTION public.check_is_accepted_member(p_account_id UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+  -- Basic membership check
+  RETURN EXISTS (
+    SELECT 1 FROM public.account_members 
+    WHERE account_id = p_account_id 
+    AND user_id = auth.uid() 
+    AND status = 'accepted'
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+CREATE OR REPLACE FUNCTION public.check_is_account_admin(p_account_id UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+  -- Admin check
+  RETURN EXISTS (
+    SELECT 1 FROM public.account_members 
+    WHERE account_id = p_account_id 
+    AND user_id = auth.uid() 
+    AND role = 'admin' 
+    AND status = 'accepted'
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+CREATE OR REPLACE FUNCTION public.check_is_company_owner(p_account_id UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+  -- Ownership check
+  RETURN EXISTS (
+    SELECT 1 FROM public.companies 
+    WHERE id = p_account_id 
+    AND owner_id = auth.uid()
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+CREATE OR REPLACE FUNCTION public.check_is_reseller_for(p_account_id UUID)
+RETURNS BOOLEAN AS $$
+DECLARE
+    v_my_company_id UUID;
+BEGIN
+    -- 1. Find the company OWNED by the current user (if they are a reseller)
+    SELECT id INTO v_my_company_id FROM public.companies WHERE owner_id = auth.uid() LIMIT 1;
+    
+    IF v_my_company_id IS NULL THEN RETURN FALSE; END IF;
+
+    -- 2. Check if that company is the reseller for the target account
+    -- Checked in companies table directly
+    RETURN EXISTS (
+        SELECT 1 FROM public.companies 
+        WHERE id = p_account_id 
+        AND reseller_id = v_my_company_id
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- Grant execution to authenticated users
+GRANT EXECUTE ON FUNCTION public.check_is_accepted_member(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.check_is_account_admin(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.check_is_company_owner(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.check_is_reseller_for(UUID) TO authenticated;
 
 -- 1. Drop all existing policies on companies (clean slate)
 DROP POLICY IF EXISTS "Allow public access to companies" ON public.companies;
@@ -40,17 +110,14 @@ ALTER TABLE public.reseller_clients ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "companies_select" ON public.companies
   FOR SELECT
   USING (
-    -- Owner can see their company
+    -- Owner can see their company directly
     owner_id = auth.uid()
     OR
-    -- User can see companies they're invited to (accepted members)
-    id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND status = 'accepted'
-    )
+    -- User is an accepted member (checked via helper to avoid recursion)
+    check_is_accepted_member(id)
     OR
-    -- Resellers can see companies where they are the reseller
-    reseller_id = auth.uid()
+    -- Current user's company is the reseller for this company
+    check_is_reseller_for(id)
   );
 
 -- INSERT: Authenticated users can create companies they own
@@ -72,83 +139,66 @@ CREATE POLICY "companies_update" ON public.companies
 CREATE POLICY "account_members_select" ON public.account_members
   FOR SELECT
   USING (
-    -- 1. My own invitation
+    -- 1. My own invitation (by ID or email)
     user_id = auth.uid()
     OR
     email = auth.jwt()->>'email'
     OR
-    -- 2. I have authority over the account (Owner, Admin, or Reseller)
-    account_id IN (
-      SELECT id FROM public.companies WHERE owner_id = auth.uid() OR reseller_id = auth.uid()
-    )
+    -- 2. I have authority over the account (checked via helpers to avoid recursion)
+    check_is_company_owner(account_id)
     OR
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND role = 'admin' AND status = 'accepted'
-    )
+    check_is_account_admin(account_id)
+    OR
+    check_is_reseller_for(account_id)
   );
 
 -- INSERT: Company owners, admins, or resellers can send invitations
 CREATE POLICY "account_members_insert" ON public.account_members
   FOR INSERT
   WITH CHECK (
-    -- 1. I own the company
-    account_id IN (
-      SELECT id FROM public.companies WHERE owner_id = auth.uid()
-    )
+    -- Use helpers to check authority without RLS recursion
+    check_is_company_owner(account_id)
     OR
-    -- 2. I am an admin of the company
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND role = 'admin' AND status = 'accepted'
-    )
+    check_is_account_admin(account_id)
     OR
-    -- 3. I am the reseller for the company
-    account_id IN (
-      SELECT id FROM public.companies WHERE reseller_id = auth.uid()
-    )
+    check_is_reseller_for(account_id)
   );
 
 -- UPDATE: Users can accept their own invitations, owners/admins/resellers can manage invitations
 CREATE POLICY "account_members_update" ON public.account_members
   FOR UPDATE
   USING (
-    -- Authority checks
+    -- Permission is based on my own record OR authority over the company
     user_id = auth.uid()
     OR
     email = auth.jwt()->>'email'
     OR
-    account_id IN (
-      SELECT id FROM public.companies WHERE owner_id = auth.uid() OR reseller_id = auth.uid()
-    )
+    check_is_company_owner(account_id)
     OR
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND role = 'admin' AND status = 'accepted'
-    )
+    check_is_account_admin(account_id)
+    OR
+    check_is_reseller_for(account_id)
   )
   WITH CHECK (
+    -- Users can only modify their own status/id, or managers can modify roles/etc
     user_id = auth.uid()
     OR
     email = auth.jwt()->>'email'
     OR
-    account_id IN (
-      SELECT id FROM public.companies WHERE owner_id = auth.uid() OR reseller_id = auth.uid()
-    )
+    check_is_company_owner(account_id)
     OR
-    account_id IN (
-      SELECT account_id FROM public.account_members
-      WHERE user_id = auth.uid() AND role = 'admin' AND status = 'accepted'
-    )
+    check_is_account_admin(account_id)
+    OR
+    check_is_reseller_for(account_id)
   );
 
 -- DELETE: Owners can remove members
 CREATE POLICY "account_members_delete" ON public.account_members
   FOR DELETE
   USING (
-    account_id IN (
-      SELECT id FROM public.companies WHERE owner_id = auth.uid()
-    )
+    check_is_company_owner(account_id)
+    OR
+    check_is_reseller_for(account_id)
   );
 
 -- 5.1 Create policies for reseller tables
@@ -156,21 +206,23 @@ CREATE POLICY "account_members_delete" ON public.account_members
 CREATE POLICY "reseller_invites_select" ON public.reseller_invites
   FOR SELECT
   USING (
-    reseller_id = (SELECT id FROM public.companies WHERE owner_id = auth.uid() LIMIT 1)
+    -- I am the reseller owner (using helper to avoid recursion)
+    check_is_company_owner(reseller_id)
     OR
+    -- It was sent to my email
     invite_email = auth.jwt()->>'email'
   );
 
 CREATE POLICY "reseller_invites_insert" ON public.reseller_invites
   FOR INSERT
   WITH CHECK (
-    reseller_id = (SELECT id FROM public.companies WHERE owner_id = auth.uid() LIMIT 1)
+    check_is_company_owner(reseller_id)
   );
 
 CREATE POLICY "reseller_invites_update" ON public.reseller_invites
   FOR UPDATE
   USING (
-    reseller_id = (SELECT id FROM public.companies WHERE owner_id = auth.uid() LIMIT 1)
+    check_is_company_owner(reseller_id)
     OR
     invite_email = auth.jwt()->>'email'
   );
@@ -178,34 +230,34 @@ CREATE POLICY "reseller_invites_update" ON public.reseller_invites
 CREATE POLICY "reseller_invites_delete" ON public.reseller_invites
   FOR DELETE
   USING (
-    reseller_id = (SELECT id FROM public.companies WHERE owner_id = auth.uid() LIMIT 1)
+    check_is_company_owner(reseller_id)
   );
 
 -- RESELLER CLIENTS (Linked portfolio)
 CREATE POLICY "reseller_clients_select" ON public.reseller_clients
   FOR SELECT
   USING (
-    reseller_id = (SELECT id FROM public.companies WHERE owner_id = auth.uid() LIMIT 1)
+    check_is_company_owner(reseller_id)
     OR
-    client_company_id = (SELECT id FROM public.companies WHERE owner_id = auth.uid() LIMIT 1)
+    check_is_company_owner(client_company_id)
   );
 
 CREATE POLICY "reseller_clients_insert" ON public.reseller_clients
   FOR INSERT
   WITH CHECK (
-    reseller_id = (SELECT id FROM public.companies WHERE owner_id = auth.uid() LIMIT 1)
+    check_is_company_owner(reseller_id)
   );
 
 CREATE POLICY "reseller_clients_update" ON public.reseller_clients
   FOR UPDATE
   USING (
-    reseller_id = (SELECT id FROM public.companies WHERE owner_id = auth.uid() LIMIT 1)
+    check_is_company_owner(reseller_id)
   );
 
 CREATE POLICY "reseller_clients_delete" ON public.reseller_clients
   FOR DELETE
   USING (
-    reseller_id = (SELECT id FROM public.companies WHERE owner_id = auth.uid() LIMIT 1)
+    check_is_company_owner(reseller_id)
   );
 
 -- 6. Verification - show all policies
