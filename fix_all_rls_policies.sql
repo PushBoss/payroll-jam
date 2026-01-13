@@ -5,11 +5,11 @@
 -- 0. Helper Functions (SECURITY DEFINER)
 -- These allow us to perform lookups across tables without triggering RLS recursively.
 
--- Explicitly drop functions first to avoid parameter name mismatch errors
-DROP FUNCTION IF EXISTS public.check_is_accepted_member(UUID);
-DROP FUNCTION IF EXISTS public.check_is_account_admin(UUID);
-DROP FUNCTION IF EXISTS public.check_is_company_owner(UUID);
-DROP FUNCTION IF EXISTS public.check_is_reseller_for(UUID);
+-- Explicitly drop functions CASCADE to clear dependent policies on other tables (like employees)
+DROP FUNCTION IF EXISTS public.check_is_accepted_member(UUID) CASCADE;
+DROP FUNCTION IF EXISTS public.check_is_account_admin(UUID) CASCADE;
+DROP FUNCTION IF EXISTS public.check_is_company_owner(UUID) CASCADE;
+DROP FUNCTION IF EXISTS public.check_is_reseller_for(UUID) CASCADE;
 
 CREATE OR REPLACE FUNCTION public.check_is_accepted_member(p_account_id UUID)
 RETURNS BOOLEAN AS $$
@@ -266,6 +266,41 @@ CREATE POLICY "reseller_clients_delete" ON public.reseller_clients
     check_is_company_owner(reseller_id)
   );
 
+-- 5.2 Create policies for other dependent tables (Employees, Pay Runs, etc.)
+-- This ensures that the "Cascade" drop doesn't leave these tables unprotected or broken.
+
+-- EMPLOYEES
+ALTER TABLE public.employees ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "employees_select" ON public.employees;
+CREATE POLICY "employees_select" ON public.employees
+  FOR SELECT USING (check_is_company_owner(company_id) OR check_is_accepted_member(company_id) OR check_is_reseller_for(company_id));
+
+DROP POLICY IF EXISTS "employees_all_manage" ON public.employees;
+CREATE POLICY "employees_all_manage" ON public.employees
+  FOR ALL USING (check_is_company_owner(company_id) OR check_is_account_admin(company_id) OR check_is_reseller_for(company_id));
+
+-- APP_USERS (Profile lookup)
+ALTER TABLE public.app_users ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "app_users_select" ON public.app_users;
+CREATE POLICY "app_users_select" ON public.app_users
+  FOR SELECT USING (id = auth.uid() OR check_is_company_owner(company_id) OR check_is_accepted_member(company_id) OR check_is_reseller_for(company_id));
+
+-- PAY_RUNS
+ALTER TABLE public.pay_runs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "pay_runs_select" ON public.pay_runs;
+CREATE POLICY "pay_runs_select" ON public.pay_runs
+  FOR SELECT USING (check_is_company_owner(company_id) OR check_is_accepted_member(company_id) OR check_is_reseller_for(company_id));
+
+DROP POLICY IF EXISTS "pay_runs_manage" ON public.pay_runs;
+CREATE POLICY "pay_runs_manage" ON public.pay_runs
+  FOR ALL USING (check_is_company_owner(company_id) OR check_is_account_admin(company_id) OR check_is_reseller_for(company_id));
+
+-- PAY_RUN_ITEMS
+ALTER TABLE public.pay_run_items ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "pay_run_items_select" ON public.pay_run_items;
+CREATE POLICY "pay_run_items_select" ON public.pay_run_items
+  FOR SELECT USING (check_is_company_owner(company_id) OR check_is_accepted_member(company_id) OR check_is_reseller_for(company_id));
+
 -- 6. Verification - show all policies
 SELECT
   tablename,
@@ -273,5 +308,5 @@ SELECT
   qual,
   with_check
 FROM pg_policies
-WHERE tablename IN ('companies', 'account_members', 'reseller_invites', 'reseller_clients')
+WHERE tablename IN ('companies', 'account_members', 'reseller_invites', 'reseller_clients', 'employees', 'app_users', 'pay_runs')
 ORDER BY tablename, policyname;
