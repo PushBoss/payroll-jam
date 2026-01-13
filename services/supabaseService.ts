@@ -1621,7 +1621,9 @@ export const supabaseService = {
 
   saveAuditLog: async (log: AuditLogEntry, companyId: string) => {
     if (!supabase) return;
-    await supabase.from('audit_logs').insert({
+    
+    // 1. Attempt with standard client (user's own context)
+    const { error } = await supabase.from('audit_logs').insert({
       id: log.id,
       company_id: companyId,
       actor_id: log.actorId,
@@ -1632,6 +1634,27 @@ export const supabaseService = {
       timestamp: log.timestamp,
       ip_address: log.ipAddress
     });
+
+    // 2. Fallback to Admin client if forbidden (likely due to impersonation/RLS)
+    if (error && (error.code === '403' || error.code === '42501')) {
+        console.warn('🛡️ Audit log write failed with RLS (403), retrying with admin client...');
+        const adminClient = await supabaseService.getAdminClient();
+        if (adminClient) {
+            await adminClient.from('audit_logs').insert({
+                id: log.id,
+                company_id: companyId,
+                actor_id: log.actorId,
+                actor_name: log.actorName,
+                action: log.action,
+                entity: log.entity,
+                description: log.description,
+                timestamp: log.timestamp,
+                ip_address: log.ipAddress
+            });
+        }
+    } else if (error) {
+        console.error('❌ Failed to save audit log:', error);
+    }
   },
 
   getAuditLogs: async (companyId: string | null, userRole?: string): Promise<AuditLogEntry[]> => {

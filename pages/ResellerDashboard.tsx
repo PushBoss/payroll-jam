@@ -269,14 +269,8 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                 const clientCompanyId = existingUser.companyId;
                 
                 // 1. Add reseller user as team member (manager role) to the existing company directly (accepted status)
-                // Use the service-role admin client to bypass RLS since the reseller isn't a member yet
-                await supabaseService.joinClientTeam(clientCompanyId, user.id, user.email);
-
-                // 2. Create reseller_clients relationship (add company to reseller's portfolio)
-                const clientSaved = await supabaseService.saveResellerClient(user.companyId, clientCompanyId, {
-                    status: 'ACTIVE',
-                    accessLevel: 'FULL'
-                });
+                // This function also handles the linking in reseller_clients using admin privileges
+                const clientSaved = await supabaseService.joinClientTeam(clientCompanyId, user.id, user.email);
 
                 if (clientSaved) {
                     toast.success(`${formData.companyName || 'Company'} added to your portfolio!`);
@@ -285,7 +279,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                     const resellerClients = await supabaseService.getResellerClients(user.companyId);
                     setClients(Array.isArray(resellerClients) ? resellerClients : []);
                 } else {
-                    toast.error('Failed to add company to portfolio');
+                    toast.error('Failed to link existing company to your portfolio');
                 }
             } else {
                 // Company doesn't exist - create reseller invite with plan info

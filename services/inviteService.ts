@@ -398,6 +398,47 @@ export async function acceptInvitation(
       return false;
     }
 
+    // NEW: If user is a Reseller, also add this company to their reseller portfolio
+    // This allows clients to "Invite" their Reseller partner directly
+    try {
+        const { data: userData } = await supabase.from('app_users').select('role, company_id').eq('id', userId).maybeSingle();
+        if (userData && userData.role === 'RESELLER' && userData.company_id) {
+            console.log('🔄 Accepting user is a Reseller, linking client company to portfolio...');
+            
+            // Get credentials for admin lookup
+            const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY || localStorage.getItem('VITE_SUPABASE_SERVICE_ROLE_KEY');
+            const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
+            
+            if (serviceRoleKey && supabaseUrl) {
+                const { createClient } = await import('@supabase/supabase-js');
+                const adminClient = createClient(supabaseUrl, serviceRoleKey);
+                
+                // 1. Create portfolio link
+                await adminClient.from('reseller_clients').upsert({
+                    reseller_id: userData.company_id,
+                    client_company_id: accountId,
+                    status: 'ACTIVE',
+                    access_level: 'FULL'
+                }, { onConflict: 'reseller_id,client_company_id' });
+
+                // 2. Link company to reseller
+                await adminClient.from('companies').update({ reseller_id: userData.company_id }).eq('id', accountId);
+                console.log('✅ Portfolio link established for Reseller');
+            } else {
+                // Best effort if no admin key
+                await supabase.from('reseller_clients').upsert({
+                    reseller_id: userData.company_id,
+                    client_company_id: accountId,
+                    status: 'ACTIVE',
+                    access_level: 'FULL'
+                }, { onConflict: 'reseller_id,client_company_id' });
+                await supabase.from('companies').update({ reseller_id: userData.company_id }).eq('id', accountId);
+            }
+        }
+    } catch (assocError) {
+        console.warn('Non-fatal error establishing reseller association:', assocError);
+    }
+
     // Mark email as verified in auth.users if verifyEmail flag is true
     // This proves they own the email since they received and accepted the invitation
     if (verifyEmail) {
@@ -465,6 +506,46 @@ export async function acceptMultipleInvitations(
     }
 
     acceptedCount = invitationIds.length;
+
+    // NEW: If user is a Reseller, also link these companies to their reseller portfolio
+    try {
+        const { data: userData } = await supabase.from('app_users').select('role, company_id').eq('id', userId).maybeSingle();
+        if (userData && userData.role === 'RESELLER' && userData.company_id) {
+            console.log('🔄 Accepting user is a Reseller, linking accepted companies to portfolio...');
+            
+            // Fetch account_ids for the invitations we just accepted
+            const { data: acceptedInvites } = await supabase
+                .from('account_members')
+                .select('account_id')
+                .in('id', invitationIds);
+                
+            if (acceptedInvites && acceptedInvites.length > 0) {
+                const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY || localStorage.getItem('VITE_SUPABASE_SERVICE_ROLE_KEY');
+                const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
+                
+                if (serviceRoleKey && supabaseUrl) {
+                    const { createClient } = await import('@supabase/supabase-js');
+                    const adminClient = createClient(supabaseUrl, serviceRoleKey);
+                    
+                    for (const invite of acceptedInvites) {
+                        // 1. Create portfolio link
+                        await adminClient.from('reseller_clients').upsert({
+                            reseller_id: userData.company_id,
+                            client_company_id: invite.account_id,
+                            status: 'ACTIVE',
+                            access_level: 'FULL'
+                        }, { onConflict: 'reseller_id,client_company_id' });
+
+                        // 2. Link company to reseller
+                        await adminClient.from('companies').update({ reseller_id: userData.company_id }).eq('id', invite.account_id);
+                    }
+                    console.log(`✅ Portfolio links established for ${acceptedInvites.length} companies`);
+                }
+            }
+        }
+    } catch (assocError) {
+        console.warn('Non-fatal error establishing reseller associations:', assocError);
+    }
 
     // Mark email as verified in auth.users if flag is true
     if (verifyEmail) {
