@@ -242,7 +242,7 @@ export async function inviteUserToAccount(payload: {
       // If they do exist, we can direct them to the dashboard where they will see the acceptance prompt.
       const inviteLink = exists 
         ? `${window.location.origin}/?page=dashboard` 
-        : `${window.location.origin}/?page=signup&email=${encodeURIComponent(normalizedEmail)}`;
+        : `${window.location.origin}/?page=signup&email=${encodeURIComponent(normalizedEmail)}&invitation=true`;
       
       // Send manager invite email (for team member invitations)
       await emailService.sendManagerInvite(

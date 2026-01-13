@@ -47,6 +47,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
     const [resellerUserId, setResellerUserId] = useState<string | null>(null);
     const [resellerEmail, setResellerEmail] = useState<string | null>(null);
     const [resellerCompanyId, setResellerCompanyId] = useState<string | null>(null);
+    const [isTeamInvitation, setIsTeamInvitation] = useState(false);
 
     // Fetch Global Payment Configuration
     const paymentConfig = storage.getGlobalConfig();
@@ -95,10 +96,17 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
         const rEmail = params.get('resellerEmail');
         const rCompanyId = params.get('resellerCompanyId');
         const isResellerInvite = params.get('reseller') === 'true';
+        const teamInvite = params.get('invitation') === 'true';
 
         // Pre-fill email if provided
         if (email) {
             setFormData(prev => ({ ...prev, email: decodeURIComponent(email) }));
+        }
+
+        if (teamInvite) {
+            console.log('👥 Team member invitation detected');
+            setIsTeamInvitation(true);
+            toast.info('Joining as a team member. Just set your name and password!', { duration: 5000 });
         }
 
         // Store reseller invite info if this is a reseller invite
@@ -324,8 +332,8 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
         setIsSubmitting(true);
 
         try {
-            const role = formData.plan === 'Reseller' ? Role.RESELLER : Role.OWNER;
-            const isPaidPlan = formData.plan !== 'Free' && pricing.total > 0;
+            const role = isTeamInvitation ? Role.MANAGER : (formData.plan === 'Reseller' ? Role.RESELLER : Role.OWNER);
+            const isPaidPlan = !isTeamInvitation && formData.plan !== 'Free' && pricing.total > 0;
             const requiresApproval = isPaidPlan && paymentMethod === 'direct-deposit';
 
             // Get the selected plan to extract employee limit
@@ -338,14 +346,14 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                 email: formData.email,
                 password: formData.password,
                 role: role,
-                companyId: generateUUID(), // Use pre-generated companyId for DimePay webhook linking
-                isOnboarded: false,
-                companyName: formData.name + "'s Company", // Temporary name, will be set in onboarding
-                plan: formData.plan,
-                billingCycle: formData.billingCycle, // Pass billing cycle (monthly/annual)
-                employeeLimit: employeeLimit, // Pass employee limit from plan config
+                companyId: isTeamInvitation ? '' : generateUUID(), // Don't create new company ID for team invites
+                isOnboarded: isTeamInvitation, // Team members are considered "onboarded" manually
+                companyName: isTeamInvitation ? '' : (formData.name + "'s Company"), // No company name needed for team invites
+                plan: isTeamInvitation ? 'Free' : formData.plan,
+                billingCycle: formData.billingCycle, 
+                employeeLimit: employeeLimit, 
                 paymentMethod: paymentMethod,
-                resellerInviteToken: resellerInviteToken || undefined, // Pass reseller invite token if present
+                resellerInviteToken: resellerInviteToken || undefined, 
                 resellerUserId: resellerUserId || undefined,
                 resellerEmail: resellerEmail || undefined,
                 resellerCompanyId: resellerCompanyId || undefined
@@ -511,36 +519,39 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                         {/* For brevity in response, keeping JSX same as original file but using updated handlers */}
                         {step === 'account' ? (
                             <>
-                                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 mb-6">
-                                    <div className="flex justify-between items-center mb-3">
-                                        <label className="block text-sm font-medium text-gray-700">Selected Plan</label>
-                                        <div className="flex bg-gray-200 rounded-lg p-1">
-                                            <button
-                                                type="button"
-                                                onClick={() => setFormData({ ...formData, billingCycle: 'monthly' })}
-                                                className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${formData.billingCycle === 'monthly' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}
-                                            >
-                                                Monthly
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => setFormData({ ...formData, billingCycle: 'annual' })}
-                                                className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${formData.billingCycle === 'annual' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}
-                                            >
-                                                Annual
-                                            </button>
+                                {/* Plan selection - hidden for team invitations */}
+                                {!isTeamInvitation && (
+                                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 mb-6">
+                                        <div className="flex justify-between items-center mb-3">
+                                            <label className="block text-sm font-medium text-gray-700">Selected Plan</label>
+                                            <div className="flex bg-gray-200 rounded-lg p-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setFormData({ ...formData, billingCycle: 'monthly' })}
+                                                    className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${formData.billingCycle === 'monthly' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}
+                                                >
+                                                    Monthly
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setFormData({ ...formData, billingCycle: 'annual' })}
+                                                    className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${formData.billingCycle === 'annual' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}
+                                                >
+                                                    Annual
+                                                </button>
+                                            </div>
                                         </div>
+                                        <select
+                                            value={formData.plan}
+                                            onChange={(e) => setFormData({ ...formData, plan: e.target.value })}
+                                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-jam-orange focus:border-jam-orange sm:text-sm"
+                                        >
+                                            {plans.filter(p => p.isActive).map(p => (
+                                                <option key={p.id} value={p.name}>{p.name} ({p.limit})</option>
+                                            ))}
+                                        </select>
                                     </div>
-                                    <select
-                                        value={formData.plan}
-                                        onChange={(e) => setFormData({ ...formData, plan: e.target.value })}
-                                        className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-jam-orange focus:border-jam-orange sm:text-sm"
-                                    >
-                                        {plans.filter(p => p.isActive).map(p => (
-                                            <option key={p.id} value={p.name}>{p.name} ({p.limit})</option>
-                                        ))}
-                                    </select>
-                                </div>
+                                )}
 
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700">Full Name</label>
@@ -550,8 +561,8 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                     <label className="block text-sm font-medium text-gray-700">Work Email</label>
                                     <input required type="email" autoComplete="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
                                 </div>
-                                {/* Show employee count field for all plans except Free */}
-                                {formData.plan !== 'Free' && (
+                                {/* Show employee count field for all plans except Free - hidden for team invitations */}
+                                {!isTeamInvitation && formData.plan !== 'Free' && (
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700">Number of Employees</label>
                                         <input
@@ -575,7 +586,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                         </p>
                                     </div>
                                 )}
-                                {formData.plan === 'Reseller' && (
+                                {!isTeamInvitation && formData.plan === 'Reseller' && (
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700">Number of Companies</label>
                                         <input
