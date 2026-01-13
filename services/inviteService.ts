@@ -114,35 +114,55 @@ export async function inviteUserToAccount(payload: {
               const { createClient } = await import('@supabase/supabase-js');
               const adminClient = createClient(supabaseUrl, serviceRoleKey);
               
-              // 1. Check user role first - if already RESELLER, no upgrade needed
+              // 1. Check user profile
               const { data: userProfile } = await adminClient
                 .from('app_users')
-                .select('role')
+                .select('role, company_id')
                 .eq('id', userId)
                 .maybeSingle();
+              
+              console.log('🛡️ Admin check - User Profile:', userProfile);
                 
               const isResellerInfo = userProfile?.role === 'RESELLER' || userProfile?.role === 'Reseller';
               
               if (!isResellerInfo) {
-                  // 2. Check if they belong to any companies already
-                  // We check account_members instead of companies.owner_id for better reliability
-                  const { data: memberships } = await adminClient
-                    .from('account_members')
-                    .select('account_id, companies(plan)')
-                    .eq('user_id', userId)
-                    .eq('status', 'accepted');
-                    
-                  if (memberships && memberships.length > 0) {
-                      // If they belong to any company that is NOT on Enterprise/Reseller plan, they need to upgrade
-                      // to manage this second company.
-                      const hasNonResellerCompany = memberships.some((mem: any) => {
-                          const plan = mem.companies?.plan;
-                          return plan !== 'Enterprise';
-                      });
+                  // 2. Check if they have a company_id in their profile
+                  if (userProfile?.company_id) {
+                      const { data: userCompany } = await adminClient
+                        .from('companies')
+                        .select('plan')
+                        .eq('id', userProfile.company_id)
+                        .maybeSingle();
                       
-                      if (hasNonResellerCompany) {
+                      console.log('🛡️ Admin check - User Primary Company Plan:', userCompany?.plan);
+                      
+                      if (userCompany && userCompany.plan !== 'Enterprise') {
                           requiresUpgrade = true;
-                          console.log('⚠️ Invitee belongs to a non-reseller company, requires upgrade.');
+                          console.log('⚠️ Invitee has a primary company on a non-reseller plan.');
+                      }
+                  }
+                  
+                  // 3. Double check all accepted memberships (in case company_id is null or they have more)
+                  if (!requiresUpgrade) {
+                      const { data: memberships } = await adminClient
+                        .from('account_members')
+                        .select('account_id')
+                        .eq('user_id', userId)
+                        .eq('status', 'accepted');
+                        
+                      console.log(`🛡️ Admin check - Other Memberships: ${memberships?.length || 0}`);
+
+                      if (memberships && memberships.length > 0) {
+                          const companyIds = memberships.map(m => m.account_id);
+                          const { data: companies } = await adminClient
+                            .from('companies')
+                            .select('plan')
+                            .in('id', companyIds);
+                          
+                          if (companies && companies.some(c => c.plan !== 'Enterprise')) {
+                              requiresUpgrade = true;
+                              console.log('⚠️ Invitee belongs to an accepted company on a non-reseller plan.');
+                          }
                       }
                   }
               }
