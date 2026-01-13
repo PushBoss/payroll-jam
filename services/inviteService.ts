@@ -109,39 +109,47 @@ export async function inviteUserToAccount(payload: {
       const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY || localStorage.getItem('VITE_SUPABASE_SERVICE_ROLE_KEY');
       const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
       
-      let inviteeCompanies: any[] = [];
-      
       if (serviceRoleKey && supabaseUrl) {
-          const { createClient } = await import('@supabase/supabase-js');
-          const adminClient = createClient(supabaseUrl, serviceRoleKey);
-          const { data } = await adminClient
-            .from('companies')
-            .select('id, plan')
-            .eq('owner_id', userId);
-          inviteeCompanies = data || [];
-          console.log(`🛡️ Admin check: Invitee manages ${inviteeCompanies.length} companies.`);
-      } else {
-          // Fallback to standard client if no admin key
-          const { data } = await supabase
-            .from('companies')
-            .select('id, plan')
-            .eq('owner_id', userId);
-          inviteeCompanies = data || [];
-      }
-
-      if (inviteeCompanies.length > 0) {
-        // Map database plan names back to logical types for check
-        // ONLY 'Enterprise' (Mapped from Reseller/Enterprise) is allowed to manage multiple companies
-        const hasRestrictedCompany = inviteeCompanies.some((comp: any) => {
-            const dbPlan = comp.plan;
-            // Plans like 'Free', 'Starter', 'Professional' (Pro) require upgrade to Reseller (Enterprise)
-            return dbPlan !== 'Enterprise';
-        });
-        
-        if (hasRestrictedCompany) {
-          requiresUpgrade = true;
-          console.log('⚠️ Invitee exists and has a non-reseller company, requires upgrade.');
-        }
+          try {
+              const { createClient } = await import('@supabase/supabase-js');
+              const adminClient = createClient(supabaseUrl, serviceRoleKey);
+              
+              // 1. Check user role first - if already RESELLER, no upgrade needed
+              const { data: userProfile } = await adminClient
+                .from('app_users')
+                .select('role')
+                .eq('id', userId)
+                .maybeSingle();
+                
+              const isResellerInfo = userProfile?.role === 'RESELLER' || userProfile?.role === 'Reseller';
+              
+              if (!isResellerInfo) {
+                  // 2. Check if they belong to any companies already
+                  // We check account_members instead of companies.owner_id for better reliability
+                  const { data: memberships } = await adminClient
+                    .from('account_members')
+                    .select('account_id, companies(plan)')
+                    .eq('user_id', userId)
+                    .eq('status', 'accepted');
+                    
+                  if (memberships && memberships.length > 0) {
+                      // If they belong to any company that is NOT on Enterprise/Reseller plan, they need to upgrade
+                      // to manage this second company.
+                      const hasNonResellerCompany = memberships.some((mem: any) => {
+                          const plan = mem.companies?.plan;
+                          return plan !== 'Enterprise';
+                      });
+                      
+                      if (hasNonResellerCompany) {
+                          requiresUpgrade = true;
+                          console.log('⚠️ Invitee belongs to a non-reseller company, requires upgrade.');
+                      }
+                  }
+              }
+              console.log(`🛡️ Admin check complete. Role: ${userProfile?.role}, Requires Upgrade: ${requiresUpgrade}`);
+          } catch (adminErr) {
+              console.error('Error in admin upgrade check:', adminErr);
+          }
       }
 
       // Check if already a member by user_id
