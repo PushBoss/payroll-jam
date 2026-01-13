@@ -57,8 +57,10 @@ CREATE POLICY "companies_update" ON public.companies
 CREATE POLICY "account_members_select" ON public.account_members
   FOR SELECT
   USING (
-    -- User can see their own invitations
+    -- User can see their own invitations (by ID or by email in JWT)
     user_id = auth.uid()
+    OR
+    email = auth.jwt()->>'email'
     OR
     -- Company owner can see all invitations to their company
     account_id IN (
@@ -81,12 +83,16 @@ CREATE POLICY "account_members_update" ON public.account_members
   USING (
     user_id = auth.uid()
     OR
+    email = auth.jwt()->>'email'
+    OR
     account_id IN (
       SELECT id FROM public.companies WHERE owner_id = auth.uid()
     )
   )
   WITH CHECK (
     user_id = auth.uid()
+    OR
+    email = auth.jwt()->>'email'
     OR
     account_id IN (
       SELECT id FROM public.companies WHERE owner_id = auth.uid()

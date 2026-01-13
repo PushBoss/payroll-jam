@@ -159,7 +159,13 @@ function AppContent() {
 
   // Redirect authenticated users away from auth pages
   useEffect(() => {
-    if (user && !isLoading && (currentPath === 'login' || currentPath === 'signup' || currentPath === 'verify-email')) {
+    // Check if there's an active invitation in the URL
+    // If so, we want to allow the user to see the signup/login page even if logged in
+    // as it might be a different person testing on the same browser
+    const params = new URLSearchParams(window.location.search);
+    const hasInvitation = params.get('invitation') === 'true' || params.get('token') !== null;
+
+    if (user && !isLoading && !hasInvitation && (currentPath === 'login' || currentPath === 'signup' || currentPath === 'verify-email')) {
       if (user.role === Role.EMPLOYEE) {
         navigateTo('portal-home');
       } else if (user.role === Role.RESELLER) {

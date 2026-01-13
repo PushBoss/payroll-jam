@@ -337,10 +337,15 @@ export async function getUserRoleInAccount(
 export async function getPendingInvitationsByEmail(
   email: string
 ): Promise<(AccountMember & { company_name?: string; inviter_name?: string; company_plan?: string })[]> {
-  const client = supabase;
-  if (!client) return [];
+  if (!supabase) return [];
 
   try {
+    // CRITICAL: Use Admin Client to fetch invitations by email.
+    // Regular RLS might block users from seeing their own invitations 
+    // before they are linked to their user_id.
+    const adminClient = await supabaseService.getAdminClient();
+    const client = adminClient || supabase;
+
     const { data, error } = await client
       .from('account_members')
       .select(

@@ -22,8 +22,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ employees, leaveRequests, 
   // Check for pending invites on mount
   useEffect(() => {
     const checkInvites = async () => {
-      if (user?.email) {
-        const invites = await getPendingInvitationsByEmail(user.email);
+      // Check for invitations for the current user's email
+      // OR for an email provided in the URL (handles clicking invite links while logged in)
+      const params = new URLSearchParams(window.location.search);
+      const urlEmail = params.get('email');
+      const emailToCheck = urlEmail || user?.email;
+
+      if (emailToCheck) {
+        console.log('🔍 Checking dashboard invitations for:', emailToCheck);
+        const invites = await getPendingInvitationsByEmail(emailToCheck);
         if (invites && invites.length > 0) {
           setPendingInvites(invites);
         }
