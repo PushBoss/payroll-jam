@@ -15,13 +15,19 @@ DROP POLICY IF EXISTS "Super admins can update all companies" ON public.companie
 DROP POLICY IF EXISTS "account_members_insert" ON public.account_members;
 DROP POLICY IF EXISTS "account_members_select" ON public.account_members;
 DROP POLICY IF EXISTS "account_members_update" ON public.account_members;
+DROP POLICY IF EXISTS "account_members_delete" ON public.account_members;
 
 -- 2.1 Drop policies on reseller tables (ensure reseller flow is stable)
 DROP POLICY IF EXISTS "reseller_invites_select" ON public.reseller_invites;
 DROP POLICY IF EXISTS "reseller_invites_insert" ON public.reseller_invites;
 DROP POLICY IF EXISTS "reseller_invites_update" ON public.reseller_invites;
+DROP POLICY IF EXISTS "reseller_invites_delete" ON public.reseller_invites;
 DROP POLICY IF EXISTS "reseller_clients_select" ON public.reseller_clients;
 DROP POLICY IF EXISTS "reseller_clients_insert" ON public.reseller_clients;
+DROP POLICY IF EXISTS "reseller_clients_update" ON public.reseller_clients;
+DROP POLICY IF EXISTS "reseller_clients_delete" ON public.reseller_clients;
+DROP POLICY IF EXISTS "Allow authenticated users to insert reseller_clients" ON public.reseller_clients;
+DROP POLICY IF EXISTS "Allow clients to view their reseller link" ON public.reseller_clients;
 
 -- 3. Enable RLS
 ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
@@ -136,6 +142,15 @@ CREATE POLICY "account_members_update" ON public.account_members
     )
   );
 
+-- DELETE: Owners can remove members
+CREATE POLICY "account_members_delete" ON public.account_members
+  FOR DELETE
+  USING (
+    account_id IN (
+      SELECT id FROM public.companies WHERE owner_id = auth.uid()
+    )
+  );
+
 -- 5.1 Create policies for reseller tables
 -- RESELLER INVITES: Resellers view what they sent, clients view what they received
 CREATE POLICY "reseller_invites_select" ON public.reseller_invites
@@ -160,6 +175,12 @@ CREATE POLICY "reseller_invites_update" ON public.reseller_invites
     invite_email = auth.jwt()->>'email'
   );
 
+CREATE POLICY "reseller_invites_delete" ON public.reseller_invites
+  FOR DELETE
+  USING (
+    reseller_id = (SELECT id FROM public.companies WHERE owner_id = auth.uid() LIMIT 1)
+  );
+
 -- RESELLER CLIENTS (Linked portfolio)
 CREATE POLICY "reseller_clients_select" ON public.reseller_clients
   FOR SELECT
@@ -167,6 +188,24 @@ CREATE POLICY "reseller_clients_select" ON public.reseller_clients
     reseller_id = (SELECT id FROM public.companies WHERE owner_id = auth.uid() LIMIT 1)
     OR
     client_company_id = (SELECT id FROM public.companies WHERE owner_id = auth.uid() LIMIT 1)
+  );
+
+CREATE POLICY "reseller_clients_insert" ON public.reseller_clients
+  FOR INSERT
+  WITH CHECK (
+    reseller_id = (SELECT id FROM public.companies WHERE owner_id = auth.uid() LIMIT 1)
+  );
+
+CREATE POLICY "reseller_clients_update" ON public.reseller_clients
+  FOR UPDATE
+  USING (
+    reseller_id = (SELECT id FROM public.companies WHERE owner_id = auth.uid() LIMIT 1)
+  );
+
+CREATE POLICY "reseller_clients_delete" ON public.reseller_clients
+  FOR DELETE
+  USING (
+    reseller_id = (SELECT id FROM public.companies WHERE owner_id = auth.uid() LIMIT 1)
   );
 
 -- 6. Verification - show all policies
