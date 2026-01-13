@@ -24,7 +24,7 @@ interface SignupProps {
 }
 
 export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick, onBack, onNavigate, initialPlan = 'Starter', initialBillingCycle = 'monthly', plans }) => {
-    const { signup } = useAuth();
+    const { signup, updateUser } = useAuth();
     const [step, setStep] = useState<'account' | 'billing'>('account');
     const [paymentError, setPaymentError] = useState<string | null>(null);
     const [widgetStatus, setWidgetStatus] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -347,9 +347,9 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                 email: formData.email,
                 password: formData.password,
                 role: role,
-                companyId: isTeamInvitation ? '' : generateUUID(), // Don't create new company ID for team invites
+                companyId: isTeamInvitation ? undefined : generateUUID(), // Use undefined instead of empty string
                 isOnboarded: isTeamInvitation, // Team members are considered "onboarded" manually
-                companyName: isTeamInvitation ? '' : (formData.name + "'s Company"), // No company name needed for team invites
+                companyName: isTeamInvitation ? undefined : (formData.name + "'s Company"), 
                 plan: isTeamInvitation ? 'Free' : formData.plan,
                 billingCycle: formData.billingCycle, 
                 employeeLimit: employeeLimit, 
@@ -357,7 +357,8 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                 resellerInviteToken: resellerInviteToken || undefined, 
                 resellerUserId: resellerUserId || undefined,
                 resellerEmail: resellerEmail || undefined,
-                resellerCompanyId: resellerCompanyId || undefined
+                resellerCompanyId: resellerCompanyId || undefined,
+                skipEmailVerification: isTeamInvitation
             };
 
             // Call signup and get pending invitations
@@ -460,6 +461,11 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                 console.log('✅ Invitations accepted:', result.acceptedCount);
                 toast.success(`Accepted ${result.acceptedCount} invitation${result.acceptedCount !== 1 ? 's' : ''}!`);
                 
+                // Update local user state with the first accepted company to ensure dashboard loads correctly
+                if (acceptedInvitations.length > 0) {
+                    updateUser({ companyId: acceptedInvitations[0].account_id });
+                }
+
                 // Clear pending invitations and proceed to verification
                 setPendingInvitations([]);
                 
@@ -727,7 +733,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                                 Creating Account...
                                             </>
                                         ) : (
-                                            formData.plan === 'Free' || pricing.total === 0 ? 'Create Free Account' : 'Continue to Payment'
+                                            isTeamInvitation ? 'Create My Account' : (formData.plan === 'Free' || pricing.total === 0 ? 'Create Free Account' : 'Continue to Payment')
                                         )}
                                     </button>
                                 </div>
@@ -897,7 +903,8 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
             </div>
 
             {/* Right Side - Order Summary */}
-            <div className="hidden lg:block relative flex-1 bg-gray-50 w-0 border-l border-gray-200">
+            {!isTeamInvitation && (
+                <div className="hidden lg:block relative flex-1 bg-gray-50 w-0 border-l border-gray-200">
                 <div className="absolute inset-0 flex flex-col justify-center px-12">
                     <div className="max-w-md mx-auto w-full bg-white p-8 rounded-2xl shadow-lg border border-gray-100">
                         <h3 className="text-lg font-medium text-gray-900 mb-6">Order Summary</h3>
@@ -980,6 +987,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                     </div>
                 </div>
             </div>
+            )}
             </div>
         </>
     );

@@ -12,7 +12,16 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  signup: (user: User & { password: string; companyName?: string; plan?: string }) => Promise<{
+  signup: (user: User & { 
+    password: string; 
+    companyName?: string; 
+    plan?: string;
+    skipEmailVerification?: boolean;
+    resellerInviteToken?: string;
+    resellerUserId?: string;
+    resellerEmail?: string;
+    resellerCompanyId?: string;
+  }) => Promise<{
     pendingInvitations: (AccountMember & { company_name?: string; inviter_name?: string; company_plan?: string })[];
   }>;
   logout: () => Promise<void>;
@@ -225,7 +234,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const signup = async (userData: User & { 
     password: string; 
     companyName?: string; 
-    plan?: string; 
+    plan?: string;
+    skipEmailVerification?: boolean;
     resellerInviteToken?: string;
     resellerUserId?: string;
     resellerEmail?: string;
@@ -246,14 +256,56 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
       }
 
+      let authData;
+      let authError;
+
       // 1. Create auth user in Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: userData.email,
-        password: userData.password,
-        options: {
-          emailRedirectTo: getAuthRedirectUrl('?page=verify-email'),
-        },
-      });
+      // If skipEmailVerification is true, we use the admin client to create the user already confirmed
+      if (userData.skipEmailVerification) {
+        console.log('⚡ Using Admin Client to create confirmed user...');
+        const adminClient = await supabaseService.getAdminClient();
+        if (adminClient) {
+          const { data, error } = await adminClient.auth.admin.createUser({
+            email: userData.email,
+            password: userData.password,
+            email_confirm: true,
+            user_metadata: {
+              full_name: userData.name
+            }
+          });
+          
+          if (!error && data.user) {
+            console.log('✅ User created via Admin Client (confirmed)');
+            authData = data;
+            
+            // Now sign in the user to establish a session in the regular client
+            const { error: signInError } = await supabase.auth.signInWithPassword({
+              email: userData.email,
+              password: userData.password
+            });
+            
+            if (signInError) {
+              console.error('❌ Error signing in after admin creation:', signInError);
+            }
+          } else {
+            authError = error;
+            console.warn('⚠️ Admin creation failed, falling back to standard signup:', error);
+          }
+        }
+      }
+
+      // Standard signup fallback
+      if (!authData) {
+        const response = await supabase.auth.signUp({
+          email: userData.email,
+          password: userData.password,
+          options: {
+            emailRedirectTo: getAuthRedirectUrl('?page=verify-email'),
+          },
+        });
+        authData = response.data;
+        authError = response.error;
+      }
 
       if (authError) {
         console.error('❌ Auth signup error:', authError);
