@@ -364,7 +364,10 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
             // Call signup and get pending invitations
             const signupResult = await signup(newUser);
             console.log('✅ Signup completed successfully');
-            setNewUserId(newUser.id);
+            
+            // USE THE REAL USER ID FROM AUTH, NOT THE RANDOMLY GENERATED ONE
+            const actualUserId = signupResult.userId;
+            setNewUserId(actualUserId);
 
             // Check if there are pending invitations
             if (signupResult && signupResult.pendingInvitations && signupResult.pendingInvitations.length > 0) {

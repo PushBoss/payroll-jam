@@ -458,7 +458,9 @@ export async function acceptInvitation(
   userId: string,
   verifyEmail = true
 ): Promise<boolean> {
-  const client = supabase;
+  // Use Admin Client to bypass RLS since the user might not have access to the record yet
+  const adminClient = await supabaseService.getAdminClient();
+  const client = adminClient || supabase;
   if (!client) return false;
 
   try {
@@ -483,8 +485,14 @@ export async function acceptInvitation(
     // If that didn't work, maybe the invitation exists but user_id is null?
     if (!success) {
         // Get user's email to try matching by email
-        const { data: userAuth } = await client.auth.getUser();
-        const userEmail = userAuth.user?.email;
+        // We'll try to find the user in app_users first to get their email
+        const { data: appUser } = await client
+          .from('app_users')
+          .select('email')
+          .eq('id', userId)
+          .maybeSingle();
+
+        const userEmail = appUser?.email;
         
         if (userEmail) {
             const { error: emailUpdateError, data: emailUpdatedRows } = await client
@@ -646,7 +654,10 @@ export async function acceptMultipleInvitations(
   verifyEmail = true,
   userEmail?: string
 ): Promise<{ success: boolean; acceptedCount: number; failedCount: number }> {
-  if (!supabase) return { success: false, acceptedCount: 0, failedCount: 0 };
+  // Use Admin Client to bypass RLS
+  const adminClient = await supabaseService.getAdminClient();
+  const client = adminClient || supabase;
+  if (!client) return { success: false, acceptedCount: 0, failedCount: 0 };
 
   let acceptedCount = 0;
   let failedCount = 0;
@@ -654,7 +665,7 @@ export async function acceptMultipleInvitations(
   try {
     // Update invitations by ID (this works even if user_id was null when created)
     // We match by ID and optionally by email to ensure we're updating the right invitations
-    let query = supabase
+    let query = client
       .from('account_members')
       .update({ 
         status: 'accepted', 
@@ -695,7 +706,7 @@ export async function acceptMultipleInvitations(
             targetRole = userData?.role;
             targetCompanyId = userData?.company_id;
         } else {
-            const { data: userData } = await supabase.from('app_users').select('role, company_id').eq('id', userId).maybeSingle();
+            const { data: userData } = await client.from('app_users').select('role, company_id').eq('id', userId).maybeSingle();
             targetRole = userData?.role;
             targetCompanyId = userData?.company_id;
         }
@@ -704,7 +715,7 @@ export async function acceptMultipleInvitations(
 
         // NEW: If user doesn't have a primary company_id yet, set it to the first accepted invitation's company
         if (!targetCompanyId || targetCompanyId === '') {
-            const { data: firstInvite } = await supabase
+            const { data: firstInvite } = await client
                 .from('account_members')
                 .select('account_id')
                 .in('id', invitationIds)
@@ -719,7 +730,7 @@ export async function acceptMultipleInvitations(
                       .update({ company_id: firstInvite.account_id })
                       .eq('id', userId);
                 } else {
-                    await supabase.from('app_users')
+                    await client.from('app_users')
                       .update({ company_id: firstInvite.account_id })
                       .eq('id', userId);
                 }
@@ -732,7 +743,7 @@ export async function acceptMultipleInvitations(
             console.log('🔄 Accepting user is a Reseller, linking accepted companies to portfolio...');
             
             // Fetch account_ids for the invitations we just accepted
-            const { data: acceptedInvites } = await supabase
+            const { data: acceptedInvites } = await client
                 .from('account_members')
                 .select('account_id')
                 .in('id', invitationIds);
@@ -758,13 +769,13 @@ export async function acceptMultipleInvitations(
                     console.log(`✅ Portfolio links established for ${acceptedInvites.length} companies via Admin Client`);
                 } else {
                     for (const invite of acceptedInvites) {
-                        await supabase.from('reseller_clients').upsert({
+                        await client.from('reseller_clients').upsert({
                             reseller_id: targetCompanyId,
                             client_company_id: invite.account_id,
                             status: 'ACTIVE',
                             access_level: 'FULL'
                         }, { onConflict: 'reseller_id,client_company_id' });
-                        await supabase.from('companies').update({ reseller_id: targetCompanyId }).eq('id', invite.account_id);
+                        await client.from('companies').update({ reseller_id: targetCompanyId }).eq('id', invite.account_id);
                     }
                 }
             }

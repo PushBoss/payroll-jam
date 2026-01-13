@@ -30,6 +30,23 @@ export function useAccount() {
       }
 
       try {
+        // If user has a companyId, use it directly (this handles both owners and members)
+        if (user.companyId) {
+          const { data, error: supabaseError } = await supabase
+            .from('companies')
+            .select('*')
+            .eq('id', user.companyId)
+            .maybeSingle();
+
+          if (supabaseError) throw supabaseError;
+          if (data) {
+            setAccount(data as Account | null);
+            setLoading(false);
+            return;
+          }
+        }
+
+        // Fallback or backup: check by owner_id
         const { data, error: supabaseError } = await supabase
           .from('companies')
           .select('*')

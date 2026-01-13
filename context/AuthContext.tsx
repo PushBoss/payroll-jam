@@ -22,6 +22,7 @@ interface AuthContextType {
     resellerEmail?: string;
     resellerCompanyId?: string;
   }) => Promise<{
+    userId: string;
     pendingInvitations: (AccountMember & { company_name?: string; inviter_name?: string; company_plan?: string })[];
   }>;
   logout: () => Promise<void>;
@@ -439,13 +440,49 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       // 5. Update local state
-      setUser(appUser);
-      storage.saveUser(appUser);
+      // If we accepted invitations, fetch the user again to get the updated company_id
+      let finalUser = appUser;
+      if (pendingInvitations.length > 0) {
+        // Use admin client to bypass RLS/caching issues for the newly updated user
+        const adminClient = await supabaseService.getAdminClient();
+        if (adminClient) {
+          const { data: updatedUser } = await adminClient
+            .from('app_users')
+            .select('*')
+            .eq('id', authData.user.id)
+            .maybeSingle();
+          
+          if (updatedUser) {
+            console.log('✅ Fetched updated user via Admin Client with company_id:', updatedUser.company_id);
+            finalUser = {
+              id: updatedUser.id,
+              name: updatedUser.name,
+              email: updatedUser.email,
+              role: updatedUser.role as any,
+              companyId: updatedUser.company_id,
+              isOnboarded: updatedUser.is_onboarded,
+              avatarUrl: updatedUser.avatar_url,
+              phone: updatedUser.phone
+            };
+          }
+        } else {
+          const updatedUser = await supabaseService.getUserByEmail(userData.email);
+          if (updatedUser) {
+            finalUser = updatedUser;
+          }
+        }
+      }
+
+      setUser(finalUser);
+      storage.saveUser(finalUser);
 
       console.log('✅ Signup completed successfully');
 
-      // Return pending invitations (now accepted) for the signup component to handle
-      return { pendingInvitations };
+      // Return pending invitations (now accepted) with the correct userId
+      return { 
+        userId: authData.user.id,
+        pendingInvitations 
+      };
 
     } catch (error) {
       console.error('❌ Signup failed:', error);

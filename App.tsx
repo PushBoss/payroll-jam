@@ -1,4 +1,4 @@
-import { useState, useEffect, Suspense, lazy } from 'react';
+import { useState, useEffect, Suspense, lazy, useMemo } from 'react';
 import { Toaster, toast } from 'sonner';
 import { Layout } from './components/Layout';
 import { CookieConsent } from './components/CookieConsent';
@@ -65,11 +65,11 @@ function AppContent() {
   const globalConfig = storage.getGlobalConfig();
 
   // Auto-enable Supabase mode if credentials are available
-  const isSupabaseMode = (() => {
+  const isSupabaseMode = useMemo(() => {
     // PRIORITY 1: Check if Supabase env vars exist (most reliable)
     const hasSupabaseEnv = import.meta.env?.VITE_SUPABASE_URL && import.meta.env?.VITE_SUPABASE_ANON_KEY;
     if (hasSupabaseEnv) {
-      console.log('✅ Supabase mode enabled via environment variables');
+      console.debug('✅ Supabase mode enabled via environment variables');
       // Ensure global config is set
       if (globalConfig?.dataSource !== 'SUPABASE') {
         storage.saveGlobalConfig({ ...globalConfig, dataSource: 'SUPABASE' } as any);
@@ -79,13 +79,13 @@ function AppContent() {
 
     // PRIORITY 2: Check localStorage config
     if (globalConfig?.dataSource === 'SUPABASE') {
-      console.log('✅ Supabase mode enabled via global config');
+      console.debug('✅ Supabase mode enabled via global config');
       return true;
     }
 
     console.warn('⚠️ Supabase mode DISABLED - no credentials found');
     return false;
-  })();
+  }, [globalConfig?.dataSource]);
 
   const getInitialPath = () => {
     if (typeof window !== 'undefined') {
@@ -329,6 +329,7 @@ function AppContent() {
   useEffect(() => {
     async function loadData() {
       if (isSupabaseMode && user?.companyId) {
+        console.log(`📡 App: Initializing data sync for company: ${user.companyId}`);
         setDataLoading(true);
         try {
           const [dbCompany, dbEmps, dbRuns, dbLeaves] = await Promise.all([
@@ -339,11 +340,13 @@ function AppContent() {
           ]);
 
           if (dbCompany) {
+            console.log('✅ App: Company data loaded successfully');
             setCompanyData(dbCompany);
             // Sync to local storage for offline support
             storage.saveCompanyData(dbCompany);
           } else {
-            console.warn("⚠️ App: loaded dbCompany is null/undefined");
+            console.error(`❌ App: Failed to load company data for ${user.companyId}. Check RLS or existence.`);
+            toast.error("Couldn't load company settings. Please try refreshing.");
           }
           if (dbEmps) setEmployees(dbEmps);
           if (dbRuns) setPayRunHistory(dbRuns);

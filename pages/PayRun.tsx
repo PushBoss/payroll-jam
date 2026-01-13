@@ -325,7 +325,19 @@ export const PayRun: React.FC<PayRunProps> = ({
         removeAdHocItem
     } = usePayroll(employees, timesheets, leaveRequests, payRunHistory);
 
-    const isSuspended = companyData.subscriptionStatus === 'SUSPENDED';
+    const isSuspended = companyData?.subscriptionStatus === 'SUSPENDED';
+
+    if (!companyData) {
+        return (
+            <div className="p-6">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 text-center">
+                    <Icons.Refresh className="w-10 h-10 text-jam-orange animate-spin mx-auto mb-4" />
+                    <h2 className="text-xl font-bold text-gray-900 mb-2">Loading Company Data</h2>
+                    <p className="text-gray-600">Please wait while we sync your company profile...</p>
+                </div>
+            </div>
+        );
+    }
 
     // Load run for editing - only once when editRunId changes
     useEffect(() => {

@@ -213,22 +213,32 @@ export const supabaseService = {
       .eq('id', companyId)
       .maybeSingle();
 
-    // Fallback: If 406 (Not Acceptable/No access) or error, try admin client if available
-    // This handles the edge case where a newly signed up user can't see their company yet
-    if ((error || !data) && (error?.code === '406' || error?.code === '42501')) {
+    // Fallback: If no data returned (RLS block or missing) or specific access errors
+    if (!data || (error && (error.code === '406' || error.code === '42501' || error.code === 'PGRST116'))) {
       const adminClient = await supabaseService.getAdminClient();
       if (adminClient) {
-        console.log('🛡️ Using Admin client fallback for getCompany...');
-        const { data: adminData } = await adminClient
+        console.log(`🛡️ Using Admin client fallback for getCompany (${companyId})...Reason:`, error || 'No data returned (likely RLS)');
+        const { data: adminData, error: adminError } = await adminClient
           .from('companies')
           .select('*')
           .eq('id', companyId)
           .maybeSingle();
-        if (adminData) data = adminData;
+        
+        if (adminError) {
+          console.error('❌ Admin fallback fetch failed:', adminError);
+        }
+
+        if (adminData) {
+            console.log('✅ Admin fallback fetch successful');
+            data = adminData;
+        }
       }
     }
 
-    if (!data) return null;
+    if (!data) {
+        console.error(`❌ Failed to load company ${companyId} even with admin fallback. Error:`, error);
+        return null;
+    }
 
     // Map database fields + JSON settings to App types
     const settings = data.settings || {};
