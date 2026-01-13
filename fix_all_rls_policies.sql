@@ -10,6 +10,8 @@ DROP FUNCTION IF EXISTS public.check_is_accepted_member(UUID) CASCADE;
 DROP FUNCTION IF EXISTS public.check_is_account_admin(UUID) CASCADE;
 DROP FUNCTION IF EXISTS public.check_is_company_owner(UUID) CASCADE;
 DROP FUNCTION IF EXISTS public.check_is_reseller_for(UUID) CASCADE;
+DROP FUNCTION IF EXISTS public.check_has_access_to_user_profile(UUID) CASCADE;
+DROP FUNCTION IF EXISTS public.check_has_access_to_pay_run(UUID) CASCADE;
 
 CREATE OR REPLACE FUNCTION public.check_is_accepted_member(p_account_id UUID)
 RETURNS BOOLEAN AS $$
@@ -70,11 +72,52 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
+CREATE OR REPLACE FUNCTION public.check_has_access_to_user_profile(p_target_user_id UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+  -- 1. My own profile
+  IF p_target_user_id = auth.uid() THEN RETURN TRUE; END IF;
+
+  -- 2. Shared company authority
+  RETURN EXISTS (
+    SELECT 1 FROM public.account_members am_target
+    JOIN public.account_members am_me ON am_me.account_id = am_target.account_id
+    WHERE am_target.user_id = p_target_user_id 
+    AND am_me.user_id = auth.uid()
+    AND (
+      am_me.status = 'accepted'
+      OR
+      public.check_is_company_owner(am_target.account_id)
+      OR
+      public.check_is_reseller_for(am_target.account_id)
+    )
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+CREATE OR REPLACE FUNCTION public.check_has_access_to_pay_run(p_pay_run_id UUID)
+RETURNS BOOLEAN AS $$
+DECLARE
+    v_company_id UUID;
+BEGIN
+    SELECT company_id INTO v_company_id FROM public.pay_runs WHERE id = p_pay_run_id;
+    IF v_company_id IS NULL THEN RETURN FALSE; END IF;
+    
+    RETURN (
+        public.check_is_company_owner(v_company_id) 
+        OR public.check_is_accepted_member(v_company_id) 
+        OR public.check_is_reseller_for(v_company_id)
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
 -- Grant execution to authenticated users
 GRANT EXECUTE ON FUNCTION public.check_is_accepted_member(UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.check_is_account_admin(UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.check_is_company_owner(UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.check_is_reseller_for(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.check_has_access_to_user_profile(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.check_has_access_to_pay_run(UUID) TO authenticated;
 
 -- 1. Drop all existing policies on companies (clean slate)
 DROP POLICY IF EXISTS "Allow public access to companies" ON public.companies;
@@ -283,7 +326,7 @@ CREATE POLICY "employees_all_manage" ON public.employees
 ALTER TABLE public.app_users ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "app_users_select" ON public.app_users;
 CREATE POLICY "app_users_select" ON public.app_users
-  FOR SELECT USING (id = auth.uid() OR check_is_company_owner(company_id) OR check_is_accepted_member(company_id) OR check_is_reseller_for(company_id));
+  FOR SELECT USING (check_has_access_to_user_profile(id));
 
 -- PAY_RUNS
 ALTER TABLE public.pay_runs ENABLE ROW LEVEL SECURITY;
@@ -299,7 +342,7 @@ CREATE POLICY "pay_runs_manage" ON public.pay_runs
 ALTER TABLE public.pay_run_line_items ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "pay_run_line_items_select" ON public.pay_run_line_items;
 CREATE POLICY "pay_run_line_items_select" ON public.pay_run_line_items
-  FOR SELECT USING (check_is_company_owner(company_id) OR check_is_accepted_member(company_id) OR check_is_reseller_for(company_id));
+  FOR SELECT USING (check_has_access_to_pay_run(pay_run_id));
 
 -- 6. Verification - show all policies
 SELECT
