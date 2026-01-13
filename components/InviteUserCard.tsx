@@ -63,7 +63,13 @@ export const InviteUserCard: React.FC<InviteUserCardProps> = ({ accountId, onInv
       });
 
       if (result.success) {
-        toast.success('Invitation sent successfully!');
+        if (result.requiresUpgrade) {
+          toast.warning('Invitation sent! Note: This user manages another company and will need to upgrade to the Reseller plan to accept.', {
+            duration: 6000
+          });
+        } else {
+          toast.success('Invitation sent successfully!');
+        }
         setEmail('');
         setUserFound(false);
         setRole('admin');

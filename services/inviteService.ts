@@ -105,13 +105,31 @@ export async function inviteUserToAccount(payload: {
     // If user exists, check for upgrade requirement and existing membership by user_id
     let requiresUpgrade = false;
     if (exists && userId) {
-      // Check if invitee already manages a non-Reseller company
-      const { data: inviteeCompanies } = await supabase
-        .from('companies')
-        .select('id, plan')
-        .eq('owner_id', userId);
+      // Use admin client to check upgrade requirements to bypass RLS
+      const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY || localStorage.getItem('VITE_SUPABASE_SERVICE_ROLE_KEY');
+      const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
+      
+      let inviteeCompanies: any[] = [];
+      
+      if (serviceRoleKey && supabaseUrl) {
+          const { createClient } = await import('@supabase/supabase-js');
+          const adminClient = createClient(supabaseUrl, serviceRoleKey);
+          const { data } = await adminClient
+            .from('companies')
+            .select('id, plan')
+            .eq('owner_id', userId);
+          inviteeCompanies = data || [];
+          console.log(`🛡️ Admin check: Invitee manages ${inviteeCompanies.length} companies.`);
+      } else {
+          // Fallback to standard client if no admin key
+          const { data } = await supabase
+            .from('companies')
+            .select('id, plan')
+            .eq('owner_id', userId);
+          inviteeCompanies = data || [];
+      }
 
-      if (inviteeCompanies && inviteeCompanies.length > 0) {
+      if (inviteeCompanies.length > 0) {
         // Map database plan names back to logical types for check
         // ONLY 'Enterprise' (Mapped from Reseller/Enterprise) is allowed to manage multiple companies
         const hasRestrictedCompany = inviteeCompanies.some((comp: any) => {
@@ -172,7 +190,11 @@ export async function inviteUserToAccount(payload: {
 
     // Send invitation email
     try {
-      const inviteLink = `${window.location.origin}/?page=settings&section=team`;
+      // If user doesn't exist, we should direct them to signup.
+      // If they do exist, we can direct them to the dashboard where they will see the acceptance prompt.
+      const inviteLink = exists 
+        ? `${window.location.origin}/?page=dashboard` 
+        : `${window.location.origin}/?page=signup&email=${encodeURIComponent(normalizedEmail)}`;
       
       // Send manager invite email (for team member invitations)
       await emailService.sendManagerInvite(
