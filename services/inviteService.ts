@@ -87,6 +87,7 @@ export async function inviteUserToAccount(payload: {
 
     // Check if user exists
     const { exists, userId } = await searchUserByEmail(normalizedEmail);
+    console.log(`🔍 Inviting user: ${normalizedEmail}, Exists: ${exists}, ID: ${userId}`);
 
     // Check if already a member (by email, since user might not exist yet)
     const { data: existingByEmail } = await supabase
