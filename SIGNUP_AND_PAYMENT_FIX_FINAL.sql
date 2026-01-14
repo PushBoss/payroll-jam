@@ -9,7 +9,10 @@ ALTER TABLE public.companies ADD CONSTRAINT companies_status_check
     CHECK (status IN ('ACTIVE', 'SUSPENDED', 'CLOSED', 'PENDING_PAYMENT'));
 
 -- 2. UPDATE SECURE RPC
--- Updated to include email and phone, and to be more robust for new signups
+-- First, drop ALL existing versions to avoid "function not unique" errors
+DROP FUNCTION IF EXISTS public.create_company_secure(UUID, UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, INTEGER, JSONB);
+DROP FUNCTION IF EXISTS public.create_company_secure(UUID, UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, INTEGER, JSONB, TEXT, TEXT);
+
 CREATE OR REPLACE FUNCTION public.create_company_secure(
     p_company_id UUID,
     p_owner_id UUID,
