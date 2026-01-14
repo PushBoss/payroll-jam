@@ -335,10 +335,12 @@ export const supabaseService = {
         id: companyId,
         owner_id: ownerId,
         name: settings.name,
+        email: settings.email,
+        phone: settings.phone,
         trn: settings.trn,
         address: settings.address,
         settings: settingsJson,
-        status: settings.subscriptionStatus,
+        status: settings.subscriptionStatus || 'ACTIVE',
         plan: dbPlan, // Map to database format
         billing_cycle: settings.billingCycle || 'MONTHLY', // Save billing cycle
         employee_limit: dbLimit // Save employee limit as integer
@@ -356,9 +358,11 @@ export const supabaseService = {
              p_company_id: companyId,
              p_owner_id: ownerId,
              p_name: settings.name,
+             p_email: settings.email || null,
+             p_phone: settings.phone || null,
              p_trn: settings.trn || null,
              p_address: settings.address || null,
-             p_status: settings.subscriptionStatus,
+             p_status: settings.subscriptionStatus || 'ACTIVE',
              p_plan: dbPlan,
              p_billing_cycle: settings.billingCycle || 'MONTHLY',
              p_employee_limit: dbLimit,
