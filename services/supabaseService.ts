@@ -380,15 +380,21 @@ export const supabaseService = {
     // This solves situations where the DB trigger might be failing or RLS blocks the user.
     if (ownerId && companyId) {
         console.log('👥 Ensuring owner is added to account_members...');
-        await effectiveClient.from('account_members').upsert({
-            account_id: companyId,
-            user_id: ownerId,
-            email: settings.email || '',
-            role: 'owner',
-            status: 'accepted',
-            accepted_at: new Date().toISOString(),
-            invited_at: new Date().toISOString()
-        }, { onConflict: 'account_id,user_id' });
+        try {
+            await effectiveClient.from('account_members').upsert({
+                account_id: companyId,
+                user_id: ownerId,
+                email: settings.email || '',
+                role: 'owner',
+                status: 'accepted',
+                accepted_at: new Date().toISOString(),
+                invited_at: new Date().toISOString()
+            }, { 
+                onConflict: 'account_id,email' 
+            });
+        } catch (memError) {
+            console.warn('⚠️ Non-critical error adding owner to account_members:', memError);
+        }
     }
 
     return companyData;

@@ -595,7 +595,12 @@ function AppContent() {
     // Mark user as onboarded
     updateUser({ isOnboarded: true });
     toast.success('Company setup complete!');
-    navigateTo('dashboard');
+    
+    if (user?.role === Role.RESELLER) {
+        navigateTo('reseller-dashboard');
+    } else {
+        navigateTo('dashboard');
+    }
   };
   const handleEmployeeWizardComplete = () => { navigateTo('portal-home'); };
 
@@ -766,7 +771,7 @@ function AppContent() {
   const renderPage = () => {
     if (dataLoading) return <LoadingFallback />;
 
-    if (!user.isOnboarded && (user.role === Role.OWNER || user.role === Role.RESELLER)) {
+    if (!user.isOnboarded && user.role === Role.OWNER) {
       return <Onboarding departments={departments} onComplete={handleCompanyOnboardComplete} onUpdateDepartments={setDepartments} />;
     }
 

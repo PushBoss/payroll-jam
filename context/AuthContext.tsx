@@ -453,6 +453,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       // 5. Update local state
+      // Always use the latest companyId if it was created during signup
+      if (shouldCreateCompany && userData.companyId) {
+        appUser.companyId = userData.companyId;
+      }
+
       // If we accepted invitations, fetch the user again to get the updated company_id
       let finalUser = appUser;
       if (pendingInvitations.length > 0) {
