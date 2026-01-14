@@ -21,7 +21,7 @@ export const getPlanPriceDetails = (plan: PricingPlan, cycle: 'monthly' | 'annua
     : amount;
   
   const perEmpFee = plan.priceConfig.type === 'base' 
-    ? (plan.priceConfig.perUserFee || 500)
+    ? (cycle === 'monthly' ? (plan.priceConfig.perUserFee || 500) : ((plan.priceConfig.perUserFee || 500) * 10))
     : (plan.priceConfig.type === 'per_emp' ? amount : 0);
 
   let suffix = period;

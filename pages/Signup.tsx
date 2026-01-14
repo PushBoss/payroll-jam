@@ -166,8 +166,8 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
             subtotal = count * perEmpPrice;
         } else if (type === 'base') {
             // Base fee plans (Starter, Pro, Reseller)
-            // Use baseFee from priceConfig directly
-            const baseFeeAmount = selectedPlan.priceConfig.baseFee || basePrice || 0;
+            // Use the calculated basePrice which already handles monthly vs annual
+            const baseFeeAmount = basePrice;
             
             if (formData.plan === 'Reseller') {
                 // For resellers: (companies × baseFee) + (employees × perUserFee)
@@ -176,7 +176,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                 const numEmployees = parseInt(formData.numEmployees) || 1;
                 subtotal = (numCompanies * baseFeeAmount) + (numEmployees * perEmpPrice);
             } else {
-                // For Starter/Pro: basePrice + (employees × perEmpPrice)
+                // For other base-type plans: basePrice + (employees × perEmpPrice)
                 const count = parseInt(formData.numEmployees) || 1;
                 subtotal = baseFeeAmount + (count * perEmpPrice);
             }
