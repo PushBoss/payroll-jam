@@ -455,33 +455,33 @@ export const supabaseService = {
   getGlobalConfig: async (): Promise<GlobalConfig | null> => {
     if (!supabase) return null;
     try {
-      // Try new global_config table first
+      // 1. Try new global_config table first (full config for admins)
       const { data, error } = await supabase
         .from('global_config')
         .select('config')
         .eq('id', 'platform')
-        .maybeSingle(); // Use maybeSingle instead of single to avoid errors if no row
+        .maybeSingle();
 
       if (!error && data) {
         console.log('✅ Loaded global config from dedicated table');
         return data.config || null;
       }
 
-      // Log the actual error for debugging (406 errors might not have standard error object)
-      if (error) {
-        console.error('❌ Error loading from global_config:', {
-          code: error.code,
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          fullError: error
-        });
-      } else if (!data) {
-        console.warn('⚠️ No error but also no data from global_config - might be RLS blocking or empty table');
+      // 2. Fallback to public_settings view (redacted config for anonymous users/signup)
+      console.log('⚠️ global_config restricted, trying public_settings view');
+      const { data: publicData, error: publicError } = await supabase
+        .from('public_settings')
+        .select('config')
+        .eq('id', 'platform')
+        .maybeSingle();
+
+      if (!publicError && publicData) {
+        console.log('✅ Loaded redacted global config from public view');
+        return publicData.config || null;
       }
 
-      // Fallback to old method (companies.settings) for backwards compatibility
-      console.log('⚠️ global_config table not found or error, falling back to companies.settings');
+      // 3. Fallback to old method (companies.settings) for backwards compatibility
+      console.log('⚠️ public_settings view not found or error, falling back to companies.settings');
       const { data: companyData, error: companyError } = await supabase
         .from('companies')
         .select('settings')

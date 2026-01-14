@@ -15,7 +15,7 @@ export const getPlanPriceDetails = (plan: PricingPlan, cycle: 'monthly' | 'annua
     };
   }
 
-  const amount = cycle === 'monthly' ? plan.priceConfig.monthly : plan.priceConfig.annual;
+  const amount = cycle === 'monthly' ? plan.priceConfig.monthly : (plan.priceConfig.annual || plan.priceConfig.monthly * 10);
   const baseFee = plan.priceConfig.type === 'base' 
     ? (cycle === 'monthly' ? (plan.priceConfig.monthly || plan.priceConfig.baseFee || 0) : (plan.priceConfig.annual || (plan.priceConfig.baseFee || 0) * 10 || 0))
     : amount;

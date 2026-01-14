@@ -89,9 +89,14 @@ export const dimePayService = {
         const activeCredentials = activeEnv === 'production' ? config.production : config.sandbox;
 
         // Validate credentials exist
-        if (!activeCredentials.apiKey || !activeCredentials.secretKey) {
+        // Note: Production environment only REQUIRES apiKey (client_id) on the frontend.
+        // Secret key is handled by the backend /api/sign-payment endpoint.
+        const hasSecretKey = !!activeCredentials.secretKey;
+        const hasApiKey = !!activeCredentials.apiKey;
+
+        if (!hasApiKey || (activeEnv === 'sandbox' && !hasSecretKey)) {
             console.error(`❌ Missing ${activeEnv} credentials`);
-            props.onError(`Payment gateway ${activeEnv} credentials not configured.`);
+            props.onError(`Payment gateway ${activeEnv} credentials not configured accurately.`);
             return;
         }
 
