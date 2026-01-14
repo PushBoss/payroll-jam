@@ -2,7 +2,7 @@ import { supabase } from './supabaseClient';
 import { emailService } from './emailService';
 import { supabaseService } from './supabaseService';
 
-export type MemberRole = 'admin' | 'manager';
+export type MemberRole = 'OWNER' | 'ADMIN' | 'MANAGER' | 'owner' | 'admin' | 'manager';
 
 export interface Invitation {
   id: string;
@@ -219,7 +219,7 @@ export async function inviteUserToAccount(payload: {
     }
 
     // Use upsert to handle resending invites
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('account_members')
       .upsert(
         invitationData,
@@ -229,7 +229,25 @@ export async function inviteUserToAccount(payload: {
         }
       )
       .select()
-      .single();
+      .maybeSingle();
+
+    // Fallback: If 400 (likely missing constraint) and we have a userId, try account_id,user_id
+    if (error && (error.code === '400' || (error as any).status === 400) && invitationData.user_id) {
+        console.warn('⚠️ account_id+email constraint missing, retrying with user_id...');
+        const { data: fallbackData, error: fallbackError } = await supabase
+            .from('account_members')
+            .upsert(
+                invitationData,
+                {
+                    onConflict: 'account_id,user_id',
+                    ignoreDuplicates: false
+                }
+            )
+            .select()
+            .maybeSingle();
+        data = fallbackData;
+        error = fallbackError;
+    }
 
     if (error) {
       console.error('Error creating/updating invitation:', error);
@@ -307,7 +325,7 @@ export async function getUserRoleInAccount(
       .single();
       
     if (company && company.owner_id === userId) {
-      return 'admin';
+      return 'OWNER';
     }
 
     // 2. Check account members (use array return to avoid 406 errors)
@@ -897,7 +915,7 @@ export async function resendInvitation(memberId: string): Promise<{ success: boo
     const companyName = member.companies?.name || 'Payroll-Jam';
     
     // 3. Send email using the same logic as inviteUserToAccount
-    if (role === 'admin' || role === 'manager') {
+    if (role === 'ADMIN' || role === 'MANAGER' || role === 'OWNER' || role === 'admin' || role === 'manager' || role === 'owner') {
        await emailService.sendManagerInvite(
           email,
           email.split('@')[0], 

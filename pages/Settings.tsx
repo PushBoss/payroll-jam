@@ -15,7 +15,7 @@ import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { downloadFile } from '../utils/exportHelpers';
 import { useAccount } from '../hooks/useAccount';
-import { getUserRoleInAccount } from '../services/inviteService';
+import { getUserRoleInAccount, MemberRole } from '../services/inviteService';
 import { InviteUserCard } from '../components/InviteUserCard';
 import { AccountMembersCard } from '../components/AccountMembersCard';
 
@@ -172,7 +172,7 @@ export const Settings: React.FC<SettingsProps> = ({
 }) => {
     const { user: currentUser, updateUser } = useAuth();
     const { account } = useAccount();
-    const [userRole, setUserRole] = useState<'admin' | 'manager' | null>(null);
+    const [userRole, setUserRole] = useState<MemberRole | null>(null);
     const [activeTab, setActiveTab] = useState<'company' | 'billing' | 'organization' | 'taxes' | 'integrations' | 'users'>('organization');
 
     // Debug: Log plans when component mounts or plans change
@@ -201,9 +201,10 @@ export const Settings: React.FC<SettingsProps> = ({
     }, [currentUser?.id, account?.id]);
 
     // Define which tabs are visible based on role
-    const visibleTabs = userRole === 'manager' 
-        ? ['company', 'billing', 'organization', 'taxes'] // Manager: no integrations or users
-        : ['company', 'billing', 'organization', 'taxes', 'integrations', 'users']; // Admin: all tabs
+    const isLimitedRole = userRole?.toLowerCase() === 'manager' || userRole?.toLowerCase() === 'employee';
+    const visibleTabs = isLimitedRole
+        ? ['company', 'billing', 'organization', 'taxes'] // Manager/Employee: no integrations or users
+        : ['company', 'billing', 'organization', 'taxes', 'integrations', 'users']; // Admin/Owner: all tabs
 
     // User Management State
     const [users, setUsers] = useState<User[]>([]);

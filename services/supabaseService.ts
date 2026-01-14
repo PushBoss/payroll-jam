@@ -143,24 +143,31 @@ export const supabaseService = {
     // Check if user exists by ID or email
     const { data: existing } = await effectiveClient
       .from('app_users')
-      .select('id, preferences')
+      .select('id, preferences, company_id, role')
       .or(`id.eq.${user.id},email.eq.${user.email}`)
       .maybeSingle();
 
     if (existing) {
       // Merge existing preferences with new ones
-      const existingPrefs = existing.preferences || {};
+      const existingPrefs = (existing as any).preferences || {};
       const mergedPrefs = { ...existingPrefs, ...preferences };
 
       // Update existing user (use the existing ID if different from the provided one)
       const updateId = existing.id;
+      
+      // CRITICAL: Protect company_id and role if we are currently impersonating
+      // This prevents "Save Profile" from corrupting the reseller's own data.
+      const isImpersonating = (user as any).originalRole || (user as any).isResellerView;
+      const finalCompanyId = isImpersonating ? (existing as any).company_id : (user.companyId || (existing as any).company_id);
+      const finalRole = isImpersonating ? (existing as any).role : (user.role || (existing as any).role);
+
       const { data, error } = await effectiveClient
         .from('app_users')
         .update({
           id: user.id, // Update to new auth ID if changed
           name: user.name,
-          role: user.role,
-          company_id: user.companyId,
+          role: finalRole as any,
+          company_id: finalCompanyId,
           is_onboarded: user.isOnboarded,
           avatar_url: user.avatarUrl || null,
           phone: user.phone || null,
@@ -377,23 +384,40 @@ export const supabaseService = {
     }
 
     // CRITICAL: Explicitly ensure the owner is in account_members table
-    // This solves situations where the DB trigger might be failing or RLS blocks the user.
     if (ownerId && companyId) {
         console.log('👥 Ensuring owner is added to account_members...');
         try {
-            await effectiveClient.from('account_members').upsert({
+            // Try upsert with email constraint first
+            const { error: memError } = await effectiveClient.from('account_members').upsert({
                 account_id: companyId,
                 user_id: ownerId,
                 email: settings.email || '',
-                role: 'owner',
+                role: 'OWNER',
                 status: 'accepted',
                 accepted_at: new Date().toISOString(),
                 invited_at: new Date().toISOString()
             }, { 
                 onConflict: 'account_id,email' 
             });
-        } catch (memError) {
-            console.warn('⚠️ Non-critical error adding owner to account_members:', memError);
+
+            // Fallback: If 400 (likely missing constraint), try user_id constraint
+            if (memError && (memError.code === '400' || (memError as any).status === 400)) {
+                console.warn('⚠️ account_id+email constraint missing, retrying with user_id...');
+                await effectiveClient.from('account_members').upsert({
+                    account_id: companyId,
+                    user_id: ownerId,
+                    role: 'OWNER',
+                    status: 'accepted',
+                    accepted_at: new Date().toISOString(),
+                    invited_at: new Date().toISOString()
+                }, { 
+                    onConflict: 'account_id,user_id' 
+                });
+            } else if (memError) {
+                console.error('❌ Error in account_members upsert:', memError);
+            }
+        } catch (err) {
+            console.error('⚠️ Critical error adding owner to account_members:', err);
         }
     }
 
@@ -2235,13 +2259,13 @@ export const supabaseService = {
         // B. Add Reseller as Team Member (Use effectiveClient/Admin)
         if (resellerUserId && resellerEmail) {
           console.log('👥 Adding reseller to team members:', resellerEmail);
-          const { error: memberError } = await effectiveClient
+          let { error: memberError } = await effectiveClient
             .from('account_members')
             .upsert({
               account_id: clientCompanyId,
               user_id: resellerUserId,
               email: resellerEmail.toLowerCase(),
-              role: 'manager',
+              role: 'MANAGER',
               status: 'accepted',
               accepted_at: new Date().toISOString(),
               invited_at: new Date().toISOString(),
@@ -2249,6 +2273,25 @@ export const supabaseService = {
               onConflict: 'account_id,email',
               ignoreDuplicates: false
             });
+
+          // Fallback: If 400 (likely missing constraint), try user_id constraint
+          if (memberError && (memberError.code === '400' || (memberError as any).status === 400)) {
+            console.warn('⚠️ account_id+email constraint missing, retrying with user_id...');
+            const { error: fallbackError } = await effectiveClient
+                .from('account_members')
+                .upsert({
+                    account_id: clientCompanyId,
+                    user_id: resellerUserId,
+                    role: 'MANAGER',
+                    status: 'accepted',
+                    accepted_at: new Date().toISOString(),
+                    invited_at: new Date().toISOString(),
+                }, {
+                    onConflict: 'account_id,user_id',
+                    ignoreDuplicates: false
+                });
+            memberError = fallbackError;
+          }
 
           if (memberError) {
             console.error('❌ Failed to add reseller as team member:', memberError);
@@ -2356,11 +2399,11 @@ export const supabaseService = {
       }
 
       // Add Reseller as Team Member (Admin bypasses RLS)
-      const { error: memberError } = await adminClient.from('account_members').upsert({
+      let { error: memberError } = await adminClient.from('account_members').upsert({
         account_id: clientCompanyId,
         user_id: resellerUserId,
         email: resellerEmail.toLowerCase(),
-        role: 'manager',
+        role: 'MANAGER',
         status: 'accepted',
         accepted_at: new Date().toISOString(),
         invited_at: new Date().toISOString(),
@@ -2368,6 +2411,23 @@ export const supabaseService = {
         onConflict: 'account_id,email',
         ignoreDuplicates: false
       });
+
+      // Fallback: If 400 (likely missing constraint), try user_id constraint
+      if (memberError && (memberError.code === '400' || (memberError as any).status === 400)) {
+        console.warn('⚠️ account_id+email constraint missing, retrying with user_id...');
+        const { error: fallbackError } = await adminClient.from('account_members').upsert({
+            account_id: clientCompanyId,
+            user_id: resellerUserId,
+            role: 'MANAGER',
+            status: 'accepted',
+            accepted_at: new Date().toISOString(),
+            invited_at: new Date().toISOString(),
+        }, {
+            onConflict: 'account_id,user_id',
+            ignoreDuplicates: false
+        });
+        memberError = fallbackError;
+      }
 
       if (memberError) {
         console.error('❌ Failed to add reseller as team member via admin:', memberError);
