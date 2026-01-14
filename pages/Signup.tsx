@@ -100,11 +100,13 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
 
         // Pre-fill email if provided
         if (email) {
-            setFormData(prev => ({ ...prev, email: decodeURIComponent(email) }));
+            const decodedEmail = decodeURIComponent(email);
+            setFormData(prev => ({ ...prev, email: decodedEmail }));
         }
 
-        if (teamInvite) {
-            console.log('👥 Team member invitation detected');
+        // Force team invitation state if param is true OR we have an email param from a redirect
+        if (teamInvite || (email && !isResellerInvite)) {
+            console.log('👥 Team member invitation detected:', { teamInvite, email });
             setIsTeamInvitation(true);
             toast.info('Joining as a team member. Just set your name and password!', { duration: 5000 });
         }
