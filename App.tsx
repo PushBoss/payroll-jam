@@ -766,9 +766,12 @@ function AppContent() {
   const renderPage = () => {
     if (dataLoading) return <LoadingFallback />;
 
-    if (!user.isOnboarded) {
-      if (user.role === Role.EMPLOYEE) return <EmployeeOnboardingWizard companyName={companyData?.name || 'Company'} onComplete={handleEmployeeWizardComplete} />;
+    if (!user.isOnboarded && (user.role === Role.OWNER || user.role === Role.RESELLER)) {
       return <Onboarding departments={departments} onComplete={handleCompanyOnboardComplete} onUpdateDepartments={setDepartments} />;
+    }
+
+    if (!user.isOnboarded && user.role === Role.EMPLOYEE) {
+      return <EmployeeOnboardingWizard companyName={companyData?.name || 'Company'} onComplete={handleEmployeeWizardComplete} />;
     }
 
     switch (currentPath) {

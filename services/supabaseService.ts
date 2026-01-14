@@ -181,6 +181,7 @@ export const supabaseService = {
         .from('app_users')
         .upsert({
           id: user.id,
+          auth_user_id: user.id, // Ensure auth_user_id is also set for RLS compatibility
           email: user.email,
           name: user.name,
           role: user.role,

@@ -319,8 +319,51 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       console.log('✅ Supabase Auth user created:', authData.user.id);
 
-      // 2. Create company record first (if needed)
-      if (userData.companyName && userData.companyId) {
+      // PART 1: Create app_users profile (linked to auth user)
+      // We do this FIRST so the profile exists if other records need to link to it
+      // Note: We temporarily omit companyId if we're about to create a new company 
+      // to avoid Foreign Key violations (companies table entry doesn't exist yet).
+      const shouldCreateCompany = userData.companyName && userData.companyId && 
+                                  (userData.role === 'OWNER' || userData.role === 'RESELLER');
+
+      const appUser: User = {
+        id: authData.user.id, // Use Supabase Auth user ID
+        email: userData.email,
+        name: userData.name,
+        role: userData.role,
+        companyId: shouldCreateCompany ? undefined : userData.companyId, // Link later for new companies
+        isOnboarded: userData.isOnboarded || false
+      };
+
+      console.log('📝 Creating user profile:', {
+        id: appUser.id,
+        email: appUser.email,
+        companyId: appUser.companyId,
+        role: appUser.role
+      });
+
+      try {
+        await supabaseService.saveUser(appUser);
+        console.log('✅ User profile saved to app_users table:', appUser.email);
+      } catch (profileError) {
+        console.error('❌ CRITICAL: Failed to create user profile:', profileError);
+        // Try to clean up auth user if profile creation fails
+        try {
+          await supabase.auth.admin?.deleteUser(authData.user.id);
+          console.log('🧹 Cleaned up orphaned auth user');
+        } catch (cleanupError) {
+          console.error('⚠️ Failed to cleanup auth user:', cleanupError);
+        }
+        throw new Error(`Profile creation failed: ${(profileError as any).message || 'Unknown error'}`);
+      }
+
+      // Wait a moment to ensure profile is committed
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // PART 2: Create company record (ONLY for Owners/Resellers starting a NEW business)
+      // Managers/Employees are usually invited to existing businesses and should BYPASS this.
+      if (shouldCreateCompany) {
+        console.log('🏢 Creating new company for Owner/Reseller...');
         const isPaidPlan = userData.plan && userData.plan !== 'Free';
 
         // Map plan names to match database constraint: ('Free', 'Starter', 'Professional', 'Enterprise')
@@ -352,7 +395,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         });
 
         const companyData: CompanySettings = {
-          name: userData.companyName,
+          name: userData.companyName!,
           email: userData.email, // Added email
           trn: '',
           address: '',
@@ -361,28 +404,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           accountNumber: '',
           branchCode: '',
           payFrequency: 'Monthly',
-          subscriptionStatus: (isPaidPlan && (userData as any).paymentMethod === 'direct-deposit' ? 'PENDING_PAYMENT' : 'ACTIVE') as 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'PENDING_PAYMENT',
+          subscriptionStatus: (isPaidPlan && (userData as any).paymentMethod === 'direct-deposit' ? 'PENDING_PAYMENT' : 'ACTIVE') as any,
           plan: dbPlan as any,
           billingCycle: billingCycle, // Save billing cycle
           employeeLimit: employeeLimit, // Save employee limit
           paymentMethod: (userData as any).paymentMethod || 'card'
         };
 
-        const savedCompany = await supabaseService.saveCompany(userData.companyId, companyData, authData.user.id);
+        const savedCompany = await supabaseService.saveCompany(userData.companyId!, companyData, authData.user.id);
         if (!savedCompany) {
           throw new Error('Failed to create company record');
         }
         console.log('✅ Company saved to Supabase:', userData.companyName);
-        console.log('✅ Saved company plan:', savedCompany);
 
-        // Wait a moment to ensure company is committed before creating user
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Update the user profile with the new company link (now that the company exists)
+        await supabaseService.saveUser({ ...appUser, companyId: userData.companyId });
+        console.log('✅ User profile linked to new company');
 
         // If there's a reseller invite token, accept it
         if (userData.resellerInviteToken) {
           const accepted = await supabaseService.acceptResellerInvite(
             userData.resellerInviteToken, 
-            userData.companyId,
+            userData.companyId!,
             userData.resellerUserId,
             userData.resellerEmail,
             userData.resellerCompanyId
@@ -393,41 +436,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             console.warn('⚠️ Failed to accept reseller invitation, but continuing with signup');
           }
         }
+      } else {
+        console.log('⏩ Bypassing company creation (User is invited or missing company details)');
       }
 
-      // 3. Create app_users profile (linked to auth user)
-      const appUser: User = {
-        id: authData.user.id, // Use Supabase Auth user ID
-        email: userData.email,
-        name: userData.name,
-        role: userData.role,
-        companyId: userData.companyId,
-        isOnboarded: userData.isOnboarded || false
-      };
-
-      console.log('📝 Creating user profile:', {
-        id: appUser.id,
-        email: appUser.email,
-        companyId: appUser.companyId,
-        role: appUser.role
-      });
-
-      try {
-        await supabaseService.saveUser(appUser);
-        console.log('✅ User profile saved to app_users table:', appUser.email);
-      } catch (profileError) {
-        console.error('❌ CRITICAL: Failed to create user profile:', profileError);
-        // Try to clean up auth user if profile creation fails
-        try {
-          await supabase.auth.admin?.deleteUser(authData.user.id);
-          console.log('🧹 Cleaned up orphaned auth user');
-        } catch (cleanupError) {
-          console.error('⚠️ Failed to cleanup auth user:', cleanupError);
-        }
-        throw new Error(`Profile creation failed: ${(profileError as any).message || 'Unknown error'}`);
-      }
-
-      // 4. Check for pending team member invitations and accept them automatically
+      // PART 3: Check for pending team member invitations and accept them automatically
       console.log('🔍 Checking for pending invitations for:', userData.email);
       const pendingInvitations = await getPendingInvitationsByEmail(userData.email);
       console.log('📬 Found pending invitations:', pendingInvitations.length);
