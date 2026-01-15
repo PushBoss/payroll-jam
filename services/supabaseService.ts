@@ -78,6 +78,44 @@ export const supabaseService = {
     }
   },
 
+  // Admin version - bypasses RLS for resellers checking if client companies exist
+  getUserByEmailAdmin: async (email: string): Promise<User | null> => {
+    try {
+      const adminClient = await supabaseService.getAdminClient();
+      if (!adminClient) {
+        console.warn('⚠️ Admin client not available, falling back to normal client');
+        return supabaseService.getUserByEmail(email);
+      }
+
+      const { data, error } = await adminClient
+        .from('app_users')
+        .select('*')
+        .eq('email', email)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Error fetching user (admin):", error);
+        return null;
+      }
+      if (!data) return null;
+
+      return {
+        id: data.id,
+        name: data.name,
+        email: data.email,
+        role: data.role as any,
+        companyId: data.company_id,
+        isOnboarded: data.is_onboarded,
+        avatarUrl: data.avatar_url || undefined,
+        phone: data.phone || undefined,
+        onboardingToken: data.preferences?.onboardingToken || undefined
+      };
+    } catch (e) {
+      console.error("Admin user lookup error:", e);
+      return null;
+    }
+  },
+
   // Get company by email (finds company through user email)
   getCompanyByEmail: async (email: string): Promise<CompanySettings | null> => {
     if (!supabase) return null;

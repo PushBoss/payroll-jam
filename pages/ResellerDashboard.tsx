@@ -291,8 +291,8 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
         }
 
         try {
-            // Check if user/company exists
-            const existingUser = await supabaseService.getUserByEmail(clientEmail);
+            // Check if user/company exists (use admin lookup to bypass RLS)
+            const existingUser = await supabaseService.getUserByEmailAdmin(clientEmail);
             
             if (existingUser && existingUser.companyId) {
                 // Company exists - add reseller as team member (manager role) and link to portfolio
