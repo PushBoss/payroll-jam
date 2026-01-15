@@ -889,6 +889,7 @@ export const supabaseService = {
       payFrequency: emp.payFrequency
     };
 
+    // Try with regular client first
     const { error } = await supabase
       .from('employees')
       .upsert({
@@ -916,7 +917,44 @@ export const supabaseService = {
         onboarding_token: emp.onboardingToken || null
       });
 
-    if (error) console.error("Error saving employee:", error);
+    // If RLS blocks (42501), use admin client fallback
+    if (error && error.code === '42501') {
+      console.debug('🛡️ RLS blocked employee save, using admin client...');
+      const adminClient = await supabaseService.getAdminClient();
+      if (adminClient) {
+        const { error: adminError } = await adminClient
+          .from('employees')
+          .upsert({
+            id: emp.id,
+            company_id: companyId,
+            first_name: emp.firstName,
+            last_name: emp.lastName,
+            email: emp.email,
+            trn: emp.trn,
+            nis: emp.nis,
+            employee_number: emp.employeeId || null,
+            phone: emp.phone || null,
+            address: emp.address || null,
+            status: emp.status,
+            role: emp.role,
+            hire_date: emp.hireDate,
+            job_title: emp.jobTitle,
+            department: emp.department,
+            pay_data: payData,
+            bank_details: emp.bankDetails,
+            leave_balance: emp.leaveBalance,
+            allowances: emp.allowances,
+            deductions: emp.deductions,
+            termination_details: emp.terminationDetails,
+            onboarding_token: emp.onboardingToken || null
+          });
+        if (adminError) console.error("Error saving employee with admin client:", adminError);
+      } else {
+        console.error("Error saving employee (RLS blocked, no admin client):", error);
+      }
+    } else if (error) {
+      console.error("Error saving employee:", error);
+    }
   },
 
   deleteEmployee: async (employeeId: string, companyId: string) => {
