@@ -2764,6 +2764,82 @@ export const supabaseService = {
     }
   },
 
+  // Get companies with pending payment approval (Direct Deposit or Reseller Billing)
+  getPendingPaymentCompanies: async (): Promise<any[]> => {
+    try {
+      const adminClient = await supabaseService.getAdminClient();
+      if (!adminClient) {
+        console.error('Admin client not available for getPendingPaymentCompanies');
+        return [];
+      }
+
+      // Get companies that have "PENDING_APPROVAL" status (those who chose direct deposit/reseller billing)
+      const { data, error } = await adminClient
+        .from('companies')
+        .select(`
+          id,
+          name,
+          email,
+          plan,
+          status,
+          created_at,
+          owner:app_users!companies_owner_id_fkey (
+            name,
+            email
+          )
+        `)
+        .eq('status', 'PENDING_APPROVAL')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching pending payment companies:', error);
+        return [];
+      }
+
+      return (data || []).map((company: any) => ({
+        id: company.id,
+        name: company.name,
+        email: company.email,
+        plan: company.plan,
+        status: company.status,
+        created_at: company.created_at,
+        owner_name: company.owner?.[0]?.name || company.owner?.name,
+        owner_email: company.owner?.[0]?.email || company.owner?.email,
+        monthly_fee: 5000 // TODO: Calculate based on plan
+      }));
+    } catch (e) {
+      console.error('Exception in getPendingPaymentCompanies:', e);
+      return [];
+    }
+  },
+
+  // Approve a company's payment and activate their account
+  approveCompanyPayment: async (companyId: string): Promise<boolean> => {
+    try {
+      const adminClient = await supabaseService.getAdminClient();
+      if (!adminClient) {
+        console.error('Admin client not available for approveCompanyPayment');
+        return false;
+      }
+
+      // Update company status to ACTIVE
+      const { error } = await adminClient
+        .from('companies')
+        .update({ status: 'ACTIVE' })
+        .eq('id', companyId);
+
+      if (error) {
+        console.error('Error approving company payment:', error);
+        return false;
+      }
+
+      return true;
+    } catch (e) {
+      console.error('Exception in approveCompanyPayment:', e);
+      return false;
+    }
+  },
+
   // Get compliance overview for reseller clients
   getComplianceOverview: async (resellerId: string): Promise<Record<string, any>> => {
     if (!supabase) return {};

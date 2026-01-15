@@ -394,7 +394,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           'employeeLimit': employeeLimit
         });
 
-        const companyData: CompanySettings = {
+        // Determine company status based on payment method
+        // PENDING_APPROVAL for direct deposit/reseller billing, ACTIVE for card payment or free plan
+        const companyStatus: 'ACTIVE' | 'PENDING_APPROVAL' = 
+          (isPaidPlan && (userData as any).paymentMethod === 'direct-deposit') || 
+          (isPaidPlan && (userData as any).paymentMethod === 'reseller-billing')
+            ? 'PENDING_APPROVAL' 
+            : 'ACTIVE';
+
+        const companyData: CompanySettings & { status?: string } = {
           name: userData.companyName!,
           email: userData.email, // Added email
           trn: '',
@@ -408,7 +416,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           plan: dbPlan as any,
           billingCycle: billingCycle, // Save billing cycle
           employeeLimit: employeeLimit, // Save employee limit
-          paymentMethod: (userData as any).paymentMethod || 'card'
+          paymentMethod: (userData as any).paymentMethod || 'card',
+          status: companyStatus // Add status field for approval workflow
         };
 
         const savedCompany = await supabaseService.saveCompany(userData.companyId!, companyData, authData.user.id);
