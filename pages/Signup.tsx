@@ -31,7 +31,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
     const [legalConsent, setLegalConsent] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-    const [paymentMethod, setPaymentMethod] = useState<'card' | 'direct-deposit'>('card');
+    const [paymentMethod, setPaymentMethod] = useState<'card' | 'direct-deposit' | 'reseller-billing'>('card');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [pendingInvitations, setPendingInvitations] = useState<(AccountMember & { company_name?: string; inviter_name?: string; company_plan?: string })[]>([]);
     const [newUserId, setNewUserId] = useState<string | null>(null);
@@ -337,7 +337,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
         try {
             const role = isTeamInvitation ? Role.MANAGER : (formData.plan === 'Reseller' ? Role.RESELLER : Role.OWNER);
             const isPaidPlan = !isTeamInvitation && formData.plan !== 'Free' && pricing.total > 0;
-            const requiresApproval = isPaidPlan && paymentMethod === 'direct-deposit';
+            const requiresApproval = isPaidPlan && (paymentMethod === 'direct-deposit' || paymentMethod === 'reseller-billing');
 
             // Get the selected plan to extract employee limit
             const selectedPlan = plans.find(p => p.name === formData.plan);
@@ -753,7 +753,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                 {/* Payment Method Selection */}
                                 <div className="mb-6">
                                     <label className="block text-sm font-medium text-gray-700 mb-3">Select Payment Method</label>
-                                    <div className="grid grid-cols-2 gap-3">
+                                    <div className={`grid ${resellerInviteToken ? 'grid-cols-3' : 'grid-cols-2'} gap-3`}>
                                         <button
                                             type="button"
                                             onClick={() => setPaymentMethod('card')}
@@ -778,6 +778,20 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                             <span className="text-sm font-medium">Direct Deposit</span>
                                             <span className="text-xs text-gray-500 mt-1">Bank Transfer</span>
                                         </button>
+                                        {resellerInviteToken && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setPaymentMethod('reseller-billing')}
+                                                className={`flex flex-col items-center justify-center p-4 border-2 rounded-lg transition-all ${paymentMethod === 'reseller-billing'
+                                                        ? 'border-jam-orange bg-orange-50'
+                                                        : 'border-gray-200 hover:border-gray-300'
+                                                    }`}
+                                            >
+                                                <Icons.Users className="w-6 h-6 mb-2" />
+                                                <span className="text-sm font-medium">Reseller Billing</span>
+                                                <span className="text-xs text-gray-500 mt-1">Billed by Partner</span>
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
 
@@ -868,6 +882,51 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                                 </>
                                             ) : (
                                                 "I've Made the Payment - Create Account"
+                                            )}
+                                        </button>
+                                    </div>
+                                )}
+
+                                {paymentMethod === 'reseller-billing' && resellerInviteToken && (
+                                    <div className="mb-6 p-6 bg-purple-50 border border-purple-200 rounded-lg">
+                                        <h3 className="font-semibold text-gray-900 mb-4 flex items-center">
+                                            <Icons.Users className="w-5 h-5 mr-2 text-purple-600" />
+                                            Reseller-Managed Billing
+                                        </h3>
+                                        <div className="space-y-3 text-sm text-gray-700">
+                                            <p>
+                                                Your account will be managed by your reseller partner. They will handle all billing and payment collection on your behalf.
+                                            </p>
+                                            <div className="pt-3 border-t border-purple-200">
+                                                <div className="mb-2">
+                                                    <span className="font-medium">Plan:</span> {formData.plan}
+                                                </div>
+                                                <div className="mb-2">
+                                                    <span className="font-medium">Monthly Rate:</span> JMD ${pricing.total.toLocaleString()}
+                                                </div>
+                                                <div>
+                                                    <span className="font-medium">Billing Contact:</span> Your reseller partner
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="mt-4 p-3 bg-white rounded border border-purple-100">
+                                            <p className="text-xs text-gray-600">
+                                                <strong>Note:</strong> By continuing, you agree to have your reseller partner manage your subscription billing. You can change this arrangement at any time from your account settings.
+                                            </p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={handleSubmit}
+                                            disabled={isSubmitting}
+                                            className="w-full mt-4 py-3 px-4 bg-jam-black text-white rounded-lg hover:bg-gray-800 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                                        >
+                                            {isSubmitting ? (
+                                                <>
+                                                    <Icons.Refresh className="w-5 h-5 animate-spin mr-2" />
+                                                    Creating Account...
+                                                </>
+                                            ) : (
+                                                "Accept & Create Account"
                                             )}
                                         </button>
                                     </div>
