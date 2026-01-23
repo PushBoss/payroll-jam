@@ -117,13 +117,11 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
     const totalEmployees = clients.reduce((acc, curr) => acc + curr.employeeCount, 0);
 
     // Reseller Pricing Model:
-    // Client Pays: $3000 Base + $500 per Employee
-    // Reseller Cost: 20% of Total Revenue (Commission to Platform)
-    
-    // Constants for pricing
-    const BASE_FEE_CLIENT = 3000;
-    const PER_EMP_FEE_CLIENT = 500;
-    const PLATFORM_COMMISSION_RATE = 0.20;
+    // Uses values from the 'Reseller' plan in the global config
+    const resellerPlan = plans.find(p => p.name === 'Reseller');
+    const BASE_FEE_CLIENT = resellerPlan?.priceConfig.baseFee || 3000;
+    const PER_EMP_FEE_CLIENT = resellerPlan?.priceConfig.perUserFee || 500;
+    const PLATFORM_COMMISSION_RATE = (resellerPlan?.priceConfig.resellerCommission || 20) / 100;
 
     const activeClientsList = clients.filter(c => c.status === 'ACTIVE');
 
@@ -133,7 +131,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
     }, 0);
 
     const platformFees = calculatedTotalRevenue * PLATFORM_COMMISSION_RATE;
-    
+
     // Note: We use calculatedTotalRevenue for consistency in the dashboard view, 
     // overriding the 'mrr' field from DB for display purposes if they differ.
     const netProfit = calculatedTotalRevenue - platformFees;
@@ -152,8 +150,8 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
         if (clientData) {
             // Logic: If last pay run was in current month or last month, SO1 is likely filed or pending processing
             // For now, if we have a record, we mark SO1 as FILED for the previous period
-             return {
-                so1: 'FILED', 
+            return {
+                so1: 'FILED',
                 s02: 'PENDING', // Annual is usually pending until year end
                 nextDue: nextDueDate
             };
@@ -246,7 +244,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
         if (!user?.id) return;
         setIsSyncing(true);
         toast.loading('Syncing your client portfolio...', { id: 'sync-portfolio' });
-        
+
         try {
             const result = await supabaseService.syncResellerPortfolio(user.id);
             if (result.success) {
@@ -293,18 +291,18 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
         try {
             // Check if user/company exists (use admin lookup to bypass RLS)
             const existingUser = await supabaseService.getUserByEmailAdmin(clientEmail);
-            
+
             if (existingUser && existingUser.companyId) {
                 // Company exists - add reseller as team member (manager role) and link to portfolio
                 const clientCompanyId = existingUser.companyId;
-                
+
                 // 1. Add reseller user as team member (manager role) to the existing company directly (accepted status)
                 // This function also handles the linking in reseller_clients using admin privileges
                 const clientSaved = await supabaseService.joinClientTeam(clientCompanyId, user.id, user.email);
 
                 if (clientSaved) {
                     toast.success(`${formData.companyName || 'Company'} added to your portfolio!`);
-                    
+
                     // Reload clients
                     const resellerClients = await supabaseService.getResellerClients(user.companyId);
                     setClients(Array.isArray(resellerClients) ? resellerClients : []);
@@ -314,7 +312,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
             } else {
                 // Company doesn't exist - create reseller invite with plan info
                 const inviteToken = `reseller-invite-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                
+
                 // Include Reseller's own user ID, email, and company ID in the signup link 
                 // This allows the client to link to the reseller and add them as a team member 
                 // during signup without needing to perform complex database lookups that RLS might block.
@@ -382,13 +380,13 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
     const handlePaymentSuccess = (data: any) => {
         setIsPaymentModalOpen(false);
         toast.success(`Payment of $${platformFees.toLocaleString()} processed successfully!`);
-        
+
         // Add billing entry to history
         const newPayment = {
             id: data?.id || `pay_${Date.now()}`,
             paymentDate: new Date().toISOString(),
             invoiceNumber: data?.order_id || `INV-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`,
-            paymentMethod: 'DimePay', 
+            paymentMethod: 'DimePay',
             amount: platformFees,
             status: 'completed'
         };
@@ -409,7 +407,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                     mountId: 'dimepay-mount',
                     email: user?.email || '',
                     amount: platformFees,
-                    currency: 'JMD', 
+                    currency: 'JMD',
                     description: 'Platform Commission Fee',
                     onSuccess: handlePaymentSuccess,
                     onError: handlePaymentError,
@@ -547,10 +545,10 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
 
     const handleResendInvite = async (invite: any) => {
         try {
-             const inviteLink = `${window.location.origin}/?token=${invite.invite_token}&email=${encodeURIComponent(invite.invite_email || '')}&reseller=true`;
-             
-             // Use the specific Reseller Invite method, not the generic employee one
-             const emailResult = await emailService.sendResellerInvite(
+            const inviteLink = `${window.location.origin}/?token=${invite.invite_token}&email=${encodeURIComponent(invite.invite_email || '')}&reseller=true`;
+
+            // Use the specific Reseller Invite method, not the generic employee one
+            const emailResult = await emailService.sendResellerInvite(
                 invite.invite_email,
                 invite.contact_name || 'Valued Client',
                 (user as any)?.companyName || 'Our Partner',
@@ -797,7 +795,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                                             >
                                                 <Icons.ExternalLink className="w-3 h-3 mr-1" /> Manage
                                             </button>
-                                            
+
                                             <button
                                                 onClick={() => handleJoinTeam(client)}
                                                 className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center justify-end"
@@ -866,14 +864,14 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                     </div>
 
                     <div className="space-y-3 mt-auto">
-                        <button 
-                            onClick={() => setIsPaymentModalOpen(true)} 
+                        <button
+                            onClick={() => setIsPaymentModalOpen(true)}
                             className="w-full py-2.5 bg-jam-black text-white font-bold rounded-lg hover:bg-gray-800 transition-colors"
                         >
                             Pay Now
                         </button>
-                        <button 
-                            onClick={handleViewInvoice} 
+                        <button
+                            onClick={handleViewInvoice}
                             className="w-full py-2.5 bg-white border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
                         >
                             View Invoice
@@ -1177,7 +1175,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                     <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
                         <div className="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
                             <h3 className="text-xl font-bold text-gray-900">Process Payment</h3>
-                            <button 
+                            <button
                                 onClick={() => setIsPaymentModalOpen(false)}
                                 className="text-gray-400 hover:text-gray-600"
                             >
@@ -1193,8 +1191,8 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                                 <p className="text-xs text-gray-500">Includes 20% platform commission fees</p>
                             </div>
 
-                            <div 
-                                id="dimepay-mount" 
+                            <div
+                                id="dimepay-mount"
                                 className="w-full min-h-[400px] flex items-center justify-center bg-white rounded-lg border border-gray-100"
                             >
                                 <div className="text-center text-gray-400">
@@ -1202,7 +1200,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                                     <p className="text-sm">Loading Payment Gateway...</p>
                                 </div>
                             </div>
-                            
+
                             <p className="text-xs text-center text-gray-400 mt-4">
                                 <Icons.Lock className="w-3 h-3 inline mr-1" />
                                 Payments are secure and encrypted by DimePay

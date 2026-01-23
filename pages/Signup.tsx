@@ -142,15 +142,15 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
     // Pricing Logic 
     const getPricing = () => {
         const selectedPlan = plans.find(p => p.name === formData.plan);
-        if (!selectedPlan) return { 
-            type: 'flat', 
-            basePrice: 0, 
-            perEmpPrice: 0, 
-            subtotal: 0, 
-            billableAmount: 0, 
-            platformFees: 0, 
-            total: 0, 
-            totalUSD: '0.00' 
+        if (!selectedPlan) return {
+            type: 'flat',
+            basePrice: 0,
+            perEmpPrice: 0,
+            subtotal: 0,
+            billableAmount: 0,
+            platformFees: 0,
+            total: 0,
+            totalUSD: '0.00'
         };
 
         const { amount: basePrice, perEmpFee: perEmpPrice } = getPlanPriceDetails(selectedPlan, formData.billingCycle);
@@ -168,7 +168,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
             // Base fee plans (Starter, Pro, Reseller)
             // Use the calculated basePrice which already handles monthly vs annual
             const baseFeeAmount = basePrice;
-            
+
             if (formData.plan === 'Reseller') {
                 // For resellers: (companies × baseFee) + (employees × perUserFee)
                 // User's own company is always included, so numCompanies is 1 + additional companies
@@ -182,7 +182,9 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
             }
         }
 
-        const billableAmount = subtotal;
+        const commissionRate = (selectedPlan?.priceConfig.resellerCommission || 20) / 100;
+        const billableAmount = formData.plan === 'Reseller' ? (subtotal * commissionRate) : subtotal;
+
         const platformFees = billableAmount * 0.035; // Dime platform fees (3.5%)
         const total = billableAmount + platformFees;
         const totalUSD = (total / 155).toFixed(2);
@@ -351,12 +353,12 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                 role: role,
                 companyId: isTeamInvitation ? undefined : generateUUID(), // Use undefined instead of empty string
                 isOnboarded: isTeamInvitation, // Team members are considered "onboarded" manually
-                companyName: isTeamInvitation ? undefined : (formData.name + "'s Company"), 
+                companyName: isTeamInvitation ? undefined : (formData.name + "'s Company"),
                 plan: isTeamInvitation ? 'Free' : formData.plan,
-                billingCycle: formData.billingCycle, 
-                employeeLimit: employeeLimit, 
+                billingCycle: formData.billingCycle,
+                employeeLimit: employeeLimit,
                 paymentMethod: paymentMethod,
-                resellerInviteToken: resellerInviteToken || undefined, 
+                resellerInviteToken: resellerInviteToken || undefined,
                 resellerUserId: resellerUserId || undefined,
                 resellerEmail: resellerEmail || undefined,
                 resellerCompanyId: resellerCompanyId || undefined,
@@ -366,7 +368,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
             // Call signup and get pending invitations
             const signupResult = await signup(newUser);
             console.log('✅ Signup completed successfully');
-            
+
             // USE THE REAL USER ID FROM AUTH, NOT THE RANDOMLY GENERATED ONE
             const actualUserId = signupResult.userId;
             setNewUserId(actualUserId);
@@ -465,7 +467,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
             if (result.success) {
                 console.log('✅ Invitations accepted:', result.acceptedCount);
                 toast.success(`Accepted ${result.acceptedCount} invitation${result.acceptedCount !== 1 ? 's' : ''}!`);
-                
+
                 // Update local user state with the first accepted company to ensure dashboard loads correctly
                 if (acceptedInvitations.length > 0) {
                     updateUser({ companyId: acceptedInvitations[0].account_id });
@@ -473,7 +475,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
 
                 // Clear pending invitations and proceed to verification
                 setPendingInvitations([]);
-                
+
                 setTimeout(() => {
                     console.log('🔄 Redirecting to dashboard...');
                     // Instead of going to verify email, go directly to dashboard since email is verified
@@ -512,546 +514,546 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
             )}
 
             <div className="min-h-screen bg-gray-50 flex">
-            {/* Left Side - Form */}
-            <div className="flex-1 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-20 xl:px-24 bg-white">
-                <div className="mx-auto w-full max-w-sm lg:w-96">
-                    <div className="mb-10">
-                        {/* Back Button */}
-                        {onBack && (
-                            <button
-                                onClick={onBack}
-                                className="flex items-center text-gray-600 hover:text-jam-orange mb-4 transition-colors"
-                            >
-                                <Icons.ArrowLeft className="w-5 h-5 mr-2" />
-                                Back
-                            </button>
-                        )}
-                        <h2 className="text-3xl font-extrabold text-jam-black cursor-pointer" onClick={onLoginClick}>
-                            Payroll<span className="text-jam-orange">-Jam</span>
-                        </h2>
-                        <h2 className="mt-6 text-2xl font-bold text-gray-900">
-                            {step === 'account' ? 'Create your account' : 'Payment Details'}
-                        </h2>
-                        <p className="mt-2 text-sm text-gray-600">
-                            {step === 'account' ? 'Start managing your payroll in minutes.' : 'Secure recurring billing.'}
-                        </p>
-                    </div>
+                {/* Left Side - Form */}
+                <div className="flex-1 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-20 xl:px-24 bg-white">
+                    <div className="mx-auto w-full max-w-sm lg:w-96">
+                        <div className="mb-10">
+                            {/* Back Button */}
+                            {onBack && (
+                                <button
+                                    onClick={onBack}
+                                    className="flex items-center text-gray-600 hover:text-jam-orange mb-4 transition-colors"
+                                >
+                                    <Icons.ArrowLeft className="w-5 h-5 mr-2" />
+                                    Back
+                                </button>
+                            )}
+                            <h2 className="text-3xl font-extrabold text-jam-black cursor-pointer" onClick={onLoginClick}>
+                                Payroll<span className="text-jam-orange">-Jam</span>
+                            </h2>
+                            <h2 className="mt-6 text-2xl font-bold text-gray-900">
+                                {step === 'account' ? 'Create your account' : 'Payment Details'}
+                            </h2>
+                            <p className="mt-2 text-sm text-gray-600">
+                                {step === 'account' ? 'Start managing your payroll in minutes.' : 'Secure recurring billing.'}
+                            </p>
+                        </div>
 
-                    <form className="space-y-6" onSubmit={step === 'account' ? handleAccountSubmit : (e) => { e.preventDefault(); }}>
-                        {/* ... (Form Rendering Code unchanged, just handlers updated above) ... */}
-                        {/* For brevity in response, keeping JSX same as original file but using updated handlers */}
-                        {step === 'account' ? (
-                            <>
-                                {/* Plan selection - hidden for team invitations */}
-                                {!isTeamInvitation && (
-                                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 mb-6">
-                                        <div className="flex justify-between items-center mb-3">
-                                            <label className="block text-sm font-medium text-gray-700">Selected Plan</label>
-                                            <div className="flex bg-gray-200 rounded-lg p-1">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setFormData({ ...formData, billingCycle: 'monthly' })}
-                                                    className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${formData.billingCycle === 'monthly' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}
-                                                >
-                                                    Monthly
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setFormData({ ...formData, billingCycle: 'annual' })}
-                                                    className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${formData.billingCycle === 'annual' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}
-                                                >
-                                                    Annual
-                                                </button>
+                        <form className="space-y-6" onSubmit={step === 'account' ? handleAccountSubmit : (e) => { e.preventDefault(); }}>
+                            {/* ... (Form Rendering Code unchanged, just handlers updated above) ... */}
+                            {/* For brevity in response, keeping JSX same as original file but using updated handlers */}
+                            {step === 'account' ? (
+                                <>
+                                    {/* Plan selection - hidden for team invitations */}
+                                    {!isTeamInvitation && (
+                                        <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 mb-6">
+                                            <div className="flex justify-between items-center mb-3">
+                                                <label className="block text-sm font-medium text-gray-700">Selected Plan</label>
+                                                <div className="flex bg-gray-200 rounded-lg p-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setFormData({ ...formData, billingCycle: 'monthly' })}
+                                                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${formData.billingCycle === 'monthly' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}
+                                                    >
+                                                        Monthly
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setFormData({ ...formData, billingCycle: 'annual' })}
+                                                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${formData.billingCycle === 'annual' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}
+                                                    >
+                                                        Annual
+                                                    </button>
+                                                </div>
                                             </div>
+                                            <select
+                                                value={formData.plan}
+                                                onChange={(e) => setFormData({ ...formData, plan: e.target.value })}
+                                                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-jam-orange focus:border-jam-orange sm:text-sm"
+                                            >
+                                                {plans.filter(p => p.isActive).map(p => (
+                                                    <option key={p.id} value={p.name}>{p.name} ({p.limit})</option>
+                                                ))}
+                                            </select>
                                         </div>
-                                        <select
-                                            value={formData.plan}
-                                            onChange={(e) => setFormData({ ...formData, plan: e.target.value })}
-                                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-jam-orange focus:border-jam-orange sm:text-sm"
-                                        >
-                                            {plans.filter(p => p.isActive).map(p => (
-                                                <option key={p.id} value={p.name}>{p.name} ({p.limit})</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                )}
+                                    )}
 
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">Full Name</label>
-                                    <input required type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">Work Email</label>
-                                    <input required type="email" autoComplete="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
-                                </div>
-                                {/* Show employee count field for all plans except Free - hidden for team invitations */}
-                                {!isTeamInvitation && formData.plan !== 'Free' && (
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700">Number of Employees</label>
-                                        <input
-                                            required
-                                            type="number"
-                                            min="1"
-                                            max={formData.plan === 'Reseller' ? 9999 : employeeLimit}
-                                            value={formData.numEmployees}
-                                            onChange={(e) => setFormData({ ...formData, numEmployees: e.target.value })}
-                                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm"
-                                            placeholder="e.g., 10"
-                                        />
-                                        <p className="mt-1 text-xs text-gray-500">
-                                            {formData.plan === 'Reseller'
-                                                ? 'Total employees across all your client companies'
-                                                : formData.plan === 'Starter' || formData.plan === 'Pro'
-                                                    ? `Share how many employees you have (${formData.plan} plan supports up to ${employeeLimit} employees)`
-                                                    : employeeLimit < 9999
-                                                        ? `${formData.plan} plan supports up to ${employeeLimit} employees`
-                                                        : 'This helps us calculate your plan pricing accurately'}
-                                        </p>
+                                        <label className="block text-sm font-medium text-gray-700">Full Name</label>
+                                        <input required type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
                                     </div>
-                                )}
-                                {!isTeamInvitation && formData.plan === 'Reseller' && (
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700">Number of Companies</label>
-                                        <input
-                                            required
-                                            type="number"
-                                            min="1"
-                                            max="9999"
-                                            value={formData.numCompanies}
-                                            onChange={(e) => setFormData({ ...formData, numCompanies: e.target.value })}
-                                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm"
-                                            placeholder="1 (your company)"
-                                        />
-                                        <p className="mt-1 text-xs text-gray-500">Number of companies you'll manage (includes your own company + any additional client companies)</p>
+                                        <label className="block text-sm font-medium text-gray-700">Work Email</label>
+                                        <input required type="email" autoComplete="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
                                     </div>
-                                )}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">Password</label>
-                                    <div className="relative mt-1">
-                                        <input
-                                            required
-                                            type={showPassword ? 'text' : 'password'}
-                                            autoComplete="new-password"
-                                            value={formData.password}
-                                            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                                            className="block w-full px-3 py-2 pr-12 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm"
-                                            placeholder="Minimum 6 characters"
-                                            minLength={6}
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowPassword(!showPassword)}
-                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                                        >
-                                            {showPassword ? (
-                                                <Icons.EyeOff className="w-5 h-5" />
-                                            ) : (
-                                                <Icons.Eye className="w-5 h-5" />
-                                            )}
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">Confirm Password</label>
-                                    <div className="relative mt-1">
-                                        <input
-                                            required
-                                            type={showConfirmPassword ? 'text' : 'password'}
-                                            value={formData.confirmPassword}
-                                            onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                                            className="block w-full px-3 py-2 pr-12 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm"
-                                            placeholder="Re-enter your password"
-                                            minLength={6}
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                                        >
-                                            {showConfirmPassword ? (
-                                                <Icons.EyeOff className="w-5 h-5" />
-                                            ) : (
-                                                <Icons.Eye className="w-5 h-5" />
-                                            )}
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div className="flex items-start">
-                                    <div className="flex items-center h-5">
-                                        <input
-                                            id="consent"
-                                            name="consent"
-                                            type="checkbox"
-                                            required
-                                            checked={legalConsent}
-                                            onChange={(e) => setLegalConsent(e.target.checked)}
-                                            className="focus:ring-jam-orange h-4 w-4 text-jam-orange border-gray-300 rounded cursor-pointer"
-                                        />
-                                    </div>
-                                    <div className="ml-3 text-sm">
-                                        <label htmlFor="consent" className="font-medium text-gray-700 cursor-pointer">
-                                            I agree to the{' '}
-                                            {onNavigate ? (
-                                                <>
-                                                    <a
-                                                        href="/?page=terms-of-service"
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="underline hover:text-jam-orange text-jam-orange"
-                                                    >
-                                                        Terms of Service
-                                                    </a>
-                                                    {' '}and{' '}
-                                                    <a
-                                                        href="/?page=privacy-policy"
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="underline hover:text-jam-orange text-jam-orange"
-                                                    >
-                                                        Privacy Policy
-                                                    </a>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <a href="/?page=terms-of-service" target="_blank" rel="noopener noreferrer" className="underline hover:text-jam-orange">Terms of Service</a> and <a href="/?page=privacy-policy" target="_blank" rel="noopener noreferrer" className="underline hover:text-jam-orange">Privacy Policy</a>
-                                                </>
-                                            )}
-                                            .
-                                        </label>
-                                        <p className="text-gray-500 text-xs mt-1">
-                                            I consent to the processing of my payroll data in accordance with the Data Protection Act.
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <button
-                                        type="submit"
-                                        disabled={isSubmitting}
-                                        className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-jam-black hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-jam-orange transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        {isSubmitting ? (
-                                            <>
-                                                <Icons.Refresh className="w-5 h-5 animate-spin mr-2" />
-                                                Creating Account...
-                                            </>
-                                        ) : (
-                                            isTeamInvitation ? 'Create My Account' : (formData.plan === 'Free' || pricing.total === 0 ? 'Create Free Account' : 'Continue to Payment')
-                                        )}
-                                    </button>
-                                </div>
-                            </>
-                        ) : (
-                            <>
-                                <div className="relative py-2">
-                                    <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-300" /></div>
-                                    <div className="relative flex justify-center text-sm"><span className="bg-white px-2 text-gray-500">Secure Payment</span></div>
-                                </div>
-
-                                {/* Payment Method Selection */}
-                                <div className="mb-6">
-                                    <label className="block text-sm font-medium text-gray-700 mb-3">Select Payment Method</label>
-                                    <div className={`grid ${resellerInviteToken ? 'grid-cols-3' : 'grid-cols-2'} gap-3`}>
-                                        <button
-                                            type="button"
-                                            onClick={() => setPaymentMethod('card')}
-                                            className={`flex flex-col items-center justify-center p-4 border-2 rounded-lg transition-all ${paymentMethod === 'card'
-                                                    ? 'border-jam-orange bg-orange-50'
-                                                    : 'border-gray-200 hover:border-gray-300'
-                                                }`}
-                                        >
-                                            <Icons.CreditCard className="w-6 h-6 mb-2" />
-                                            <span className="text-sm font-medium">Card Payment</span>
-                                            <span className="text-xs text-gray-500 mt-1">Visa, Mastercard</span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setPaymentMethod('direct-deposit')}
-                                            className={`flex flex-col items-center justify-center p-4 border-2 rounded-lg transition-all ${paymentMethod === 'direct-deposit'
-                                                    ? 'border-jam-orange bg-orange-50'
-                                                    : 'border-gray-200 hover:border-gray-300'
-                                                }`}
-                                        >
-                                            <Icons.Building className="w-6 h-6 mb-2" />
-                                            <span className="text-sm font-medium">Direct Deposit</span>
-                                            <span className="text-xs text-gray-500 mt-1">Bank Transfer</span>
-                                        </button>
-                                        {resellerInviteToken && (
+                                    {/* Show employee count field for all plans except Free - hidden for team invitations */}
+                                    {!isTeamInvitation && formData.plan !== 'Free' && (
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700">Number of Employees</label>
+                                            <input
+                                                required
+                                                type="number"
+                                                min="1"
+                                                max={formData.plan === 'Reseller' ? 9999 : employeeLimit}
+                                                value={formData.numEmployees}
+                                                onChange={(e) => setFormData({ ...formData, numEmployees: e.target.value })}
+                                                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm"
+                                                placeholder="e.g., 10"
+                                            />
+                                            <p className="mt-1 text-xs text-gray-500">
+                                                {formData.plan === 'Reseller'
+                                                    ? 'Total employees across all your client companies'
+                                                    : formData.plan === 'Starter' || formData.plan === 'Pro'
+                                                        ? `Share how many employees you have (${formData.plan} plan supports up to ${employeeLimit} employees)`
+                                                        : employeeLimit < 9999
+                                                            ? `${formData.plan} plan supports up to ${employeeLimit} employees`
+                                                            : 'This helps us calculate your plan pricing accurately'}
+                                            </p>
+                                        </div>
+                                    )}
+                                    {!isTeamInvitation && formData.plan === 'Reseller' && (
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700">Number of Companies</label>
+                                            <input
+                                                required
+                                                type="number"
+                                                min="1"
+                                                max="9999"
+                                                value={formData.numCompanies}
+                                                onChange={(e) => setFormData({ ...formData, numCompanies: e.target.value })}
+                                                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm"
+                                                placeholder="1 (your company)"
+                                            />
+                                            <p className="mt-1 text-xs text-gray-500">Number of companies you'll manage (includes your own company + any additional client companies)</p>
+                                        </div>
+                                    )}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">Password</label>
+                                        <div className="relative mt-1">
+                                            <input
+                                                required
+                                                type={showPassword ? 'text' : 'password'}
+                                                autoComplete="new-password"
+                                                value={formData.password}
+                                                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                                                className="block w-full px-3 py-2 pr-12 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm"
+                                                placeholder="Minimum 6 characters"
+                                                minLength={6}
+                                            />
                                             <button
                                                 type="button"
-                                                onClick={() => setPaymentMethod('reseller-billing')}
-                                                className={`flex flex-col items-center justify-center p-4 border-2 rounded-lg transition-all ${paymentMethod === 'reseller-billing'
-                                                        ? 'border-jam-orange bg-orange-50'
-                                                        : 'border-gray-200 hover:border-gray-300'
+                                                onClick={() => setShowPassword(!showPassword)}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                            >
+                                                {showPassword ? (
+                                                    <Icons.EyeOff className="w-5 h-5" />
+                                                ) : (
+                                                    <Icons.Eye className="w-5 h-5" />
+                                                )}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">Confirm Password</label>
+                                        <div className="relative mt-1">
+                                            <input
+                                                required
+                                                type={showConfirmPassword ? 'text' : 'password'}
+                                                value={formData.confirmPassword}
+                                                onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                                                className="block w-full px-3 py-2 pr-12 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm"
+                                                placeholder="Re-enter your password"
+                                                minLength={6}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                            >
+                                                {showConfirmPassword ? (
+                                                    <Icons.EyeOff className="w-5 h-5" />
+                                                ) : (
+                                                    <Icons.Eye className="w-5 h-5" />
+                                                )}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-start">
+                                        <div className="flex items-center h-5">
+                                            <input
+                                                id="consent"
+                                                name="consent"
+                                                type="checkbox"
+                                                required
+                                                checked={legalConsent}
+                                                onChange={(e) => setLegalConsent(e.target.checked)}
+                                                className="focus:ring-jam-orange h-4 w-4 text-jam-orange border-gray-300 rounded cursor-pointer"
+                                            />
+                                        </div>
+                                        <div className="ml-3 text-sm">
+                                            <label htmlFor="consent" className="font-medium text-gray-700 cursor-pointer">
+                                                I agree to the{' '}
+                                                {onNavigate ? (
+                                                    <>
+                                                        <a
+                                                            href="/?page=terms-of-service"
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="underline hover:text-jam-orange text-jam-orange"
+                                                        >
+                                                            Terms of Service
+                                                        </a>
+                                                        {' '}and{' '}
+                                                        <a
+                                                            href="/?page=privacy-policy"
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="underline hover:text-jam-orange text-jam-orange"
+                                                        >
+                                                            Privacy Policy
+                                                        </a>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <a href="/?page=terms-of-service" target="_blank" rel="noopener noreferrer" className="underline hover:text-jam-orange">Terms of Service</a> and <a href="/?page=privacy-policy" target="_blank" rel="noopener noreferrer" className="underline hover:text-jam-orange">Privacy Policy</a>
+                                                    </>
+                                                )}
+                                                .
+                                            </label>
+                                            <p className="text-gray-500 text-xs mt-1">
+                                                I consent to the processing of my payroll data in accordance with the Data Protection Act.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <button
+                                            type="submit"
+                                            disabled={isSubmitting}
+                                            className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-jam-black hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-jam-orange transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            {isSubmitting ? (
+                                                <>
+                                                    <Icons.Refresh className="w-5 h-5 animate-spin mr-2" />
+                                                    Creating Account...
+                                                </>
+                                            ) : (
+                                                isTeamInvitation ? 'Create My Account' : (formData.plan === 'Free' || pricing.total === 0 ? 'Create Free Account' : 'Continue to Payment')
+                                            )}
+                                        </button>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="relative py-2">
+                                        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-300" /></div>
+                                        <div className="relative flex justify-center text-sm"><span className="bg-white px-2 text-gray-500">Secure Payment</span></div>
+                                    </div>
+
+                                    {/* Payment Method Selection */}
+                                    <div className="mb-6">
+                                        <label className="block text-sm font-medium text-gray-700 mb-3">Select Payment Method</label>
+                                        <div className={`grid ${resellerInviteToken ? 'grid-cols-3' : 'grid-cols-2'} gap-3`}>
+                                            <button
+                                                type="button"
+                                                onClick={() => setPaymentMethod('card')}
+                                                className={`flex flex-col items-center justify-center p-4 border-2 rounded-lg transition-all ${paymentMethod === 'card'
+                                                    ? 'border-jam-orange bg-orange-50'
+                                                    : 'border-gray-200 hover:border-gray-300'
                                                     }`}
                                             >
-                                                <Icons.Users className="w-6 h-6 mb-2" />
-                                                <span className="text-sm font-medium">Reseller Billing</span>
-                                                <span className="text-xs text-gray-500 mt-1">Billed by Partner</span>
+                                                <Icons.CreditCard className="w-6 h-6 mb-2" />
+                                                <span className="text-sm font-medium">Card Payment</span>
+                                                <span className="text-xs text-gray-500 mt-1">Visa, Mastercard</span>
                                             </button>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {paymentMethod === 'card' && dimePayEnabled && (
-                                    <div className="mb-6 relative">
-                                        {/* Widget container - React should NOT manage children here */}
-                                        <div
-                                            ref={widgetContainerRef}
-                                            id="dimepay-widget"
-                                            className="min-h-[400px] w-full rounded-lg border border-gray-100 shadow-sm bg-white overflow-hidden"
-                                            suppressHydrationWarning
-                                            suppressContentEditableWarning
-                                        />
-                                        {/* Loading overlay - rendered outside widget container to avoid DOM conflicts */}
-                                        {widgetStatus === 'loading' && (
-                                            <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10 pointer-events-none rounded-lg">
-                                                <Icons.Refresh className="w-6 h-6 animate-spin text-jam-orange mb-2" />
-                                                <span className="text-sm text-gray-500">Loading Payment Gateway...</span>
-                                            </div>
-                                        )}
-                                        {/* Error overlay - rendered outside widget container to avoid DOM conflicts */}
-                                        {widgetStatus === 'error' && (
-                                            <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10 p-6 text-center rounded-lg">
-                                                <Icons.Alert className="w-8 h-8 text-red-500 mb-2" />
-                                                <p className="text-red-600 font-medium mb-4">Failed to load payment widget.</p>
+                                            <button
+                                                type="button"
+                                                onClick={() => setPaymentMethod('direct-deposit')}
+                                                className={`flex flex-col items-center justify-center p-4 border-2 rounded-lg transition-all ${paymentMethod === 'direct-deposit'
+                                                    ? 'border-jam-orange bg-orange-50'
+                                                    : 'border-gray-200 hover:border-gray-300'
+                                                    }`}
+                                            >
+                                                <Icons.Building className="w-6 h-6 mb-2" />
+                                                <span className="text-sm font-medium">Direct Deposit</span>
+                                                <span className="text-xs text-gray-500 mt-1">Bank Transfer</span>
+                                            </button>
+                                            {resellerInviteToken && (
                                                 <button
                                                     type="button"
-                                                    onClick={() => {
-                                                        cleanupWidget();
-                                                        setWidgetStatus('loading');
-                                                        setPaymentError(null);
-                                                        initDimePay();
-                                                    }}
-                                                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-sm"
+                                                    onClick={() => setPaymentMethod('reseller-billing')}
+                                                    className={`flex flex-col items-center justify-center p-4 border-2 rounded-lg transition-all ${paymentMethod === 'reseller-billing'
+                                                        ? 'border-jam-orange bg-orange-50'
+                                                        : 'border-gray-200 hover:border-gray-300'
+                                                        }`}
                                                 >
-                                                    Retry Connection
+                                                    <Icons.Users className="w-6 h-6 mb-2" />
+                                                    <span className="text-sm font-medium">Reseller Billing</span>
+                                                    <span className="text-xs text-gray-500 mt-1">Billed by Partner</span>
                                                 </button>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-
-                                {paymentMethod === 'direct-deposit' && (
-                                    <div className="mb-6 p-6 bg-blue-50 border border-blue-200 rounded-lg">
-                                        <h3 className="font-semibold text-gray-900 mb-4 flex items-center">
-                                            <Icons.Building className="w-5 h-5 mr-2 text-blue-600" />
-                                            Direct Deposit Payment Instructions
-                                        </h3>
-                                        <div className="space-y-3 text-sm text-gray-700">
-                                            <div>
-                                                <span className="font-medium">Bank Name:</span> NCB (National Commercial Bank)
-                                            </div>
-                                            <div>
-                                                <span className="font-medium">Account Name:</span> Balance Investments Limited
-                                            </div>
-                                            <div>
-                                                <span className="font-medium">Account Number:</span> 404286331
-                                            </div>
-                                            <div>
-                                                <span className="font-medium">Account Type:</span> Savings Account
-                                            </div>
-                                            <div>
-                                                <span className="font-medium">Branch:</span> UWI Branch
-                                            </div>
-                                            <div>
-                                                <span className="font-medium">Amount:</span> JMD ${pricing.total.toLocaleString()}
-                                            </div>
-                                            <div className="pt-2 border-t border-blue-200">
-                                                <span className="font-medium">Reference:</span> {formData.email}
-                                            </div>
-                                        </div>
-                                        <div className="mt-4 p-3 bg-white rounded border border-blue-100">
-                                            <p className="text-xs text-gray-600">
-                                                <strong>Note:</strong> After making the deposit, your account will be activated within 24 hours.
-                                                You'll receive a confirmation email once payment is verified.
-                                            </p>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={handleSubmit}
-                                            disabled={isSubmitting}
-                                            className="w-full mt-4 py-3 px-4 bg-jam-black text-white rounded-lg hover:bg-gray-800 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-                                        >
-                                            {isSubmitting ? (
-                                                <>
-                                                    <Icons.Refresh className="w-5 h-5 animate-spin mr-2" />
-                                                    Creating Account...
-                                                </>
-                                            ) : (
-                                                "I've Made the Payment - Create Account"
                                             )}
-                                        </button>
+                                        </div>
                                     </div>
-                                )}
 
-                                {paymentMethod === 'reseller-billing' && resellerInviteToken && (
-                                    <div className="mb-6 p-6 bg-purple-50 border border-purple-200 rounded-lg">
-                                        <h3 className="font-semibold text-gray-900 mb-4 flex items-center">
-                                            <Icons.Users className="w-5 h-5 mr-2 text-purple-600" />
-                                            Reseller-Managed Billing
-                                        </h3>
-                                        <div className="space-y-3 text-sm text-gray-700">
-                                            <p>
-                                                Your account will be managed by your reseller partner. They will handle all billing and payment collection on your behalf.
-                                            </p>
-                                            <div className="pt-3 border-t border-purple-200">
-                                                <div className="mb-2">
-                                                    <span className="font-medium">Plan:</span> {formData.plan}
+                                    {paymentMethod === 'card' && dimePayEnabled && (
+                                        <div className="mb-6 relative">
+                                            {/* Widget container - React should NOT manage children here */}
+                                            <div
+                                                ref={widgetContainerRef}
+                                                id="dimepay-widget"
+                                                className="min-h-[400px] w-full rounded-lg border border-gray-100 shadow-sm bg-white overflow-hidden"
+                                                suppressHydrationWarning
+                                                suppressContentEditableWarning
+                                            />
+                                            {/* Loading overlay - rendered outside widget container to avoid DOM conflicts */}
+                                            {widgetStatus === 'loading' && (
+                                                <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10 pointer-events-none rounded-lg">
+                                                    <Icons.Refresh className="w-6 h-6 animate-spin text-jam-orange mb-2" />
+                                                    <span className="text-sm text-gray-500">Loading Payment Gateway...</span>
                                                 </div>
-                                                <div className="mb-2">
-                                                    <span className="font-medium">Monthly Rate:</span> JMD ${pricing.total.toLocaleString()}
+                                            )}
+                                            {/* Error overlay - rendered outside widget container to avoid DOM conflicts */}
+                                            {widgetStatus === 'error' && (
+                                                <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10 p-6 text-center rounded-lg">
+                                                    <Icons.Alert className="w-8 h-8 text-red-500 mb-2" />
+                                                    <p className="text-red-600 font-medium mb-4">Failed to load payment widget.</p>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            cleanupWidget();
+                                                            setWidgetStatus('loading');
+                                                            setPaymentError(null);
+                                                            initDimePay();
+                                                        }}
+                                                        className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-sm"
+                                                    >
+                                                        Retry Connection
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {paymentMethod === 'direct-deposit' && (
+                                        <div className="mb-6 p-6 bg-blue-50 border border-blue-200 rounded-lg">
+                                            <h3 className="font-semibold text-gray-900 mb-4 flex items-center">
+                                                <Icons.Building className="w-5 h-5 mr-2 text-blue-600" />
+                                                Direct Deposit Payment Instructions
+                                            </h3>
+                                            <div className="space-y-3 text-sm text-gray-700">
+                                                <div>
+                                                    <span className="font-medium">Bank Name:</span> NCB (National Commercial Bank)
                                                 </div>
                                                 <div>
-                                                    <span className="font-medium">Billing Contact:</span> Your reseller partner
+                                                    <span className="font-medium">Account Name:</span> Balance Investments Limited
+                                                </div>
+                                                <div>
+                                                    <span className="font-medium">Account Number:</span> 404286331
+                                                </div>
+                                                <div>
+                                                    <span className="font-medium">Account Type:</span> Savings Account
+                                                </div>
+                                                <div>
+                                                    <span className="font-medium">Branch:</span> UWI Branch
+                                                </div>
+                                                <div>
+                                                    <span className="font-medium">Amount:</span> JMD ${pricing.total.toLocaleString()}
+                                                </div>
+                                                <div className="pt-2 border-t border-blue-200">
+                                                    <span className="font-medium">Reference:</span> {formData.email}
                                                 </div>
                                             </div>
+                                            <div className="mt-4 p-3 bg-white rounded border border-blue-100">
+                                                <p className="text-xs text-gray-600">
+                                                    <strong>Note:</strong> After making the deposit, your account will be activated within 24 hours.
+                                                    You'll receive a confirmation email once payment is verified.
+                                                </p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={handleSubmit}
+                                                disabled={isSubmitting}
+                                                className="w-full mt-4 py-3 px-4 bg-jam-black text-white rounded-lg hover:bg-gray-800 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                                            >
+                                                {isSubmitting ? (
+                                                    <>
+                                                        <Icons.Refresh className="w-5 h-5 animate-spin mr-2" />
+                                                        Creating Account...
+                                                    </>
+                                                ) : (
+                                                    "I've Made the Payment - Create Account"
+                                                )}
+                                            </button>
                                         </div>
-                                        <div className="mt-4 p-3 bg-white rounded border border-purple-100">
-                                            <p className="text-xs text-gray-600">
-                                                <strong>Note:</strong> By continuing, you agree to have your reseller partner manage your subscription billing. You can change this arrangement at any time from your account settings.
-                                            </p>
+                                    )}
+
+                                    {paymentMethod === 'reseller-billing' && resellerInviteToken && (
+                                        <div className="mb-6 p-6 bg-purple-50 border border-purple-200 rounded-lg">
+                                            <h3 className="font-semibold text-gray-900 mb-4 flex items-center">
+                                                <Icons.Users className="w-5 h-5 mr-2 text-purple-600" />
+                                                Reseller-Managed Billing
+                                            </h3>
+                                            <div className="space-y-3 text-sm text-gray-700">
+                                                <p>
+                                                    Your account will be managed by your reseller partner. They will handle all billing and payment collection on your behalf.
+                                                </p>
+                                                <div className="pt-3 border-t border-purple-200">
+                                                    <div className="mb-2">
+                                                        <span className="font-medium">Plan:</span> {formData.plan}
+                                                    </div>
+                                                    <div className="mb-2">
+                                                        <span className="font-medium">Monthly Rate:</span> JMD ${pricing.total.toLocaleString()}
+                                                    </div>
+                                                    <div>
+                                                        <span className="font-medium">Billing Contact:</span> Your reseller partner
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="mt-4 p-3 bg-white rounded border border-purple-100">
+                                                <p className="text-xs text-gray-600">
+                                                    <strong>Note:</strong> By continuing, you agree to have your reseller partner manage your subscription billing. You can change this arrangement at any time from your account settings.
+                                                </p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={handleSubmit}
+                                                disabled={isSubmitting}
+                                                className="w-full mt-4 py-3 px-4 bg-jam-black text-white rounded-lg hover:bg-gray-800 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                                            >
+                                                {isSubmitting ? (
+                                                    <>
+                                                        <Icons.Refresh className="w-5 h-5 animate-spin mr-2" />
+                                                        Creating Account...
+                                                    </>
+                                                ) : (
+                                                    "Accept & Create Account"
+                                                )}
+                                            </button>
                                         </div>
-                                        <button
-                                            type="button"
-                                            onClick={handleSubmit}
-                                            disabled={isSubmitting}
-                                            className="w-full mt-4 py-3 px-4 bg-jam-black text-white rounded-lg hover:bg-gray-800 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-                                        >
-                                            {isSubmitting ? (
-                                                <>
-                                                    <Icons.Refresh className="w-5 h-5 animate-spin mr-2" />
-                                                    Creating Account...
-                                                </>
-                                            ) : (
-                                                "Accept & Create Account"
-                                            )}
-                                        </button>
-                                    </div>
-                                )}
+                                    )}
 
-                                {payPalEnabled && paymentConfig?.paypal?.clientId && !dimePayEnabled && paymentMethod === 'card' && (
-                                    <div className="w-full min-h-[150px] mt-6">
-                                        <div className="text-center text-xs text-gray-400 mb-2">PAY VIA PAYPAL (USD)</div>
-                                        <PayPalScriptProvider options={{ clientId: paymentConfig.paypal.clientId, currency: "USD" }}>
-                                            <PayPalButtons
-                                                style={{ layout: "vertical", color: "gold", shape: "rect", label: "pay" }}
-                                                createOrder={(_data, actions) => {
-                                                    return actions.order.create({
-                                                        intent: "CAPTURE",
-                                                        purchase_units: [{ amount: { currency_code: "USD", value: pricing.totalUSD } }],
-                                                    });
-                                                }}
-                                                onApprove={async (_data, actions) => {
-                                                    if (actions.order) {
-                                                        await actions.order.capture();
-                                                        handleSubmit();
-                                                    }
-                                                }}
-                                            />
-                                        </PayPalScriptProvider>
-                                    </div>
-                                )}
+                                    {payPalEnabled && paymentConfig?.paypal?.clientId && !dimePayEnabled && paymentMethod === 'card' && (
+                                        <div className="w-full min-h-[150px] mt-6">
+                                            <div className="text-center text-xs text-gray-400 mb-2">PAY VIA PAYPAL (USD)</div>
+                                            <PayPalScriptProvider options={{ clientId: paymentConfig.paypal.clientId, currency: "USD" }}>
+                                                <PayPalButtons
+                                                    style={{ layout: "vertical", color: "gold", shape: "rect", label: "pay" }}
+                                                    createOrder={(_data, actions) => {
+                                                        return actions.order.create({
+                                                            intent: "CAPTURE",
+                                                            purchase_units: [{ amount: { currency_code: "USD", value: pricing.totalUSD } }],
+                                                        });
+                                                    }}
+                                                    onApprove={async (_data, actions) => {
+                                                        if (actions.order) {
+                                                            await actions.order.capture();
+                                                            handleSubmit();
+                                                        }
+                                                    }}
+                                                />
+                                            </PayPalScriptProvider>
+                                        </div>
+                                    )}
 
-                                {paymentError && <p className="text-red-500 text-sm text-center mt-4">{paymentError}</p>}
+                                    {paymentError && <p className="text-red-500 text-sm text-center mt-4">{paymentError}</p>}
 
-                                <button type="button" onClick={() => setStep('account')} className="w-full mt-4 text-sm text-gray-600 hover:text-gray-900">
-                                    &larr; Back to Account Details
-                                </button>
-                            </>
-                        )}
-                    </form>
-                </div>
-            </div>
-
-            {/* Right Side - Order Summary */}
-            {!isTeamInvitation && (
-                <div className="hidden lg:block relative flex-1 bg-gray-50 w-0 border-l border-gray-200">
-                <div className="absolute inset-0 flex flex-col justify-center px-12">
-                    <div className="max-w-md mx-auto w-full bg-white p-8 rounded-2xl shadow-lg border border-gray-100">
-                        <h3 className="text-lg font-medium text-gray-900 mb-6">Order Summary</h3>
-                        <div className="pb-6 border-b border-gray-100">
-                            <div className="flex items-start justify-between mb-4">
-                                <div>
-                                    <p className="font-bold text-gray-900 text-lg">{formData.plan} Plan</p>
-                                    <p className="text-sm text-gray-500 mt-1 capitalize">{formData.billingCycle} Subscription</p>
-                                </div>
-                                <div className="text-right">
-                                    <span className="text-2xl font-bold text-jam-orange">${pricing.total.toLocaleString()}</span>
-                                    <p className="text-xs text-gray-400">JMD / {formData.billingCycle === 'annual' ? 'Year' : 'Month'}</p>
-                                </div>
-                            </div>
-
-                            {/* Pricing Breakdown */}
-                            <div className="space-y-2 text-sm">
-                                {pricing.type === 'per_emp' && (
-                                    <div className="flex justify-between text-gray-600">
-                                        <span>{formData.numEmployees || 1} Employee{(parseInt(formData.numEmployees) || 1) > 1 ? 's' : ''} × ${pricing.perEmpPrice.toLocaleString()}</span>
-                                        <span>${pricing.subtotal.toLocaleString()}</span>
-                                    </div>
-                                )}
-                                {pricing.type === 'flat' && (
-                                    <div className="flex justify-between text-gray-600">
-                                        <span>Base Plan</span>
-                                        <span>${pricing.subtotal.toLocaleString()}</span>
-                                    </div>
-                                )}
-                                {pricing.type === 'base' && (
-                                    <>
-                                        {formData.plan === 'Reseller' ? (
-                                            <>
-                                                <div className="flex justify-between text-gray-600">
-                                                    <span className="font-medium">Company Fees:</span>
-                                                    <span></span>
-                                                </div>
-                                                <div className="flex justify-between text-gray-600 text-sm pl-3">
-                                                    <span>{Math.max(1, parseInt(formData.numCompanies) || 1)} Compan{(Math.max(1, parseInt(formData.numCompanies) || 1)) > 1 ? 'ies' : 'y'} × ${pricing.basePrice.toLocaleString()}/ea</span>
-                                                    <span>${(Math.max(1, parseInt(formData.numCompanies) || 1) * pricing.basePrice).toLocaleString()}</span>
-                                                </div>
-                                                <div className="flex justify-between text-gray-600 mt-2">
-                                                    <span className="font-medium">Employee Fees:</span>
-                                                    <span></span>
-                                                </div>
-                                                <div className="flex justify-between text-gray-600 text-sm pl-3">
-                                                    <span>{formData.numEmployees || 1} Employee{(parseInt(formData.numEmployees) || 1) > 1 ? 's' : ''} × ${pricing.perEmpPrice.toLocaleString()}/ea</span>
-                                                    <span>${((parseInt(formData.numEmployees) || 1) * pricing.perEmpPrice).toLocaleString()}</span>
-                                                </div>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <div className="flex justify-between text-gray-600">
-                                                    <span>Base Fee</span>
-                                                    <span>${pricing.basePrice.toLocaleString()}</span>
-                                                </div>
-                                                <div className="flex justify-between text-gray-600">
-                                                    <span>{formData.numEmployees || 1} Employee{(parseInt(formData.numEmployees) || 1) > 1 ? 's' : ''} × ${pricing.perEmpPrice.toLocaleString()}/ea</span>
-                                                    <span>${((parseInt(formData.numEmployees) || 1) * pricing.perEmpPrice).toLocaleString()}</span>
-                                                </div>
-                                            </>
-                                        )}
-                                    </>
-                                )}
-                                {pricing.platformFees > 0 && (
-                                    <div className="flex justify-between text-gray-600">
-                                        <span>Dime Platform Fees (3.5%)</span>
-                                        <span>${pricing.platformFees.toLocaleString()}</span>
-                                    </div>
-                                )}
-                                <div className="flex justify-between font-bold text-gray-900 pt-2 border-t border-gray-200">
-                                    <span>Total</span>
-                                    <span>${pricing.total.toLocaleString()}</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="pt-6 text-xs text-gray-400 text-center">
-                            <p>Secure payment processing via {dimePayEnabled ? 'Dime Pay' : 'PayPal'}.</p>
-                        </div>
+                                    <button type="button" onClick={() => setStep('account')} className="w-full mt-4 text-sm text-gray-600 hover:text-gray-900">
+                                        &larr; Back to Account Details
+                                    </button>
+                                </>
+                            )}
+                        </form>
                     </div>
                 </div>
-            </div>
-            )}
+
+                {/* Right Side - Order Summary */}
+                {!isTeamInvitation && (
+                    <div className="hidden lg:block relative flex-1 bg-gray-50 w-0 border-l border-gray-200">
+                        <div className="absolute inset-0 flex flex-col justify-center px-12">
+                            <div className="max-w-md mx-auto w-full bg-white p-8 rounded-2xl shadow-lg border border-gray-100">
+                                <h3 className="text-lg font-medium text-gray-900 mb-6">Order Summary</h3>
+                                <div className="pb-6 border-b border-gray-100">
+                                    <div className="flex items-start justify-between mb-4">
+                                        <div>
+                                            <p className="font-bold text-gray-900 text-lg">{formData.plan} Plan</p>
+                                            <p className="text-sm text-gray-500 mt-1 capitalize">{formData.billingCycle} Subscription</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="text-2xl font-bold text-jam-orange">${pricing.total.toLocaleString()}</span>
+                                            <p className="text-xs text-gray-400">JMD / {formData.billingCycle === 'annual' ? 'Year' : 'Month'}</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Pricing Breakdown */}
+                                    <div className="space-y-2 text-sm">
+                                        {pricing.type === 'per_emp' && (
+                                            <div className="flex justify-between text-gray-600">
+                                                <span>{formData.numEmployees || 1} Employee{(parseInt(formData.numEmployees) || 1) > 1 ? 's' : ''} × ${pricing.perEmpPrice.toLocaleString()}</span>
+                                                <span>${pricing.subtotal.toLocaleString()}</span>
+                                            </div>
+                                        )}
+                                        {pricing.type === 'flat' && (
+                                            <div className="flex justify-between text-gray-600">
+                                                <span>Base Plan</span>
+                                                <span>${pricing.subtotal.toLocaleString()}</span>
+                                            </div>
+                                        )}
+                                        {pricing.type === 'base' && (
+                                            <>
+                                                {formData.plan === 'Reseller' ? (
+                                                    <>
+                                                        <div className="flex justify-between text-gray-600">
+                                                            <span className="font-medium">Company Fees:</span>
+                                                            <span></span>
+                                                        </div>
+                                                        <div className="flex justify-between text-gray-600 text-sm pl-3">
+                                                            <span>{Math.max(1, parseInt(formData.numCompanies) || 1)} Compan{(Math.max(1, parseInt(formData.numCompanies) || 1)) > 1 ? 'ies' : 'y'} × ${pricing.basePrice.toLocaleString()}/ea</span>
+                                                            <span>${(Math.max(1, parseInt(formData.numCompanies) || 1) * pricing.basePrice).toLocaleString()}</span>
+                                                        </div>
+                                                        <div className="flex justify-between text-gray-600 mt-2">
+                                                            <span className="font-medium">Employee Fees:</span>
+                                                            <span></span>
+                                                        </div>
+                                                        <div className="flex justify-between text-gray-600 text-sm pl-3">
+                                                            <span>{formData.numEmployees || 1} Employee{(parseInt(formData.numEmployees) || 1) > 1 ? 's' : ''} × ${pricing.perEmpPrice.toLocaleString()}/ea</span>
+                                                            <span>${((parseInt(formData.numEmployees) || 1) * pricing.perEmpPrice).toLocaleString()}</span>
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <div className="flex justify-between text-gray-600">
+                                                            <span>Base Fee</span>
+                                                            <span>${pricing.basePrice.toLocaleString()}</span>
+                                                        </div>
+                                                        <div className="flex justify-between text-gray-600">
+                                                            <span>{formData.numEmployees || 1} Employee{(parseInt(formData.numEmployees) || 1) > 1 ? 's' : ''} × ${pricing.perEmpPrice.toLocaleString()}/ea</span>
+                                                            <span>${((parseInt(formData.numEmployees) || 1) * pricing.perEmpPrice).toLocaleString()}</span>
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </>
+                                        )}
+                                        {pricing.platformFees > 0 && (
+                                            <div className="flex justify-between text-gray-600">
+                                                <span>Dime Platform Fees (3.5%)</span>
+                                                <span>${pricing.platformFees.toLocaleString()}</span>
+                                            </div>
+                                        )}
+                                        <div className="flex justify-between font-bold text-gray-900 pt-2 border-t border-gray-200">
+                                            <span>Total</span>
+                                            <span>${pricing.total.toLocaleString()}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="pt-6 text-xs text-gray-400 text-center">
+                                    <p>Secure payment processing via {dimePayEnabled ? 'Dime Pay' : 'PayPal'}.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </>
     );
