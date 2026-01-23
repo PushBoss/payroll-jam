@@ -832,7 +832,7 @@ function AppContent() {
       case 'portal-leave': return <EmployeePortal user={user} employee={employees.find(e => e.email === user.email)} view="leave" leaveRequests={leaveRequests} onRequestLeave={handleSaveLeaveRequest} onUpdateEmployee={handleUpdateEmployee} />;
       case 'portal-docs': return <EmployeePortal user={user} employee={employees.find(e => e.email === user.email)} view="documents" leaveRequests={leaveRequests} onRequestLeave={handleSaveLeaveRequest} payRunHistory={payRunHistory} companyData={companyData || undefined} onUpdateEmployee={handleUpdateEmployee} />;
       case 'portal-profile': return <EmployeePortal user={user} employee={employees.find(e => e.email === user.email)} view="profile" leaveRequests={leaveRequests} onRequestLeave={handleSaveLeaveRequest} onUpdateEmployee={handleUpdateEmployee} />;
-      case 'sa-overview': case 'sa-tenants': case 'sa-billing': case 'sa-health': case 'sa-users': case 'sa-logs': case 'sa-settings': case 'sa-plans':
+      case 'sa-overview': case 'sa-tenants': case 'sa-billing': case 'sa-health': case 'sa-users': case 'sa-logs': case 'sa-settings': case 'sa-plans': case 'sa-pending-payments':
         return <SuperAdmin plans={plans} onUpdatePlans={handleUpdatePlans} onImpersonate={handleImpersonation} initialTab={currentPath.replace('sa-', '')} />;
       case 'reseller-dashboard': return <ResellerDashboard onManageClient={handleImpersonation} plans={plans} />;
       default: return <NotFound onGoHome={() => navigateTo('dashboard')} />;

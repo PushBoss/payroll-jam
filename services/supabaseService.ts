@@ -666,7 +666,15 @@ export const supabaseService = {
 
   getAllCompanies: async (): Promise<ResellerClient[]> => {
     if (!supabase) return [];
-    const { data, error } = await supabase.from('companies').select('*');
+
+    let activeClient = supabase;
+    const adminClient = await supabaseService.getAdminClient();
+    if (adminClient) {
+      console.debug('🕵️ Using admin client for getAllCompanies');
+      activeClient = adminClient;
+    }
+
+    const { data, error } = await activeClient.from('companies').select('*');
 
     if (error || !data) {
       console.error("Error fetching companies:", error);
@@ -745,7 +753,11 @@ export const supabaseService = {
   updateCompanyStatus: async (companyId: string, status: 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'PENDING_PAYMENT'): Promise<void> => {
     if (!supabase) return;
 
-    const { error } = await supabase
+    let activeClient = supabase;
+    const adminClient = await supabaseService.getAdminClient();
+    if (adminClient) activeClient = adminClient;
+
+    const { error } = await activeClient
       .from('companies')
       .update({ status: status })
       .eq('id', companyId);
@@ -754,6 +766,27 @@ export const supabaseService = {
       console.error("Error updating company status:", error);
       throw error;
     }
+  },
+
+  deleteCompany: async (companyId: string): Promise<boolean> => {
+    if (!supabase) return false;
+
+    let activeClient = supabase;
+    const adminClient = await supabaseService.getAdminClient();
+    if (adminClient) activeClient = adminClient;
+
+    // Due to Cascade Delete in DB, deleting company will remove employees, payruns, etc.
+    const { error } = await activeClient
+      .from('companies')
+      .delete()
+      .eq('id', companyId);
+
+    if (error) {
+      console.error("Error deleting company:", error);
+      return false;
+    }
+
+    return true;
   },
 
   // --- Employees ---

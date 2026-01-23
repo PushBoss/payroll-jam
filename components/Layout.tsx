@@ -52,7 +52,7 @@ export const Layout: React.FC<LayoutProps> = ({
 
     // Add Partner Console item if user is Reseller
     if (user?.role === Role.RESELLER) {
-        allItems.unshift({ id: 'reseller-dashboard', label: 'Partner Console', icon: Icons.LayoutGrid, feature: null });
+      allItems.unshift({ id: 'reseller-dashboard', label: 'Partner Console', icon: Icons.LayoutGrid, feature: null });
     }
 
     // Filter out items that require features the plan doesn't have
@@ -77,6 +77,7 @@ export const Layout: React.FC<LayoutProps> = ({
   const superAdminNavItems = [
     { id: 'sa-overview', label: 'Overview', icon: Icons.Dashboard, feature: null },
     { id: 'sa-tenants', label: 'Tenants', icon: Icons.Company, feature: null },
+    { id: 'sa-pending-payments', label: 'Pending Payments', icon: Icons.Clock, feature: null },
     { id: 'sa-billing', label: 'Billing', icon: Icons.Bank, feature: null },
     { id: 'sa-health', label: 'System Health', icon: Icons.Zap, feature: null },
     { id: 'sa-plans', label: 'Plan Config', icon: Icons.FileEdit, feature: null },
@@ -176,11 +177,11 @@ export const Layout: React.FC<LayoutProps> = ({
       {isImpersonating && (
         <div className={`px-4 py-3 text-sm font-bold flex justify-between items-center shadow-md z-[70] relative border-b border-gray-800 ${isSuperAdminImpersonating
           ? 'bg-red-900 text-white'
-          : 'bg-gray-900 text-white' 
+          : 'bg-gray-900 text-white'
           }`}>
           <div className="flex items-center">
-             <div className={`w-8 h-8 rounded-full bg-opacity-20 flex items-center justify-center mr-3 ${isSuperAdminImpersonating ? 'bg-red-500' : 'bg-jam-orange'}`}>
-                {isSuperAdminImpersonating ? <Icons.Shield className="w-4 h-4 text-red-200" /> : <Icons.Settings className="w-4 h-4 text-jam-orange" />}
+            <div className={`w-8 h-8 rounded-full bg-opacity-20 flex items-center justify-center mr-3 ${isSuperAdminImpersonating ? 'bg-red-500' : 'bg-jam-orange'}`}>
+              {isSuperAdminImpersonating ? <Icons.Shield className="w-4 h-4 text-red-200" /> : <Icons.Settings className="w-4 h-4 text-jam-orange" />}
             </div>
             <div>
               <span className={`uppercase tracking-wider text-xs block mb-0.5 ${isSuperAdminImpersonating ? 'text-red-200' : 'text-jam-orange'}`}>
@@ -191,12 +192,12 @@ export const Layout: React.FC<LayoutProps> = ({
           </div>
           <button
             onClick={() => {
-                stopImpersonation();
-                if (!isSuperAdminImpersonating) {
-                    onNavigate('reseller-dashboard');
-                } else {
-                    onNavigate('sa-overview');
-                }
+              stopImpersonation();
+              if (!isSuperAdminImpersonating) {
+                onNavigate('reseller-dashboard');
+              } else {
+                onNavigate('sa-overview');
+              }
             }}
             className="p-1 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white transition-all transform hover:rotate-90"
             title="Return to Console"
