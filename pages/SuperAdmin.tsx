@@ -2126,7 +2126,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                     <option value="free">Free</option>
                                     <option value="flat">Flat Rate</option>
                                     <option value="per_emp">Per Employee</option>
-                                    <option value="base">Base + Usage (Reseller)</option>
+                                    <option value="base">Base + Usage (Standard/Reseller)</option>
                                 </select>
                             </div>
 
@@ -2201,18 +2201,20 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                             />
                                         </div>
                                     </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Reseller Commission (%)</label>
-                                        <input
-                                            type="number"
-                                            className="w-full border border-gray-300 rounded px-3 py-2"
-                                            value={editingPlan.priceConfig.resellerCommission || ''}
-                                            onChange={e => setEditingPlan({
-                                                ...editingPlan,
-                                                priceConfig: { ...editingPlan.priceConfig, resellerCommission: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0 }
-                                            })}
-                                        />
-                                    </div>
+                                    {editingPlan.name.toLowerCase().includes('reseller') && (
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Reseller Commission (%)</label>
+                                            <input
+                                                type="number"
+                                                className="w-full border border-gray-300 rounded px-3 py-2"
+                                                value={editingPlan.priceConfig.resellerCommission || ''}
+                                                onChange={e => setEditingPlan({
+                                                    ...editingPlan,
+                                                    priceConfig: { ...editingPlan.priceConfig, resellerCommission: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0 }
+                                                })}
+                                            />
+                                        </div>
+                                    )}
                                 </>
                             )}
                             <div>

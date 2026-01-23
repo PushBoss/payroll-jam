@@ -30,7 +30,7 @@ export const INITIAL_PLANS: PricingPlan[] = [
   {
     id: 'p3',
     name: 'Pro',
-    priceConfig: { type: 'per_emp', monthly: 500, annual: 5000 },
+    priceConfig: { type: 'base', monthly: 0, annual: 0, baseFee: 10000, perUserFee: 500 },
     description: 'Advanced HR and accounting integration for larger organizations.',
     limit: 'Unlimited Employees',
     features: ['Everything in Starter', 'GL Integration (Quickbooks/Xero)', 'Advanced HR & Assets', 'Document Templates', 'AI Payroll Assistant'],
