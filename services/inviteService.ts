@@ -44,8 +44,13 @@ export async function searchUserByEmail(email: string): Promise<{ exists: boolea
     }
     if (!userId) return { exists: false };
 
+    // UPDATED: Use admin client if available to bypass RLS on app_users
+    // Resellers might not be visible to regular users due to RLS
+    const adminClient = await supabaseService.getAdminClient();
+    const activeClient = adminClient || supabase;
+
     // Also get the user's role and company_id
-    const { data: userProfile } = await supabase
+    const { data: userProfile } = await activeClient
       .from('app_users')
       .select('role, company_id')
       .eq('id', userId)
