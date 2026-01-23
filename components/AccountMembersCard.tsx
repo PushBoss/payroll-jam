@@ -52,8 +52,9 @@ export const AccountMembersCard: React.FC<AccountMembersCardProps> = ({
     }
   };
 
-  const handleRemoveMember = async (memberId: string, email: string) => {
-    if (!confirm(`Remove ${email} from the team?`)) {
+  const handleRemoveMember = async (memberId: string, email: string, status?: string) => {
+    const action = status === 'pending' ? 'Cancel invitation for' : 'Remove';
+    if (!confirm(`${action} ${email}?`)) {
       return;
     }
 
@@ -62,7 +63,7 @@ export const AccountMembersCard: React.FC<AccountMembersCardProps> = ({
       const result = await removeMemberFromAccount(accountId, memberId);
       if (result.success) {
         setMembers(members.filter((m) => m.id !== memberId));
-        toast.success('Team member removed');
+        toast.success(status === 'pending' ? 'Invitation cancelled' : 'Team member removed');
       } else {
         toast.error(result.error || 'Failed to remove member');
       }
@@ -104,7 +105,10 @@ export const AccountMembersCard: React.FC<AccountMembersCardProps> = ({
                 <div className="flex items-center gap-2 text-sm text-gray-500">
                   <span className="capitalize">{member.role}</span>
                   <span>•</span>
-                  <span className="capitalize">{member.status}</span>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize ${member.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'
+                    }`}>
+                    {member.status}
+                  </span>
                 </div>
               </div>
 
@@ -114,18 +118,23 @@ export const AccountMembersCard: React.FC<AccountMembersCardProps> = ({
                     <button
                       onClick={() => handleResendInvite(member.id)}
                       disabled={resending === member.id}
-                      className="ml-4 px-3 py-1 text-sm text-jam-orange hover:bg-orange-50 rounded disabled:text-gray-400 font-medium border border-jam-orange hover:border-jam-orange"
+                      className="ml-4 px-3 py-1 text-sm text-jam-orange hover:bg-orange-50 rounded disabled:text-gray-400 font-medium border border-jam-orange hover:border-jam-orange transition-colors"
                     >
                       {resending === member.id ? 'Sending...' : 'Resend Invite'}
                     </button>
                   )}
-                  
+
                   <button
-                    onClick={() => handleRemoveMember(member.id, member.email)}
+                    onClick={() => handleRemoveMember(member.id, member.email, member.status)}
                     disabled={removing === member.id}
-                    className="ml-4 px-3 py-1 text-sm text-red-600 hover:bg-red-50 rounded disabled:text-gray-400 font-medium"
+                    className={`ml-4 px-3 py-1 text-sm rounded disabled:text-gray-400 font-medium transition-colors border ${member.status === 'pending'
+                      ? 'text-gray-600 border-gray-300 hover:bg-gray-100 hover:text-gray-800'
+                      : 'text-red-600 border-transparent hover:bg-red-50'
+                      }`}
                   >
-                    {removing === member.id ? 'Removing...' : 'Remove'}
+                    {removing === member.id
+                      ? (member.status === 'pending' ? 'Cancelling...' : 'Removing...')
+                      : (member.status === 'pending' ? 'Cancel Invite' : 'Remove')}
                   </button>
                 </div>
               )}
