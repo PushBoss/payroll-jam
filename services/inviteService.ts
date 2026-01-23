@@ -104,8 +104,60 @@ export async function inviteUserToAccount(payload: {
     const normalizedEmail = payload.email.toLowerCase();
 
     // Check if user exists
-    const { exists, userId } = await searchUserByEmail(normalizedEmail);
-    console.log(`🔍 Inviting user: ${normalizedEmail}, Exists: ${exists}, ID: ${userId}`);
+    const { exists, userId, role: inviteeRole } = await searchUserByEmail(normalizedEmail);
+    console.log(`🔍 Inviting user: ${normalizedEmail}, Exists: ${exists}, ID: ${userId}, Role: ${inviteeRole}`);
+
+    // 🔍 2. Check for existing Reseller if the invitee is a Reseller
+    // Companies can only be managed by one Reseller company at a time
+    const isInviteeReseller = inviteeRole === 'RESELLER' || inviteeRole === 'SUPER_ADMIN';
+
+    if (isInviteeReseller) {
+      const adminClient = await supabaseService.getAdminClient();
+      if (adminClient) {
+        // Fetch all members to check their roles
+        const { data: members } = await adminClient
+          .from('account_members')
+          .select('user_id')
+          .eq('account_id', payload.accountId)
+          .not('user_id', 'is', null);
+
+        if (members && members.length > 0) {
+          const memberUserIds = members.map(m => m.user_id);
+          const { data: memberProfiles } = await adminClient
+            .from('app_users')
+            .select('id, role')
+            .in('id', memberUserIds);
+
+          const hasExistingReseller = memberProfiles?.some(p => p.role === 'RESELLER' || p.role === 'SUPER_ADMIN');
+          if (hasExistingReseller) {
+            return { success: false, error: 'This company is already managed by a Reseller. Please remove the existing Reseller before adding a new one.' };
+          }
+        }
+      }
+    }
+
+    // 🔍 1. Check total member limit (5)
+    // Alias counts (pending invites) and existing members all count towards this
+    const { count, error: countError } = await supabase
+      .from('account_members')
+      .select('*', { count: 'exact', head: true })
+      .eq('account_id', payload.accountId);
+
+    if (countError) {
+      console.error('Error counting members:', countError);
+    } else if (count !== null && count >= 5) {
+      // Small optimization: If we are just updating/resending to an existing record, we skip the limit
+      const { data: alreadyMember } = await supabase
+        .from('account_members')
+        .select('id')
+        .eq('account_id', payload.accountId)
+        .eq('email', normalizedEmail)
+        .maybeSingle();
+
+      if (!alreadyMember) {
+        return { success: false, error: 'Maximum limit of 5 team members reached for this company.' };
+      }
+    }
 
     // Check if already a member (by email, since user might not exist yet)
     const { data: existingByEmail } = await supabase

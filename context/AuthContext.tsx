@@ -396,11 +396,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         // Determine company status based on payment method
         // PENDING_PAYMENT for direct deposit/reseller billing, ACTIVE for card payment or free plan
-        const companyStatus: 'ACTIVE' | 'PENDING_PAYMENT' =
+        let companyStatus: 'ACTIVE' | 'PENDING_PAYMENT' =
           (isPaidPlan && (userData as any).paymentMethod === 'direct-deposit') ||
             (isPaidPlan && (userData as any).paymentMethod === 'reseller-billing')
             ? 'PENDING_PAYMENT'
             : 'ACTIVE';
+
+        // 🔍 NEW: Reseller Billing bypass
+        const isResellerBilling = (userData as any).paymentMethod === 'reseller-billing';
+        if (isResellerBilling) {
+          companyStatus = 'ACTIVE'; // Bypass immediate payment requirement
+          console.log('✅ Reseller Billing detected: Bypassing immediate payment for company');
+        }
 
         const companyData: CompanySettings & { status?: string } = {
           name: userData.companyName!,

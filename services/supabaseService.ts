@@ -392,7 +392,8 @@ export const supabaseService = {
         status: settings.subscriptionStatus || 'ACTIVE',
         plan: dbPlan, // Map to database format
         billing_cycle: settings.billingCycle || 'MONTHLY', // Save billing cycle
-        employee_limit: dbLimit // Save employee limit as integer
+        employee_limit: dbLimit, // Save employee limit as integer
+        payment_method: settings.paymentMethod
       }, {
         onConflict: 'id'
       })
@@ -415,6 +416,7 @@ export const supabaseService = {
         p_plan: dbPlan,
         p_billing_cycle: settings.billingCycle || 'MONTHLY',
         p_employee_limit: dbLimit,
+        p_payment_method: settings.paymentMethod,
         p_settings: settingsJson
       });
 
