@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { Icons } from './Icons';
 import { inviteUserToAccount, searchUserByEmail, MemberRole } from '../services/inviteService';
 import { toast } from 'sonner';
-import { useAuth } from '../context/AuthContext';
 
 interface InviteUserCardProps {
   accountId: string;
@@ -14,6 +15,7 @@ export const InviteUserCard: React.FC<InviteUserCardProps> = ({ accountId, onInv
   const [role, setRole] = useState<MemberRole>('admin');
   const [isSearching, setIsSearching] = useState(false);
   const [userFound, setUserFound] = useState(false);
+  const [searchResult, setSearchResult] = useState<{ exists: boolean; isReseller: boolean } | null>(null);
   const [isSending, setIsSending] = useState(false);
 
   const handleSearch = async () => {
@@ -23,19 +25,27 @@ export const InviteUserCard: React.FC<InviteUserCardProps> = ({ accountId, onInv
     }
 
     setIsSearching(true);
+    setSearchResult(null);
     try {
-      const { exists } = await searchUserByEmail(email);
+      const { exists, role } = await searchUserByEmail(email);
+      const isReseller = role === 'RESELLER' || role === 'SUPER_ADMIN';
+
+      setSearchResult({ exists, isReseller });
+
       if (exists) {
-        toast.success('User found! You can proceed to send the invitation.');
+        if (isReseller) {
+          toast.success('User found (Reseller)! Ready to invite.');
+        } else {
+          toast.warning('User found! They manage another company and must upgrade to a Reseller plan to accept this invitation.');
+        }
       } else {
-        toast.info('User not on the platform yet. They will receive an email invite and can sign up to join.');
+        toast.info('User not on the platform yet. They will receive an email to sign up and manage your company.');
       }
-      // Always allow proceeding with the invite, regardless of whether they exist
-      setUserFound(true); 
+
+      setUserFound(true);
     } catch (error) {
       console.error('Search error:', error);
       toast.error('Failed to search for user');
-      // Still allow proceeding - the invite will work for new users too
       setUserFound(true);
     } finally {
       setIsSearching(false);
@@ -116,9 +126,40 @@ export const InviteUserCard: React.FC<InviteUserCardProps> = ({ accountId, onInv
         </div>
 
         {/* User Found Status */}
-        {userFound && (
-          <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
-            ✓ User found and ready to invite
+        {userFound && searchResult && (
+          <div className={`p-4 rounded-xl text-sm border transition-all animate-fade-in ${!searchResult.exists
+            ? 'bg-blue-50 border-blue-100 text-blue-700'
+            : searchResult.isReseller
+              ? 'bg-green-50 border-green-100 text-green-700'
+              : 'bg-amber-50 border-amber-100 text-amber-700'
+            }`}>
+            {!searchResult.exists && (
+              <div className="flex items-start">
+                <Icons.Mail className="w-5 h-5 mr-3 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="font-bold">New User Alias</p>
+                  <p className="opacity-90">User not on the platform. They will be invited to signup and can manage your company as an alias.</p>
+                </div>
+              </div>
+            )}
+            {searchResult.exists && searchResult.isReseller && (
+              <div className="flex items-start">
+                <Icons.CheckCircle className="w-5 h-5 mr-3 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="font-bold">Licensed Reseller Found</p>
+                  <p className="opacity-90">This user is a Reseller partner and is ready to be invited to manage your account.</p>
+                </div>
+              </div>
+            )}
+            {searchResult.exists && !searchResult.isReseller && (
+              <div className="flex items-start">
+                <Icons.Alert className="w-5 h-5 mr-3 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="font-bold">Upgrade Required</p>
+                  <p className="opacity-90">This user has an existing account but is not a Reseller. They will need to upgrade their plan to manage multiple companies.</p>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -148,7 +189,7 @@ export const InviteUserCard: React.FC<InviteUserCardProps> = ({ accountId, onInv
             {isSending ? 'Sending Invitation...' : 'Send Invitation'}
           </button>
         )}
-        
+
         {/* Direct Invite Button (skip search for faster flow) */}
         {!userFound && email.trim() && (
           <button

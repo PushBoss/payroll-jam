@@ -29,7 +29,7 @@ export interface AccountMember {
 /**
  * Search for an existing user by email in Supabase auth
  */
-export async function searchUserByEmail(email: string): Promise<{ exists: boolean; userId?: string }> {
+export async function searchUserByEmail(email: string): Promise<{ exists: boolean; userId?: string; role?: string; companyId?: string }> {
   if (!supabase) return { exists: false };
 
   try {
@@ -43,7 +43,19 @@ export async function searchUserByEmail(email: string): Promise<{ exists: boolea
       return { exists: false };
     }
 
-    return { exists: !!userId, userId: userId || undefined };
+    // Also get the user's role and company_id
+    const { data: userProfile } = await supabase
+      .from('app_users')
+      .select('role, company_id')
+      .eq('id', userId)
+      .maybeSingle();
+
+    return {
+      exists: !!userId,
+      userId: userId || undefined,
+      role: userProfile?.role,
+      companyId: userProfile?.company_id
+    };
   } catch (error) {
     console.error('Error in searchUserByEmail:', error);
     return { exists: false };
