@@ -22,9 +22,9 @@ export const supabaseService = {
   getAdminClient: async () => {
     const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY || import.meta.env?.SUPABASE_SERVICE_ROLE_KEY || localStorage.getItem('VITE_SUPABASE_SERVICE_ROLE_KEY');
     const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
-    
+
     console.debug('🔑 Admin client request - URL:', supabaseUrl, 'Key present:', !!serviceRoleKey);
-    
+
     if (serviceRoleKey && supabaseUrl) {
       try {
         const { createClient } = await import('@supabase/supabase-js');
@@ -38,8 +38,8 @@ export const supabaseService = {
         console.error('Failed to create admin client:', e);
       }
     } else {
-        if (!serviceRoleKey) console.warn('⚠️ Admin client requested but VITE_SUPABASE_SERVICE_ROLE_KEY is missing from environment.');
-        if (!supabaseUrl) console.warn('⚠️ Admin client requested but VITE_SUPABASE_URL is missing.');
+      if (!serviceRoleKey) console.warn('⚠️ Admin client requested but VITE_SUPABASE_SERVICE_ROLE_KEY is missing from environment.');
+      if (!supabaseUrl) console.warn('⚠️ Admin client requested but VITE_SUPABASE_URL is missing.');
     }
     return null;
   },
@@ -192,7 +192,7 @@ export const supabaseService = {
 
       // Update existing user (use the existing ID if different from the provided one)
       const updateId = existing.id;
-      
+
       // CRITICAL: Protect company_id and role if we are currently impersonating
       // This prevents "Save Profile" from corrupting the reseller's own data.
       const isImpersonating = (user as any).originalRole || (user as any).isResellerView;
@@ -269,21 +269,21 @@ export const supabaseService = {
           .select('*')
           .eq('id', companyId)
           .maybeSingle();
-        
+
         if (adminError) {
           console.error('❌ Admin fallback fetch failed:', adminError);
         }
 
         if (adminData) {
-            console.log('✅ Admin fallback fetch successful');
-            data = adminData;
+          console.log('✅ Admin fallback fetch successful');
+          data = adminData;
         }
       }
     }
 
     if (!data) {
-        console.error(`❌ Failed to load company ${companyId} even with admin fallback. Error:`, error);
-        return null;
+      console.error(`❌ Failed to load company ${companyId} even with admin fallback. Error:`, error);
+      return null;
     }
 
     // Map database fields + JSON settings to App types
@@ -302,6 +302,7 @@ export const supabaseService = {
     };
 
     return {
+      id: data.id,
       name: data.name,
       trn: data.trn,
       address: data.address,
@@ -315,7 +316,10 @@ export const supabaseService = {
       plan: mapPlanFromDbFormat(data.plan) as any,
       billingCycle: data.billing_cycle === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY',
       // Convert DB integer back to string format
-      employeeLimit: (data.employee_limit >= 999999) ? 'Unlimited' : `${data.employee_limit} Employees`
+      employeeLimit: (data.employee_limit >= 999999) ? 'Unlimited' : `${data.employee_limit} Employees`,
+      resellerId: data.reseller_id,
+      policies: settings.policies,
+      reseller_defaults: settings.reseller_defaults
     };
   },
 
@@ -400,63 +404,63 @@ export const supabaseService = {
       // Fallback: Use the Secure RPC if direct upsert failed despite admin client attempt
       console.warn("Retrying company creation via RPC fallback...");
       const { data: rpcData, error: rpcError } = await effectiveClient.rpc('create_company_secure', {
-             p_company_id: companyId,
-             p_owner_id: ownerId,
-             p_name: settings.name,
-             p_email: settings.email || null,
-             p_phone: settings.phone || null,
-             p_trn: settings.trn || null,
-             p_address: settings.address || null,
-             p_status: settings.subscriptionStatus || 'ACTIVE',
-             p_plan: dbPlan,
-             p_billing_cycle: settings.billingCycle || 'MONTHLY',
-             p_employee_limit: dbLimit,
-             p_settings: settingsJson
-          });
+        p_company_id: companyId,
+        p_owner_id: ownerId,
+        p_name: settings.name,
+        p_email: settings.email || null,
+        p_phone: settings.phone || null,
+        p_trn: settings.trn || null,
+        p_address: settings.address || null,
+        p_status: settings.subscriptionStatus || 'ACTIVE',
+        p_plan: dbPlan,
+        p_billing_cycle: settings.billingCycle || 'MONTHLY',
+        p_employee_limit: dbLimit,
+        p_settings: settingsJson
+      });
 
       if (rpcError) {
-         console.error("RPC Fallback failed:", rpcError);
-         return null;
+        console.error("RPC Fallback failed:", rpcError);
+        return null;
       }
       return rpcData;
     }
 
     // CRITICAL: Explicitly ensure the owner is in account_members table
     if (ownerId && companyId) {
-        console.log('👥 Ensuring owner is added to account_members...');
-        try {
-            // Try upsert with email constraint first
-            const { error: memError } = await effectiveClient.from('account_members').upsert({
-                account_id: companyId,
-                user_id: ownerId,
-                email: settings.email || '',
-                role: 'OWNER',
-                status: 'accepted',
-                accepted_at: new Date().toISOString(),
-                invited_at: new Date().toISOString()
-            }, { 
-                onConflict: 'account_id,email' 
-            });
+      console.log('👥 Ensuring owner is added to account_members...');
+      try {
+        // Try upsert with email constraint first
+        const { error: memError } = await effectiveClient.from('account_members').upsert({
+          account_id: companyId,
+          user_id: ownerId,
+          email: settings.email || '',
+          role: 'OWNER',
+          status: 'accepted',
+          accepted_at: new Date().toISOString(),
+          invited_at: new Date().toISOString()
+        }, {
+          onConflict: 'account_id,email'
+        });
 
-            // Fallback: If 400 (likely missing constraint), try user_id constraint
-            if (memError && (memError.code === '400' || (memError as any).status === 400)) {
-                console.warn('⚠️ account_id+email constraint missing, retrying with user_id...');
-                await effectiveClient.from('account_members').upsert({
-                    account_id: companyId,
-                    user_id: ownerId,
-                    role: 'OWNER',
-                    status: 'accepted',
-                    accepted_at: new Date().toISOString(),
-                    invited_at: new Date().toISOString()
-                }, { 
-                    onConflict: 'account_id,user_id' 
-                });
-            } else if (memError) {
-                console.error('❌ Error in account_members upsert:', memError);
-            }
-        } catch (err) {
-            console.error('⚠️ Critical error adding owner to account_members:', err);
+        // Fallback: If 400 (likely missing constraint), try user_id constraint
+        if (memError && (memError.code === '400' || (memError as any).status === 400)) {
+          console.warn('⚠️ account_id+email constraint missing, retrying with user_id...');
+          await effectiveClient.from('account_members').upsert({
+            account_id: companyId,
+            user_id: ownerId,
+            role: 'OWNER',
+            status: 'accepted',
+            accepted_at: new Date().toISOString(),
+            invited_at: new Date().toISOString()
+          }, {
+            onConflict: 'account_id,user_id'
+          });
+        } else if (memError) {
+          console.error('❌ Error in account_members upsert:', memError);
         }
+      } catch (err) {
+        console.error('⚠️ Critical error adding owner to account_members:', err);
+      }
     }
 
     return companyData;
@@ -719,6 +723,7 @@ export const supabaseService = {
     };
 
     return {
+      id: data.id,
       name: data.name,
       trn: data.trn || '',
       address: data.address || '',
@@ -730,7 +735,10 @@ export const supabaseService = {
       defaultPayDate: data.settings?.defaultPayDate,
       subscriptionStatus: data.status,
       plan: mapPlanFromDbFormat(data.plan) as any,
-      paymentMethod: data.settings?.paymentMethod
+      paymentMethod: data.settings?.paymentMethod,
+      resellerId: data.reseller_id,
+      policies: data.settings?.policies,
+      reseller_defaults: data.settings?.reseller_defaults
     };
   },
 
@@ -1744,7 +1752,7 @@ export const supabaseService = {
 
   saveAuditLog: async (log: AuditLogEntry, companyId: string) => {
     if (!supabase) return;
-    
+
     // 1. Attempt with standard client (user's own context)
     const { error } = await supabase.from('audit_logs').insert({
       id: log.id,
@@ -1760,23 +1768,23 @@ export const supabaseService = {
 
     // 2. Fallback to Admin client if forbidden (likely due to impersonation/RLS)
     if (error && (error.code === '403' || error.code === '42501')) {
-        console.warn('🛡️ Audit log write failed with RLS (403), retrying with admin client...');
-        const adminClient = await supabaseService.getAdminClient();
-        if (adminClient) {
-            await adminClient.from('audit_logs').insert({
-                id: log.id,
-                company_id: companyId,
-                actor_id: log.actorId,
-                actor_name: log.actorName,
-                action: log.action,
-                entity: log.entity,
-                description: log.description,
-                timestamp: log.timestamp,
-                ip_address: log.ipAddress
-            });
-        }
+      console.warn('🛡️ Audit log write failed with RLS (403), retrying with admin client...');
+      const adminClient = await supabaseService.getAdminClient();
+      if (adminClient) {
+        await adminClient.from('audit_logs').insert({
+          id: log.id,
+          company_id: companyId,
+          actor_id: log.actorId,
+          actor_name: log.actorName,
+          action: log.action,
+          entity: log.entity,
+          description: log.description,
+          timestamp: log.timestamp,
+          ip_address: log.ipAddress
+        });
+      }
     } else if (error) {
-        console.error('❌ Failed to save audit log:', error);
+      console.error('❌ Failed to save audit log:', error);
     }
   },
 
@@ -2279,9 +2287,9 @@ export const supabaseService = {
 
   // Accept a reseller invite and create the client relationship
   acceptResellerInvite: async (
-    token: string, 
-    clientCompanyId: string, 
-    resellerUserId?: string, 
+    token: string,
+    clientCompanyId: string,
+    resellerUserId?: string,
     resellerEmail?: string,
     resellerCompanyId?: string
   ): Promise<boolean> => {
@@ -2295,7 +2303,7 @@ export const supabaseService = {
 
       // 1. Resolve Reseller Company ID (using effective client for RLS bypass)
       let rId = resellerCompanyId;
-      
+
       if (!rId) {
         // Fetch the invite info for reseller_id if not provided
         // Use effectiveClient (admin if available) to bypass RLS
@@ -2321,15 +2329,15 @@ export const supabaseService = {
       // 3. FORCE ASSOCIATIONS via Code (Direct Upserts)
       if (rId) {
         console.log('🔄 Linking company to reseller:', rId);
-        
+
         // A. Update company's reseller_id (Use effectiveClient to bypass RLS)
         const { error: companyLinkError } = await effectiveClient
           .from('companies')
           .update({ reseller_id: rId })
           .eq('id', clientCompanyId);
-          
+
         if (companyLinkError) {
-            console.error('❌ Failed to link reseller to company:', companyLinkError);
+          console.error('❌ Failed to link reseller to company:', companyLinkError);
         }
 
         // B. Add Reseller as Team Member (Use effectiveClient/Admin)
@@ -2354,18 +2362,18 @@ export const supabaseService = {
           if (memberError && (memberError.code === '400' || (memberError as any).status === 400)) {
             console.warn('⚠️ account_id+email constraint missing, retrying with user_id...');
             const { error: fallbackError } = await effectiveClient
-                .from('account_members')
-                .upsert({
-                    account_id: clientCompanyId,
-                    user_id: resellerUserId,
-                    role: 'MANAGER',
-                    status: 'accepted',
-                    accepted_at: new Date().toISOString(),
-                    invited_at: new Date().toISOString(),
-                }, {
-                    onConflict: 'account_id,user_id',
-                    ignoreDuplicates: false
-                });
+              .from('account_members')
+              .upsert({
+                account_id: clientCompanyId,
+                user_id: resellerUserId,
+                role: 'MANAGER',
+                status: 'accepted',
+                accepted_at: new Date().toISOString(),
+                invited_at: new Date().toISOString(),
+              }, {
+                onConflict: 'account_id,user_id',
+                ignoreDuplicates: false
+              });
             memberError = fallbackError;
           }
 
@@ -2399,7 +2407,7 @@ export const supabaseService = {
   // Sync all companies where this user is a member into their reseller portfolio
   syncResellerPortfolio: async (resellerUserId: string): Promise<{ success: boolean; syncedCount: number; error?: string }> => {
     if (!supabase) return { success: false, syncedCount: 0, error: 'Supabase not available' };
-    
+
     try {
       console.log('🔄 Syncing reseller portfolio for user:', resellerUserId);
       const adminClient = await supabaseService.getAdminClient();
@@ -2407,7 +2415,7 @@ export const supabaseService = {
 
       // 1. Get user's role and company_id
       const { data: userData } = await adminClient.from('app_users').select('role, company_id').eq('id', resellerUserId).maybeSingle();
-      
+
       if (!userData || (userData.role !== 'RESELLER' && userData.role !== 'Reseller')) {
         return { success: false, syncedCount: 0, error: 'User is not a Reseller' };
       }
@@ -2437,19 +2445,19 @@ export const supabaseService = {
 
         // 3. Create/Update link in reseller_clients
         const { error: linkError } = await adminClient.from('reseller_clients').upsert({
-            reseller_id: resellerCompanyId,
-            client_company_id: mem.account_id,
-            status: 'ACTIVE',
-            access_level: 'FULL'
+          reseller_id: resellerCompanyId,
+          client_company_id: mem.account_id,
+          status: 'ACTIVE',
+          access_level: 'FULL'
         }, { onConflict: 'reseller_id,client_company_id' });
 
         if (!linkError) {
-            // 4. Update company's reseller_id
-            await adminClient.from('companies').update({
-                reseller_id: resellerCompanyId
-            }).eq('id', mem.account_id);
-            
-            syncedCount++;
+          // 4. Update company's reseller_id
+          await adminClient.from('companies').update({
+            reseller_id: resellerCompanyId
+          }).eq('id', mem.account_id);
+
+          syncedCount++;
         }
       }
 
@@ -2467,7 +2475,7 @@ export const supabaseService = {
     if (!supabase) return false;
     try {
       console.log('🔗 Reseller requesting to join client team:', { clientCompanyId, resellerUserId, resellerEmail });
-      
+
       const adminClient = await supabaseService.getAdminClient();
       if (!adminClient) {
         console.error('❌ Admin client not available for joinClientTeam');
@@ -2492,15 +2500,15 @@ export const supabaseService = {
       if (memberError && (memberError.code === '400' || (memberError as any).status === 400)) {
         console.warn('⚠️ account_id+email constraint missing, retrying with user_id...');
         const { error: fallbackError } = await adminClient.from('account_members').upsert({
-            account_id: clientCompanyId,
-            user_id: resellerUserId,
-            role: 'MANAGER',
-            status: 'accepted',
-            accepted_at: new Date().toISOString(),
-            invited_at: new Date().toISOString(),
+          account_id: clientCompanyId,
+          user_id: resellerUserId,
+          role: 'MANAGER',
+          status: 'accepted',
+          accepted_at: new Date().toISOString(),
+          invited_at: new Date().toISOString(),
         }, {
-            onConflict: 'account_id,user_id',
-            ignoreDuplicates: false
+          onConflict: 'account_id,user_id',
+          ignoreDuplicates: false
         });
         memberError = fallbackError;
       }
@@ -2514,16 +2522,16 @@ export const supabaseService = {
       // First find the reseller's company ID
       const { data: userData } = await adminClient.from('app_users').select('company_id').eq('id', resellerUserId).maybeSingle();
       if (userData?.company_id) {
-          await adminClient.from('companies').update({
-              reseller_id: userData.company_id
-          }).eq('id', clientCompanyId);
-          
-          await adminClient.from('reseller_clients').upsert({
-              reseller_id: userData.company_id,
-              client_company_id: clientCompanyId,
-              status: 'ACTIVE',
-              access_level: 'FULL'
-          }, { onConflict: 'reseller_id,client_company_id' });
+        await adminClient.from('companies').update({
+          reseller_id: userData.company_id
+        }).eq('id', clientCompanyId);
+
+        await adminClient.from('reseller_clients').upsert({
+          reseller_id: userData.company_id,
+          client_company_id: clientCompanyId,
+          status: 'ACTIVE',
+          access_level: 'FULL'
+        }, { onConflict: 'reseller_id,client_company_id' });
       }
 
       return true;

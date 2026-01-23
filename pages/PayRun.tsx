@@ -323,7 +323,7 @@ export const PayRun: React.FC<PayRunProps> = ({
         clearDraft,
         loadDraftItems,
         removeAdHocItem
-    } = usePayroll(employees, timesheets, leaveRequests, payRunHistory);
+    } = usePayroll(employees, timesheets, leaveRequests, payRunHistory, companyData);
 
     const isSuspended = companyData?.subscriptionStatus === 'SUSPENDED';
 

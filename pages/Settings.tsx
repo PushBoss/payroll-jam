@@ -880,8 +880,8 @@ export const Settings: React.FC<SettingsProps> = ({
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                         <div className="flex justify-between items-center mb-6">
                             <div>
-                                <h3 className="text-lg font-bold">Statutory Rates (2025)</h3>
-                                <p className="text-xs text-gray-500">Edit rates below to override defaults.</p>
+                                <h3 className="text-lg font-bold">Statutory Rates (2026)</h3>
+                                <p className="text-xs text-gray-500">Core global policies are applied by default. Edit rates below to set local company overrides.</p>
                             </div>
                             <button onClick={handleRestore} className="text-sm text-jam-orange hover:underline flex items-center">
                                 <Icons.Refresh className="w-3 h-3 mr-1" /> Restore Defaults
@@ -907,6 +907,7 @@ export const Settings: React.FC<SettingsProps> = ({
                             <div>
                                 <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">PAYE Threshold</label>
                                 <input type="number" value={taxConfig.payeThreshold} onChange={(e) => handleTaxChange('payeThreshold', e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-jam-orange" />
+                                <p className="text-[10px] text-gray-400 mt-1">Default: JMD 1,700,096 (2026)</p>
                             </div>
                             <div>
                                 <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Standard PAYE Rate</label>
@@ -1095,7 +1096,7 @@ export const Settings: React.FC<SettingsProps> = ({
                 // Use account.id if available, fallback to currentUser.id for invitations
                 // The account record will be created via trigger or manually if needed
                 const accountId = account?.id || currentUser?.id;
-                
+
                 if (!accountId) {
                     return (
                         <div className="bg-white p-6 rounded-xl border border-gray-200 animate-fade-in">
@@ -1108,7 +1109,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
                 return (
                     <div className="space-y-6 animate-fade-in">
-                        <InviteUserCard 
+                        <InviteUserCard
                             accountId={accountId}
                             onInviteSent={() => {
                                 // Refresh members list

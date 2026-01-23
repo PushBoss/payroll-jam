@@ -31,16 +31,16 @@ export interface AccountMember {
  */
 export async function searchUserByEmail(email: string): Promise<{ exists: boolean; userId?: string }> {
   if (!supabase) return { exists: false };
-  
+
   try {
     // UPDATED: Use RPC helper to bypass RLS and find user safely
-    const { data: userId, error } = await supabase.rpc('get_user_id_by_email', { 
-      email_input: email.toLowerCase() 
+    const { data: userId, error } = await supabase.rpc('get_user_id_by_email', {
+      email_input: email.toLowerCase()
     });
 
     if (error) {
-       console.error('Error searching user (RPC):', error);
-       return { exists: false };
+      console.error('Error searching user (RPC):', error);
+      return { exists: false };
     }
 
     return { exists: !!userId, userId: userId || undefined };
@@ -63,7 +63,7 @@ export async function inviteUserToAccount(payload: {
   invitedBy: string;
 }): Promise<{ success: boolean; error?: string; member?: AccountMember; requiresUpgrade?: boolean }> {
   if (!supabase) return { success: false, error: 'Database connection unavailable' };
-  
+
   try {
     // Verify company exists
     const { data: companiesData, error: companyError } = await supabase
@@ -77,7 +77,7 @@ export async function inviteUserToAccount(payload: {
     }
 
     const company = Array.isArray(companiesData) && companiesData.length > 0 ? companiesData[0] : null;
-    
+
     if (!company) {
       return { success: false, error: 'Company not found.' };
     }
@@ -109,87 +109,87 @@ export async function inviteUserToAccount(payload: {
     if (exists && userId) {
       // Use admin client to check upgrade requirements to bypass RLS
       const adminClient = await supabaseService.getAdminClient();
-      
+
       if (adminClient) {
-          try {
-              // 1. Check user profile
-              const { data: userProfile } = await adminClient
-                .from('app_users')
-                .select('role, company_id')
-                .eq('id', userId)
-                .maybeSingle();
-              
-              console.log('🛡️ Admin check - User Profile:', userProfile);
-                
-              const role = userProfile?.role?.toUpperCase();
-              const isReseller = role === 'RESELLER' || role === 'SUPERADMIN';
-              
-              if (!isReseller) {
-                  // 2. Check all companies where they are OWNER or MEMBER
-                  
-                  // A. Find companies they own
-                  const { data: ownedCompanies } = await adminClient
-                    .from('companies')
-                    .select('id, plan, name')
-                    .eq('owner_id', userId);
-                    
-                  // B. Find companies where they are a member
-                  const { data: memberships } = await adminClient
-                    .from('account_members')
-                    .select('account_id')
-                    .eq('user_id', userId)
-                    .eq('status', 'accepted');
-                    
-                  const memberCompanyIds = memberships?.map(m => m.account_id) || [];
-                  
-                  let memberCompanies: any[] = [];
-                  if (memberCompanyIds.length > 0) {
-                      const { data: mComp } = await adminClient
-                        .from('companies')
-                        .select('id, plan, name')
-                        .in('id', memberCompanyIds);
-                      memberCompanies = mComp || [];
-                  }
-                  
-                  const allCompanies = [
-                      ...(ownedCompanies || []),
-                      ...memberCompanies
-                  ];
+        try {
+          // 1. Check user profile
+          const { data: userProfile } = await adminClient
+            .from('app_users')
+            .select('role, company_id')
+            .eq('id', userId)
+            .maybeSingle();
 
-                  console.log(`🛡️ Admin check - Found ${allCompanies.length} relevant companies for user ${userId}`);
-                  console.log('🛡️ Admin check - Company details:', allCompanies);
+          console.log('🛡️ Admin check - User Profile:', userProfile);
 
-                  if (allCompanies.length > 0) {
-                      // If they already have any company AND none of them are Reseller/Enterprise plans, 
-                      // then joining another company requires a Reseller upgrade.
-                      const hasResellerPlan = allCompanies.some(c => 
-                          c.plan === 'Enterprise' || c.plan === 'Reseller'
-                      );
-                      
-                      if (!hasResellerPlan) {
-                          requiresUpgrade = true;
-                          console.log('⚠️ Invitee belongs to existing companies but none have a Reseller plan. Upgrade required.');
-                      }
-                  } else if (userProfile?.company_id) {
-                      // fallback to profile's company_id if no memberships found
-                      const { data: primaryComp } = await adminClient
-                        .from('companies')
-                        .select('id, plan, name')
-                        .eq('id', userProfile.company_id)
-                        .maybeSingle();
-                        
-                      console.log('🛡️ Admin check - Primary Company Fallback:', primaryComp);
-                      
-                      if (primaryComp && primaryComp.plan !== 'Enterprise') {
-                          requiresUpgrade = true;
-                          console.log('⚠️ Invitee primary company is non-reseller:', primaryComp.name);
-                      }
-                  }
+          const role = userProfile?.role?.toUpperCase();
+          const isReseller = role === 'RESELLER' || role === 'SUPER_ADMIN';
+
+          if (!isReseller) {
+            // 2. Check all companies where they are OWNER or MEMBER
+
+            // A. Find companies they own
+            const { data: ownedCompanies } = await adminClient
+              .from('companies')
+              .select('id, plan, name')
+              .eq('owner_id', userId);
+
+            // B. Find companies where they are a member
+            const { data: memberships } = await adminClient
+              .from('account_members')
+              .select('account_id')
+              .eq('user_id', userId)
+              .eq('status', 'accepted');
+
+            const memberCompanyIds = memberships?.map(m => m.account_id) || [];
+
+            let memberCompanies: any[] = [];
+            if (memberCompanyIds.length > 0) {
+              const { data: mComp } = await adminClient
+                .from('companies')
+                .select('id, plan, name')
+                .in('id', memberCompanyIds);
+              memberCompanies = mComp || [];
+            }
+
+            const allCompanies = [
+              ...(ownedCompanies || []),
+              ...memberCompanies
+            ];
+
+            console.log(`🛡️ Admin check - Found ${allCompanies.length} relevant companies for user ${userId}`);
+            console.log('🛡️ Admin check - Company details:', allCompanies);
+
+            if (allCompanies.length > 0) {
+              // If they already have any company AND none of them are Reseller/Enterprise plans, 
+              // then joining another company requires a Reseller upgrade.
+              const hasResellerPlan = allCompanies.some(c =>
+                c.plan === 'Enterprise' || c.plan === 'Reseller'
+              );
+
+              if (!hasResellerPlan) {
+                requiresUpgrade = true;
+                console.log('⚠️ Invitee belongs to existing companies but none have a Reseller plan. Upgrade required.');
               }
-              console.log(`🛡️ Admin check complete. Role: ${role}, Requires Upgrade: ${requiresUpgrade}`);
-          } catch (adminErr) {
-              console.error('Error in admin upgrade check:', adminErr);
+            } else if (userProfile?.company_id) {
+              // fallback to profile's company_id if no memberships found
+              const { data: primaryComp } = await adminClient
+                .from('companies')
+                .select('id, plan, name')
+                .eq('id', userProfile.company_id)
+                .maybeSingle();
+
+              console.log('🛡️ Admin check - Primary Company Fallback:', primaryComp);
+
+              if (primaryComp && primaryComp.plan !== 'Enterprise') {
+                requiresUpgrade = true;
+                console.log('⚠️ Invitee primary company is non-reseller:', primaryComp.name);
+              }
+            }
           }
+          console.log(`🛡️ Admin check complete. Role: ${role}, Requires Upgrade: ${requiresUpgrade}`);
+        } catch (adminErr) {
+          console.error('Error in admin upgrade check:', adminErr);
+        }
       }
 
       // Check if already a member by user_id
@@ -233,20 +233,20 @@ export async function inviteUserToAccount(payload: {
 
     // Fallback: If 400 (likely missing constraint) and we have a userId, try account_id,user_id
     if (error && (error.code === '400' || (error as any).status === 400) && invitationData.user_id) {
-        console.warn('⚠️ account_id+email constraint missing, retrying with user_id...');
-        const { data: fallbackData, error: fallbackError } = await supabase
-            .from('account_members')
-            .upsert(
-                invitationData,
-                {
-                    onConflict: 'account_id,user_id',
-                    ignoreDuplicates: false
-                }
-            )
-            .select()
-            .maybeSingle();
-        data = fallbackData;
-        error = fallbackError;
+      console.warn('⚠️ account_id+email constraint missing, retrying with user_id...');
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from('account_members')
+        .upsert(
+          invitationData,
+          {
+            onConflict: 'account_id,user_id',
+            ignoreDuplicates: false
+          }
+        )
+        .select()
+        .maybeSingle();
+      data = fallbackData;
+      error = fallbackError;
     }
 
     if (error) {
@@ -258,10 +258,10 @@ export async function inviteUserToAccount(payload: {
     try {
       // If user doesn't exist, we should direct them to signup.
       // If they do exist, we can direct them to the dashboard where they will see the acceptance prompt.
-      const inviteLink = exists 
-        ? `${window.location.origin}/?page=dashboard` 
+      const inviteLink = exists
+        ? `${window.location.origin}/?page=dashboard`
         : `${window.location.origin}/?page=signup&email=${encodeURIComponent(normalizedEmail)}&invitation=true`;
-      
+
       // Send manager invite email (for team member invitations)
       await emailService.sendManagerInvite(
         normalizedEmail,
@@ -287,7 +287,7 @@ export async function inviteUserToAccount(payload: {
  */
 export async function getAccountMembers(accountId: string): Promise<AccountMember[]> {
   if (!supabase) return [];
-  
+
   try {
     const { data, error } = await supabase
       .from('account_members')
@@ -315,7 +315,7 @@ export async function getUserRoleInAccount(
   userId: string
 ): Promise<MemberRole | null> {
   if (!supabase) return null;
-  
+
   try {
     // 1. Check if user is the owner
     const { data: company } = await supabase
@@ -323,7 +323,7 @@ export async function getUserRoleInAccount(
       .select('owner_id')
       .eq('id', accountId)
       .single();
-      
+
     if (company && company.owner_id === userId) {
       return 'OWNER';
     }
@@ -387,7 +387,7 @@ export async function getPendingInvitationsByEmail(
     const invitations = await Promise.all(
       data.map(async (invite: any) => {
         let inviterName = 'Team';
-        
+
         if (invite.inviter && Array.isArray(invite.inviter) && invite.inviter.length > 0) {
           const ownerId = invite.inviter[0].owner_id;
           if (ownerId) {
@@ -403,9 +403,9 @@ export async function getPendingInvitationsByEmail(
         let companyName = invite.companies?.[0]?.name as string | undefined;
         let companyPlan = invite.companies?.[0]?.plan as string | undefined;
 
-          if (!companyName && invite.account_id) {
+        if (!companyName && invite.account_id) {
           try {
-              const { data: summary, error: summaryError } = await client.rpc('get_company_invite_summary', {
+            const { data: summary, error: summaryError } = await client.rpc('get_company_invite_summary', {
               p_company_id: invite.account_id
             });
 
@@ -490,14 +490,14 @@ export async function acceptInvitation(
     // Determine if we should match by user_id or if we need to find it by something else
     // If the user already exists, they might be in account_members with their user_id
     // If they just signed up, they might only be there by email.
-    
+
     // First, try updating by user_id
     const { error: updateError, data: updatedRows } = await client
       .from('account_members')
-      .update({ 
-        status: 'accepted', 
+      .update({
+        status: 'accepted',
         user_id: userId,
-        accepted_at: new Date().toISOString() 
+        accepted_at: new Date().toISOString()
       })
       .eq('account_id', accountId)
       .eq('user_id', userId)
@@ -507,31 +507,31 @@ export async function acceptInvitation(
 
     // If that didn't work, maybe the invitation exists but user_id is null?
     if (!success) {
-        // Get user's email to try matching by email
-        // We'll try to find the user in app_users first to get their email
-        const { data: appUser } = await client
-          .from('app_users')
-          .select('email')
-          .eq('id', userId)
-          .maybeSingle();
+      // Get user's email to try matching by email
+      // We'll try to find the user in app_users first to get their email
+      const { data: appUser } = await client
+        .from('app_users')
+        .select('email')
+        .eq('id', userId)
+        .maybeSingle();
 
-        const userEmail = appUser?.email;
-        
-        if (userEmail) {
-            const { error: emailUpdateError, data: emailUpdatedRows } = await client
-                .from('account_members')
-                .update({ 
-                    status: 'accepted', 
-                    user_id: userId,
-                    accepted_at: new Date().toISOString() 
-                })
-                .eq('account_id', accountId)
-                .eq('email', userEmail.toLowerCase())
-                .is('user_id', null)
-                .select();
-            
-            success = !emailUpdateError && emailUpdatedRows && emailUpdatedRows.length > 0;
-        }
+      const userEmail = appUser?.email;
+
+      if (userEmail) {
+        const { error: emailUpdateError, data: emailUpdatedRows } = await client
+          .from('account_members')
+          .update({
+            status: 'accepted',
+            user_id: userId,
+            accepted_at: new Date().toISOString()
+          })
+          .eq('account_id', accountId)
+          .eq('email', userEmail.toLowerCase())
+          .is('user_id', null)
+          .select();
+
+        success = !emailUpdateError && emailUpdatedRows && emailUpdatedRows.length > 0;
+      }
     }
 
     if (!success) {
@@ -539,105 +539,122 @@ export async function acceptInvitation(
       return false;
     }
 
+    // AUDIT LOG: Invitation accepted
+    try {
+      const auditClient = await supabaseService.getAdminClient();
+      if (auditClient) {
+        await auditClient.from('audit_logs').insert({
+          company_id: accountId,
+          actor_id: userId,
+          action: 'UPDATE',
+          entity: 'ACCOUNT_MEMBER',
+          entity_id: accountId,
+          description: `Accepted invitation to company ${accountId}`
+        });
+      }
+    } catch (auditErr) {
+      console.warn('⚠️ Failed to log invitation acceptance audit:', auditErr);
+    }
+
     // NEW: If user is a Reseller, also add this company to their reseller portfolio
     // This allows clients to "Invite" their Reseller partner directly
     try {
-        console.log(`🔍 Checking if user ${userId} is a Reseller...`);
-        // Use admin permissions to check user role to avoid RLS issues
-        const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY || localStorage.getItem('VITE_SUPABASE_SERVICE_ROLE_KEY');
-        const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
-        
-        let targetRole: string | null = null;
-        let targetCompanyId: string | null = null;
+      console.log(`🔍 Checking if user ${userId} is a Reseller...`);
+      // Use admin permissions to check user role to avoid RLS issues
+      const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY || localStorage.getItem('VITE_SUPABASE_SERVICE_ROLE_KEY');
+      const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
+
+      let targetRole: string | null = null;
+      let targetCompanyId: string | null = null;
+
+      if (serviceRoleKey && supabaseUrl) {
+        console.log('🛡️ Using Admin Client for role check...');
+        const { createClient } = await import('@supabase/supabase-js');
+        const adminClient = createClient(supabaseUrl, serviceRoleKey);
+        const { data: userData, error: userError } = await adminClient.from('app_users').select('role, company_id').eq('id', userId).maybeSingle();
+        if (userError) console.error('❌ Error fetching user data via admin:', userError);
+        targetRole = userData?.role;
+        targetCompanyId = userData?.company_id;
+      } else {
+        console.log('👥 Using Standard Client for role check...');
+        const { data: userData, error: userError } = await client.from('app_users').select('role, company_id').eq('id', userId).maybeSingle();
+        if (userError) console.error('❌ Error fetching user data via standard client:', userError);
+        targetRole = userData?.role;
+        targetCompanyId = userData?.company_id;
+      }
+
+      console.log(`👤 User data found: role=${targetRole}, companyId=${targetCompanyId}`);
+
+      // NEW: If user doesn't have a primary company_id yet, set it to the accepted invitation's company
+      if (!targetCompanyId || targetCompanyId === '') {
+        console.log(`🏠 Setting primary company_id to ${accountId} for user ${userId}`);
+        const adminClient = await supabaseService.getAdminClient();
+        if (adminClient) {
+          await adminClient.from('app_users')
+            .update({ company_id: accountId })
+            .eq('id', userId);
+        } else {
+          await client.from('app_users')
+            .update({ company_id: accountId })
+            .eq('id', userId);
+        }
+        // Update local variable
+        targetCompanyId = accountId;
+      }
+
+      // Handle both 'RESELLER' and 'Reseller' just in case
+      const isReseller = targetRole === 'RESELLER' || targetRole === 'Reseller';
+
+      if (isReseller && targetCompanyId) {
+        console.log('🔄 Accepting user is a Reseller, linking client company to portfolio...');
 
         if (serviceRoleKey && supabaseUrl) {
-            console.log('🛡️ Using Admin Client for role check...');
-            const { createClient } = await import('@supabase/supabase-js');
-            const adminClient = createClient(supabaseUrl, serviceRoleKey);
-            const { data: userData, error: userError } = await adminClient.from('app_users').select('role, company_id').eq('id', userId).maybeSingle();
-            if (userError) console.error('❌ Error fetching user data via admin:', userError);
-            targetRole = userData?.role;
-            targetCompanyId = userData?.company_id;
+          const { createClient } = await import('@supabase/supabase-js');
+          const adminClient = createClient(supabaseUrl, serviceRoleKey);
+
+          // 1. Create portfolio link
+          console.log(`🔗 Creating reseller_clients link: reseller=${targetCompanyId}, client=${accountId}`);
+          const { error: linkError } = await adminClient.from('reseller_clients').upsert({
+            reseller_id: targetCompanyId,
+            client_company_id: accountId,
+            status: 'ACTIVE',
+            access_level: 'FULL'
+          }, { onConflict: 'reseller_id,client_company_id' });
+
+          if (linkError) {
+            console.error('❌ Error creating reseller_clients link:', linkError);
+          } else {
+            console.log('✅ reseller_clients link created/updated');
+          }
+
+          // 2. Link company to reseller
+          console.log(`🔗 Updating company reseller_id: company=${accountId}, reseller=${targetCompanyId}`);
+          const { error: companyUpdateError } = await adminClient.from('companies').update({ reseller_id: targetCompanyId }).eq('id', accountId);
+
+          if (companyUpdateError) {
+            console.error('❌ Error updating company reseller_id:', companyUpdateError);
+          } else {
+            console.log('✅ Company reseller_id updated');
+          }
+
+          console.log('✅ Portfolio link established for Reseller via Admin Client');
         } else {
-            console.log('👥 Using Standard Client for role check...');
-            const { data: userData, error: userError } = await client.from('app_users').select('role, company_id').eq('id', userId).maybeSingle();
-            if (userError) console.error('❌ Error fetching user data via standard client:', userError);
-            targetRole = userData?.role;
-            targetCompanyId = userData?.company_id;
+          console.warn('⚠️ No Admin Key available, attempting linkage via standard client...');
+          // Best effort if no admin key
+          await client.from('reseller_clients').upsert({
+            reseller_id: targetCompanyId,
+            client_company_id: accountId,
+            status: 'ACTIVE',
+            access_level: 'FULL'
+          }, { onConflict: 'reseller_id,client_company_id' });
+          await client.from('companies').update({ reseller_id: targetCompanyId }).eq('id', accountId);
         }
-
-        console.log(`👤 User data found: role=${targetRole}, companyId=${targetCompanyId}`);
-
-        // NEW: If user doesn't have a primary company_id yet, set it to the accepted invitation's company
-        if (!targetCompanyId || targetCompanyId === '') {
-            console.log(`🏠 Setting primary company_id to ${accountId} for user ${userId}`);
-            const adminClient = await supabaseService.getAdminClient();
-            if (adminClient) {
-                await adminClient.from('app_users')
-                  .update({ company_id: accountId })
-                  .eq('id', userId);
-            } else {
-                await client.from('app_users')
-                  .update({ company_id: accountId })
-                  .eq('id', userId);
-            }
-            // Update local variable
-            targetCompanyId = accountId;
-        }
-
-        // Handle both 'RESELLER' and 'Reseller' just in case
-        const isReseller = targetRole === 'RESELLER' || targetRole === 'Reseller';
-
-        if (isReseller && targetCompanyId) {
-            console.log('🔄 Accepting user is a Reseller, linking client company to portfolio...');
-            
-            if (serviceRoleKey && supabaseUrl) {
-                const { createClient } = await import('@supabase/supabase-js');
-                const adminClient = createClient(supabaseUrl, serviceRoleKey);
-                
-                // 1. Create portfolio link
-                console.log(`🔗 Creating reseller_clients link: reseller=${targetCompanyId}, client=${accountId}`);
-                const { error: linkError } = await adminClient.from('reseller_clients').upsert({
-                    reseller_id: targetCompanyId,
-                    client_company_id: accountId,
-                    status: 'ACTIVE',
-                    access_level: 'FULL'
-                }, { onConflict: 'reseller_id,client_company_id' });
-
-                if (linkError) {
-                    console.error('❌ Error creating reseller_clients link:', linkError);
-                } else {
-                    console.log('✅ reseller_clients link created/updated');
-                }
-
-                // 2. Link company to reseller
-                console.log(`🔗 Updating company reseller_id: company=${accountId}, reseller=${targetCompanyId}`);
-                const { error: companyUpdateError } = await adminClient.from('companies').update({ reseller_id: targetCompanyId }).eq('id', accountId);
-                
-                if (companyUpdateError) {
-                    console.error('❌ Error updating company reseller_id:', companyUpdateError);
-                } else {
-                    console.log('✅ Company reseller_id updated');
-                }
-                
-                console.log('✅ Portfolio link established for Reseller via Admin Client');
-            } else {
-                console.warn('⚠️ No Admin Key available, attempting linkage via standard client...');
-                // Best effort if no admin key
-                await client.from('reseller_clients').upsert({
-                    reseller_id: targetCompanyId,
-                    client_company_id: accountId,
-                    status: 'ACTIVE',
-                    access_level: 'FULL'
-                }, { onConflict: 'reseller_id,client_company_id' });
-                await client.from('companies').update({ reseller_id: targetCompanyId }).eq('id', accountId);
-            }
-        } else {
-            if (!isReseller) console.log('ℹ️ User is not a Reseller, skipping portfolio linking.');
-            if (!targetCompanyId) console.log('ℹ️ User has no company_id, skipping portfolio linking.');
-        }
+      } else {
+        if (!isReseller) console.log('ℹ️ User is not a Reseller, skipping portfolio linking.');
+        if (!targetCompanyId) console.log('ℹ️ User has no company_id, skipping portfolio linking.');
+      }
     } catch (assocError) {
-        console.warn('Non-fatal error establishing reseller association:', assocError);
+      console.warn('Non-fatal error establishing reseller association:', assocError);
     }
 
     // Mark email as verified in auth.users if verifyEmail flag is true
@@ -690,10 +707,10 @@ export async function acceptMultipleInvitations(
     // We match by ID and optionally by email to ensure we're updating the right invitations
     let query = client
       .from('account_members')
-      .update({ 
-        status: 'accepted', 
+      .update({
+        status: 'accepted',
         user_id: userId,
-        accepted_at: new Date().toISOString() 
+        accepted_at: new Date().toISOString()
       })
       .in('id', invitationIds);
 
@@ -711,100 +728,115 @@ export async function acceptMultipleInvitations(
 
     acceptedCount = invitationIds.length;
 
+    // AUDIT LOG: Multiple invitations accepted
+    try {
+      const auditClient = await supabaseService.getAdminClient();
+      if (auditClient) {
+        await auditClient.from('audit_logs').insert({
+          actor_id: userId,
+          action: 'UPDATE',
+          entity: 'ACCOUNT_MEMBER',
+          description: `Accepted ${acceptedCount} invitations in bulk. IDs: ${invitationIds.join(', ')}`
+        });
+      }
+    } catch (auditErr) {
+      console.warn('⚠️ Failed to log bulk invitation acceptance audit:', auditErr);
+    }
+
     // NEW: If user is a Reseller, also link these companies to their reseller portfolio
     try {
-        console.log(`🔍 Checking if accepting user ${userId} is a Reseller (Multiple)...`);
-        
-        // Use credentials for admin lookup to bypass potential RLS issues
-        const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY || localStorage.getItem('VITE_SUPABASE_SERVICE_ROLE_KEY');
-        const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
-        
-        let targetRole: string | null = null;
-        let targetCompanyId: string | null = null;
+      console.log(`🔍 Checking if accepting user ${userId} is a Reseller (Multiple)...`);
 
-        if (serviceRoleKey && supabaseUrl) {
+      // Use credentials for admin lookup to bypass potential RLS issues
+      const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY || localStorage.getItem('VITE_SUPABASE_SERVICE_ROLE_KEY');
+      const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
+
+      let targetRole: string | null = null;
+      let targetCompanyId: string | null = null;
+
+      if (serviceRoleKey && supabaseUrl) {
+        const { createClient } = await import('@supabase/supabase-js');
+        const adminClient = createClient(supabaseUrl, serviceRoleKey);
+        const { data: userData } = await adminClient.from('app_users').select('role, company_id').eq('id', userId).maybeSingle();
+        targetRole = userData?.role;
+        targetCompanyId = userData?.company_id;
+      } else {
+        const { data: userData } = await client.from('app_users').select('role, company_id').eq('id', userId).maybeSingle();
+        targetRole = userData?.role;
+        targetCompanyId = userData?.company_id;
+      }
+
+      console.log(`👤 User data found (Multiple): role=${targetRole}, companyId=${targetCompanyId}`);
+
+      // NEW: If user doesn't have a primary company_id yet, set it to the first accepted invitation's company
+      if (!targetCompanyId || targetCompanyId === '') {
+        const { data: firstInvite } = await client
+          .from('account_members')
+          .select('account_id')
+          .in('id', invitationIds)
+          .limit(1)
+          .maybeSingle();
+
+        if (firstInvite) {
+          console.log(`🏠 Setting primary company_id to ${firstInvite.account_id} for user ${userId}`);
+          const adminClient = await supabaseService.getAdminClient();
+          if (adminClient) {
+            await adminClient.from('app_users')
+              .update({ company_id: firstInvite.account_id })
+              .eq('id', userId);
+          } else {
+            await client.from('app_users')
+              .update({ company_id: firstInvite.account_id })
+              .eq('id', userId);
+          }
+          // Update local variable for subsequent reseller check
+          targetCompanyId = firstInvite.account_id;
+        }
+      }
+
+      if (targetRole === 'RESELLER' && targetCompanyId) {
+        console.log('🔄 Accepting user is a Reseller, linking accepted companies to portfolio...');
+
+        // Fetch account_ids for the invitations we just accepted
+        const { data: acceptedInvites } = await client
+          .from('account_members')
+          .select('account_id')
+          .in('id', invitationIds);
+
+        if (acceptedInvites && acceptedInvites.length > 0) {
+          if (serviceRoleKey && supabaseUrl) {
             const { createClient } = await import('@supabase/supabase-js');
             const adminClient = createClient(supabaseUrl, serviceRoleKey);
-            const { data: userData } = await adminClient.from('app_users').select('role, company_id').eq('id', userId).maybeSingle();
-            targetRole = userData?.role;
-            targetCompanyId = userData?.company_id;
-        } else {
-            const { data: userData } = await client.from('app_users').select('role, company_id').eq('id', userId).maybeSingle();
-            targetRole = userData?.role;
-            targetCompanyId = userData?.company_id;
-        }
 
-        console.log(`👤 User data found (Multiple): role=${targetRole}, companyId=${targetCompanyId}`);
+            for (const invite of acceptedInvites) {
+              console.log(`🔗 Linking company ${invite.account_id} to Reseller portfolio...`);
+              // 1. Create portfolio link
+              await adminClient.from('reseller_clients').upsert({
+                reseller_id: targetCompanyId,
+                client_company_id: invite.account_id,
+                status: 'ACTIVE',
+                access_level: 'FULL'
+              }, { onConflict: 'reseller_id,client_company_id' });
 
-        // NEW: If user doesn't have a primary company_id yet, set it to the first accepted invitation's company
-        if (!targetCompanyId || targetCompanyId === '') {
-            const { data: firstInvite } = await client
-                .from('account_members')
-                .select('account_id')
-                .in('id', invitationIds)
-                .limit(1)
-                .maybeSingle();
-            
-            if (firstInvite) {
-                console.log(`🏠 Setting primary company_id to ${firstInvite.account_id} for user ${userId}`);
-                const adminClient = await supabaseService.getAdminClient();
-                if (adminClient) {
-                    await adminClient.from('app_users')
-                      .update({ company_id: firstInvite.account_id })
-                      .eq('id', userId);
-                } else {
-                    await client.from('app_users')
-                      .update({ company_id: firstInvite.account_id })
-                      .eq('id', userId);
-                }
-                // Update local variable for subsequent reseller check
-                targetCompanyId = firstInvite.account_id;
+              // 2. Link company to reseller
+              await adminClient.from('companies').update({ reseller_id: targetCompanyId }).eq('id', invite.account_id);
             }
-        }
-
-        if (targetRole === 'RESELLER' && targetCompanyId) {
-            console.log('🔄 Accepting user is a Reseller, linking accepted companies to portfolio...');
-            
-            // Fetch account_ids for the invitations we just accepted
-            const { data: acceptedInvites } = await client
-                .from('account_members')
-                .select('account_id')
-                .in('id', invitationIds);
-                
-            if (acceptedInvites && acceptedInvites.length > 0) {
-                if (serviceRoleKey && supabaseUrl) {
-                    const { createClient } = await import('@supabase/supabase-js');
-                    const adminClient = createClient(supabaseUrl, serviceRoleKey);
-                    
-                    for (const invite of acceptedInvites) {
-                        console.log(`🔗 Linking company ${invite.account_id} to Reseller portfolio...`);
-                        // 1. Create portfolio link
-                        await adminClient.from('reseller_clients').upsert({
-                            reseller_id: targetCompanyId,
-                            client_company_id: invite.account_id,
-                            status: 'ACTIVE',
-                            access_level: 'FULL'
-                        }, { onConflict: 'reseller_id,client_company_id' });
-
-                        // 2. Link company to reseller
-                        await adminClient.from('companies').update({ reseller_id: targetCompanyId }).eq('id', invite.account_id);
-                    }
-                    console.log(`✅ Portfolio links established for ${acceptedInvites.length} companies via Admin Client`);
-                } else {
-                    for (const invite of acceptedInvites) {
-                        await client.from('reseller_clients').upsert({
-                            reseller_id: targetCompanyId,
-                            client_company_id: invite.account_id,
-                            status: 'ACTIVE',
-                            access_level: 'FULL'
-                        }, { onConflict: 'reseller_id,client_company_id' });
-                        await client.from('companies').update({ reseller_id: targetCompanyId }).eq('id', invite.account_id);
-                    }
-                }
+            console.log(`✅ Portfolio links established for ${acceptedInvites.length} companies via Admin Client`);
+          } else {
+            for (const invite of acceptedInvites) {
+              await client.from('reseller_clients').upsert({
+                reseller_id: targetCompanyId,
+                client_company_id: invite.account_id,
+                status: 'ACTIVE',
+                access_level: 'FULL'
+              }, { onConflict: 'reseller_id,client_company_id' });
+              await client.from('companies').update({ reseller_id: targetCompanyId }).eq('id', invite.account_id);
             }
+          }
         }
+      }
     } catch (assocError) {
-        console.warn('Non-fatal error establishing reseller associations:', assocError);
+      console.warn('Non-fatal error establishing reseller associations:', assocError);
     }
 
     // Mark email as verified in auth.users if flag is true
@@ -812,12 +844,12 @@ export async function acceptMultipleInvitations(
       try {
         const adminClient = await supabaseService.getAdminClient();
         if (adminClient) {
-            await adminClient.auth.admin.updateUserById(userId, {
-              email_confirm: true
-            });
-            console.log('✅ Email marked as verified via Admin Client');
+          await adminClient.auth.admin.updateUserById(userId, {
+            email_confirm: true
+          });
+          console.log('✅ Email marked as verified via Admin Client');
         } else {
-            console.warn('⚠️ Admin client not available for email verification bypass');
+          console.warn('⚠️ Admin client not available for email verification bypass');
         }
       } catch (verifyException) {
         console.warn('Warning: Exception marking email verified:', verifyException);
@@ -837,7 +869,7 @@ export async function acceptMultipleInvitations(
  */
 export async function declineInvitation(accountId: string, userId: string): Promise<boolean> {
   if (!supabase) return false;
-  
+
   try {
     const { error } = await supabase
       .from('account_members')
@@ -865,7 +897,7 @@ export async function removeMemberFromAccount(
   memberId: string
 ): Promise<{ success: boolean; error?: string }> {
   if (!supabase) return { success: false, error: 'Database connection unavailable' };
-  
+
   try {
     const { error } = await supabase
       .from('account_members')
@@ -913,24 +945,24 @@ export async function resendInvitation(memberId: string): Promise<{ success: boo
     const role = member.role;
     // @ts-ignore
     const companyName = member.companies?.name || 'Payroll-Jam';
-    
+
     // 3. Send email using the same logic as inviteUserToAccount
     if (role === 'ADMIN' || role === 'MANAGER' || role === 'OWNER' || role === 'admin' || role === 'manager' || role === 'owner') {
-       await emailService.sendManagerInvite(
-          email,
-          email.split('@')[0], 
-          companyName,
-          `${window.location.origin}/?page=dashboard`,
-          role
-        );
+      await emailService.sendManagerInvite(
+        email,
+        email.split('@')[0],
+        companyName,
+        `${window.location.origin}/?page=dashboard`,
+        role
+      );
     } else {
-        await emailService.sendInvite(
-          email,
-          email.split('@')[0],
-          `${window.location.origin}/?page=settings&section=team`
-        );
+      await emailService.sendInvite(
+        email,
+        email.split('@')[0],
+        `${window.location.origin}/?page=settings&section=team`
+      );
     }
-    
+
     // 4. Update invited_at timestamp to show it was resent
     await supabase
       .from('account_members')
@@ -940,7 +972,7 @@ export async function resendInvitation(memberId: string): Promise<{ success: boo
     return { success: true };
 
   } catch (error) {
-     console.error('Error resending invitation:', error);
-     return { success: false, error: 'Failed to resend invitation' };
+    console.error('Error resending invitation:', error);
+    return { success: false, error: 'Failed to resend invitation' };
   }
 }

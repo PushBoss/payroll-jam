@@ -365,6 +365,9 @@ export interface CompanySettings {
   billingCycle?: 'MONTHLY' | 'ANNUAL';
   employeeLimit?: string;
   paymentMethod?: 'card' | 'direct-deposit';
+  resellerId?: string;
+  policies?: Record<string, any>;
+  reseller_defaults?: Record<string, any>;
 }
 
 export interface TaxConfig {

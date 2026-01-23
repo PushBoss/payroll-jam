@@ -50,12 +50,12 @@ const INITIAL_TAX_CONFIG: TaxConfig = {
   nisRate: 0.03, nisCap: 5000000,
   nhtRate: 0.02,
   edTaxRate: 0.0225,
-  payeThreshold: 1500096,
+  payeThreshold: 1700096,
   payeRateStd: 0.25, payeRateHigh: 0.30
 };
 
 function AppContent() {
-  const { user, impersonate, updateUser, isLoading } = useAuth();
+  const { user, impersonate, updateUser, logout, isLoading } = useAuth();
 
   // Initialize cache validation on mount
   useEffect(() => {
@@ -248,6 +248,18 @@ function AppContent() {
 
     // Handle reseller invites
     const isResellerInvite = params.get('reseller') === 'true';
+
+    // SESSION CONFLICT RESOLUTION: If logged in as someone else, sign out to allow invite acceptance
+    if (user && email && user.email.toLowerCase() !== email.toLowerCase()) {
+      console.warn('🔄 Session conflict: Logged in as someone else. Signing out to prioritize invitation.');
+      toast.info(`Switching accounts to accept invitation for ${email}...`);
+
+      logout().then(() => {
+        // We keep the URL params so that after logout/reload, the invite logic runs again
+        window.location.reload();
+      });
+      return;
+    }
 
     // For existing logged-in users - accept invite immediately
     if (isResellerInvite && user && user.companyId && email === user.email && token) {
@@ -595,11 +607,11 @@ function AppContent() {
     // Mark user as onboarded
     updateUser({ isOnboarded: true });
     toast.success('Company setup complete!');
-    
+
     if (user?.role === Role.RESELLER) {
-        navigateTo('reseller-dashboard');
+      navigateTo('reseller-dashboard');
     } else {
-        navigateTo('dashboard');
+      navigateTo('dashboard');
     }
   };
   const handleEmployeeWizardComplete = () => { navigateTo('portal-home'); };
