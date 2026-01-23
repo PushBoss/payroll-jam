@@ -94,13 +94,13 @@ export const dimePayService = {
 
         console.log(`🌐 Environment Detection: Hostname=${hostname}, ForcedEnv=${activeEnv}`);
 
-        const activeCredentials = activeEnv === 'production' ? config.production : config.sandbox;
+        const activeCredentials = (activeEnv === 'production' ? config.production : config.sandbox) || (activeEnv === 'production' ? DEMO_CONFIG.production : DEMO_CONFIG.sandbox);
 
         // Validate credentials exist
         // Note: Production environment only REQUIRES apiKey (client_id) on the frontend.
         // Secret key is handled by the backend /api/sign-payment endpoint.
-        const hasSecretKey = !!activeCredentials.secretKey;
-        const hasApiKey = !!activeCredentials.apiKey;
+        const hasSecretKey = activeCredentials?.secretKey ? !!activeCredentials.secretKey : false;
+        const hasApiKey = activeCredentials?.apiKey ? !!activeCredentials.apiKey : false;
 
         if (!hasApiKey || (activeEnv === 'sandbox' && !hasSecretKey)) {
             console.error(`❌ Missing ${activeEnv} credentials`);
