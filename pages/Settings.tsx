@@ -1118,7 +1118,7 @@ export const Settings: React.FC<SettingsProps> = ({
                         />
                         <AccountMembersCard
                             accountId={accountId}
-                            isAdmin={userRole === 'admin'}
+                            isAdmin={['admin', 'owner'].includes((userRole || '').toLowerCase())}
                         />
                     </div>
                 );
