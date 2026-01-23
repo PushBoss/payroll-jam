@@ -12,9 +12,9 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  signup: (user: User & { 
-    password: string; 
-    companyName?: string; 
+  signup: (user: User & {
+    password: string;
+    companyName?: string;
     plan?: string;
     skipEmailVerification?: boolean;
     resellerInviteToken?: string;
@@ -70,22 +70,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           // Load user profile from app_users table
           const appUser = await supabaseService.getUserByEmail(session.user.email!);
           if (appUser && isMounted) {
-            
+
             // Check for active impersonation in storage to restore it
             const storedUser = storage.getUser();
             if (storedUser && storedUser.email === appUser.email && storedUser.originalRole) {
-                console.log('🔄 Restoring impersonation session');
-                const restoredUser = {
-                    ...appUser, // Keep fresh profile data
-                    role: storedUser.role, // Use impersonated role
-                    companyId: storedUser.companyId, // Use impersonated company
-                    originalRole: storedUser.originalRole // Keep persistence flag
-                };
-                setUser(restoredUser);
-                storage.saveUser(restoredUser);
+              console.log('🔄 Restoring impersonation session');
+              const restoredUser = {
+                ...appUser, // Keep fresh profile data
+                role: storedUser.role, // Use impersonated role
+                companyId: storedUser.companyId, // Use impersonated company
+                originalRole: storedUser.originalRole // Keep persistence flag
+              };
+              setUser(restoredUser);
+              storage.saveUser(restoredUser);
             } else {
-                setUser(appUser);
-                storage.saveUser(appUser);
+              setUser(appUser);
+              storage.saveUser(appUser);
             }
 
           } else if (!appUser && isMounted) {
@@ -232,9 +232,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const signup = async (userData: User & { 
-    password: string; 
-    companyName?: string; 
+  const signup = async (userData: User & {
+    password: string;
+    companyName?: string;
     plan?: string;
     skipEmailVerification?: boolean;
     resellerInviteToken?: string;
@@ -274,17 +274,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               full_name: userData.name
             }
           });
-          
+
           if (!error && data.user) {
             console.log('✅ User created via Admin Client (confirmed)');
             authData = data;
-            
+
             // Now sign in the user to establish a session in the regular client
             const { error: signInError } = await supabase.auth.signInWithPassword({
               email: userData.email,
               password: userData.password
             });
-            
+
             if (signInError) {
               console.error('❌ Error signing in after admin creation:', signInError);
             }
@@ -323,8 +323,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // We do this FIRST so the profile exists if other records need to link to it
       // Note: We temporarily omit companyId if we're about to create a new company 
       // to avoid Foreign Key violations (companies table entry doesn't exist yet).
-      const shouldCreateCompany = userData.companyName && userData.companyId && 
-                                  (userData.role === 'OWNER' || userData.role === 'RESELLER');
+      const shouldCreateCompany = userData.companyName && userData.companyId &&
+        (userData.role === 'OWNER' || userData.role === 'RESELLER');
 
       const appUser: User = {
         id: authData.user.id, // Use Supabase Auth user ID
@@ -395,11 +395,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         });
 
         // Determine company status based on payment method
-        // PENDING_APPROVAL for direct deposit/reseller billing, ACTIVE for card payment or free plan
-        const companyStatus: 'ACTIVE' | 'PENDING_APPROVAL' = 
-          (isPaidPlan && (userData as any).paymentMethod === 'direct-deposit') || 
-          (isPaidPlan && (userData as any).paymentMethod === 'reseller-billing')
-            ? 'PENDING_APPROVAL' 
+        // PENDING_PAYMENT for direct deposit/reseller billing, ACTIVE for card payment or free plan
+        const companyStatus: 'ACTIVE' | 'PENDING_PAYMENT' =
+          (isPaidPlan && (userData as any).paymentMethod === 'direct-deposit') ||
+            (isPaidPlan && (userData as any).paymentMethod === 'reseller-billing')
+            ? 'PENDING_PAYMENT'
             : 'ACTIVE';
 
         const companyData: CompanySettings & { status?: string } = {
@@ -433,7 +433,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // If there's a reseller invite token, accept it
         if (userData.resellerInviteToken) {
           const accepted = await supabaseService.acceptResellerInvite(
-            userData.resellerInviteToken, 
+            userData.resellerInviteToken,
             userData.companyId!,
             userData.resellerUserId,
             userData.resellerEmail,
@@ -478,7 +478,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             .select('*')
             .eq('id', authData.user.id)
             .maybeSingle();
-          
+
           if (updatedUser) {
             console.log('✅ Fetched updated user via Admin Client with company_id:', updatedUser.company_id);
             finalUser = {
@@ -506,9 +506,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       console.log('✅ Signup completed successfully');
 
       // Return pending invitations (now accepted) with the correct userId
-      return { 
+      return {
         userId: authData.user.id,
-        pendingInvitations 
+        pendingInvitations
       };
 
     } catch (error) {
@@ -545,56 +545,56 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const impersonate = (client: any) => {
     if (!user) return;
     console.log('🎭 Impersonating client:', client.companyName);
-    
+
     // Safety check: ensure we are capturing the TRUE original role
     const originalRole = user.originalRole || user.role;
-    
+
     const impersonatedUser = {
       ...user,
       originalRole: originalRole,
       companyId: client.id,
       role: Role.ADMIN
     };
-    
+
     setUser(impersonatedUser);
     storage.saveUser(impersonatedUser);
-    
+
     // Force a small delay to ensure state propagates before nav (though sync state updates should be fine)
   };
 
   const stopImpersonation = async () => {
     if (!user || !user.originalRole) return;
-    
+
     try {
-        // Fetch fresh user profile to restore original companyId
-        const freshUser = await supabaseService.getUserByEmail(user.email);
-        
-        if (freshUser) {
-            setUser(freshUser);
-            storage.saveUser(freshUser);
-            console.log('✅ Personation stopped. User context restored.');
-        } else {
-             // Fallback if fetch fails (should allow minimal restore)
-            const restoredUser = {
-                ...user,
-                role: user.originalRole,
-                originalRole: undefined,
-                companyId: undefined // Warning: this might leave resellers without companyId temporarily
-            };
-            setUser(restoredUser);
-            storage.saveUser(restoredUser);
-        }
-    } catch (e) {
-        console.error('Error restoring user context:', e);
-         // Fallback
+      // Fetch fresh user profile to restore original companyId
+      const freshUser = await supabaseService.getUserByEmail(user.email);
+
+      if (freshUser) {
+        setUser(freshUser);
+        storage.saveUser(freshUser);
+        console.log('✅ Personation stopped. User context restored.');
+      } else {
+        // Fallback if fetch fails (should allow minimal restore)
         const restoredUser = {
-            ...user,
-            role: user.originalRole,
-            originalRole: undefined,
-            companyId: undefined 
+          ...user,
+          role: user.originalRole,
+          originalRole: undefined,
+          companyId: undefined // Warning: this might leave resellers without companyId temporarily
         };
         setUser(restoredUser);
         storage.saveUser(restoredUser);
+      }
+    } catch (e) {
+      console.error('Error restoring user context:', e);
+      // Fallback
+      const restoredUser = {
+        ...user,
+        role: user.originalRole,
+        originalRole: undefined,
+        companyId: undefined
+      };
+      setUser(restoredUser);
+      storage.saveUser(restoredUser);
     }
   };
 

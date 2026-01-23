@@ -2867,7 +2867,7 @@ export const supabaseService = {
             email
           )
         `)
-        .eq('status', 'PENDING_APPROVAL')
+        .in('status', ['PENDING_PAYMENT', 'PENDING_APPROVAL'])
         .order('created_at', { ascending: false });
 
       if (error) {
