@@ -42,6 +42,7 @@ export async function searchUserByEmail(email: string): Promise<{ exists: boolea
       console.error('Error searching user (RPC):', error);
       return { exists: false };
     }
+    if (!userId) return { exists: false };
 
     // Also get the user's role and company_id
     const { data: userProfile } = await supabase
@@ -51,8 +52,8 @@ export async function searchUserByEmail(email: string): Promise<{ exists: boolea
       .maybeSingle();
 
     return {
-      exists: !!userId,
-      userId: userId || undefined,
+      exists: true,
+      userId,
       role: userProfile?.role,
       companyId: userProfile?.company_id
     };
