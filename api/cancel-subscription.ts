@@ -28,13 +28,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Missing subscription_id or company_id' });
     }
 
-    // Get DimePay credentials (use production by default, fallback to sandbox)
-    const isProduction = process.env.NODE_ENV === 'production';
-    const apiKey = isProduction 
-      ? process.env.DIMEPAY_API_KEY_PROD 
-      : process.env.DIMEPAY_API_KEY_SANDBOX;
-    
-    const secretKey = isProduction
+    // Get DimePay credentials
+    // Use VERCEL_ENV or APP_ENV to determine if we are in production
+    const isProduction =
+      process.env.VERCEL_ENV === 'production' ||
+      process.env.APP_ENV === 'production';
+
+    // Force sandbox for everything except production
+    const effectiveIsProduction = isProduction;
+
+    const apiKey = effectiveIsProduction
+      ? process.env.DIMEPAY_CLIENT_ID_PROD
+      : process.env.DIMEPAY_CLIENT_ID_SANDBOX;
+
+    const secretKey = effectiveIsProduction
       ? process.env.DIMEPAY_SECRET_KEY_PROD
       : process.env.DIMEPAY_SECRET_KEY_SANDBOX;
 
@@ -43,9 +50,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: 'Payment gateway not configured' });
     }
 
-    // Call DimePay API to cancel subscription
-    // Note: DimePay API documentation may vary - adjust endpoint as needed
-    const dimePayUrl = isProduction 
+    const dimePayUrl = effectiveIsProduction
       ? 'https://api.dimepay.app/v1/subscriptions/cancel'
       : 'https://sandbox-api.dimepay.app/v1/subscriptions/cancel';
 
@@ -68,7 +73,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!dimePayResponse.ok) {
         const errorData = await dimePayResponse.text();
         console.error('❌ DimePay cancellation failed:', errorData);
-        
+
         // Continue with local cancellation even if DimePay call fails
         // The webhook will handle the actual cancellation when DimePay processes it
       } else {
@@ -122,9 +127,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   } catch (error: any) {
     console.error('❌ Error cancelling subscription:', error);
-    return res.status(500).json({ 
-      error: 'Failed to cancel subscription', 
-      message: error.message 
+    return res.status(500).json({
+      error: 'Failed to cancel subscription',
+      message: error.message
     });
   }
 }

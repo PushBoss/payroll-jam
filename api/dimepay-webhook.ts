@@ -29,13 +29,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     // 1. VERIFY WEBHOOK SIGNATURE (Critical for security!)
     const signature = req.headers['dimepay-signature'] || req.headers['x-dimepay-signature'];
-    const webhookSecret = process.env.DIMEPAY_WEBHOOK_SECRET;
-    
+
+    // Determine environment
+    const isProduction =
+      process.env.VERCEL_ENV === 'production' ||
+      process.env.APP_ENV === 'production';
+
+    const webhookSecret = isProduction
+      ? (process.env.DIMEPAY_WEBHOOK_SECRET_PROD || process.env.DIMEPAY_WEBHOOK_SECRET)
+      : (process.env.DIMEPAY_WEBHOOK_SECRET_SANDBOX || process.env.DIMEPAY_WEBHOOK_SECRET);
+
     if (!webhookSecret) {
-      console.error('❌ DIMEPAY_WEBHOOK_SECRET not configured');
+      console.error('❌ DIMEPAY_WEBHOOK_SECRET not configured for environment');
       return res.status(500).json({ error: 'Webhook secret not configured' });
     }
-    
+
     if (!verifyWebhookSignature(req.body, signature as string, webhookSecret)) {
       console.error('❌ Invalid webhook signature');
       return res.status(401).json({ error: 'Invalid signature' });
@@ -46,12 +54,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // 2. HANDLE DIFFERENT EVENT TYPES
     switch (event.type) {
-      
+
       // ✅ Subscription created after first checkout succeeds
       case 'subscription.created': {
         const data = event.data;
         console.log('📝 Creating subscription:', data.subscription_id);
-        
+
         // Extract company_id from metadata
         const companyId = data.metadata?.company_id;
         if (!companyId) {
@@ -116,14 +124,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case 'invoice.payment_succeeded': {
         const data = event.data;
         console.log('💰 Processing successful payment:', data.invoice_id);
-        
+
         // Find subscription in database
         const { data: subscription, error: findError } = await supabase
           .from('subscriptions')
           .select('*')
           .eq('dimepay_subscription_id', data.subscription_id)
           .single();
-        
+
         if (findError || !subscription) {
           console.error('❌ Subscription not found:', data.subscription_id, findError);
           return res.status(200).json({ received: true }); // Still acknowledge
@@ -135,7 +143,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .select('id')
           .eq('transaction_id', data.invoice_id)
           .single();
-        
+
         if (existing) {
           console.log('ℹ️ Payment already recorded:', data.invoice_id);
           return res.status(200).json({ message: 'Already processed' });
@@ -198,13 +206,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case 'invoice.payment_failed': {
         const data = event.data;
         console.log('⚠️ Processing failed payment:', data.invoice_id);
-        
+
         const { data: subscription, error: findError } = await supabase
           .from('subscriptions')
           .select('*')
           .eq('dimepay_subscription_id', data.subscription_id)
           .single();
-        
+
         if (findError || !subscription) {
           console.error('❌ Subscription not found:', data.subscription_id);
           return res.status(200).json({ received: true });
@@ -239,7 +247,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (retryCount >= 3) {
           // Suspend after 3 failed attempts
           console.log('🚫 Suspending subscription after 3 failed attempts');
-          
+
           await supabase.from('subscriptions').update({
             status: 'past_due',
             metadata: {
@@ -257,7 +265,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         } else {
           // Mark as past_due but allow retries
           console.log(`⚠️ Payment failed (attempt ${retryCount}/3) - marking past due`);
-          
+
           await supabase.from('subscriptions').update({
             status: 'past_due',
             metadata: {
@@ -281,7 +289,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case 'subscription.cancelled': { // Handle both spellings
         const data = event.data;
         console.log('🚫 Processing subscription cancellation:', data.subscription_id);
-        
+
         const { error: subError } = await supabase.from('subscriptions')
           .update({
             status: 'cancelled',
@@ -315,7 +323,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case 'subscription.paused': {
         const data = event.data;
         console.log('⏸️ Processing subscription pause:', data.subscription_id);
-        
+
         const { error } = await supabase.from('subscriptions')
           .update({
             status: 'paused',
@@ -363,7 +371,7 @@ function verifyWebhookSignature(payload: any, signature: string, secret: string)
       .createHmac('sha256', secret)
       .update(payloadString)
       .digest('hex');
-    
+
     // Use timing-safe comparison to prevent timing attacks
     return crypto.timingSafeEqual(
       Buffer.from(signature),

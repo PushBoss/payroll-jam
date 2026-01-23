@@ -84,8 +84,16 @@ export const dimePayService = {
             return;
         }
 
-        // Get the active environment credentials
-        const activeEnv = config.environment || 'sandbox';
+        // AUTOMATIC ENVIRONMENT SELECTION
+        // Force production only on the live domain, otherwise use sandbox
+        const hostname = window.location.hostname;
+        const isProdDomain = hostname === 'www.payrolljam.com' || hostname === 'payrolljam.com';
+
+        // Final environment decision
+        let activeEnv: 'sandbox' | 'production' = isProdDomain ? 'production' : 'sandbox';
+
+        console.log(`🌐 Environment Detection: Hostname=${hostname}, ForcedEnv=${activeEnv}`);
+
         const activeCredentials = activeEnv === 'production' ? config.production : config.sandbox;
 
         // Validate credentials exist

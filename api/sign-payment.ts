@@ -3,8 +3,8 @@ import { createHmac } from 'crypto';
 
 // CORS headers for security
 const corsHeaders = {
-  'Access-Control-Allow-Origin': process.env.NODE_ENV === 'production' 
-    ? 'https://www.payrolljam.com' 
+  'Access-Control-Allow-Origin': process.env.NODE_ENV === 'production'
+    ? 'https://www.payrolljam.com'
     : '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
@@ -32,18 +32,26 @@ export default async function handler(
     }
 
     // Get secret key from environment variables
-    const secretKey = environment === 'production'
+    // Use VERCEL_ENV or APP_ENV to determine if we are in production
+    const isProduction =
+      process.env.VERCEL_ENV === 'production' ||
+      process.env.APP_ENV === 'production';
+
+    // Force sandbox for everything except production
+    const effectiveEnvironment = isProduction ? 'production' : 'sandbox';
+
+    const secretKey = effectiveEnvironment === 'production'
       ? process.env.DIMEPAY_SECRET_KEY_PROD
       : process.env.DIMEPAY_SECRET_KEY_SANDBOX;
 
     if (!secretKey) {
-      console.error('Secret key not configured for environment:', environment);
+      console.error('Secret key not configured for environment:', effectiveEnvironment);
       return res.status(500).json({ error: 'Payment gateway not configured' });
     }
 
     // Create JWT
     const header = { alg: 'HS256', typ: 'JWT' };
-    
+
     const base64url = (source: string) => {
       return Buffer.from(source)
         .toString('base64')
