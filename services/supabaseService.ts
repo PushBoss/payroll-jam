@@ -357,13 +357,15 @@ export const supabaseService = {
     };
 
     // Pack extra fields into settings JSONB
+    // Pack extra fields into settings JSONB
     const settingsJson = {
       phone: settings.phone,
       bankName: settings.bankName,
       accountNumber: settings.accountNumber,
       branchCode: settings.branchCode,
       payFrequency: settings.payFrequency,
-      defaultPayDate: settings.defaultPayDate
+      defaultPayDate: settings.defaultPayDate,
+      paymentMethod: settings.paymentMethod
     };
 
     const dbPlan = mapPlanToDbFormat(settings.plan);
@@ -382,7 +384,7 @@ export const supabaseService = {
       .from('companies')
       .upsert({
         id: companyId,
-        owner_id: ownerId,
+        // owner_id: ownerId, // Removed: Not in schema
         name: settings.name,
         email: settings.email,
         phone: settings.phone,
@@ -392,8 +394,8 @@ export const supabaseService = {
         status: settings.subscriptionStatus || 'ACTIVE',
         plan: dbPlan, // Map to database format
         billing_cycle: settings.billingCycle || 'MONTHLY', // Save billing cycle
-        employee_limit: dbLimit, // Save employee limit as integer
-        payment_method: settings.paymentMethod
+        employee_limit: dbLimit // Save employee limit as integer
+        // payment_method: settings.paymentMethod // Removed: Not in schema, moved to settings JSON
       }, {
         onConflict: 'id'
       })
