@@ -113,31 +113,42 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
         loadData();
     }, [user?.companyId, plans]);
 
-    // Stats Calculation
-    const totalEmployees = clients.reduce((acc, curr) => acc + curr.employeeCount, 0);
+    // --- Stats Calculation ---
+    // 1. Calculate Client Revenue (What clients would pay at retail)
+    // We use the real plan prices passed in the plans prop
+    const calculateClientMonthlyBill = (client: ResellerClient) => {
+        if (client.status !== 'ACTIVE') return 0;
+        const plan = plans.find(p => p.name === client.plan);
+        if (!plan) return 0;
 
-    // Reseller Pricing Model:
-    // Uses values from the 'Reseller' plan in the global config
-    const resellerPlan = plans.find(p => p.name === 'Reseller');
-    const BASE_FEE_CLIENT = resellerPlan?.priceConfig.baseFee || 3000;
-    const PER_EMP_FEE_CLIENT = resellerPlan?.priceConfig.perUserFee || 500;
-    const PLATFORM_COMMISSION_RATE = (resellerPlan?.priceConfig.resellerCommission || 20) / 100;
+        // Base Fee
+        const baseFee = plan.priceConfig.monthly;
 
-    const activeClientsList = clients.filter(c => c.status === 'ACTIVE');
+        // Employee Fee - using perUserFee from plan config
+        const perUserFee = plan.priceConfig.perUserFee || 0;
 
-    // Calculate standardized revenue based on the active clients and their employee counts
-    const calculatedTotalRevenue = activeClientsList.reduce((sum, client) => {
-        return sum + BASE_FEE_CLIENT + (client.employeeCount * PER_EMP_FEE_CLIENT);
-    }, 0);
+        return baseFee + (client.employeeCount * perUserFee);
+    };
 
-    const platformFees = calculatedTotalRevenue * PLATFORM_COMMISSION_RATE;
+    const totalClientRevenue = clients.reduce((sum, client) => sum + calculateClientMonthlyBill(client), 0);
 
-    // Note: We use calculatedTotalRevenue for consistency in the dashboard view, 
-    // overriding the 'mrr' field from DB for display purposes if they differ.
-    const netProfit = calculatedTotalRevenue - platformFees;
+    // 2. Calculate Reseller's Own Bill
+    const RESELLER_OWN_BASE = 5000; // User specified $5000
+    const resellerOwnEmployeeCount = 1; // Defaulting to 1 as specified in example
+    const RESELLER_PER_EMP = 500; // Assuming same as standard per-user fee
 
-    // Use calculated revenue for the Summary Cards as well
-    const totalRev = calculatedTotalRevenue;
+    const resellerOwnBill = RESELLER_OWN_BASE + (resellerOwnEmployeeCount * RESELLER_PER_EMP);
+
+    // 3. Commission Logic - 20% credit on client revenue
+    const COMMISSION_RATE = 0.20;
+    const commissionCredit = totalClientRevenue * COMMISSION_RATE;
+
+    // 4. Total Payable by Reseller
+    const totalPayable = (resellerOwnBill + totalClientRevenue) - commissionCredit;
+
+    // Stats for Display
+    const totalEmployees = clients.reduce((acc, curr) => acc + curr.employeeCount, 0) + resellerOwnEmployeeCount;
+    // Old calculation code removed - now using calculateClientMonthlyBill function below
 
     // Get compliance status - use real data map if available
     const getComplianceStatus = (clientId: string) => {
@@ -379,7 +390,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
 
     const handlePaymentSuccess = (data: any) => {
         setIsPaymentModalOpen(false);
-        toast.success(`Payment of $${platformFees.toLocaleString()} processed successfully!`);
+        toast.success(`Payment of $${totalPayable.toLocaleString()} processed successfully!`);
 
         // Add billing entry to history
         const newPayment = {
@@ -387,7 +398,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
             paymentDate: new Date().toISOString(),
             invoiceNumber: data?.order_id || `INV-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`,
             paymentMethod: 'DimePay',
-            amount: platformFees,
+            amount: totalPayable,
             status: 'completed'
         };
         setBillingHistory(prev => [newPayment, ...prev]);
@@ -400,13 +411,13 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
 
     // Initialize DimePay when modal opens
     useEffect(() => {
-        if (isPaymentModalOpen && platformFees > 0) {
+        if (isPaymentModalOpen && totalPayable > 0) {
             // Small delay to ensure DOM element is ready
             const timer = setTimeout(() => {
                 dimePayService.renderPaymentWidget({
                     mountId: 'dimepay-mount',
                     email: user?.email || '',
-                    amount: platformFees,
+                    amount: totalPayable,
                     currency: 'JMD',
                     description: 'Platform Commission Fee',
                     onSuccess: handlePaymentSuccess,
@@ -420,7 +431,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
             }, 100);
             return () => clearTimeout(timer);
         }
-    }, [isPaymentModalOpen, platformFees, user]);
+    }, [isPaymentModalOpen, totalPayable, user]);
 
     const handleViewInvoice = () => {
         const w = window.open('', '_blank');
@@ -477,8 +488,8 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                             <tbody>
                                 <tr>
                                     <td><strong>Platform Commission (20%)</strong></td>
-                                    <td style="color: #6b7280;">Based on Total Managed Revenue of $${totalRev.toLocaleString()}</td>
-                                    <td class="amount">$${platformFees.toLocaleString()}</td>
+                                    <td style="color: #6b7280;">Based on Total Client Revenue of $${totalClientRevenue.toLocaleString()}</td>
+                                    <td class="amount">$${totalPayable.toLocaleString()}</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -487,11 +498,11 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                             <div>
                                 <div class="total-row">
                                     <span class="total-label">Subtotal</span>
-                                    <span>$${platformFees.toLocaleString()}</span>
+                                    <span>$${totalPayable.toLocaleString()}</span>
                                 </div>
                                 <div class="total-row" style="align-items: center;">
                                     <span class="total-label">Total Due</span>
-                                    <span class="total-value">$${platformFees.toLocaleString()}</span>
+                                    <span class="total-value">$${totalPayable.toLocaleString()}</span>
                                 </div>
                             </div>
                         </div>
@@ -823,68 +834,6 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
         </div>
     );
 
-    // --- Stats Calculation ---
-
-    // 1. Calculate Client Revenue (What clients would pay at retail)
-    // We use the real plan prices passed in the plans prop
-    const calculateClientMonthlyBill = (client: ResellerClient) => {
-        if (client.status !== 'ACTIVE') return 0;
-        const plan = plans.find(p => p.name === client.plan);
-        if (!plan) return 0;
-
-        // Base Fee
-        const baseFee = plan.priceConfig.monthly;
-
-        // Employee Fee (if applicable beyond limit)
-        // Parse limit: "5 Employees" -> 5
-        let limit = 0;
-        const limitMatch = plan.limit.match(/(\d+)/);
-        if (limitMatch) limit = parseInt(limitMatch[1]);
-
-        // If 'Unlimited', limit is effectively infinity, so no extra fee usually, 
-        // OR the plan might have a per-user fee for ALL users.
-        // Based on typical SaaS, usually it's Base + (Count * PerUser) or Base includes X.
-        // Assuming current pricing model is: Base covers X, extras cost Y? 
-        // OR is it Base + (All_Users * Fee)?
-        // User prompt says: "$5000 per month... each client has 1 employee... paying their bill"
-        // Let's assume the Plan Config 'perUserFee' applies to ALL employees for simplicity unless modeled otherwise.
-        const perUserFee = plan.priceConfig.perUserFee || 0;
-
-        return baseFee + (client.employeeCount * perUserFee);
-    };
-
-    const totalClientRevenue = clients.reduce((sum, client) => sum + calculateClientMonthlyBill(client), 0);
-
-    // 2. Calculate Reseller's Own Bill
-    // We need the reseller's own employee count. 
-    // Since we don't have it in the 'clients' array explicitly, we'll estimate or fetch.
-    // For now, let's assume the reseller company object is available or we use a placeholder.
-    // Ideally we would fetch `user.company` details.
-    // WORKAROUND: We will assume specific "Reseller" plan pricing for the reseller's own account.
-    const RESELLER_OWN_BASE = 5000; // User specified $5000
-    // We still need the reseller's employee count. Let's try to find it in the billing history or auth user metadata?
-    // Actually, let's try to find the reseller's company in the clients list (if they added themselves) or default to 1.
-    const resellerOwnEmployeeCount = 1; // Defaulting to 1 as specified in example "company they have 1 employee"
-    const RESELLER_PER_EMP = 500; // Assuming same as standard per-user fee
-
-    const resellerOwnBill = RESELLER_OWN_BASE + (resellerOwnEmployeeCount * RESELLER_PER_EMP);
-
-    // 3. Commission Logic
-    // "payrolljam pays them 20% of how much we make from their clients"
-    // This implies a CREDIT against the bill.
-    const COMMISSION_RATE = 0.20;
-    const commissionCredit = totalClientRevenue * COMMISSION_RATE;
-
-    // 4. Total Payable by Reseller
-    // (Reseller Own Bill + Total Client Bills) - Commission
-    const totalPayable = (resellerOwnBill + totalClientRevenue) - commissionCredit;
-
-    // Stats for Display
-    const totalEmployees = clients.reduce((acc, curr) => acc + curr.employeeCount, 0) + resellerOwnEmployeeCount;
-    // Revenue for Reseller? Technically it's the Commission they 'earn', or the markup.
-    // But usually 'Revenue' on a dashboard means "Volume Processed".
-    // Let's show "Managed Revenue" (Total Client Bills) and "Net Cost" (What they pay us).
-
     const renderFinancialsTab = () => (
         <div className="space-y-6 animate-fade-in">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1174,7 +1123,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                                     <div className="flex justify-between items-start">
                                         <div>
                                             <p className="text-sm text-gray-400 uppercase font-bold">Monthly Revenue</p>
-                                            <h3 className="text-3xl font-bold text-white mt-2">${totalRev.toLocaleString()}</h3>
+                                            <h3 className="text-3xl font-bold text-white mt-2">${totalClientRevenue.toLocaleString()}</h3>
                                         </div>
                                         <div className="p-2 bg-gray-800 rounded-lg">
                                             <Icons.Trending className="w-6 h-6 text-jam-yellow" />
@@ -1188,8 +1137,8 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                                     <div className="flex justify-between items-start">
                                         <div>
-                                            <p className="text-sm text-gray-500 uppercase font-bold">Platform Fees</p>
-                                            <h3 className="text-3xl font-bold text-red-600 mt-2">-${platformFees.toLocaleString()}</h3>
+                                            <p className="text-sm text-gray-500 uppercase font-bold">Commission Earned</p>
+                                            <h3 className="text-3xl font-bold text-red-600 mt-2">-${commissionCredit.toLocaleString()}</h3>
                                         </div>
                                         <div className="p-2 bg-red-50 rounded-lg">
                                             <Icons.Payroll className="w-6 h-6 text-red-500" />
@@ -1203,15 +1152,15 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                                     <div className="flex justify-between items-start">
                                         <div>
-                                            <p className="text-sm text-gray-500 uppercase font-bold">Net Profit</p>
-                                            <h3 className="text-3xl font-bold text-green-600 mt-2">${netProfit.toLocaleString()}</h3>
+                                            <p className="text-sm text-gray-500 uppercase font-bold">Total Due</p>
+                                            <h3 className="text-3xl font-bold text-jam-black mt-2">${totalPayable.toLocaleString()}</h3>
                                         </div>
                                         <div className="p-2 bg-green-50 rounded-lg">
                                             <Icons.Company className="w-6 h-6 text-green-600" />
                                         </div>
                                     </div>
                                     <div className="mt-4 text-sm text-gray-500">
-                                        {((netProfit / totalRev) * 100).toFixed(1)}% Margin
+                                        {((commissionCredit / totalClientRevenue) * 100).toFixed(1)}% Commission Rate
                                     </div>
                                 </div>
                                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
@@ -1256,7 +1205,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                             <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 mb-4">
                                 <div className="flex justify-between items-center mb-1">
                                     <span className="text-gray-600">Total Amount Due</span>
-                                    <span className="text-2xl font-bold text-gray-900">${platformFees.toLocaleString()}</span>
+                                    <span className="text-2xl font-bold text-gray-900">${totalPayable.toLocaleString()}</span>
                                 </div>
                                 <p className="text-xs text-gray-500">Includes 20% platform commission fees</p>
                             </div>
