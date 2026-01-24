@@ -21,15 +21,15 @@ const DEMO_CONFIG = {
     enabled: true,
     environment: 'sandbox' as const,
     sandbox: {
-        apiKey: 'ck_LGKMlNpFiRr63ce0s621VuGLjYdey',
+        apiKey: import.meta.env.VITE_DIMEPAY_API_KEY_SANDBOX || 'ck_LGKMlNpFiRr63ce0s621VuGLjYdey',
         secretKey: 'sk_rYoMG45jVM2gvhE-pm4to9EZoW9tD',
         merchantId: 'mQn_iBSUd-KNq3K',
         domain: 'https://staging.api.dimepay.app'
     },
     production: {
-        apiKey: '',
+        apiKey: import.meta.env.VITE_DIMEPAY_API_KEY_PROD || '',
         secretKey: '',
-        merchantId: '',
+        merchantId: import.meta.env.VITE_DIMEPAY_MERCHANT_ID || '',
         domain: 'https://api.dimepay.app'
     },
     passFeesTo: 'MERCHANT' as const
