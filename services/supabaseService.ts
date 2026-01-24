@@ -1823,7 +1823,7 @@ export const supabaseService = {
     }
   },
 
-  getAuditLogs: async (companyId: string | null, userRole?: string): Promise<AuditLogEntry[]> => {
+  getAuditLogs: async (companyId: string | null, userRole?: string, userId?: string): Promise<AuditLogEntry[]> => {
     if (!supabase) return [];
 
     try {
@@ -1833,13 +1833,28 @@ export const supabaseService = {
         .order('timestamp', { ascending: false })
         .limit(500);
 
-      // Super admins can see all audit logs, companies only see their own
-      if (userRole !== 'SUPER_ADMIN' && companyId) {
+      const isCompanyAdmin = ['OWNER', 'ADMIN', 'RESELLER'].includes(userRole || '');
+
+      // Super admins can see all audit logs (globally or filtered by company)
+      if (userRole === 'SUPER_ADMIN') {
+        if (companyId) {
+          query = query.eq('company_id', companyId);
+        }
+      } else {
+        // Non-super admin MUST have a companyId to see anything
+        if (!companyId) return [];
+
         query = query.eq('company_id', companyId);
-      }
-      // If no companyId and not super admin, return empty (shouldn't happen)
-      else if (!companyId && userRole !== 'SUPER_ADMIN') {
-        return [];
+
+        // Individual users (non-admins) should only see their own audit logs
+        if (!isCompanyAdmin) {
+          if (userId) {
+            query = query.eq('actor_id', userId);
+          } else {
+            // If safety check fails (no user ID), return nothing
+            return [];
+          }
+        }
       }
 
       const { data, error } = await query;

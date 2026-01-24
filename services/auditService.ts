@@ -6,13 +6,13 @@ import { supabaseService } from './supabaseService';
 
 export const auditService = {
   log: (
-    user: User | null | undefined, 
-    action: AuditLogEntry['action'], 
-    entity: string, 
+    user: User | null | undefined,
+    action: AuditLogEntry['action'],
+    entity: string,
     description: string
   ) => {
     if (!user) return;
-    
+
     const newLog: AuditLogEntry = {
       id: generateUUID(),
       timestamp: new Date().toISOString(),
@@ -41,10 +41,10 @@ export const auditService = {
     }
   },
 
-  getLogs: async (companyId: string | null, userRole?: string): Promise<AuditLogEntry[]> => {
+  getLogs: async (companyId: string | null, userRole?: string, userId?: string): Promise<AuditLogEntry[]> => {
     // Try to get from Supabase first
     try {
-      const logs = await supabaseService.getAuditLogs(companyId, userRole);
+      const logs = await supabaseService.getAuditLogs(companyId, userRole, userId);
       if (logs && logs.length > 0) {
         return logs;
       }
@@ -55,7 +55,7 @@ export const auditService = {
     // Fallback to localStorage (for backward compatibility)
     return storage.getAuditLogs() || [];
   },
-  
+
   clearLogs: () => {
     storage.saveAuditLogs([]);
   }
