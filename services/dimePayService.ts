@@ -222,7 +222,7 @@ export const dimePayService = {
                     mountId: props.mountId,
                     total: props.amount,
                     currency: props.currency,
-                    test: activeEnv === 'sandbox',
+                    ...(activeEnv === 'sandbox' ? { test: true } : {}),
                     order_id: orderId,
                     client_id: activeCredentials.apiKey,
                     origin: window.location.origin,
