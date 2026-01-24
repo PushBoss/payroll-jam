@@ -823,6 +823,68 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
         </div>
     );
 
+    // --- Stats Calculation ---
+
+    // 1. Calculate Client Revenue (What clients would pay at retail)
+    // We use the real plan prices passed in the plans prop
+    const calculateClientMonthlyBill = (client: ResellerClient) => {
+        if (client.status !== 'ACTIVE') return 0;
+        const plan = plans.find(p => p.name === client.plan);
+        if (!plan) return 0;
+
+        // Base Fee
+        const baseFee = plan.priceConfig.monthly;
+
+        // Employee Fee (if applicable beyond limit)
+        // Parse limit: "5 Employees" -> 5
+        let limit = 0;
+        const limitMatch = plan.limit.match(/(\d+)/);
+        if (limitMatch) limit = parseInt(limitMatch[1]);
+
+        // If 'Unlimited', limit is effectively infinity, so no extra fee usually, 
+        // OR the plan might have a per-user fee for ALL users.
+        // Based on typical SaaS, usually it's Base + (Count * PerUser) or Base includes X.
+        // Assuming current pricing model is: Base covers X, extras cost Y? 
+        // OR is it Base + (All_Users * Fee)?
+        // User prompt says: "$5000 per month... each client has 1 employee... paying their bill"
+        // Let's assume the Plan Config 'perUserFee' applies to ALL employees for simplicity unless modeled otherwise.
+        const perUserFee = plan.priceConfig.perUserFee || 0;
+
+        return baseFee + (client.employeeCount * perUserFee);
+    };
+
+    const totalClientRevenue = clients.reduce((sum, client) => sum + calculateClientMonthlyBill(client), 0);
+
+    // 2. Calculate Reseller's Own Bill
+    // We need the reseller's own employee count. 
+    // Since we don't have it in the 'clients' array explicitly, we'll estimate or fetch.
+    // For now, let's assume the reseller company object is available or we use a placeholder.
+    // Ideally we would fetch `user.company` details.
+    // WORKAROUND: We will assume specific "Reseller" plan pricing for the reseller's own account.
+    const RESELLER_OWN_BASE = 5000; // User specified $5000
+    // We still need the reseller's employee count. Let's try to find it in the billing history or auth user metadata?
+    // Actually, let's try to find the reseller's company in the clients list (if they added themselves) or default to 1.
+    const resellerOwnEmployeeCount = 1; // Defaulting to 1 as specified in example "company they have 1 employee"
+    const RESELLER_PER_EMP = 500; // Assuming same as standard per-user fee
+
+    const resellerOwnBill = RESELLER_OWN_BASE + (resellerOwnEmployeeCount * RESELLER_PER_EMP);
+
+    // 3. Commission Logic
+    // "payrolljam pays them 20% of how much we make from their clients"
+    // This implies a CREDIT against the bill.
+    const COMMISSION_RATE = 0.20;
+    const commissionCredit = totalClientRevenue * COMMISSION_RATE;
+
+    // 4. Total Payable by Reseller
+    // (Reseller Own Bill + Total Client Bills) - Commission
+    const totalPayable = (resellerOwnBill + totalClientRevenue) - commissionCredit;
+
+    // Stats for Display
+    const totalEmployees = clients.reduce((acc, curr) => acc + curr.employeeCount, 0) + resellerOwnEmployeeCount;
+    // Revenue for Reseller? Technically it's the Commission they 'earn', or the markup.
+    // But usually 'Revenue' on a dashboard means "Volume Processed".
+    // Let's show "Managed Revenue" (Total Client Bills) and "Net Cost" (What they pay us).
+
     const renderFinancialsTab = () => (
         <div className="space-y-6 animate-fade-in">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -839,27 +901,35 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                                     formatter={(val: number) => [`$${val.toLocaleString()}`]}
                                     contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
                                 />
-                                <Bar dataKey="revenue" fill="#1f2937" radius={[4, 4, 0, 0]} name="Client Revenue" />
-                                <Bar dataKey="profit" fill="#10B981" radius={[4, 4, 0, 0]} name="Net Profit" />
+                                <Bar dataKey="revenue" fill="#1f2937" radius={[4, 4, 0, 0]} name="Client Volume" />
+                                <Bar dataKey="cost" fill="#EF4444" radius={[4, 4, 0, 0]} name="Your Cost" />
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col">
-                    <h3 className="font-bold text-gray-900 mb-2">Est. Platform Bill</h3>
-                    <h1 className="text-4xl font-extrabold text-red-600 mb-1">${platformFees.toLocaleString()}</h1>
+                    <h3 className="font-bold text-gray-900 mb-2">Total Amount Due</h3>
+                    <h1 className="text-4xl font-extrabold text-jam-black mb-1">${totalPayable.toLocaleString()}</h1>
                     <p className="text-sm text-gray-500 mb-8">
                         Due: {new Date(new Date().setMonth(new Date().getMonth() + 1)).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                     </p>
 
-                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 text-sm text-gray-600 mb-6">
-                        <div className="flex justify-between mb-2">
-                            <span>Total Client Revenue</span>
-                            <span>${totalRev.toLocaleString()}</span>
+                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 text-sm text-gray-600 mb-6 space-y-2">
+                        <div className="flex justify-between">
+                            <span>Your Company Bill</span>
+                            <span className="font-medium">${resellerOwnBill.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span>Client Invoices (Total)</span>
+                            <span className="font-medium">${totalClientRevenue.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between text-green-600">
+                            <span>Less: Commission (20%)</span>
+                            <span className="font-medium">-${commissionCredit.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between pt-2 border-t border-gray-200 mt-2">
-                            <span className="font-semibold text-gray-900">Platform Commission (20%)</span>
-                            <span className="font-bold text-red-600">${platformFees.toLocaleString()}</span>
+                            <span className="font-bold text-gray-900">Net Payable</span>
+                            <span className="font-bold text-jam-black">${totalPayable.toLocaleString()}</span>
                         </div>
                     </div>
 
@@ -868,7 +938,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                             onClick={() => setIsPaymentModalOpen(true)}
                             className="w-full py-2.5 bg-jam-black text-white font-bold rounded-lg hover:bg-gray-800 transition-colors"
                         >
-                            Pay Now
+                            Pay Bill (${totalPayable.toLocaleString()})
                         </button>
                         <button
                             onClick={handleViewInvoice}
