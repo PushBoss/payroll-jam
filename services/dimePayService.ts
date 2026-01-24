@@ -94,7 +94,39 @@ export const dimePayService = {
 
         console.log(`🌐 Environment Detection: Hostname=${hostname}, ForcedEnv=${activeEnv}`);
 
-        const activeCredentials = (activeEnv === 'production' ? config.production : config.sandbox) || (activeEnv === 'production' ? DEMO_CONFIG.production : DEMO_CONFIG.sandbox);
+        // Resolving Credentials:
+        // 1. Start with the config selected above (DB or Demo)
+        // 2. Override with Environment Variables if present (Highest Priority for sensitive keys)
+        let activeCredentials = (activeEnv === 'production' ? config.production : config.sandbox) || (activeEnv === 'production' ? DEMO_CONFIG.production : DEMO_CONFIG.sandbox);
+
+        // Environment Variable Overrides
+        if (activeEnv === 'production') {
+            const envApiKey = import.meta.env.VITE_DIMEPAY_API_KEY_PROD;
+            const envMerchantId = import.meta.env.VITE_DIMEPAY_MERCHANT_ID;
+
+            if (envApiKey || envMerchantId) {
+                console.log('⚡ Using Environment Variables for Production Config override');
+                activeCredentials = {
+                    ...activeCredentials,
+                    apiKey: envApiKey || activeCredentials.apiKey,
+                    merchantId: envMerchantId || activeCredentials.merchantId,
+                    // Ensure domain is production if using prod env vars
+                    domain: 'https://api.dimepay.app'
+                };
+            }
+        } else if (activeEnv === 'sandbox') {
+            const envApiKey = import.meta.env.VITE_DIMEPAY_API_KEY_SANDBOX;
+            const envMerchantId = import.meta.env.VITE_DIMEPAY_MERCHANT_ID_SANDBOX;
+
+            if (envApiKey || envMerchantId) {
+                console.log('⚡ Using Environment Variables for Sandbox Config override');
+                activeCredentials = {
+                    ...activeCredentials,
+                    apiKey: envApiKey || activeCredentials.apiKey,
+                    merchantId: envMerchantId || activeCredentials.merchantId
+                };
+            }
+        }
 
         // Validate credentials exist
         // Note: Production environment only REQUIRES apiKey (client_id) on the frontend.
@@ -112,7 +144,7 @@ export const dimePayService = {
         console.log('🔧 DimePay Domain:', activeCredentials.domain);
         console.log('🔧 DimePay Test Mode:', activeEnv === 'sandbox');
         console.log('🔧 DimePay Credentials:', {
-            hasApiKey: !!activeCredentials.apiKey,
+            apiKeyPrefix: activeCredentials.apiKey ? activeCredentials.apiKey.substring(0, 6) + '...' : 'MISSING',
             hasMerchantId: !!activeCredentials.merchantId
         });
 
