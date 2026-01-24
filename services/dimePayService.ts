@@ -101,7 +101,7 @@ export const dimePayService = {
 
         // Environment Variable Overrides
         if (activeEnv === 'production') {
-            const envApiKey = import.meta.env.VITE_DIMEPAY_API_KEY_PROD;
+            const envApiKey = import.meta.env.VITE_DIMEPAY_CLIENT_ID_PROD || import.meta.env.VITE_DIMEPAY_API_KEY_PROD;
             const envMerchantId = import.meta.env.VITE_DIMEPAY_MERCHANT_ID;
 
             if (envApiKey || envMerchantId) {
@@ -115,7 +115,7 @@ export const dimePayService = {
                 };
             }
         } else if (activeEnv === 'sandbox') {
-            const envApiKey = import.meta.env.VITE_DIMEPAY_API_KEY_SANDBOX;
+            const envApiKey = import.meta.env.VITE_DIMEPAY_CLIENT_ID_SANDBOX || import.meta.env.VITE_DIMEPAY_API_KEY_SANDBOX;
             const envMerchantId = import.meta.env.VITE_DIMEPAY_MERCHANT_ID_SANDBOX;
 
             if (envApiKey || envMerchantId) {
@@ -254,7 +254,7 @@ export const dimePayService = {
                     mountId: props.mountId,
                     total: props.amount,
                     currency: props.currency,
-                    ...(activeEnv === 'sandbox' ? { test: true } : {}),
+                    test: activeEnv === 'sandbox', // Explicitly false for production
                     order_id: orderId,
                     client_id: activeCredentials.apiKey,
                     origin: window.location.origin,
