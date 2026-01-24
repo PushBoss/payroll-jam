@@ -475,22 +475,37 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                             <p style="font-weight: 600; font-size: 16px;">${user?.email || 'Reseller Partner'}</p>
                         </div>
 
-                        <h2>Platform Commission Statement</h2>
+                        <h2>Monthly Billing Statement</h2>
                         
                         <table>
                             <thead>
                                 <tr>
-                                    <th>Description</th>
-                                    <th>Details</th>
+                                    <th>Company</th>
+                                    <th>Plan / Details</th>
                                     <th style="text-align: right;">Amount</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr>
-                                    <td><strong>Platform Commission (20%)</strong></td>
-                                    <td style="color: #6b7280;">Based on Total Client Revenue of $${totalClientRevenue.toLocaleString()}</td>
-                                    <td class="amount">$${totalPayable.toLocaleString()}</td>
+                                <tr style="background-color: #fef3c7;">
+                                    <td><strong>${user?.email || 'Your Company'}</strong><br/><span style="font-size: 12px; color: #6b7280;">(Reseller Account)</span></td>
+                                    <td style="color: #6b7280;">Reseller Plan<br/>${resellerOwnEmployeeCount} employee${resellerOwnEmployeeCount !== 1 ? 's' : ''} × $${RESELLER_PER_EMP.toLocaleString()}</td>
+                                    <td class="amount">$${resellerOwnBill.toLocaleString()}</td>
                                 </tr>
+                                ${clients.filter(c => c.status === 'ACTIVE').map(client => {
+                const clientBill = calculateClientMonthlyBill(client);
+                const plan = plans.find(p => p.name === client.plan);
+                const baseFee = plan?.priceConfig.monthly || 0;
+                const perUserFee = plan?.priceConfig.perUserFee || 0;
+                const employeeFee = client.employeeCount * perUserFee;
+
+                return `
+                                        <tr>
+                                            <td><strong>${client.companyName}</strong><br/><span style="font-size: 12px; color: #6b7280;">(Client)</span></td>
+                                            <td style="color: #6b7280;">${client.plan} Plan - $${baseFee.toLocaleString()}<br/>${client.employeeCount} employee${client.employeeCount !== 1 ? 's' : ''} × $${perUserFee.toLocaleString()} = $${employeeFee.toLocaleString()}</td>
+                                            <td class="amount">$${clientBill.toLocaleString()}</td>
+                                        </tr>
+                                    `;
+            }).join('')}
                             </tbody>
                         </table>
 
@@ -498,9 +513,13 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                             <div>
                                 <div class="total-row">
                                     <span class="total-label">Subtotal</span>
-                                    <span>$${totalPayable.toLocaleString()}</span>
+                                    <span>$${(resellerOwnBill + totalClientRevenue).toLocaleString()}</span>
                                 </div>
-                                <div class="total-row" style="align-items: center;">
+                                <div class="total-row" style="color: #10b981;">
+                                    <span class="total-label">Less: Commission (20% on client revenue)</span>
+                                    <span>-$${commissionCredit.toLocaleString()}</span>
+                                </div>
+                                <div class="total-row" style="align-items: center; border-top: 2px solid #e5e7eb; padding-top: 10px; margin-top: 10px;">
                                     <span class="total-label">Total Due</span>
                                     <span class="total-value">$${totalPayable.toLocaleString()}</span>
                                 </div>
