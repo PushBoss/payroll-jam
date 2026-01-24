@@ -40,13 +40,19 @@ export default async function handler(
     // Force sandbox for everything except production
     const effectiveEnvironment = isProduction ? 'production' : 'sandbox';
 
+    console.log(`🔍 [${effectiveEnvironment}] resolving keys...`);
+
+    // Check for keys with and without VITE_ prefix to be robust against user naming mismatch
     const secretKey = effectiveEnvironment === 'production'
-      ? process.env.DIMEPAY_SECRET_KEY_PROD
-      : process.env.DIMEPAY_SECRET_KEY_SANDBOX;
+      ? (process.env.DIMEPAY_SECRET_KEY_PROD || process.env.VITE_DIMEPAY_SECRET_KEY_PROD)
+      : (process.env.DIMEPAY_SECRET_KEY_SANDBOX || process.env.VITE_DIMEPAY_SECRET_KEY_SANDBOX);
 
     if (!secretKey) {
-      console.error('Secret key not configured for environment:', effectiveEnvironment);
+      console.error('❌ Secret key not configured for environment:', effectiveEnvironment);
+      console.error('Available Env Vars (Keys only):', Object.keys(process.env).filter(k => k.includes('DIME')));
       return res.status(500).json({ error: 'Payment gateway not configured' });
+    } else {
+      console.log(`✅ Secret key found for ${effectiveEnvironment} (Length: ${secretKey.length})`);
     }
 
     // Create JWT
