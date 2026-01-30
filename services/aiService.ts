@@ -22,7 +22,8 @@ export const getGroundedAIResponse = async (
 
     if (!response.ok) {
       const errorText = await response.text();
-      let errorMessage = 'Failed to get response from AI Assistant';
+      console.error(`Edge Function Error (${response.status}):`, errorText);
+      let errorMessage = `Failed to get response from AI Assistant (Status ${response.status})`;
       try {
         const errorJson = JSON.parse(errorText);
         errorMessage = errorJson.error || errorMessage;
@@ -39,7 +40,11 @@ export const getGroundedAIResponse = async (
     return data.text || "I'm sorry, I couldn't generate a response based on the knowledge base at this moment.";
   } catch (error: any) {
     console.error("Grounded AI Service Error:", error);
-    return `Error: ${error.message || 'I encountered an error connecting to the payroll knowledge base.'}`;
+    // If we have a specific error message, use it. Otherwise, show the parsed error.
+    const displayMessage = error.message && error.message.includes('Unexpected token')
+      ? "Communication error with AI Assistant. Please try again."
+      : error.message;
+    return `Error: ${displayMessage || 'I encountered an error connecting to the payroll knowledge base.'}`;
   }
 };
 
