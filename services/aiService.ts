@@ -1,6 +1,37 @@
+import { ChatMessage } from '../types';
 
 // TODO: Add your Google AI API key here or set VITE_GOOGLE_AI_KEY in .env
 const API_KEY = import.meta.env?.VITE_GOOGLE_AI_KEY || '';
+
+export const getGroundedAIResponse = async (
+  message: string,
+  history: ChatMessage[]
+): Promise<string> => {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/payroll-chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseAnonKey}`
+      },
+      body: JSON.stringify({ message, history })
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Failed to get response from AI Assistant');
+    }
+
+    const data = await response.json();
+    return data.text;
+  } catch (error: any) {
+    console.error("Grounded AI Service Error:", error);
+    return `Error: ${error.message || 'I encountered an error connecting to the payroll knowledge base.'}`;
+  }
+};
 
 export const getAIResponse = async (
   prompt: string,

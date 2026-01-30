@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { getAIResponse } from '../services/aiService';
+import { getGroundedAIResponse } from '../services/aiService';
 import { ChatMessage, Employee } from '../types';
 import { Icons } from '../components/Icons';
 
@@ -33,16 +32,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({ employees }) => {
     setInput('');
     setIsLoading(true);
 
-    // Create context string from current app state
-    const context = `
-      Company: JamCorp Ltd.
-      Total Employees: ${employees.length}
-      Active Employees: ${employees.map(e => `${e.firstName} ${e.lastName} (${e.role})`).join(', ')}.
-      Current Tax Year: 2025.
-      Pay Cycle: Monthly.
-    `;
-
-    const responseText = await getAIResponse(userMsg.text, context);
+    const responseText = await getGroundedAIResponse(userMsg.text, messages);
 
     const modelMsg: ChatMessage = { role: 'model', text: responseText, timestamp: Date.now() };
     setMessages(prev => [...prev, modelMsg]);
