@@ -44,8 +44,8 @@ export default async function handler(
 
     // Check for keys with and without VITE_ prefix to be robust against user naming mismatch
     const secretKey = effectiveEnvironment === 'production'
-      ? (process.env.DIMEPAY_SECRET_KEY_PROD || process.env.VITE_DIMEPAY_SECRET_KEY_PROD)
-      : (process.env.DIMEPAY_SECRET_KEY_SANDBOX || process.env.VITE_DIMEPAY_SECRET_KEY_SANDBOX);
+      ? (process.env.DIMEPAY_SECRET_KEY_PROD || process.env.VITE_DIMEPAY_SECRET_KEY_PROD || process.env.DIMEPAY_SECRET_KEY || process.env.VITE_DIMEPAY_SECRET_KEY)
+      : (process.env.DIMEPAY_SECRET_KEY_SANDBOX || process.env.VITE_DIMEPAY_SECRET_KEY_SANDBOX || process.env.DIMEPAY_SECRET_KEY || process.env.VITE_DIMEPAY_SECRET_KEY);
 
     if (!secretKey) {
       console.error('❌ Secret key not configured for environment:', effectiveEnvironment);

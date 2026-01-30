@@ -27,9 +27,9 @@ const DEMO_CONFIG = {
         domain: 'https://staging.api.dimepay.app'
     },
     production: {
-        apiKey: import.meta.env.VITE_DIMEPAY_API_KEY_PROD || '',
+        apiKey: import.meta.env.VITE_DIMEPAY_API_KEY_PROD || import.meta.env.VITE_DIMEPAY_API_KEY || '',
         secretKey: '',
-        merchantId: import.meta.env.VITE_DIMEPAY_MERCHANT_ID || '',
+        merchantId: import.meta.env.VITE_DIMEPAY_MERCHANT_ID_PROD || import.meta.env.VITE_DIMEPAY_MERCHANT_ID || '',
         domain: 'https://api.dimepay.app'
     },
     passFeesTo: 'MERCHANT' as const
@@ -101,8 +101,8 @@ export const dimePayService = {
 
         // Environment Variable Overrides
         if (activeEnv === 'production') {
-            const envApiKey = import.meta.env.VITE_DIMEPAY_CLIENT_ID_PROD || import.meta.env.VITE_DIMEPAY_API_KEY_PROD;
-            const envMerchantId = import.meta.env.VITE_DIMEPAY_MERCHANT_ID;
+            const envApiKey = import.meta.env.VITE_DIMEPAY_CLIENT_ID_PROD || import.meta.env.VITE_DIMEPAY_API_KEY_PROD || import.meta.env.VITE_DIMEPAY_API_KEY;
+            const envMerchantId = import.meta.env.VITE_DIMEPAY_MERCHANT_ID_PROD || import.meta.env.VITE_DIMEPAY_MERCHANT_ID;
 
             if (envApiKey || envMerchantId) {
                 console.log('⚡ Using Environment Variables for Production Config override');
@@ -115,8 +115,8 @@ export const dimePayService = {
                 };
             }
         } else if (activeEnv === 'sandbox') {
-            const envApiKey = import.meta.env.VITE_DIMEPAY_CLIENT_ID_SANDBOX || import.meta.env.VITE_DIMEPAY_API_KEY_SANDBOX;
-            const envMerchantId = import.meta.env.VITE_DIMEPAY_MERCHANT_ID_SANDBOX;
+            const envApiKey = import.meta.env.VITE_DIMEPAY_CLIENT_ID_SANDBOX || import.meta.env.VITE_DIMEPAY_API_KEY_SANDBOX || import.meta.env.VITE_DIMEPAY_API_KEY;
+            const envMerchantId = import.meta.env.VITE_DIMEPAY_MERCHANT_ID_SANDBOX || import.meta.env.VITE_DIMEPAY_MERCHANT_ID;
 
             if (envApiKey || envMerchantId) {
                 console.log('⚡ Using Environment Variables for Sandbox Config override');
