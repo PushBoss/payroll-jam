@@ -2,7 +2,7 @@ import { supabase } from './supabaseClient';
 import { emailService } from './emailService';
 import { supabaseService } from './supabaseService';
 
-export type MemberRole = 'OWNER' | 'ADMIN' | 'MANAGER' | 'owner' | 'admin' | 'manager';
+export type MemberRole = 'OWNER' | 'ADMIN' | 'MANAGER' | 'EMPLOYEE' | 'RESELLER' | 'owner' | 'admin' | 'manager' | 'employee' | 'reseller';
 
 export interface Invitation {
   id: string;

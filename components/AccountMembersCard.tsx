@@ -86,7 +86,14 @@ export const AccountMembersCard: React.FC<AccountMembersCardProps> = ({
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">Team Members</h3>
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-lg font-semibold text-gray-900">Team Members</h3>
+        <div className="px-3 py-1 bg-gray-100 rounded-full border border-gray-200">
+          <span className="text-xs font-bold text-gray-600 uppercase">
+            {members.length} / 5 Seats Used
+          </span>
+        </div>
+      </div>
 
       {members.length === 0 ? (
         <div className="text-center py-8">
@@ -103,7 +110,11 @@ export const AccountMembersCard: React.FC<AccountMembersCardProps> = ({
               <div className="flex-1">
                 <p className="font-medium text-gray-900">{member.email}</p>
                 <div className="flex items-center gap-2 text-sm text-gray-500">
-                  <span className="capitalize">{member.role}</span>
+                  <span className="capitalize">
+                    {member.role?.toUpperCase() === 'RESELLER' ? 'Reseller' :
+                      member.role?.toUpperCase() === 'EMPLOYEE' ? 'Team member (alias)' :
+                        member.role}
+                  </span>
                   <span>•</span>
                   <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize ${member.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'
                     }`}>

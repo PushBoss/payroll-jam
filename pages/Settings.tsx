@@ -443,19 +443,15 @@ export const Settings: React.FC<SettingsProps> = ({
             return;
         }
 
-        // Check user limit based on plan
-        const plan = companyData?.plan || 'Free';
-        let maxUsers = 5; // Free
-        if (plan === 'Starter') maxUsers = 25;
-        if (plan === 'Pro' || plan === 'Professional') maxUsers = 99999; // Unlimited
+        // Check user limit - Limited to 5 seats across ALL tiers as requested
+        const maxUsers = 5;
 
         // Count includes the main account owner
-        // Filter out currentUser from users list to avoid duplicates
         const filteredUsers = users.filter(u => u.id !== currentUser?.id && u.email !== currentUser?.email);
         const currentUserCount = filteredUsers.length + 1; // +1 for the account owner
 
         if (currentUserCount >= maxUsers) {
-            toast.error(`User limit reached. You have ${currentUserCount} users (including account owner). Upgrade to ${plan === 'Free' ? 'Starter' : 'Pro'} to add more users.`);
+            toast.error(`Seat limit reached. You have used all ${maxUsers} available seats. Remove an existing member to invite a new one.`);
             return;
         }
 
@@ -698,7 +694,8 @@ export const Settings: React.FC<SettingsProps> = ({
                             <select className="w-full border p-2 rounded" value={inviteForm.role} onChange={e => setInviteForm({ ...inviteForm, role: e.target.value as Role })}>
                                 <option value={Role.ADMIN}>Admin</option>
                                 <option value={Role.MANAGER}>Manager</option>
-                                <option value={Role.EMPLOYEE}>Employee</option>
+                                <option value={Role.EMPLOYEE}>Team member (alias)</option>
+                                <option value={Role.RESELLER}>Reseller</option>
                             </select>
                             <div className="flex justify-end space-x-2">
                                 <button type="button" onClick={() => setIsInviteModalOpen(false)} className="px-4 py-2 text-gray-500" disabled={isSendingInvite}>Cancel</button>
