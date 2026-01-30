@@ -22,43 +22,98 @@ serve(async (req) => {
         const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
         const geminiApiKey = Deno.env.get('GEMINI_API_KEY') || ''
 
-        if (!geminiApiKey) throw new Error("GEMINI_API_KEY is not set in Supabase secrets");
+        if (!geminiApiKey) throw new Error("GEMINI_API_KEY is not set");
 
         const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-        // Fetch Knowledgebase metadata
-        const { data: syncedMetadata } = await supabase
-            .from('ai_sync_metadata')
-            .select('file_name');
+        // 1. Get or Create Store ID
+        let { data: config } = await supabase
+            .from('ai_config')
+            .select('value')
+            .eq('key', 'gemini_store_id')
+            .single();
 
-        const fileList = (syncedMetadata || []).map(m => m.file_name).join(', ');
+        let storeId = config?.value;
 
-        const systemInstruction = `You are the Official Payroll-Jam Expert. 
-        Your goal is to provide accurate guidance on Jamaican statutory deductions and tax compliance.
-        
-        KNOWLEDGE BASE:
-        You have access to the following documents in your storage: ${fileList || 'No documents uploaded yet'}.
-        Ground your answers in Jamaican tax law and the documents listed.
-        If a user asks about the 2026 threshold, refer to the value $1,902,360. 
-        Cite your sources clearly.
-        
-        TONE: Professional, accessible, using standard Jamaican English. Use **bolding** for figures and dates.`;
+        if (!storeId) {
+            console.log("Creating new Gemini File Search Store...");
+            const createStoreUrl = `https://generativelanguage.googleapis.com/v1beta/fileSearchStores?key=${geminiApiKey}`;
+            const createStoreResponse = await fetch(createStoreUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    display_name: "Payroll-Jam Knowledge Base"
+                })
+            });
 
-        // We will try the most compatible URL structure for Gemini 1.5 Flash
-        // Some projects require v1beta for 1.5-flash, others require v1.
-        // Given the consistent 404s, we will try v1Beta with a direct model name.
-        const chatUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
+            const storeResult = await createStoreResponse.json();
+            if (!createStoreResponse.ok) throw new Error(`Failed to create store: ${JSON.stringify(storeResult)}`);
+
+            storeId = storeResult.name; // Format: fileSearchStores/abc-123
+
+            await supabase
+                .from('ai_config')
+                .upsert({ key: 'gemini_store_id', value: storeId, updated_at: new Date().toISOString() });
+        }
+
+        // 2. Sync Logic (Supabase Bucket -> Gemini Store)
+        const { data: bucketFiles } = await supabase.storage.from('knowledgebase').list();
+        const { data: syncedFilesData } = await supabase.from('ai_sync_metadata').select('file_name');
+        const syncedFiles = new Set((syncedFilesData || []).map(m => m.file_name));
+
+        if (bucketFiles) {
+            for (const file of bucketFiles) {
+                if (!syncedFiles.has(file.name) && !file.name.startsWith('.')) {
+                    console.log(`Uploading ${file.name} to Gemini...`);
+
+                    const { data: fileData, error: downloadError } = await supabase
+                        .storage
+                        .from('knowledgebase')
+                        .download(file.name);
+
+                    if (downloadError) continue;
+
+                    // Upload file to Gemini File API
+                    const uploadUrl = `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${geminiApiKey}`;
+                    const uploadResponse = await fetch(uploadUrl, {
+                        method: 'POST',
+                        headers: {
+                            'X-Goog-Upload-Protocol': 'multipart',
+                            'Content-Type': fileData.type || 'application/pdf',
+                        },
+                        body: fileData
+                    });
+
+                    const uploadResult = await uploadResponse.json();
+                    if (!uploadResponse.ok) continue;
+
+                    const fileUri = uploadResult.file.name;
+
+                    // Add file to Store
+                    const addToStoreUrl = `https://generativelanguage.googleapis.com/v1beta/${storeId}/files?key=${geminiApiKey}`;
+                    await fetch(addToStoreUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ file: fileUri })
+                    });
+
+                    await supabase.from('ai_sync_metadata').upsert({
+                        file_name: file.name,
+                        gemini_file_id: fileUri,
+                        last_synced: new Date().toISOString()
+                    });
+                }
+            }
+        }
+
+        // 3. Chat Logic with Tools
+        const modelName = "gemini-2.0-flash";
+        const chatUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${geminiApiKey}`;
+
+        const systemInstruction = "You are the Payroll-Jam Expert. Ground all answers in the Jamaican tax documents found in the provided knowledge base. If a user asks about the 2026 threshold, refer to the value $1,902,360. Cite your sources clearly.";
 
         const geminiPayload = {
             contents: [
-                {
-                    role: 'user',
-                    parts: [{ text: `INSTRUCTIONS: ${systemInstruction}` }]
-                },
-                {
-                    role: 'model',
-                    parts: [{ text: "Understood. I am the Official Payroll-Jam Expert. I will provide accurate guidance on Jamaican payroll and tax compliance based on the knowledge base. How can I assist you?" }]
-                },
                 ...history.map((h: any) => ({
                     role: h.role === 'model' ? 'model' : 'user',
                     parts: [{ text: h.text }]
@@ -67,7 +122,17 @@ serve(async (req) => {
                     role: 'user',
                     parts: [{ text: message }]
                 }
-            ]
+            ],
+            tools: [
+                {
+                    file_search: {
+                        file_search_store_names: [storeId]
+                    }
+                }
+            ],
+            system_instruction: {
+                parts: [{ text: systemInstruction }]
+            }
         };
 
         const response = await fetch(chatUrl, {
@@ -79,28 +144,11 @@ serve(async (req) => {
         const result = await response.json();
 
         if (!response.ok) {
-            // If v1beta fails with model not found, let's try v1 as a fallback immediately
-            if (response.status === 404) {
-                const fallbackUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
-                const fallbackResponse = await fetch(fallbackUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(geminiPayload)
-                });
-                const fallbackResult = await fallbackResponse.json();
-
-                if (fallbackResponse.ok) {
-                    const responseText = fallbackResult.candidates?.[0]?.content?.parts?.[0]?.text;
-                    return new Response(JSON.stringify({ text: responseText }), {
-                        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-                    });
-                }
-                throw new Error(fallbackResult.error?.message || "Gemini AI fallback failed");
-            }
-            throw new Error(result.error?.message || "Gemini AI failed to respond");
+            console.error("Gemini Error:", JSON.stringify(result));
+            throw new Error(result.error?.message || "AI failed to respond");
         }
 
-        const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text || "I'm sorry, I couldn't generate a response.";
 
         return new Response(JSON.stringify({ text: responseText }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
