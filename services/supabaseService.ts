@@ -16,45 +16,72 @@ import {
 } from '../types';
 
 // Cache for the admin client to avoid multiple instances and GoTrueClient warnings
-let cachedAdminClient: any = null;
-let adminClientPromise: Promise<any> | null = null;
+// We use a global variable on window to be absolutely sure it's a singleton across module evaluations
+let cachedAdminClient: any = (typeof window !== 'undefined' ? (window as any).__SUPABASE_ADMIN_CLIENT__ : null);
+let adminClientPromise: Promise<any> | null = (typeof window !== 'undefined' ? (window as any).__SUPABASE_ADMIN_PROMIZE__ : null);
 
 export const supabaseService = {
 
   // Helper to create an admin client (service role) for operations that bypass RLS
   // Only available if VITE_SUPABASE_SERVICE_ROLE_KEY is in environment
   getAdminClient: async () => {
+    // 1. Check module-level cache
     if (cachedAdminClient) return cachedAdminClient;
+
+    // 2. Check window-level cache (if module was re-evaluated)
+    if (typeof window !== 'undefined' && (window as any).__SUPABASE_ADMIN_CLIENT__) {
+      cachedAdminClient = (window as any).__SUPABASE_ADMIN_CLIENT__;
+      return cachedAdminClient;
+    }
+
     if (adminClientPromise) return adminClientPromise;
+    if (typeof window !== 'undefined' && (window as any).__SUPABASE_ADMIN_PROMIZE__) {
+      adminClientPromise = (window as any).__SUPABASE_ADMIN_PROMIZE__;
+      return adminClientPromise;
+    }
+
+    // 3. Initialize if not already in progress
+    console.debug('🚀 Starting Admin Client initialization');
 
     adminClientPromise = (async () => {
       const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY || import.meta.env?.SUPABASE_SERVICE_ROLE_KEY || localStorage.getItem('VITE_SUPABASE_SERVICE_ROLE_KEY');
       const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
 
-      console.debug('🔑 Admin client request - URL:', supabaseUrl, 'Key present:', !!serviceRoleKey);
-
       if (serviceRoleKey && supabaseUrl) {
         try {
+          console.debug('🔑 Admin client request - URL:', supabaseUrl, 'Key present:', !!serviceRoleKey);
           const { createClient } = await import('@supabase/supabase-js');
-          cachedAdminClient = createClient(supabaseUrl, serviceRoleKey, {
+
+          const client = createClient(supabaseUrl, serviceRoleKey, {
             auth: {
               autoRefreshToken: false,
               persistSession: false
             }
           });
-          return cachedAdminClient;
+
+          cachedAdminClient = client;
+          if (typeof window !== 'undefined') {
+            (window as any).__SUPABASE_ADMIN_CLIENT__ = client;
+          }
+          return client;
         } catch (e) {
           console.error('Failed to create admin client:', e);
-          adminClientPromise = null; // Allow retry
+          adminClientPromise = null;
+          if (typeof window !== 'undefined') (window as any).__SUPABASE_ADMIN_PROMIZE__ = null;
           return null;
         }
       } else {
         if (!serviceRoleKey) console.warn('⚠️ Admin client requested but VITE_SUPABASE_SERVICE_ROLE_KEY is missing from environment.');
         if (!supabaseUrl) console.warn('⚠️ Admin client requested but VITE_SUPABASE_URL is missing.');
         adminClientPromise = null;
+        if (typeof window !== 'undefined') (window as any).__SUPABASE_ADMIN_PROMIZE__ = null;
         return null;
       }
     })();
+
+    if (typeof window !== 'undefined') {
+      (window as any).__SUPABASE_ADMIN_PROMIZE__ = adminClientPromise;
+    }
 
     return adminClientPromise;
   },
