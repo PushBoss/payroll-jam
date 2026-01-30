@@ -446,12 +446,34 @@ export const Settings: React.FC<SettingsProps> = ({
         // Check user limit - Limited to 5 seats across ALL tiers as requested
         const maxUsers = 5;
 
-        // Count includes the main account owner
-        const filteredUsers = users.filter(u => u.id !== currentUser?.id && u.email !== currentUser?.email);
-        const currentUserCount = filteredUsers.length + 1; // +1 for the account owner
+        // Fetch official member count from Supabase to be consistent with the UI
+        let currentMemberCount = 0;
+        try {
+            const adminClient = await supabaseService.getAdminClient();
+            if (!adminClient) throw new Error('Admin client unavailable');
 
-        if (currentUserCount >= maxUsers) {
-            toast.error(`Seat limit reached. You have used all ${maxUsers} available seats. Remove an existing member to invite a new one.`);
+            const { count } = await adminClient
+                .from('account_members')
+                .select('*', { count: 'exact', head: true })
+                .eq('account_id', currentUser?.companyId);
+
+            // Check if OWNER is in account_members. If not, add 1 for the owner.
+            const { data: owner } = await adminClient
+                .from('account_members')
+                .select('id')
+                .eq('account_id', currentUser?.companyId)
+                .eq('role', 'OWNER')
+                .maybeSingle();
+
+            currentMemberCount = (count || 0) + (owner ? 0 : 1);
+        } catch (e) {
+            console.warn('Fallback to local user count for limit check', e);
+            const filteredUsers = users.filter(u => u.id !== currentUser?.id && u.email !== currentUser?.email);
+            currentMemberCount = filteredUsers.length + 1;
+        }
+
+        if (currentMemberCount >= maxUsers) {
+            toast.error(`Seat limit reached. You have used all ${maxUsers} available seats (including the Owner). Remove an existing member to invite a new one.`);
             return;
         }
 

@@ -75,6 +75,9 @@ export const AccountMembersCard: React.FC<AccountMembersCardProps> = ({
     }
   };
 
+  const hasOwnerInMembers = members.some(m => m.role?.toUpperCase() === 'OWNER');
+  const totalSeatsUsed = hasOwnerInMembers ? members.length : members.length + 1;
+
   if (loading) {
     return (
       <div className="bg-white rounded-lg border border-gray-200 p-6">
@@ -90,7 +93,7 @@ export const AccountMembersCard: React.FC<AccountMembersCardProps> = ({
         <h3 className="text-lg font-semibold text-gray-900">Team Members</h3>
         <div className="px-3 py-1 bg-gray-100 rounded-full border border-gray-200">
           <span className="text-xs font-bold text-gray-600 uppercase">
-            {members.length} / 5 Seats Used
+            {totalSeatsUsed} / 5 Seats Used
           </span>
         </div>
       </div>
@@ -113,7 +116,8 @@ export const AccountMembersCard: React.FC<AccountMembersCardProps> = ({
                   <span className="capitalize">
                     {member.role?.toUpperCase() === 'RESELLER' ? 'Reseller' :
                       member.role?.toUpperCase() === 'EMPLOYEE' ? 'Team member (alias)' :
-                        member.role}
+                        member.role?.toUpperCase() === 'OWNER' ? 'Owner' :
+                          member.role}
                   </span>
                   <span>•</span>
                   <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize ${member.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'
@@ -123,7 +127,7 @@ export const AccountMembersCard: React.FC<AccountMembersCardProps> = ({
                 </div>
               </div>
 
-              {isAdmin && (
+              {isAdmin && member.role?.toUpperCase() !== 'OWNER' && (
                 <div className="flex items-center">
                   {member.status === 'pending' && (
                     <button
@@ -147,6 +151,12 @@ export const AccountMembersCard: React.FC<AccountMembersCardProps> = ({
                       ? (member.status === 'pending' ? 'Cancelling...' : 'Removing...')
                       : (member.status === 'pending' ? 'Cancel Invite' : 'Remove')}
                   </button>
+                </div>
+              )}
+
+              {member.role?.toUpperCase() === 'OWNER' && (
+                <div className="px-3 py-1 text-xs font-bold text-gray-400 uppercase">
+                  Account Owner
                 </div>
               )}
             </div>
