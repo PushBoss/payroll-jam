@@ -14,7 +14,7 @@ export const getAIResponse = async (
     // Dynamically import the provider
     const { GoogleGenerativeAI } = await import("@google/generative-ai");
     const genAI = new GoogleGenerativeAI(API_KEY);
-    
+
     const systemInstruction = `You are 'JamBot', an expert Jamaican HR and Payroll assistant for the SaaS platform 'Payroll-Jam'. 
     
     Your knowledge base includes:
@@ -28,8 +28,8 @@ export const getAIResponse = async (
     Be helpful, professional, and concise. If asked to draft a document (like a termination letter or contract), use proper formatting.
     All currency should be in JMD (Jamaican Dollars).`;
 
-    const model = genAI.getGenerativeModel({ 
-      model: 'gemini-1.5-flash',
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-1.5-flash-latest',
       systemInstruction: systemInstruction
     });
 

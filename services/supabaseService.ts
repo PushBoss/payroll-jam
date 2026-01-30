@@ -15,11 +15,16 @@ import {
   GlobalConfig
 } from '../types';
 
+// Cache for the admin client to avoid multiple instances and GoTrueClient warnings
+let cachedAdminClient: any = null;
+
 export const supabaseService = {
 
   // Helper to create an admin client (service role) for operations that bypass RLS
   // Only available if VITE_SUPABASE_SERVICE_ROLE_KEY is in environment
   getAdminClient: async () => {
+    if (cachedAdminClient) return cachedAdminClient;
+
     const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY || import.meta.env?.SUPABASE_SERVICE_ROLE_KEY || localStorage.getItem('VITE_SUPABASE_SERVICE_ROLE_KEY');
     const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
 
@@ -28,12 +33,13 @@ export const supabaseService = {
     if (serviceRoleKey && supabaseUrl) {
       try {
         const { createClient } = await import('@supabase/supabase-js');
-        return createClient(supabaseUrl, serviceRoleKey, {
+        cachedAdminClient = createClient(supabaseUrl, serviceRoleKey, {
           auth: {
             autoRefreshToken: false,
             persistSession: false
           }
         });
+        return cachedAdminClient;
       } catch (e) {
         console.error('Failed to create admin client:', e);
       }
@@ -1443,7 +1449,7 @@ export const supabaseService = {
         return [];
       }
 
-      return (data || []).map(r => ({
+      return (data || []).map((r: any) => ({
         id: r.id,
         employeeId: r.employee_id,
         employeeName: r.employee_name || '',
