@@ -33,7 +33,10 @@ export const getGroundedAIResponse = async (
     }
 
     const data = await response.json();
-    return data.text;
+    if (data.error) {
+      throw new Error(data.error);
+    }
+    return data.text || "I'm sorry, I couldn't generate a response based on the knowledge base at this moment.";
   } catch (error: any) {
     console.error("Grounded AI Service Error:", error);
     return `Error: ${error.message || 'I encountered an error connecting to the payroll knowledge base.'}`;
