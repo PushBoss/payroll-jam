@@ -29,7 +29,7 @@ export const getAIResponse = async (
     All currency should be in JMD (Jamaican Dollars).`;
 
     const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash-latest',
+      model: 'gemini-1.5-flash',
       systemInstruction: systemInstruction
     });
 
