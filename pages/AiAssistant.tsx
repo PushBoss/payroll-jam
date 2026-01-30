@@ -56,9 +56,14 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({ employees }) => {
           <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center text-white">
             <Icons.AI className="w-5 h-5" />
           </div>
-          <div className="ml-3">
-            <h3 className="font-bold text-gray-900">JamBot HR Assistant</h3>
-            <p className="text-xs text-gray-500">Powered by JamBot Intelligence</p>
+          <div className="ml-3 flex items-center">
+            <div>
+              <h3 className="font-bold text-gray-900">JamBot HR Assistant</h3>
+              <p className="text-xs text-gray-500">Powered by JamBot Intelligence</p>
+            </div>
+            <span className="ml-3 px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-full uppercase border border-blue-200 tracking-wider">
+              Beta
+            </span>
           </div>
         </div>
       </div>
@@ -68,8 +73,8 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({ employees }) => {
           <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div
               className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${msg.role === 'user'
-                  ? 'bg-jam-black text-white rounded-br-none'
-                  : 'bg-white border border-gray-200 text-gray-800 rounded-bl-none shadow-sm'
+                ? 'bg-jam-black text-white rounded-br-none'
+                : 'bg-white border border-gray-200 text-gray-800 rounded-bl-none shadow-sm'
                 }`}
             >
               {msg.text}
