@@ -32,13 +32,16 @@ serve(async (req: Request) => {
         const { data: config } = await supabase.from('ai_config').select('value').eq('key', 'gemini_store_id').maybeSingle();
         const storeId = config?.value;
 
-        const modelName = "gemini-2.0-flash";
-        const fallbackModel = "gemini-1.5-flash";
+        // Attempting the most widely supported 2.0 and 1.5 names
+        const modelLadder = [
+            "gemini-2.0-flash",
+            "gemini-1.5-flash",
+            "gemini-1.5-pro"
+        ];
 
         const systemText = "You are the Official Payroll-Jam Expert. Ground answers in Jamaican tax law documents. The 2026 threshold is $1,902,360. Always provide a clear, helpful response.";
 
-        // 1. Sanitize and Validate History Sequence
-        // Gemini MUST start with 'user' and roles must alternate.
+        // Sanitize History
         let sanitizedHistory = history
             .filter((h: any) => h.text && h.text.trim().length > 0)
             .map((h: any) => ({
@@ -46,13 +49,11 @@ serve(async (req: Request) => {
                 parts: [{ text: h.text }]
             }));
 
-        // Rule: Start with 'user'. If first is 'model' (like greeting), remove it.
         if (sanitizedHistory.length > 0 && sanitizedHistory[0].role === 'model') {
             sanitizedHistory.shift();
         }
 
-        // Rule: Ensure alternation (remove consecutive roles if any)
-        const finalContents: any[] = [];
+        const finalContents = [];
         let lastRole = null;
         for (const msg of sanitizedHistory) {
             if (msg.role !== lastRole) {
@@ -60,33 +61,23 @@ serve(async (req: Request) => {
                 lastRole = msg.role;
             }
         }
+        finalContents.push({ role: 'user', parts: [{ text: message }] });
 
-        // Add the current message (must be 'user')
-        finalContents.push({
-            role: 'user',
-            parts: [{ text: message }]
-        });
-
-        const tryGenerate = async (model: string, useGrounding: boolean, minimal: boolean = false) => {
+        const tryGenerate = async (model: string, useGrounding: boolean) => {
             const payload: any = {
                 contents: finalContents,
+                system_instruction: { parts: [{ text: systemText }] },
                 generationConfig: { temperature: 0.7 }
             };
 
-            if (!minimal) {
-                payload.system_instruction = { parts: [{ text: systemText }] };
-                payload.safetySettings = [
-                    { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-                    { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-                    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-                    { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
-                ];
-                if (useGrounding && storeId) {
-                    payload.tools = [{ file_search: { file_search_store_names: [storeId] } }];
-                }
+            // Only attach tools if grounding is requested AND storeId exists
+            if (useGrounding && storeId) {
+                payload.tools = [{ file_search: { file_search_store_names: [storeId] } }];
             }
 
+            // Correct URL construction for v1beta
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
+
             const res = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -98,40 +89,40 @@ serve(async (req: Request) => {
             try { data = JSON.parse(bodyText); } catch (e) { }
 
             const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-            return { ok: res.ok && !!text, status: res.status, data, text, bodyText };
+            return { ok: res.ok && !!text, status: res.status, data, text, bodyText, model };
         };
 
-        // Execution Ladder
-        console.log(`Sending Chat Sequence... Roles: ${finalContents.map(c => c.role).join(' -> ')}`);
+        // Execution Loop through models
+        let currentStep = null;
 
-        let effort = await tryGenerate(modelName, true); // 1. 2.0 Grounded
-
-        if (!effort.ok) {
-            console.warn("Attempt 1 failed. Trying 1.5 Grounded Fallback...");
-            effort = await tryGenerate(fallbackModel, true); // 2. 1.5 Grounded
+        // Pass 1: Try with Grounding (Model Search)
+        for (const model of modelLadder) {
+            console.log(`Trying Grounded Search with ${model}...`);
+            currentStep = await tryGenerate(model, true);
+            if (currentStep.ok) break;
+            console.warn(`${model} Grounded search failed or not supported.`);
         }
 
-        if (!effort.ok) {
-            console.warn("Attempt 2 failed. Trying Standard Expert Mode (No Tools)...");
-            effort = await tryGenerate(modelName, false); // 3. 2.0 Regular
+        // Pass 2: Try Without Grounding if Pass 1 failed
+        if (!currentStep || !currentStep.ok) {
+            for (const model of modelLadder) {
+                console.log(`Trying Standard Chat with ${model}...`);
+                currentStep = await tryGenerate(model, false);
+                if (currentStep.ok) break;
+            }
         }
 
-        if (!effort.ok) {
-            console.warn("Attempt 3 failed. Final Attempt: Minimal Vanilla Response...");
-            effort = await tryGenerate(fallbackModel, false, true); // 4. 1.5 Minimal
+        if (!currentStep || !currentStep.ok) {
+            const msg = currentStep?.data?.error?.message || currentStep?.bodyText || "All models failed to respond.";
+            throw new Error(`Gemini Final Logic Failure: ${msg}`);
         }
 
-        if (!effort.ok) {
-            const msg = effort.data?.error?.message || effort.bodyText || "Unknown API failure";
-            throw new Error(`Gemini AI Final Failure: ${msg}`);
-        }
-
-        return new Response(JSON.stringify({ text: effort.text }), {
+        return new Response(JSON.stringify({ text: currentStep.text }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
 
     } catch (error: any) {
-        console.error('Final Logic Error:', error.message);
+        console.error('Final Refactor Error:', error.message);
         return new Response(JSON.stringify({ error: error.message }), {
             status: 200,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
