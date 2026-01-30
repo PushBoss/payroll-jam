@@ -837,7 +837,7 @@ function AppContent() {
       }} onDeletePayRun={async (runId) => {
         setPayRunHistory(prev => prev.filter(r => r.id !== runId));
         if (isSupabaseMode && user?.companyId) await supabaseService.deletePayRun(runId, user.companyId);
-      }} onNavigate={navigateTo} />;
+      }} onNavigate={navigateTo} employees={employees} integrationConfig={integrationConfig} />;
       case 'compliance':
         if (!hasFeatureAccess(companyData || undefined, 'Compliance')) {
           toast.error(getFeatureUpgradeMessage('Compliance', companyData?.plan));

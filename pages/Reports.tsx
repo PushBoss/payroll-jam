@@ -2,8 +2,8 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
-import { PayRun, PayRunLineItem, CompanySettings, AuditLogEntry } from '../types';
-import { generateFullRegisterCSV, generateS01CSV, generateS02CSV } from '../utils/exportHelpers';
+import { PayRun, PayRunLineItem, CompanySettings, AuditLogEntry, Employee, IntegrationConfig } from '../types';
+import { generateFullRegisterCSV, generateS01CSV, generateS02CSV, generateNCBFile, generateBNSFile, generateGLCSV } from '../utils/exportHelpers';
 import { PayslipView } from '../components/PayslipView';
 import { auditService } from '../services/auditService';
 import { useAuth } from '../context/AuthContext';
@@ -15,9 +15,18 @@ interface ReportsProps {
   onUpdatePayRun?: (run: PayRun) => void;
   onDeletePayRun?: (runId: string) => void;
   onNavigate?: (path: string, params?: { editRunId?: string }) => void;
+  employees?: Employee[];
+  integrationConfig?: IntegrationConfig;
 }
 
-export const Reports: React.FC<ReportsProps> = ({ history = [], companyData, onDeletePayRun, onNavigate }) => {
+export const Reports: React.FC<ReportsProps> = ({
+  history = [],
+  companyData,
+  onDeletePayRun,
+  onNavigate,
+  employees = [],
+  integrationConfig
+}) => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'register' | 'statutory' | 'audit'>('register');
   const [selectedRun, setSelectedRun] = useState<PayRun | null>(null);
@@ -138,12 +147,22 @@ export const Reports: React.FC<ReportsProps> = ({ history = [], companyData, onD
     }
   };
 
-  const handleExportS02 = () => {
-    if (companyData && displayHistory.length > 0) {
-      generateS02CSV(companyData, displayHistory);
-    } else {
-      alert("No data available to generate S02.");
+  const handleDownloadBankFile = (run: PayRun, type: 'NCB' | 'BNS') => {
+    if (!companyData) return;
+    if (type === 'NCB') {
+      generateNCBFile(run, companyData, employees);
+    } else if (type === 'BNS') {
+      generateBNSFile(run, companyData, employees);
     }
+  };
+
+  const handleDownloadGL = (run: PayRun) => {
+    if (!integrationConfig) {
+      toast.error("Integration settings not found");
+      return;
+    }
+    generateGLCSV(run, integrationConfig);
+    toast.success("GL CSV Exported");
   };
 
   const renderDetailModal = () => {
@@ -231,14 +250,39 @@ export const Reports: React.FC<ReportsProps> = ({ history = [], companyData, onD
             )}
           </div>
 
-          <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-end space-x-3 no-print">
+          <div className="p-6 border-t border-gray-200 bg-gray-50 flex flex-wrap justify-end gap-3 no-print">
+            <button
+              onClick={() => handleDownloadGL(selectedRun)}
+              className="px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 hover:bg-blue-100 flex items-center text-sm font-bold"
+            >
+              <Icons.Link className="w-4 h-4 mr-2" />
+              Sync to GL
+            </button>
+            <div className="flex border border-gray-300 rounded-lg overflow-hidden">
+              <button
+                onClick={() => handleDownloadBankFile(selectedRun, 'NCB')}
+                className="px-3 py-2 bg-white hover:bg-gray-100 text-gray-700 text-sm border-r border-gray-300 flex items-center"
+                title="NCB Bank File"
+              >
+                <Icons.Bank className="w-4 h-4 mr-2" />
+                NCB
+              </button>
+              <button
+                onClick={() => handleDownloadBankFile(selectedRun, 'BNS')}
+                className="px-3 py-2 bg-white hover:bg-gray-100 text-gray-700 text-sm flex items-center"
+                title="BNS Bank File"
+              >
+                <Icons.Bank className="w-4 h-4 mr-2" />
+                BNS
+              </button>
+            </div>
             <button
               onClick={() => generateFullRegisterCSV([selectedRun])}
-              className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100"
+              className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 text-sm"
             >
               Download CSV
             </button>
-            <button type="button" onClick={() => window.print()} className="px-4 py-2 bg-jam-black text-white rounded-lg hover:bg-gray-800">
+            <button type="button" onClick={() => window.print()} className="px-4 py-2 bg-jam-black text-white rounded-lg hover:bg-gray-800 text-sm font-bold">
               Print Register
             </button>
           </div>
@@ -297,8 +341,8 @@ export const Reports: React.FC<ReportsProps> = ({ history = [], companyData, onD
                 key={status}
                 onClick={() => setStatusFilter(status as any)}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${statusFilter === status
-                    ? 'bg-jam-orange text-jam-black'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'bg-jam-orange text-jam-black'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
               >
                 {status} {status !== 'ALL' && `(${payRunsByStatus[status as keyof typeof payRunsByStatus]?.length || 0})`}
@@ -395,13 +439,38 @@ export const Reports: React.FC<ReportsProps> = ({ history = [], companyData, onD
                           )}
                           {/* FINALIZED: View only */}
                           {run.status === 'FINALIZED' && (
-                            <button
-                              onClick={() => setSelectedRun(run as PayRun)}
-                              className="text-jam-orange hover:text-yellow-600 text-sm font-medium px-2 py-1 rounded hover:bg-orange-50 transition-colors"
-                              title="View details"
-                            >
-                              View Details
-                            </button>
+                            <div className="flex items-center space-x-2">
+                              <button
+                                onClick={() => handleDownloadGL(run)}
+                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                title="Sync to GL"
+                              >
+                                <Icons.Link className="w-4 h-4" />
+                              </button>
+                              <div className="flex border border-gray-200 rounded-lg overflow-hidden">
+                                <button
+                                  onClick={() => handleDownloadBankFile(run, 'NCB')}
+                                  className="p-1 px-2 text-gray-600 hover:bg-gray-100 border-r border-gray-200"
+                                  title="Download NCB Bank File"
+                                >
+                                  <Icons.Bank className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleDownloadBankFile(run, 'BNS')}
+                                  className="p-1 px-2 text-gray-600 hover:bg-gray-100"
+                                  title="Download BNS Bank File"
+                                >
+                                  <Icons.Bank className="w-4 h-4" />
+                                </button>
+                              </div>
+                              <button
+                                onClick={() => setSelectedRun(run as PayRun)}
+                                className="text-jam-orange hover:text-yellow-600 text-sm font-medium px-2 py-1 rounded hover:bg-orange-50 transition-colors border border-orange-100"
+                                title="View details"
+                              >
+                                View Details
+                              </button>
+                            </div>
                           )}
                         </div>
                       </td>
