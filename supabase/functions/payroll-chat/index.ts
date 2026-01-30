@@ -21,14 +21,7 @@ serve(async (req: Request) => {
         const rawBody = await req.text();
         if (!rawBody) throw new Error("Request body is empty");
 
-        let body;
-        try {
-            body = JSON.parse(rawBody);
-        } catch (e: any) {
-            throw new Error("Invalid JSON in request: " + e.message);
-        }
-
-        const { message, history = [] } = body;
+        const { message, history = [] } = JSON.parse(rawBody);
         if (!message) throw new Error("Message is required");
 
         const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
@@ -36,51 +29,46 @@ serve(async (req: Request) => {
         const geminiApiKey = Deno.env.get('GEMINI_API_KEY') || '';
 
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-        const { data: config } = await supabase
-            .from('ai_config')
-            .select('value')
-            .eq('key', 'gemini_store_id')
-            .maybeSingle();
-
+        const { data: config } = await supabase.from('ai_config').select('value').eq('key', 'gemini_store_id').maybeSingle();
         const storeId = config?.value;
 
         const modelName = "gemini-2.0-flash";
         const fallbackModel = "gemini-1.5-flash";
 
-        const systemText = "You are the Official Payroll-Jam Expert. Ground answers in Jamaican tax law. The 2026 threshold is $1,902,360. Always provide clear text.";
+        const systemText = "You are the Official Payroll-Jam Expert. Ground answers in Jamaican tax law documents. The 2026 threshold is $1,902,360. Identify as the Payroll-Jam Expert and be helpful.";
 
+        // BLOCK_NONE to prevent accidental filtering of tax/statutory terms
         const safetySettings = [
-            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
-            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
-            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
-            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" }
+            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
         ];
 
-        const generationConfig = {
-            temperature: 0.7,
-            topP: 0.95,
-            topK: 40,
-            maxOutputTokens: 2048,
-        };
+        // Sanitize history: Gemini crashes if parts are empty or roles are invalid
+        const sanitizedContents = history
+            .filter((h: any) => h.text && h.text.trim().length > 0)
+            .map((h: any) => ({
+                role: h.role === 'model' ? 'model' : 'user',
+                parts: [{ text: h.text }]
+            }));
 
-        const tryGenerate = async (model: string, useGrounding: boolean, useSystem: boolean) => {
-            const contents = [
-                ...history.map((h: any) => ({
-                    role: h.role === 'model' ? 'model' : 'user',
-                    parts: [{ text: h.text }]
-                })),
-                { role: 'user', parts: [{ text: message }] }
-            ];
+        // Add current message
+        sanitizedContents.push({
+            role: 'user',
+            parts: [{ text: message }]
+        });
 
-            const payload: any = { contents, safetySettings, generationConfig };
-
-            if (useSystem) {
-                payload.systemInstruction = { parts: [{ text: systemText }] };
-            }
+        const tryGenerate = async (model: string, useGrounding: boolean) => {
+            const payload: any = {
+                contents: sanitizedContents,
+                system_instruction: { parts: [{ text: systemText }] }, // Standard snake_case
+                safetySettings, // Keep camelCase for safety in REST
+                generationConfig: { temperature: 0.7 }
+            };
 
             if (useGrounding && storeId) {
-                payload.tools = [{ fileSearch: { fileSearchStoreNames: [storeId] } }];
+                payload.tools = [{ file_search: { file_search_store_names: [storeId] } }];
             }
 
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
@@ -91,44 +79,45 @@ serve(async (req: Request) => {
             });
 
             const bodyText = await res.text();
-            return { ok: res.ok, status: res.status, bodyText, data: bodyText.startsWith('{') ? JSON.parse(bodyText) : null };
+            const data = bodyText.startsWith('{') ? JSON.parse(bodyText) : null;
+
+            // Validation: Does it actually have text?
+            const hasText = !!(data?.candidates?.[0]?.content?.parts?.[0]?.text);
+
+            return { ok: res.ok && hasText, status: res.status, data, bodyText };
         };
 
-        // Attempt 1: Full Grounded Expert (2.0)
-        let result = await tryGenerate(modelName, true, true);
+        // Execution Ladder
+        let step = await tryGenerate(modelName, true); // 1. 2.0 Grounded
 
-        // Attempt 2: Full Grounded Expert (1.5 Fallback)
-        if (!result.ok || (!result.data?.candidates?.[0]?.content)) {
-            result = await tryGenerate(fallbackModel, true, true);
+        if (!step.ok) {
+            console.warn("Retrying with 1.5 Grounded Fallback...");
+            step = await tryGenerate(fallbackModel, true); // 2. 1.5 Grounded
         }
 
-        // Attempt 3: Standard Expert (No Grounding)
-        if (!result.ok || (!result.data?.candidates?.[0]?.content)) {
-            result = await tryGenerate(modelName, false, true);
+        if (!step.ok) {
+            console.warn("Retrying with 2.0 Standard (No Tools)...");
+            step = await tryGenerate(modelName, false); // 3. 2.0 Clean
         }
 
-        // Attempt 4: Minimal Vanilla (No Tools, No System)
-        if (!result.ok || (!result.data?.candidates?.[0]?.content)) {
-            result = await tryGenerate(fallbackModel, false, false);
+        if (!step.ok) {
+            console.warn("Final Attempt: 1.5 Vanilla...");
+            step = await tryGenerate(fallbackModel, false); // 4. 1.5 Clean
         }
 
-        if (!result.ok) {
-            throw new Error(`Gemini API Error (${result.status}): ${result.bodyText.substring(0, 150)}`);
+        if (!step.ok) {
+            const errDetail = step.data?.error?.message || "All generation attempts failed.";
+            throw new Error(`Gemini AI Final Failure: ${errDetail}`);
         }
 
-        const candidate = result.data?.candidates?.[0];
-        const responseText = candidate?.content?.parts?.[0]?.text;
-
-        if (!responseText) {
-            throw new Error(`Model returned empty output. Finish Reason: ${candidate?.finishReason}`);
-        }
+        const responseText = step.data.candidates[0].content.parts[0].text;
 
         return new Response(JSON.stringify({ text: responseText }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
 
     } catch (error: any) {
-        console.error('Final Audit Error:', error.message);
+        console.error('Final Refactor Error:', error.message);
         return new Response(JSON.stringify({ error: error.message }), {
             status: 200,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
