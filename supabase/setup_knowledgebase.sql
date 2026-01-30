@@ -7,6 +7,10 @@ ON CONFLICT (id) DO NOTHING;
 -- 2. Storage policies for knowledgebase
 -- Only admins/service role should manage this
 
+-- Drop existing policies if they exist to avoid errors on re-run
+DROP POLICY IF EXISTS "Service role can manage knowledgebase" ON storage.objects;
+DROP POLICY IF EXISTS "Admins can manage knowledgebase" ON storage.objects;
+
 -- Allow service role to do everything
 CREATE POLICY "Service role can manage knowledgebase" 
 ON storage.objects FOR ALL 

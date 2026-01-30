@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS ai_sync_metadata (
 ALTER TABLE ai_sync_metadata ENABLE ROW LEVEL SECURITY;
 
 -- Allow service role to manage everything
+DROP POLICY IF EXISTS "Service role can manage ai_sync_metadata" ON ai_sync_metadata;
 CREATE POLICY "Service role can manage ai_sync_metadata" ON ai_sync_metadata
   FOR ALL
   TO service_role
