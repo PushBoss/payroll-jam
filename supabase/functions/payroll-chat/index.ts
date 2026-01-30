@@ -37,29 +37,34 @@ serve(async (req: Request) => {
 
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-        // 1. Get Store ID
         const { data: config } = await supabase
             .from('ai_config')
             .select('value')
             .eq('key', 'gemini_store_id')
             .maybeSingle();
 
-        let storeId = config?.value;
+        const storeId = config?.value;
 
-        // 2. Models
         const modelName = "gemini-2.0-flash";
         const fallbackModel = "gemini-1.5-flash";
 
-        const systemInstruction = `You are the Official Payroll-Jam Expert. 
-        Your goal is to provide accurate guidance on Jamaican statutory deductions and tax compliance.
-        
-        RULES:
-        1. Ground your answers in the provided knowledge base documents.
-        2. If the documents do not contain the answer, use your expert knowledge of Jamaican law.
-        3. ALWAYS provide a clear text response. Never return an empty message.
-        4. Mention the 2026 tax threshold of $1,902,360 if relevant.`;
+        const systemText = "You are the Official Payroll-Jam Expert. Ground answers in Jamaican tax law. The 2026 threshold is $1,902,360. Always provide clear text.";
 
-        const makePayload = (isGrounded: boolean) => {
+        const safetySettings = [
+            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
+            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
+            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
+            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" }
+        ];
+
+        const generationConfig = {
+            temperature: 0.7,
+            topP: 0.95,
+            topK: 40,
+            maxOutputTokens: 2048,
+        };
+
+        const tryGenerate = async (model: string, useGrounding: boolean, useSystem: boolean) => {
             const contents = [
                 ...history.map((h: any) => ({
                     role: h.role === 'model' ? 'model' : 'user',
@@ -68,58 +73,62 @@ serve(async (req: Request) => {
                 { role: 'user', parts: [{ text: message }] }
             ];
 
-            return {
-                contents,
-                tools: (isGrounded && storeId) ? [{ fileSearch: { fileSearchStoreNames: [storeId] } }] : [],
-                systemInstruction: { role: "system", parts: [{ text: systemInstruction }] }
-            };
-        };
+            const payload: any = { contents, safetySettings, generationConfig };
 
-        const tryGenerate = async (model: string, payload: any) => {
+            if (useSystem) {
+                payload.systemInstruction = { parts: [{ text: systemText }] };
+            }
+
+            if (useGrounding && storeId) {
+                payload.tools = [{ fileSearch: { fileSearchStoreNames: [storeId] } }];
+            }
+
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
             const res = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
+
             const bodyText = await res.text();
             return { ok: res.ok, status: res.status, bodyText, data: bodyText.startsWith('{') ? JSON.parse(bodyText) : null };
         };
 
-        // Attempt 1: Grounded Search with Gemini 2.0
-        console.log("Attempting Grounded Search...");
-        let result = await tryGenerate(modelName, makePayload(true));
+        // Attempt 1: Full Grounded Expert (2.0)
+        let result = await tryGenerate(modelName, true, true);
 
-        // Attempt 2: Grounded Fallback to 1.5 if 2.0 is missing
-        if (!result.ok && (result.status === 404 || result.bodyText.includes("not found"))) {
-            console.log("Gemini 2.0 not found, trying 1.5 Grounded Fallback...");
-            result = await tryGenerate(fallbackModel, makePayload(true));
+        // Attempt 2: Full Grounded Expert (1.5 Fallback)
+        if (!result.ok || (!result.data?.candidates?.[0]?.content)) {
+            result = await tryGenerate(fallbackModel, true, true);
         }
 
-        // CRITICAL FIX: If Grounded Search fails with "empty output" or 400, try Standard Expert Chat
-        if (!result.ok || (!result.data?.candidates?.[0]?.content?.parts?.[0]?.text)) {
-            console.log("Grounded Search produced empty output or error. Falling back to Standard Expert mode...");
-            result = await tryGenerate(modelName, makePayload(false));
+        // Attempt 3: Standard Expert (No Grounding)
+        if (!result.ok || (!result.data?.candidates?.[0]?.content)) {
+            result = await tryGenerate(modelName, false, true);
+        }
 
-            // Final fallback to 1.5 standard if 2.0 fails
-            if (!result.ok) {
-                result = await tryGenerate(fallbackModel, makePayload(false));
-            }
+        // Attempt 4: Minimal Vanilla (No Tools, No System)
+        if (!result.ok || (!result.data?.candidates?.[0]?.content)) {
+            result = await tryGenerate(fallbackModel, false, false);
         }
 
         if (!result.ok) {
             throw new Error(`Gemini API Error (${result.status}): ${result.bodyText.substring(0, 150)}`);
         }
 
-        const responseText = result.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-            "I'm sorry, I encountered an issue processing the knowledge base. However, as an expert, I can tell you that I'm here to help with your Jamaican payroll questions. Please rephrase your query.";
+        const candidate = result.data?.candidates?.[0];
+        const responseText = candidate?.content?.parts?.[0]?.text;
+
+        if (!responseText) {
+            throw new Error(`Model returned empty output. Finish Reason: ${candidate?.finishReason}`);
+        }
 
         return new Response(JSON.stringify({ text: responseText }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
 
     } catch (error: any) {
-        console.error('Edge Function Audit Error:', error.message);
+        console.error('Final Audit Error:', error.message);
         return new Response(JSON.stringify({ error: error.message }), {
             status: 200,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
