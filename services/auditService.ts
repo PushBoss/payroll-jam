@@ -24,9 +24,10 @@ export const auditService = {
       ipAddress: '192.168.1.1' // Mocked since we are client-side
     };
 
-    // Save to Supabase if companyId exists (non-blocking)
-    if (user.companyId) {
-      supabaseService.saveAuditLog(newLog, user.companyId).catch((error) => {
+    // Save to Supabase (non-blocking)
+    // Save to Supabase if companyId exists OR if user is SUPER_ADMIN (global logs)
+    if (user.companyId || user.role === 'SUPER_ADMIN') {
+      supabaseService.saveAuditLog(newLog, user.companyId || null).catch((error) => {
         console.error('Failed to save audit log to Supabase:', error);
         // Fallback to localStorage if Supabase fails
         const logs = storage.getAuditLogs() || [];

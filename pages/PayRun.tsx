@@ -423,6 +423,7 @@ export const PayRun: React.FC<PayRunProps> = ({
             const hasData = initializeRun(payCycle, payPeriod);
             if (hasData) {
                 setStep('DRAFT');
+                auditService.log(currentUser, 'CREATE', 'PayRun', `Initialized draft payroll for ${payPeriod}`);
                 toast.success("Payroll calculated from system data (Cumulative YTD Applied)");
             } else {
                 toast.error("No eligible employees found for this selection.");
@@ -469,6 +470,7 @@ export const PayRun: React.FC<PayRunProps> = ({
         setEditingRun(draftRun);
         setCurrentRun(draftRun);
         onSave(draftRun);
+        auditService.log(currentUser, 'UPDATE', 'PayRun', `Saved draft / Proceeded to review for ${payPeriod}`);
 
         // Move to finalize step (but not finalized yet)
         setStep('FINALIZE');

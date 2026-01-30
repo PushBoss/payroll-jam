@@ -1890,38 +1890,39 @@ export const supabaseService = {
 
   // --- Audit Logs ---
 
-  saveAuditLog: async (log: AuditLogEntry, companyId: string) => {
+  saveAuditLog: async (log: AuditLogEntry, companyId: string | null) => {
     if (!supabase) return;
 
-    // 1. Attempt with standard client (user's own context)
-    const { error } = await supabase.from('audit_logs').insert({
+    const isUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+    const logData: any = {
       id: log.id,
-      company_id: companyId,
-      actor_id: log.actorId,
       actor_name: log.actorName,
       action: log.action,
       entity: log.entity,
       description: log.description,
       timestamp: log.timestamp,
       ip_address: log.ipAddress
-    });
+    };
+
+    // Only add UUID fields if they are valid
+    if (companyId && isUuid(companyId)) {
+      logData.company_id = companyId;
+    }
+
+    if (log.actorId && isUuid(log.actorId)) {
+      logData.actor_id = log.actorId;
+    }
+
+    // 1. Attempt with standard client (user's own context)
+    const { error } = await supabase.from('audit_logs').insert(logData);
 
     // 2. Fallback to Admin client if forbidden (likely due to impersonation/RLS)
     if (error && (error.code === '403' || error.code === '42501')) {
       console.warn('🛡️ Audit log write failed with RLS (403), retrying with admin client...');
       const adminClient = await supabaseService.getAdminClient();
       if (adminClient) {
-        await adminClient.from('audit_logs').insert({
-          id: log.id,
-          company_id: companyId,
-          actor_id: log.actorId,
-          actor_name: log.actorName,
-          action: log.action,
-          entity: log.entity,
-          description: log.description,
-          timestamp: log.timestamp,
-          ip_address: log.ipAddress
-        });
+        await adminClient.from('audit_logs').insert(logData);
       }
     } else if (error) {
       console.error('❌ Failed to save audit log:', error);
@@ -1932,7 +1933,17 @@ export const supabaseService = {
     if (!supabase) return [];
 
     try {
-      let query = supabase
+      let activeClient = supabase;
+
+      // Super admins use the admin client to bypass RLS and see all company logs
+      if (userRole === 'SUPER_ADMIN') {
+        const adminClient = await supabaseService.getAdminClient();
+        if (adminClient) {
+          activeClient = adminClient;
+        }
+      }
+
+      let query = activeClient
         .from('audit_logs')
         .select('*')
         .order('timestamp', { ascending: false })
