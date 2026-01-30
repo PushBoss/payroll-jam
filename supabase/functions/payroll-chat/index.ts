@@ -1,6 +1,11 @@
 
+// @ts-ignore: Deno remote import
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+// @ts-ignore: Deno remote import
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+
+// @ts-ignore: Deno global
+declare const Deno: any;
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -20,16 +25,16 @@ serve(async (req: Request) => {
         let body;
         try {
             body = JSON.parse(rawBody);
-        } catch (e) {
+        } catch (e: any) {
             throw new Error("Invalid JSON in request: " + e.message);
         }
 
         const { message, history = [] } = body;
         if (!message) throw new Error("Message is required");
 
-        const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
-        const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
-        const geminiApiKey = Deno.env.get('GEMINI_API_KEY') || '';
+        const supabaseUrl = (Deno as any).env.get('SUPABASE_URL') || '';
+        const supabaseServiceKey = (Deno as any).env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+        const geminiApiKey = (Deno as any).env.get('GEMINI_API_KEY') || '';
 
         if (!supabaseUrl || !supabaseServiceKey || !geminiApiKey) {
             throw new Error("Missing critical environment variables (SUPABASE_URL, SERVICE_KEY, or GEMINI_API_KEY)");
@@ -78,9 +83,9 @@ serve(async (req: Request) => {
         const { data: bucketFiles } = await supabase.storage.from('knowledgebase').list();
         if (bucketFiles && bucketFiles.length > 0) {
             const { data: synced } = await supabase.from('ai_sync_metadata').select('file_name');
-            const syncedSet = new Set((synced || []).map(m => m.file_name));
+            const syncedSet = new Set((synced || []).map((m: any) => m.file_name));
 
-            const unsyncedFiles = bucketFiles.filter(f => !syncedSet.has(f.name) && !f.name.startsWith('.')).slice(0, 2);
+            const unsyncedFiles = bucketFiles.filter((f: any) => !syncedSet.has(f.name) && !f.name.startsWith('.')).slice(0, 2);
 
             for (const fileToSync of unsyncedFiles) {
                 console.log(`Syncing ${fileToSync.name} to Gemini Store...`);
