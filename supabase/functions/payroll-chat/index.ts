@@ -52,7 +52,7 @@ serve(async (req: Request) => {
         }
 
         // Rule: Ensure alternation (remove consecutive roles if any)
-        const finalContents = [];
+        const finalContents: any[] = [];
         let lastRole = null;
         for (const msg of sanitizedHistory) {
             if (msg.role !== lastRole) {
