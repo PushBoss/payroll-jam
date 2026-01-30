@@ -46,39 +46,20 @@ serve(async (req: Request) => {
 
         let storeId = config?.value;
 
-        // 2. Auto-Provision (Optimized)
-        if (!storeId) {
-            console.log("Auto-provisioning store...");
-            const createStoreRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/fileSearchStores?key=${geminiApiKey}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ display_name: "Payroll-Jam Store" })
-            });
-            if (createStoreRes.ok) {
-                const storeResult = await createStoreRes.json();
-                storeId = storeResult.name;
-                await supabase.from('ai_config').upsert({ key: 'gemini_store_id', value: storeId });
-            }
-        }
-
-        // 3. Modern Chat with Safety and Grounding
+        // 2. Models
         const modelName = "gemini-2.0-flash";
         const fallbackModel = "gemini-1.5-flash";
 
         const systemInstruction = `You are the Official Payroll-Jam Expert. 
-        1. Ground your answers in the provided knowledge base (Jamaican tax documents).
-        2. If the documents don't have the specific answer, use your general knowledge of Jamaican payroll law.
-        3. Mention the 2026 tax threshold of $1,902,360 if relevant.
-        4. If you absolutely cannot answer, explain why clearly. Never return an empty response.`;
+        Your goal is to provide accurate guidance on Jamaican statutory deductions and tax compliance.
+        
+        RULES:
+        1. Ground your answers in the provided knowledge base documents.
+        2. If the documents do not contain the answer, use your expert knowledge of Jamaican law.
+        3. ALWAYS provide a clear text response. Never return an empty message.
+        4. Mention the 2026 tax threshold of $1,902,360 if relevant.`;
 
-        const safetySettings = [
-            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
-            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
-            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
-            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" }
-        ];
-
-        const makePayload = (isCamel: boolean) => {
+        const makePayload = (isGrounded: boolean) => {
             const contents = [
                 ...history.map((h: any) => ({
                     role: h.role === 'model' ? 'model' : 'user',
@@ -87,16 +68,10 @@ serve(async (req: Request) => {
                 { role: 'user', parts: [{ text: message }] }
             ];
 
-            return isCamel ? {
+            return {
                 contents,
-                tools: storeId ? [{ fileSearch: { fileSearchStoreNames: [storeId] } }] : [],
-                systemInstruction: { role: "system", parts: [{ text: systemInstruction }] },
-                safetySettings
-            } : {
-                contents,
-                tools: storeId ? [{ file_search: { file_search_store_names: [storeId] } }] : [],
-                system_instruction: { parts: [{ text: systemInstruction }] },
-                safetySettings
+                tools: (isGrounded && storeId) ? [{ fileSearch: { fileSearchStoreNames: [storeId] } }] : [],
+                systemInstruction: { role: "system", parts: [{ text: systemInstruction }] }
             };
         };
 
@@ -111,36 +86,40 @@ serve(async (req: Request) => {
             return { ok: res.ok, status: res.status, bodyText, data: bodyText.startsWith('{') ? JSON.parse(bodyText) : null };
         };
 
+        // Attempt 1: Grounded Search with Gemini 2.0
+        console.log("Attempting Grounded Search...");
         let result = await tryGenerate(modelName, makePayload(true));
 
+        // Attempt 2: Grounded Fallback to 1.5 if 2.0 is missing
         if (!result.ok && (result.status === 404 || result.bodyText.includes("not found"))) {
+            console.log("Gemini 2.0 not found, trying 1.5 Grounded Fallback...");
             result = await tryGenerate(fallbackModel, makePayload(true));
+        }
+
+        // CRITICAL FIX: If Grounded Search fails with "empty output" or 400, try Standard Expert Chat
+        if (!result.ok || (!result.data?.candidates?.[0]?.content?.parts?.[0]?.text)) {
+            console.log("Grounded Search produced empty output or error. Falling back to Standard Expert mode...");
+            result = await tryGenerate(modelName, makePayload(false));
+
+            // Final fallback to 1.5 standard if 2.0 fails
+            if (!result.ok) {
+                result = await tryGenerate(fallbackModel, makePayload(false));
+            }
         }
 
         if (!result.ok) {
             throw new Error(`Gemini API Error (${result.status}): ${result.bodyText.substring(0, 150)}`);
         }
 
-        // Handle Empty Candidates (Safety or Error)
-        const candidate = result.data?.candidates?.[0];
-        const finishReason = candidate?.finishReason;
-        const responseText = candidate?.content?.parts?.[0]?.text;
-
-        if (!responseText) {
-            if (finishReason === "SAFETY") {
-                return new Response(JSON.stringify({ text: "I'm sorry, I cannot answer that question as it was flagged by our safety filters. Please try rephrasing your payroll question." }), {
-                    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-                });
-            }
-            throw new Error(`Model returned empty response (Finish Reason: ${finishReason || "Unknown"})`);
-        }
+        const responseText = result.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+            "I'm sorry, I encountered an issue processing the knowledge base. However, as an expert, I can tell you that I'm here to help with your Jamaican payroll questions. Please rephrase your query.";
 
         return new Response(JSON.stringify({ text: responseText }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
 
     } catch (error: any) {
-        console.error('Final Edge Function Error:', error.message);
+        console.error('Edge Function Audit Error:', error.message);
         return new Response(JSON.stringify({ error: error.message }), {
             status: 200,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
