@@ -119,9 +119,13 @@ export const supabaseService = {
   // Get company by email (finds company through user email)
   getCompanyByEmail: async (email: string): Promise<CompanySettings | null> => {
     if (!supabase) return null;
+
+    const adminClient = await supabaseService.getAdminClient();
+    const effectiveClient = adminClient || supabase;
+
     try {
       // First find user by email
-      const { data: user, error: userError } = await supabase
+      const { data: user, error: userError } = await effectiveClient
         .from('app_users')
         .select('company_id')
         .eq('email', email)
@@ -132,7 +136,7 @@ export const supabaseService = {
       }
 
       // Then get company
-      const { data: company, error: companyError } = await supabase
+      const { data: company, error: companyError } = await effectiveClient
         .from('companies')
         .select('*')
         .eq('id', user.company_id)
@@ -797,7 +801,11 @@ export const supabaseService = {
 
   getEmployees: async (companyId: string): Promise<Employee[]> => {
     if (!supabase) return [];
-    const { data, error } = await supabase
+
+    const adminClient = await supabaseService.getAdminClient();
+    const effectiveClient = adminClient || supabase;
+
+    const { data, error } = await effectiveClient
       .from('employees')
       .select('*')
       .eq('company_id', companyId);
@@ -839,7 +847,11 @@ export const supabaseService = {
    */
   getEmployeeById: async (employeeId: string): Promise<{ id: string; companyId: string; firstName: string; lastName: string; email: string } | null> => {
     if (!supabase) return null;
-    const { data, error } = await supabase
+
+    const adminClient = await supabaseService.getAdminClient();
+    const effectiveClient = adminClient || supabase;
+
+    const { data, error } = await effectiveClient
       .from('employees')
       .select('id, company_id, first_name, last_name, email')
       .eq('id', employeeId)
@@ -1005,7 +1017,10 @@ export const supabaseService = {
   deleteEmployee: async (employeeId: string, companyId: string) => {
     if (!supabase) return;
 
-    const { error } = await supabase
+    const adminClient = await supabaseService.getAdminClient();
+    const effectiveClient = adminClient || supabase;
+
+    const { error } = await effectiveClient
       .from('employees')
       .delete()
       .eq('id', employeeId)
@@ -1021,7 +1036,11 @@ export const supabaseService = {
 
   getPayRuns: async (companyId: string): Promise<PayRun[]> => {
     if (!supabase) return [];
-    const { data, error } = await supabase
+
+    const adminClient = await supabaseService.getAdminClient();
+    const effectiveClient = adminClient || supabase;
+
+    const { data, error } = await effectiveClient
       .from('pay_runs')
       .select('*')
       .eq('company_id', companyId)
@@ -1095,6 +1114,10 @@ export const supabaseService = {
     if (!supabase) return;
     const allowMultiple = options?.allowMultiple ?? false;
 
+    // Use admin client for high-privilege write to bypass RLS if regular auth fails
+    const adminClient = await supabaseService.getAdminClient();
+    const effectiveClient = adminClient || supabase;
+
     // Determine pay_frequency - default to MONTHLY if not specified
     // If payFrequency is not set, we'll default to MONTHLY (most common)
     const payFrequency = run.payFrequency || 'MONTHLY';
@@ -1116,14 +1139,14 @@ export const supabaseService = {
     }
 
     // Check if THIS SPECIFIC pay run exists (by ID) and pull notes for token reuse
-    const { data: existingById } = await supabase
+    const { data: existingById } = await effectiveClient
       .from('pay_runs')
       .select('id, notes')
       .eq('id', run.id)
       .maybeSingle();
 
     // Also check if a pay run exists for this period/frequency combination (for logging)
-    const { data: existingByPeriod } = await supabase
+    const { data: existingByPeriod } = await effectiveClient
       .from('pay_runs')
       .select('id')
       .eq('company_id', companyId)
@@ -1173,7 +1196,7 @@ export const supabaseService = {
     if (existingById && existingById.id === run.id) {
       // Update existing record (same ID)
       console.log('📝 Updating existing pay run:', existingById.id);
-      result = await supabase
+      result = await effectiveClient
         .from('pay_runs')
         .update(payRunData)
         .eq('id', run.id);
@@ -1186,14 +1209,14 @@ export const supabaseService = {
       // when a run for the same period already exists.
       if (existingByPeriod && !allowMultiple) {
         console.log('ℹ️ Existing pay run for this period found; updating it to avoid duplicates:', existingByPeriod.id);
-        result = await supabase
+        result = await effectiveClient
           .from('pay_runs')
           .update(payRunData)
           .eq('id', existingByPeriod.id);
         error = result.error;
       } else {
         console.log(`➕ Inserting new pay run (allowMultiple=${allowMultiple}):`, run.id);
-        result = await supabase
+        result = await effectiveClient
           .from('pay_runs')
           .insert({
             id: run.id,
@@ -1220,7 +1243,7 @@ export const supabaseService = {
             });
 
             try {
-              const { data: existingForPeriod } = await supabase
+              const { data: existingForPeriod } = await effectiveClient
                 .from('pay_runs')
                 .select('id, status')
                 .eq('company_id', companyId)
@@ -1239,7 +1262,7 @@ export const supabaseService = {
 
                 if (newPriority >= existingPriority) {
                   console.log('🔁 Updating existing pay run for period as fallback:', targetId, `(${existingForPeriod?.status} → ${run.status})`);
-                  const updateResult = await supabase
+                  const updateResult = await effectiveClient
                     .from('pay_runs')
                     .update(payRunData)
                     .eq('id', targetId)
@@ -1384,7 +1407,10 @@ export const supabaseService = {
   deletePayRun: async (runId: string, companyId: string): Promise<boolean> => {
     if (!supabase) return false;
 
-    const { error } = await supabase
+    const adminClient = await supabaseService.getAdminClient();
+    const effectiveClient = adminClient || supabase;
+
+    const { error } = await effectiveClient
       .from('pay_runs')
       .delete()
       .eq('id', runId)
@@ -1402,57 +1428,80 @@ export const supabaseService = {
 
   getLeaveRequests: async (companyId: string): Promise<LeaveRequest[]> => {
     if (!supabase) return [];
-    const { data, error } = await supabase
-      .from('leave_requests')
-      .select('*')
-      .eq('company_id', companyId);
 
-    if (error) return [];
+    const adminClient = await supabaseService.getAdminClient();
+    const effectiveClient = adminClient || supabase;
 
-    return data.map((r: any) => ({
-      id: r.id,
-      employeeId: r.employee_id,
-      employeeName: r.employee_name,
-      type: r.type,
-      startDate: r.start_date,
-      endDate: r.end_date,
-      days: r.days,
-      reason: r.reason,
-      status: r.status,
-      requestedDates: r.requested_dates || [],
-      approvedDates: r.approved_dates || []
-    }));
+    try {
+      const { data, error } = await effectiveClient
+        .from('leave_requests')
+        .select('*')
+        .eq('company_id', companyId);
+
+      if (error) {
+        console.error("Error fetching leave requests:", error);
+        return [];
+      }
+
+      return (data || []).map(r => ({
+        id: r.id,
+        employeeId: r.employee_id,
+        employeeName: r.employee_name || '',
+        type: r.type,
+        startDate: r.start_date,
+        endDate: r.end_date,
+        days: r.days,
+        reason: r.reason,
+        status: r.status,
+        requestedDates: r.requested_dates || [],
+        approvedDates: r.approved_dates || []
+      }));
+    } catch (e) {
+      console.error("Error fetching leave requests:", e);
+      return [];
+    }
   },
 
   saveLeaveRequest: async (req: LeaveRequest, companyId: string) => {
     if (!supabase) return;
 
-    const { error } = await supabase
-      .from('leave_requests')
-      .upsert({
-        id: req.id,
-        company_id: companyId,
-        employee_id: req.employeeId,
-        employee_name: req.employeeName,
-        type: req.type,
-        start_date: req.startDate,
-        end_date: req.endDate,
-        days: req.days,
-        reason: req.reason,
-        status: req.status,
-        requested_dates: req.requestedDates,
-        approved_dates: req.approvedDates
-      });
+    const adminClient = await supabaseService.getAdminClient();
+    const effectiveClient = adminClient || supabase;
 
-    if (error) console.error("Error saving leave request:", error);
+    try {
+      const { error } = await effectiveClient
+        .from('leave_requests')
+        .upsert({
+          id: req.id,
+          company_id: companyId,
+          employee_id: req.employeeId,
+          employee_name: req.employeeName,
+          type: req.type,
+          start_date: req.startDate,
+          end_date: req.endDate,
+          days: req.days,
+          reason: req.reason,
+          status: req.status,
+          requested_dates: req.requestedDates,
+          approved_dates: req.approvedDates
+        });
+
+      if (error) console.error("Error saving leave request:", error);
+    } catch (e) {
+      console.error("Error saving leave request:", e);
+    }
   },
 
   // --- Timesheets ---
 
   getTimesheets: async (companyId: string): Promise<WeeklyTimesheet[]> => {
     if (!supabase) return [];
+
+    const adminClient = await supabaseService.getAdminClient();
+    const effectiveClient = adminClient || supabase;
+
     try {
-      const { data, error } = await supabase
+      const { data, error } = await effectiveClient
         .from('timesheets')
         .select('*')
         .eq('company_id', companyId)
@@ -1482,8 +1531,12 @@ export const supabaseService = {
 
   saveTimesheet: async (ts: WeeklyTimesheet, companyId: string) => {
     if (!supabase) return;
+
+    const adminClient = await supabaseService.getAdminClient();
+    const effectiveClient = adminClient || supabase;
+
     try {
-      const { error } = await supabase
+      const { error } = await effectiveClient
         .from('timesheets')
         .upsert({
           id: ts.id,

@@ -143,7 +143,44 @@ export const Employees: React.FC<EmployeesProps> = ({
             toast.success(`Invitation resent to ${emp.email}`);
             auditService.log(currentUser, 'UPDATE', 'Employee', `Resent invitation to ${emp.email}`);
         } else {
-             toast.error('Failed to resend email.');
+            toast.error('Failed to resend email.');
+        }
+        setIsSendingInvite(false);
+    };
+
+    const handleSendLoginInvite = async (emp: Employee) => {
+        // Check if plan is Pro, Reseller, or Enterprise
+        const planName = companyData?.plan === 'Professional' ? 'Pro' : companyData?.plan;
+        if (planName !== 'Pro' && planName !== 'Reseller' && planName !== 'Enterprise') {
+            toast.error('This feature is only available for Pro and Reseller plans. Please upgrade to send employee portal invites.');
+            return;
+        }
+
+        setIsSendingInvite(true);
+
+        // Generate or use existing onboarding token for the employee login link
+        const token = emp.onboardingToken || generateUUID();
+
+        // Update employee with token if not already set
+        if (!emp.onboardingToken) {
+            const updatedEmp = { ...emp, onboardingToken: token };
+            onUpdateEmployee(updatedEmp);
+        }
+
+        const inviteLink = `${window.location.origin}/?token=${token}&email=${encodeURIComponent(emp.email)}&type=employee`;
+
+        const emailResult = await emailService.sendEmployeeInvite(
+            emp.email,
+            emp.firstName,
+            companyData?.name || 'Your Company',
+            inviteLink
+        );
+
+        if (emailResult.success) {
+            toast.success(`Employee portal invite sent to ${emp.email}`);
+            auditService.log(currentUser, 'UPDATE', 'Employee', `Sent employee portal invite to ${emp.email}`);
+        } else {
+            toast.error('Failed to send invite email.');
         }
         setIsSendingInvite(false);
     };
@@ -1162,6 +1199,19 @@ export const Employees: React.FC<EmployeesProps> = ({
                                             <div className="flex justify-end items-center space-x-2">
                                                 {emp.status !== 'ARCHIVED' && (
                                                     <button onClick={() => setSelectedEmployee(emp)} className="text-jam-orange hover:text-yellow-600 font-semibold">Edit</button>
+                                                )}
+
+                                                {/* Send Employee Portal Invite - Only for Pro/Reseller/Enterprise plans and ACTIVE employees */}
+                                                {emp.status === 'ACTIVE' && (companyData?.plan === 'Pro' || companyData?.plan === 'Professional' || companyData?.plan === 'Reseller' || companyData?.plan === 'Enterprise') && (
+                                                    <button
+                                                        onClick={() => handleSendLoginInvite(emp)}
+                                                        disabled={isSendingInvite}
+                                                        className="text-blue-600 hover:text-blue-700 font-semibold disabled:opacity-50 flex items-center"
+                                                        title="Send employee portal invite link"
+                                                    >
+                                                        <Icons.Mail className="w-3.5 h-3.5 mr-1" />
+                                                        Send Invite
+                                                    </button>
                                                 )}
 
                                                 {(emp.status === 'ACTIVE') && (
