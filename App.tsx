@@ -851,7 +851,7 @@ function AppContent() {
           navigateTo('dashboard');
           return <Dashboard employees={employees} leaveRequests={leaveRequests} payRunHistory={payRunHistory} onNavigate={navigateTo} companyData={companyData || undefined} />;
         }
-        return <AiAssistant employees={employees} />;
+        return <AiAssistant />;
       case 'settings': return <Settings companyData={companyData ?? undefined} onUpdateCompany={handleUpdateCompany} taxConfig={taxConfig} onUpdateTaxConfig={setTaxConfig} integrationConfig={integrationConfig} onUpdateIntegration={setIntegrationConfig} departments={departments} onUpdateDepartments={handleUpdateDepartments} designations={designations} onUpdateDesignations={handleUpdateDesignations} plans={plans} />;
       case 'profile': return <Profile user={user} onUpdate={updateUser} />;
       case 'timesheets': return <TimeSheets timesheets={timesheets} onUpdate={ts => setTimesheets(timesheets.map(t => t.id === ts.id ? ts : t))} />;

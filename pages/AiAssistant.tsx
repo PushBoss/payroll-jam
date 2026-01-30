@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getGroundedAIResponse } from '../services/aiService';
-import { ChatMessage, Employee } from '../types';
+import { ChatMessage } from '../types';
 import { Icons } from '../components/Icons';
 
 interface AiAssistantProps {
-  employees: Employee[];
+  // Add props here if needed in the future
 }
 
-export const AiAssistant: React.FC<AiAssistantProps> = ({ employees }) => {
+export const AiAssistant: React.FC<AiAssistantProps> = () => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
