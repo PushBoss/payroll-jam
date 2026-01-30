@@ -32,9 +32,9 @@ serve(async (req: Request) => {
         const { message, history = [] } = body;
         if (!message) throw new Error("Message is required");
 
-        const supabaseUrl = (Deno as any).env.get('SUPABASE_URL') || '';
-        const supabaseServiceKey = (Deno as any).env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
-        const geminiApiKey = (Deno as any).env.get('GEMINI_API_KEY') || '';
+        const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+        const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+        const geminiApiKey = Deno.env.get('GEMINI_API_KEY') || '';
 
         if (!supabaseUrl || !supabaseServiceKey || !geminiApiKey) {
             throw new Error("Missing critical environment variables (SUPABASE_URL, SERVICE_KEY, or GEMINI_API_KEY)");
@@ -77,9 +77,7 @@ serve(async (req: Request) => {
             console.log(`Created Store: ${storeId}`);
         }
 
-        // 3. Simple File Sync (Check for unsynced files in bucket)
-        // Note: For large buckets, this should be done in a background job.
-        // We'll process up to 2 new files per request to keep it fast.
+        // 3. Simple File Sync
         const { data: bucketFiles } = await supabase.storage.from('knowledgebase').list();
         if (bucketFiles && bucketFiles.length > 0) {
             const { data: synced } = await supabase.from('ai_sync_metadata').select('file_name');
@@ -92,7 +90,6 @@ serve(async (req: Request) => {
                 const { data: blob } = await supabase.storage.from('knowledgebase').download(fileToSync.name);
 
                 if (blob) {
-                    // Upload to Gemini File API
                     const uploadUrl = `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${geminiApiKey}`;
                     const uploadRes = await fetch(uploadUrl, {
                         method: 'POST',
@@ -122,122 +119,91 @@ serve(async (req: Request) => {
                                 last_synced: new Date().toISOString()
                             });
                             console.log(`Successfully synced ${fileToSync.name}`);
-                        } else {
-                            const err = await addRes.text();
-                            console.error(`Failed to add ${fileToSync.name} to store:`, err);
                         }
-                    } else {
-                        const err = await uploadRes.text();
-                        console.error(`Failed to upload ${fileToSync.name} to File API:`, err);
                     }
                 }
             }
         }
 
-        // 4. Chat with RAG (File Search Tool)
+        // 4. Chat logic
         const primaryModel = "gemini-2.0-flash";
         const fallbackModel = "gemini-1.5-flash";
-
         const systemInstruction = "You are the Payroll-Jam Expert. Ground all answers in the Jamaican tax documents found in the provided knowledge base. If a user asks about the 2026 threshold, refer to the value $1,902,360. Cite your sources clearly.";
 
-        const constructPayload = (model: string) => ({
-            contents: [
+        const makePayload = (isCamel: boolean) => {
+            const contents = [
                 ...history.map((h: any) => ({
                     role: h.role === 'model' ? 'model' : 'user',
                     parts: [{ text: h.text }]
                 })),
-                {
-                    role: 'user',
-                    parts: [{ text: message }]
-                }
-            ],
-            tools: [{
-                file_search: { // API standard usually uses snake_case in REST
-                    file_search_store_names: [storeId]
-                }
-            }],
-            system_instruction: { // API standard usually uses snake_case in REST
-                parts: [{ text: systemInstruction }]
+                { role: 'user', parts: [{ text: message }] }
+            ];
+
+            if (isCamel) {
+                return {
+                    contents,
+                    tools: [{ fileSearch: { fileSearchStoreNames: [storeId] } }],
+                    systemInstruction: { role: "system", parts: [{ text: systemInstruction }] }
+                };
+            } else {
+                return {
+                    contents,
+                    tools: [{ file_search: { file_search_store_names: [storeId] } }],
+                    system_instruction: { parts: [{ text: systemInstruction }] }
+                };
             }
-        });
+        };
 
-        // Some modern versions of the API (esp. for Gemini 2.0) expect camelCase
-        const constructCamelPayload = (model: string) => ({
-            contents: [
-                ...history.map((h: any) => ({
-                    role: h.role === 'model' ? 'model' : 'user',
-                    parts: [{ text: h.text }]
-                })),
-                {
-                    role: 'user',
-                    parts: [{ text: message }]
-                }
-            ],
-            tools: [{
-                fileSearch: {
-                    fileSearchStoreNames: [storeId]
-                }
-            }],
-            systemInstruction: {
-                role: "system",
-                parts: [{ text: systemInstruction }]
-            }
-        });
+        const tryGenerate = async (model: string, payload: any) => {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
 
-        // We'll try the camelCase payload first as requested by the user's latest documentation snippet
-        let chatUrl = `https://generativelanguage.googleapis.com/v1beta/models/${primaryModel}:generateContent?key=${geminiApiKey}`;
-        let payload = constructCamelPayload(primaryModel);
+            const isJson = res.headers.get("content-type")?.includes("application/json");
+            const bodyText = await res.text();
 
-        let response = await fetch(chatUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
+            return {
+                ok: res.ok,
+                status: res.status,
+                bodyText,
+                data: isJson ? JSON.parse(bodyText) : null
+            };
+        };
 
-        // Fallback Logic
-        if (!response.ok) {
-            const errBody = await response.text();
-            console.warn(`Primary attempt failed (${response.status}): ${errBody.substring(0, 100)}...`);
+        // Try 1: Gemini 2.0 + CamelCase
+        let result = await tryGenerate(primaryModel, makePayload(true));
 
-            // If primary model 404s, try fallback model
-            if (response.status === 404 || errBody.includes("not found")) {
-                console.log(`Trying fallback model: ${fallbackModel}`);
-                chatUrl = `https://generativelanguage.googleapis.com/v1beta/models/${fallbackModel}:generateContent?key=${geminiApiKey}`;
-                payload = constructCamelPayload(fallbackModel);
-                response = await fetch(chatUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-            }
+        // Fallback 1: Gemini 1.5 + CamelCase
+        if (!result.ok && (result.status === 404 || result.bodyText.includes("not found"))) {
+            console.log("Gemini 2.0 not found, trying 1.5...");
+            result = await tryGenerate(fallbackModel, makePayload(true));
+        }
 
-            // If it's still failing with a 400 (Invalid argument), try the snake_case payload
-            if (!response.ok && response.status === 400) {
-                console.log("Trying snake_case payload fallback...");
-                payload = constructPayload(primaryModel) as any;
-                response = await fetch(chatUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
+        // Fallback 2: SnakeCase (if we got a 400 Invalid Argument)
+        if (!result.ok && result.status === 400) {
+            console.log("CamelCase failed, trying snake_case...");
+            result = await tryGenerate(primaryModel, makePayload(false));
+
+            if (!result.ok && (result.status === 404 || result.bodyText.includes("not found"))) {
+                result = await tryGenerate(fallbackModel, makePayload(false));
             }
         }
 
-        const contentType = response.headers.get("content-type");
-        if (!response.ok || !contentType || !contentType.includes("application/json")) {
-            const errorText = await response.text();
-            throw new Error(`Gemini API Error (${response.status}): ${errorText.substring(0, 200)}`);
+        if (!result.ok) {
+            throw new Error(`Gemini API Error (${result.status}): ${result.bodyText.substring(0, 200)}`);
         }
 
-        const result = await response.json();
-        const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text || "I'm sorry, I couldn't generate a response based on the knowledge base.";
+        const responseText = result.data?.candidates?.[0]?.content?.parts?.[0]?.text || "I'm sorry, I couldn't generate a response.";
 
         return new Response(JSON.stringify({ text: responseText }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
 
     } catch (error: any) {
-        console.error('Final Edge Function Error:', error.message);
+        console.error('Edge Function Error:', error.message);
         return new Response(JSON.stringify({ error: error.message }), {
             status: 200,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
