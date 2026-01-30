@@ -165,6 +165,14 @@ export const Reports: React.FC<ReportsProps> = ({
     toast.success("GL CSV Exported");
   };
 
+  const handleExportS02 = () => {
+    if (companyData && displayHistory.length > 0) {
+      generateS02CSV(companyData, displayHistory);
+    } else {
+      alert("No data available to generate S02.");
+    }
+  };
+
   const renderDetailModal = () => {
     if (!selectedRun) return null;
 
