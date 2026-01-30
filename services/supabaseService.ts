@@ -17,6 +17,7 @@ import {
 
 // Cache for the admin client to avoid multiple instances and GoTrueClient warnings
 let cachedAdminClient: any = null;
+let adminClientPromise: Promise<any> | null = null;
 
 export const supabaseService = {
 
@@ -24,30 +25,38 @@ export const supabaseService = {
   // Only available if VITE_SUPABASE_SERVICE_ROLE_KEY is in environment
   getAdminClient: async () => {
     if (cachedAdminClient) return cachedAdminClient;
+    if (adminClientPromise) return adminClientPromise;
 
-    const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY || import.meta.env?.SUPABASE_SERVICE_ROLE_KEY || localStorage.getItem('VITE_SUPABASE_SERVICE_ROLE_KEY');
-    const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
+    adminClientPromise = (async () => {
+      const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY || import.meta.env?.SUPABASE_SERVICE_ROLE_KEY || localStorage.getItem('VITE_SUPABASE_SERVICE_ROLE_KEY');
+      const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
 
-    console.debug('🔑 Admin client request - URL:', supabaseUrl, 'Key present:', !!serviceRoleKey);
+      console.debug('🔑 Admin client request - URL:', supabaseUrl, 'Key present:', !!serviceRoleKey);
 
-    if (serviceRoleKey && supabaseUrl) {
-      try {
-        const { createClient } = await import('@supabase/supabase-js');
-        cachedAdminClient = createClient(supabaseUrl, serviceRoleKey, {
-          auth: {
-            autoRefreshToken: false,
-            persistSession: false
-          }
-        });
-        return cachedAdminClient;
-      } catch (e) {
-        console.error('Failed to create admin client:', e);
+      if (serviceRoleKey && supabaseUrl) {
+        try {
+          const { createClient } = await import('@supabase/supabase-js');
+          cachedAdminClient = createClient(supabaseUrl, serviceRoleKey, {
+            auth: {
+              autoRefreshToken: false,
+              persistSession: false
+            }
+          });
+          return cachedAdminClient;
+        } catch (e) {
+          console.error('Failed to create admin client:', e);
+          adminClientPromise = null; // Allow retry
+          return null;
+        }
+      } else {
+        if (!serviceRoleKey) console.warn('⚠️ Admin client requested but VITE_SUPABASE_SERVICE_ROLE_KEY is missing from environment.');
+        if (!supabaseUrl) console.warn('⚠️ Admin client requested but VITE_SUPABASE_URL is missing.');
+        adminClientPromise = null;
+        return null;
       }
-    } else {
-      if (!serviceRoleKey) console.warn('⚠️ Admin client requested but VITE_SUPABASE_SERVICE_ROLE_KEY is missing from environment.');
-      if (!supabaseUrl) console.warn('⚠️ Admin client requested but VITE_SUPABASE_URL is missing.');
-    }
-    return null;
+    })();
+
+    return adminClientPromise;
   },
 
   // --- Users (Auth) ---

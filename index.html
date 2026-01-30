@@ -93,6 +93,22 @@
           VITE_SUPABASE_ANON_KEY: ''
         }
       };
+
+      // Handle Vite chunk load errors (happens when hash changes after deploy)
+      window.addEventListener('error', (e) => {
+        if (e.message && e.message.includes('Failed to fetch dynamically imported module')) {
+          console.warn('🔄 Chunk load error detected. Forcing reload to get new version...');
+          window.location.reload();
+        }
+      }, true);
+      
+      // Handle Unhandled Promise Rejection (lazy load failure)
+      window.addEventListener('unhandledrejection', (e) => {
+        if (e.reason && e.reason.message && e.reason.message.includes('Failed to fetch dynamically imported module')) {
+          console.warn('🔄 Chunk promise rejection detected. Forcing reload...');
+          window.location.reload();
+        }
+      });
     </script>
     <!-- Dime Pay SDK -->
     <script src="https://unpkg.com/@dimepay/web-sdk@latest/dist/dimepay.umd.js"></script>
