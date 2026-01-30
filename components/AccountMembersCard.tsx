@@ -123,20 +123,28 @@ export const AccountMembersCard: React.FC<AccountMembersCardProps> = ({
               className="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50"
             >
               <div className="flex-1">
-                <p className="font-medium text-gray-900">{member.email}</p>
-                <div className="flex items-center gap-2 text-sm text-gray-500">
-                  <span className="capitalize">
-                    {member.role?.toUpperCase() === 'RESELLER' ? 'Reseller' :
-                      member.role?.toUpperCase() === 'EMPLOYEE' ? 'Team member (alias)' :
-                        member.role?.toUpperCase() === 'OWNER' ? 'Owner' :
-                          member.role}
-                  </span>
-                  <span>•</span>
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize ${member.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'
-                    }`}>
-                    {member.status}
-                  </span>
-                </div>
+                {member.role?.toUpperCase() === 'OWNER' ? (
+                  <>
+                    <p className="font-bold text-gray-900">Account Owner</p>
+                    <p className="text-sm text-gray-500">{member.email}</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-medium text-gray-900">{member.email}</p>
+                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                      <span className="capitalize">
+                        {member.role?.toUpperCase() === 'RESELLER' ? 'Reseller' :
+                          member.role?.toUpperCase() === 'EMPLOYEE' ? 'Team member (alias)' :
+                            member.role}
+                      </span>
+                      <span>•</span>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize ${member.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'
+                        }`}>
+                        {member.status}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
 
               {isAdmin && member.role?.toUpperCase() !== 'OWNER' && (
@@ -163,12 +171,6 @@ export const AccountMembersCard: React.FC<AccountMembersCardProps> = ({
                       ? (member.status === 'pending' ? 'Cancelling...' : 'Removing...')
                       : (member.status === 'pending' ? 'Cancel Invite' : 'Remove')}
                   </button>
-                </div>
-              )}
-
-              {member.role?.toUpperCase() === 'OWNER' && (
-                <div className="px-3 py-1 text-xs font-bold text-gray-400 uppercase">
-                  Account Owner
                 </div>
               )}
             </div>
