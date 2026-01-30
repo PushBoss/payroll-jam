@@ -21,8 +21,15 @@ export const getGroundedAIResponse = async (
     });
 
     if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Failed to get response from AI Assistant');
+      const errorText = await response.text();
+      let errorMessage = 'Failed to get response from AI Assistant';
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.error || errorMessage;
+      } catch (e) {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();
