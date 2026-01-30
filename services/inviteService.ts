@@ -122,13 +122,13 @@ export async function inviteUserToAccount(payload: {
           .not('user_id', 'is', null);
 
         if (members && members.length > 0) {
-          const memberUserIds = members.map(m => m.user_id);
+          const memberUserIds = members.map((m: any) => m.user_id);
           const { data: memberProfiles } = await adminClient
             .from('app_users')
             .select('id, role')
             .in('id', memberUserIds);
 
-          const hasExistingReseller = memberProfiles?.some(p => p.role === 'RESELLER' || p.role === 'SUPER_ADMIN');
+          const hasExistingReseller = memberProfiles?.some((p: any) => p.role === 'RESELLER' || p.role === 'SUPER_ADMIN');
           if (hasExistingReseller) {
             return { success: false, error: 'This company is already managed by a Reseller. Please remove the existing Reseller before adding a new one.' };
           }
@@ -210,7 +210,7 @@ export async function inviteUserToAccount(payload: {
               .eq('user_id', userId)
               .eq('status', 'accepted');
 
-            const memberCompanyIds = memberships?.map(m => m.account_id) || [];
+            const memberCompanyIds = memberships?.map((m: any) => m.account_id) || [];
 
             let memberCompanies: any[] = [];
             if (memberCompanyIds.length > 0) {
@@ -232,7 +232,7 @@ export async function inviteUserToAccount(payload: {
             if (allCompanies.length > 0) {
               // If they already have any company AND none of them are Reseller/Enterprise plans, 
               // then joining another company requires a Reseller upgrade.
-              const hasResellerPlan = allCompanies.some(c =>
+              const hasResellerPlan = allCompanies.some((c: any) =>
                 c.plan === 'Enterprise' || c.plan === 'Reseller'
               );
 
