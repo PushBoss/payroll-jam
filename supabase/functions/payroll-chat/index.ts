@@ -1,6 +1,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { GoogleGenerativeAI } from "https://esm.sh/@google/generative-ai@0.21.0"
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -8,7 +9,6 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
-    // Handle CORS
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders })
     }
@@ -18,17 +18,16 @@ serve(async (req) => {
         if (!rawBody) throw new Error("Request body is empty");
 
         const { message, history = [] } = JSON.parse(rawBody);
-        if (!message) throw new Error("Message is required");
 
         const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
         const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
         const geminiApiKey = Deno.env.get('GEMINI_API_KEY') || ''
 
+        if (!geminiApiKey) throw new Error("GEMINI_API_KEY is not set");
+
         const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-        // 1. Fetch Knowledgebase - Instead of Google File API (which causes v1beta errors), 
-        // we will fetch the metadata and use the file names to provide context or instructions.
-        // For a more robust solution later, we can extract text from these files.
+        // Fetch Knowledgebase metadata
         const { data: syncedMetadata } = await supabase
             .from('ai_sync_metadata')
             .select('file_name');
@@ -40,44 +39,28 @@ serve(async (req) => {
         
         KNOWLEDGE BASE:
         You have access to the following documents in your storage: ${fileList || 'No documents uploaded yet'}.
-        Ground your answers in Jamaican tax law.
+        Ground your answers in Jamaican tax law and the documents listed.
         If a user asks about the 2026 threshold, refer to the value $1,902,360. 
         Cite your sources clearly (e.g., "According to the NHT guidelines...").
         
         TONE: Professional, accessible, using standard Jamaican English. Use **bolding** for figures and dates.`;
 
-        // Using v1 endpoint which we know works for gemini-1.5-flash in your project
-        const chatUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
-
-        const geminiPayload = {
-            contents: [
-                ...history.map((h: any) => ({
-                    role: h.role === 'model' ? 'model' : 'user',
-                    parts: [{ text: h.text }]
-                })),
-                {
-                    role: 'user',
-                    parts: [
-                        { text: `INSTRUCTION: ${systemInstruction}\n\nUSER QUESTION: ${message}` }
-                    ]
-                }
-            ]
-        };
-
-        const response = await fetch(chatUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(geminiPayload)
+        // Initialize SDK
+        const genAI = new GoogleGenerativeAI(geminiApiKey);
+        const model = genAI.getGenerativeModel({
+            model: "gemini-1.5-flash",
+            systemInstruction: systemInstruction
         });
 
-        const result = await response.json();
+        const chat = model.startChat({
+            history: history.map((h: any) => ({
+                role: h.role === 'model' ? 'model' : 'user',
+                parts: [{ text: h.text }]
+            }))
+        });
 
-        if (!response.ok) {
-            console.error("Gemini Chat Error:", JSON.stringify(result));
-            throw new Error(result.error?.message || "Gemini AI failed to respond");
-        }
-
-        const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text || "I'm sorry, I couldn't generate a response at this moment.";
+        const result = await chat.sendMessage(message);
+        const responseText = result.response.text();
 
         return new Response(JSON.stringify({ text: responseText }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
