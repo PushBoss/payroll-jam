@@ -35,40 +35,55 @@ serve(async (req: Request) => {
         const modelName = "gemini-2.0-flash";
         const fallbackModel = "gemini-1.5-flash";
 
-        const systemText = "You are the Official Payroll-Jam Expert. Ground answers in Jamaican tax law documents. The 2026 threshold is $1,902,360. Identify as the Payroll-Jam Expert and be helpful.";
+        const systemText = "You are the Official Payroll-Jam Expert. Ground answers in Jamaican tax law documents. The 2026 threshold is $1,902,360. Always provide a clear, helpful response.";
 
-        // BLOCK_NONE to prevent accidental filtering of tax/statutory terms
-        const safetySettings = [
-            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
-        ];
-
-        // Sanitize history: Gemini crashes if parts are empty or roles are invalid
-        const sanitizedContents = history
+        // 1. Sanitize and Validate History Sequence
+        // Gemini MUST start with 'user' and roles must alternate.
+        let sanitizedHistory = history
             .filter((h: any) => h.text && h.text.trim().length > 0)
             .map((h: any) => ({
                 role: h.role === 'model' ? 'model' : 'user',
                 parts: [{ text: h.text }]
             }));
 
-        // Add current message
-        sanitizedContents.push({
+        // Rule: Start with 'user'. If first is 'model' (like greeting), remove it.
+        if (sanitizedHistory.length > 0 && sanitizedHistory[0].role === 'model') {
+            sanitizedHistory.shift();
+        }
+
+        // Rule: Ensure alternation (remove consecutive roles if any)
+        const finalContents = [];
+        let lastRole = null;
+        for (const msg of sanitizedHistory) {
+            if (msg.role !== lastRole) {
+                finalContents.push(msg);
+                lastRole = msg.role;
+            }
+        }
+
+        // Add the current message (must be 'user')
+        finalContents.push({
             role: 'user',
             parts: [{ text: message }]
         });
 
-        const tryGenerate = async (model: string, useGrounding: boolean) => {
+        const tryGenerate = async (model: string, useGrounding: boolean, minimal: boolean = false) => {
             const payload: any = {
-                contents: sanitizedContents,
-                system_instruction: { parts: [{ text: systemText }] }, // Standard snake_case
-                safetySettings, // Keep camelCase for safety in REST
+                contents: finalContents,
                 generationConfig: { temperature: 0.7 }
             };
 
-            if (useGrounding && storeId) {
-                payload.tools = [{ file_search: { file_search_store_names: [storeId] } }];
+            if (!minimal) {
+                payload.system_instruction = { parts: [{ text: systemText }] };
+                payload.safetySettings = [
+                    { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+                    { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+                    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+                    { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+                ];
+                if (useGrounding && storeId) {
+                    payload.tools = [{ file_search: { file_search_store_names: [storeId] } }];
+                }
             }
 
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
@@ -79,45 +94,44 @@ serve(async (req: Request) => {
             });
 
             const bodyText = await res.text();
-            const data = bodyText.startsWith('{') ? JSON.parse(bodyText) : null;
+            let data = null;
+            try { data = JSON.parse(bodyText); } catch (e) { }
 
-            // Validation: Does it actually have text?
-            const hasText = !!(data?.candidates?.[0]?.content?.parts?.[0]?.text);
-
-            return { ok: res.ok && hasText, status: res.status, data, bodyText };
+            const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+            return { ok: res.ok && !!text, status: res.status, data, text, bodyText };
         };
 
         // Execution Ladder
-        let step = await tryGenerate(modelName, true); // 1. 2.0 Grounded
+        console.log(`Sending Chat Sequence... Roles: ${finalContents.map(c => c.role).join(' -> ')}`);
 
-        if (!step.ok) {
-            console.warn("Retrying with 1.5 Grounded Fallback...");
-            step = await tryGenerate(fallbackModel, true); // 2. 1.5 Grounded
+        let effort = await tryGenerate(modelName, true); // 1. 2.0 Grounded
+
+        if (!effort.ok) {
+            console.warn("Attempt 1 failed. Trying 1.5 Grounded Fallback...");
+            effort = await tryGenerate(fallbackModel, true); // 2. 1.5 Grounded
         }
 
-        if (!step.ok) {
-            console.warn("Retrying with 2.0 Standard (No Tools)...");
-            step = await tryGenerate(modelName, false); // 3. 2.0 Clean
+        if (!effort.ok) {
+            console.warn("Attempt 2 failed. Trying Standard Expert Mode (No Tools)...");
+            effort = await tryGenerate(modelName, false); // 3. 2.0 Regular
         }
 
-        if (!step.ok) {
-            console.warn("Final Attempt: 1.5 Vanilla...");
-            step = await tryGenerate(fallbackModel, false); // 4. 1.5 Clean
+        if (!effort.ok) {
+            console.warn("Attempt 3 failed. Final Attempt: Minimal Vanilla Response...");
+            effort = await tryGenerate(fallbackModel, false, true); // 4. 1.5 Minimal
         }
 
-        if (!step.ok) {
-            const errDetail = step.data?.error?.message || "All generation attempts failed.";
-            throw new Error(`Gemini AI Final Failure: ${errDetail}`);
+        if (!effort.ok) {
+            const msg = effort.data?.error?.message || effort.bodyText || "Unknown API failure";
+            throw new Error(`Gemini AI Final Failure: ${msg}`);
         }
 
-        const responseText = step.data.candidates[0].content.parts[0].text;
-
-        return new Response(JSON.stringify({ text: responseText }), {
+        return new Response(JSON.stringify({ text: effort.text }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
 
     } catch (error: any) {
-        console.error('Final Refactor Error:', error.message);
+        console.error('Final Logic Error:', error.message);
         return new Response(JSON.stringify({ error: error.message }), {
             status: 200,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
