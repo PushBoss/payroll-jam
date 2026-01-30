@@ -363,11 +363,14 @@ export const supabaseService = {
       plan: mapPlanFromDbFormat(data.plan) as any,
       billingCycle: data.billing_cycle === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY',
       // Convert DB integer back to string format
+      employee_limit: (data.employee_limit >= 999999) ? 'Unlimited' : `${data.employee_limit} Employees`,
       employeeLimit: (data.employee_limit >= 999999) ? 'Unlimited' : `${data.employee_limit} Employees`,
       resellerId: data.reseller_id,
       policies: settings.policies,
-      reseller_defaults: settings.reseller_defaults
-    };
+      reseller_defaults: settings.reseller_defaults,
+      departments: settings.departments || [],
+      designations: settings.designations || []
+    } as any;
   },
 
   saveCompany: async (companyId: string, settings: CompanySettings, userId?: string) => {
@@ -412,7 +415,11 @@ export const supabaseService = {
       branchCode: settings.branchCode,
       payFrequency: settings.payFrequency,
       defaultPayDate: settings.defaultPayDate,
-      paymentMethod: settings.paymentMethod
+      paymentMethod: settings.paymentMethod,
+      departments: (settings as any).departments || [],
+      designations: (settings as any).designations || [],
+      policies: settings.policies,
+      reseller_defaults: settings.reseller_defaults
     };
 
     const dbPlan = mapPlanToDbFormat(settings.plan);

@@ -360,6 +360,8 @@ function AppContent() {
           if (dbCompany) {
             console.log('✅ App: Company data loaded successfully');
             setCompanyData(dbCompany);
+            if ((dbCompany as any).departments) setDepartments((dbCompany as any).departments);
+            if ((dbCompany as any).designations) setDesignations((dbCompany as any).designations);
             // Sync to local storage for offline support
             storage.saveCompanyData(dbCompany);
           } else {
@@ -545,9 +547,35 @@ function AppContent() {
     }
   };
   const handleUpdateCompany = async (data: CompanySettings) => {
-    setCompanyData(data);
-    storage.saveCompanyData(data);
-    if (isSupabaseMode && user?.companyId) await supabaseService.saveCompany(user.companyId, data);
+    // Preserve existing departments/designations if they are not in the update 'data'
+    const updatedData = {
+      ...data,
+      departments: (data as any).departments || departments,
+      designations: (data as any).designations || designations
+    };
+    setCompanyData(updatedData);
+    storage.saveCompanyData(updatedData);
+    if (isSupabaseMode && user?.companyId) await supabaseService.saveCompany(user.companyId, updatedData);
+  };
+
+  const handleUpdateDepartments = async (newDepts: Department[]) => {
+    setDepartments(newDepts);
+    storage.saveDepartments(newDepts);
+    if (companyData) {
+      const updated = { ...companyData, departments: newDepts } as any;
+      setCompanyData(updated);
+      if (isSupabaseMode && user?.companyId) await supabaseService.saveCompany(user.companyId, updated);
+    }
+  };
+
+  const handleUpdateDesignations = async (newDesigs: Designation[]) => {
+    setDesignations(newDesigs);
+    storage.saveDesignations(newDesigs);
+    if (companyData) {
+      const updated = { ...companyData, designations: newDesigs } as any;
+      setCompanyData(updated);
+      if (isSupabaseMode && user?.companyId) await supabaseService.saveCompany(user.companyId, updated);
+    }
   };
 
   const onLoginSuccess = (u: User) => {
@@ -784,7 +812,7 @@ function AppContent() {
     if (dataLoading) return <LoadingFallback />;
 
     if (!user.isOnboarded && user.role === Role.OWNER) {
-      return <Onboarding departments={departments} onComplete={handleCompanyOnboardComplete} onUpdateDepartments={setDepartments} />;
+      return <Onboarding departments={departments} onComplete={handleCompanyOnboardComplete} onUpdateDepartments={handleUpdateDepartments} />;
     }
 
     if (!user.isOnboarded && user.role === Role.EMPLOYEE) {
@@ -793,7 +821,7 @@ function AppContent() {
 
     switch (currentPath) {
       case 'dashboard': return <Dashboard employees={employees} leaveRequests={leaveRequests} payRunHistory={payRunHistory} onNavigate={navigateTo} companyData={companyData || undefined} />;
-      case 'employees': return <Employees employees={employees} payRunHistory={payRunHistory} companyData={companyData!} onAddEmployee={handleAddEmployee} onUpdateEmployee={handleUpdateEmployee} onDeleteEmployee={handleDeleteEmployee} onSimulateOnboarding={e => alert(`Link: ${window.location.origin}/?token=${e.onboardingToken}`)} departments={departments} designations={designations} assets={assets} onUpdateAssets={setAssets} reviews={reviews} onUpdateReviews={setReviews} plans={plans} users={users} onNavigate={navigateTo} />;
+      case 'employees': return <Employees employees={employees} payRunHistory={payRunHistory} companyData={companyData!} onAddEmployee={handleAddEmployee} onUpdateEmployee={handleUpdateEmployee} onDeleteEmployee={handleDeleteEmployee} onSimulateOnboarding={e => alert(`Link: ${window.location.origin}/?token=${e.onboardingToken}`)} departments={departments} designations={designations} assets={assets} onUpdateAssets={setAssets} reviews={reviews} onUpdateReviews={setReviews} plans={plans} users={users} onNavigate={navigateTo} onUpdateDepartments={handleUpdateDepartments} />;
       case 'payrun': return <PayRun employees={employees} timesheets={timesheets} leaveRequests={leaveRequests} onSave={handleSavePayRun} companyData={companyData!} integrationConfig={integrationConfig} payRunHistory={payRunHistory} editRunId={editRunId} onNavigate={navigateTo} />;
       case 'leave': return <Leave requests={leaveRequests} employees={employees} onStatusChange={handleUpdateLeaveStatus} onAddRequest={handleSaveLeaveRequest} onUpdateEmployee={handleUpdateEmployee} />;
       case 'documents':
@@ -824,7 +852,7 @@ function AppContent() {
           return <Dashboard employees={employees} leaveRequests={leaveRequests} payRunHistory={payRunHistory} onNavigate={navigateTo} companyData={companyData || undefined} />;
         }
         return <AiAssistant employees={employees} />;
-      case 'settings': return <Settings companyData={companyData ?? undefined} onUpdateCompany={handleUpdateCompany} taxConfig={taxConfig} onUpdateTaxConfig={setTaxConfig} integrationConfig={integrationConfig} onUpdateIntegration={setIntegrationConfig} departments={departments} onUpdateDepartments={setDepartments} designations={designations} onUpdateDesignations={setDesignations} plans={plans} />;
+      case 'settings': return <Settings companyData={companyData ?? undefined} onUpdateCompany={handleUpdateCompany} taxConfig={taxConfig} onUpdateTaxConfig={setTaxConfig} integrationConfig={integrationConfig} onUpdateIntegration={setIntegrationConfig} departments={departments} onUpdateDepartments={handleUpdateDepartments} designations={designations} onUpdateDesignations={handleUpdateDesignations} plans={plans} />;
       case 'profile': return <Profile user={user} onUpdate={updateUser} />;
       case 'timesheets': return <TimeSheets timesheets={timesheets} onUpdate={ts => setTimesheets(timesheets.map(t => t.id === ts.id ? ts : t))} />;
       case 'portal-home': return <EmployeePortal user={user} employee={employees.find(e => e.email === user.email)} view="home" leaveRequests={leaveRequests} onRequestLeave={handleSaveLeaveRequest} payRunHistory={payRunHistory} companyData={companyData || undefined} onUpdateEmployee={handleUpdateEmployee} />;

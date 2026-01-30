@@ -27,6 +27,7 @@ interface EmployeesProps {
     plans?: PricingPlan[];
     users?: User[];
     onNavigate?: (path: string) => void;
+    onUpdateDepartments?: (depts: Department[]) => void;
 }
 
 export const Employees: React.FC<EmployeesProps> = ({
@@ -46,6 +47,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     plans = [],
     users = [],
     onNavigate,
+    onUpdateDepartments,
 }) => {
     const { user: currentUser } = useAuth();
 
@@ -62,6 +64,8 @@ export const Employees: React.FC<EmployeesProps> = ({
     const [deleteWarning, setDeleteWarning] = useState<{ isOpen: boolean, empId: string }>({ isOpen: false, empId: '' });
     const [revokeWarning, setRevokeWarning] = useState<{ isOpen: boolean, empId: string, email: string }>({ isOpen: false, empId: '', email: '' });
     const [verificationModal, setVerificationModal] = useState<{ isOpen: boolean, employee: Employee | null }>({ isOpen: false, employee: null });
+    const [isAddingNewDept, setIsAddingNewDept] = useState(false);
+    const [newInlineDeptName, setNewInlineDeptName] = useState('');
 
     // Edit State
     const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
@@ -118,6 +122,8 @@ export const Employees: React.FC<EmployeesProps> = ({
 
     const handleAddClick = () => {
         if (checkPlanLimit(1)) {
+            setIsAddingNewDept(false);
+            setNewInlineDeptName('');
             setIsAddModalOpen(true);
         }
     };
@@ -311,6 +317,23 @@ export const Employees: React.FC<EmployeesProps> = ({
         setIsAddModalOpen(false);
         setAddForm({ firstName: '', lastName: '', email: '', trn: '', nis: '', employeeId: '', grossSalary: '', hourlyRate: '', role: Role.EMPLOYEE, payType: PayType.SALARIED, department: '', jobTitle: '', bankName: 'NCB', accountNumber: '' });
         toast.success("Employee added successfully");
+    };
+
+    const handleInlineAddDept = () => {
+        if (!newInlineDeptName.trim() || !onUpdateDepartments) return;
+        const newDep: Department = { id: `dept-${Date.now()}`, name: newInlineDeptName.trim() };
+        onUpdateDepartments([...departments, newDep]);
+
+        // Auto-select for the active form
+        if (selectedEmployee) {
+            setSelectedEmployee({ ...selectedEmployee, department: newDep.id });
+        } else if (isAddModalOpen) {
+            setAddForm({ ...addForm, department: newDep.id });
+        }
+
+        setNewInlineDeptName('');
+        setIsAddingNewDept(false);
+        toast.success(`Department "${newDep.name}" created`);
     };
 
     const startTermination = (empId: string) => {
@@ -568,7 +591,8 @@ export const Employees: React.FC<EmployeesProps> = ({
 
     const getDeptName = (id?: string) => {
         if (!id) return '-';
-        return departments.find(d => d.id === id)?.name || id;
+        const dept = departments.find(d => d.id === id);
+        return dept ? dept.name : (id.startsWith('dept-') ? 'Unknown Department' : id);
     };
 
     // Count employees pending verification
@@ -680,7 +704,11 @@ export const Employees: React.FC<EmployeesProps> = ({
                                     )}
                                 </div>
                             </div>
-                            <button onClick={() => setSelectedEmployee(null)} className="text-gray-400 hover:text-gray-600"><Icons.Close className="w-6 h-6" /></button>
+                            <button onClick={() => {
+                                setSelectedEmployee(null);
+                                setIsAddingNewDept(false);
+                                setNewInlineDeptName('');
+                            }} className="text-gray-400 hover:text-gray-600"><Icons.Close className="w-6 h-6" /></button>
                         </div>
 
                         <div className="border-b border-gray-200 px-6 shrink-0 bg-white">
@@ -708,10 +736,38 @@ export const Employees: React.FC<EmployeesProps> = ({
                                     <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Job Title</label><input className="w-full border rounded p-2" value={selectedEmployee.jobTitle || ''} onChange={e => handleUpdateField('jobTitle', e.target.value)} /></div>
                                     <div>
                                         <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Department</label>
-                                        <select className="w-full border rounded p-2" value={selectedEmployee.department || ''} onChange={e => handleUpdateField('department', e.target.value)}>
-                                            <option value="">Select Dept</option>
-                                            {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                                        </select>
+                                        {!isAddingNewDept ? (
+                                            <div className="flex space-x-2">
+                                                <select
+                                                    className="w-full border rounded p-2"
+                                                    value={selectedEmployee.department || ''}
+                                                    onChange={e => {
+                                                        if (e.target.value === 'ADD_NEW') {
+                                                            setIsAddingNewDept(true);
+                                                        } else {
+                                                            handleUpdateField('department', e.target.value);
+                                                        }
+                                                    }}
+                                                >
+                                                    <option value="">Select Dept</option>
+                                                    {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                                    <option value="ADD_NEW" className="text-jam-orange font-bold">+ Add New Department</option>
+                                                </select>
+                                            </div>
+                                        ) : (
+                                            <div className="flex space-x-2">
+                                                <input
+                                                    autoFocus
+                                                    className="flex-1 border rounded p-2"
+                                                    placeholder="Dept Name"
+                                                    value={newInlineDeptName}
+                                                    onChange={e => setNewInlineDeptName(e.target.value)}
+                                                    onKeyDown={e => e.key === 'Enter' && handleInlineAddDept()}
+                                                />
+                                                <button onClick={handleInlineAddDept} className="bg-jam-black text-white px-3 rounded text-sm font-bold">Add</button>
+                                                <button onClick={() => setIsAddingNewDept(false)} className="text-gray-400">Cancel</button>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             )}
@@ -784,7 +840,11 @@ export const Employees: React.FC<EmployeesProps> = ({
                         </div>
 
                         <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-end space-x-3 shrink-0">
-                            <button onClick={() => setSelectedEmployee(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg">Cancel</button>
+                            <button onClick={() => {
+                                setSelectedEmployee(null);
+                                setIsAddingNewDept(false);
+                                setNewInlineDeptName('');
+                            }} className="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg">Cancel</button>
                             <button onClick={saveProfileChanges} className="px-6 py-2 bg-jam-black text-white font-bold rounded-lg hover:bg-gray-800">Save Changes</button>
                         </div>
                     </div>
@@ -882,7 +942,11 @@ export const Employees: React.FC<EmployeesProps> = ({
                     <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-hidden animate-fade-in flex flex-col max-h-[90vh]">
                         <div className="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center shrink-0">
                             <h3 className="text-xl font-bold text-gray-900">Add New Employee</h3>
-                            <button onClick={() => setIsAddModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                            <button onClick={() => {
+                                setIsAddModalOpen(false);
+                                setIsAddingNewDept(false);
+                                setNewInlineDeptName('');
+                            }} className="text-gray-400 hover:text-gray-600">
                                 <Icons.Close className="w-6 h-6" />
                             </button>
                         </div>
@@ -946,10 +1010,36 @@ export const Employees: React.FC<EmployeesProps> = ({
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
-                                <select className="w-full border border-gray-300 rounded-lg p-2" value={addForm.department} onChange={e => setAddForm({ ...addForm, department: e.target.value })}>
-                                    <option value="">Select Dept</option>
-                                    {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                                </select>
+                                {!isAddingNewDept ? (
+                                    <select
+                                        className="w-full border border-gray-300 rounded-lg p-2"
+                                        value={addForm.department}
+                                        onChange={e => {
+                                            if (e.target.value === 'ADD_NEW') {
+                                                setIsAddingNewDept(true);
+                                            } else {
+                                                setAddForm({ ...addForm, department: e.target.value });
+                                            }
+                                        }}
+                                    >
+                                        <option value="">Select Dept</option>
+                                        {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                        <option value="ADD_NEW" className="text-jam-orange font-bold">+ Add New Department</option>
+                                    </select>
+                                ) : (
+                                    <div className="flex space-x-2">
+                                        <input
+                                            autoFocus
+                                            className="flex-1 border border-gray-300 rounded-lg p-2"
+                                            placeholder="Dept Name"
+                                            value={newInlineDeptName}
+                                            onChange={e => setNewInlineDeptName(e.target.value)}
+                                            onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleInlineAddDept())}
+                                        />
+                                        <button type="button" onClick={handleInlineAddDept} className="bg-jam-black text-white px-3 rounded text-sm font-bold">Add</button>
+                                        <button type="button" onClick={() => setIsAddingNewDept(false)} className="text-gray-400">Cancel</button>
+                                    </div>
+                                )}
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Job Title</label>
