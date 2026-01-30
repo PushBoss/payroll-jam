@@ -424,19 +424,11 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 return;
             }
 
-            // Create admin client with service role key
-            const { createClient } = await import('@supabase/supabase-js');
-            const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
-            if (!supabaseUrl) {
-                throw new Error('Supabase URL not configured');
+            const adminClient = await supabaseService.getAdminClient();
+            if (!adminClient) {
+                toast.error('Admin client not available. Service role key might be missing.');
+                return;
             }
-
-            const adminClient = createClient(supabaseUrl, serviceRoleKey, {
-                auth: {
-                    autoRefreshToken: false,
-                    persistSession: false
-                }
-            });
 
             // 1. Create auth user in Supabase Auth using admin client
             const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
@@ -472,13 +464,8 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             if (userError) {
                 console.error('❌ Error creating app_users record:', userError);
                 // Try to clean up auth user if app_users insert fails
-                const { createClient } = await import('@supabase/supabase-js');
-                const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
-                const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY;
-                if (supabaseUrl && serviceRoleKey) {
-                    const adminClient = createClient(supabaseUrl, serviceRoleKey, {
-                        auth: { autoRefreshToken: false, persistSession: false }
-                    });
+                const adminClient = await supabaseService.getAdminClient();
+                if (adminClient) {
                     await adminClient.auth.admin.deleteUser(authData.user.id);
                 }
                 toast.error('Failed to create admin profile. Please try again.');
@@ -521,12 +508,8 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY;
                 if (serviceRoleKey && supabase) {
                     try {
-                        const { createClient } = await import('@supabase/supabase-js');
-                        const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
-                        if (supabaseUrl) {
-                            const adminClient = createClient(supabaseUrl, serviceRoleKey, {
-                                auth: { autoRefreshToken: false, persistSession: false }
-                            });
+                        const adminClient = await supabaseService.getAdminClient();
+                        if (adminClient) {
                             await adminClient.auth.admin.deleteUser(id);
                         }
                     } catch (authError) {

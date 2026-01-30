@@ -630,17 +630,11 @@ export async function acceptInvitation(
     // This allows clients to "Invite" their Reseller partner directly
     try {
       console.log(`🔍 Checking if user ${userId} is a Reseller...`);
-      // Use admin permissions to check user role to avoid RLS issues
-      const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY || localStorage.getItem('VITE_SUPABASE_SERVICE_ROLE_KEY');
-      const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
-
       let targetRole: string | null = null;
       let targetCompanyId: string | null = null;
-
-      if (serviceRoleKey && supabaseUrl) {
+      const adminClient = await supabaseService.getAdminClient();
+      if (adminClient) {
         console.log('🛡️ Using Admin Client for role check...');
-        const { createClient } = await import('@supabase/supabase-js');
-        const adminClient = createClient(supabaseUrl, serviceRoleKey);
         const { data: userData, error: userError } = await adminClient.from('app_users').select('role, company_id').eq('id', userId).maybeSingle();
         if (userError) console.error('❌ Error fetching user data via admin:', userError);
         targetRole = userData?.role;
@@ -676,15 +670,13 @@ export async function acceptInvitation(
       const isReseller = targetRole === 'RESELLER' || targetRole === 'Reseller';
 
       if (isReseller && targetCompanyId) {
-        console.log('🔄 Accepting user is a Reseller, linking client company to portfolio...');
-
-        if (serviceRoleKey && supabaseUrl) {
-          const { createClient } = await import('@supabase/supabase-js');
-          const adminClient = createClient(supabaseUrl, serviceRoleKey);
+        const adminClientForReseller = await supabaseService.getAdminClient(); // Use a separate variable
+        if (adminClientForReseller) {
+          console.log('🔄 Accepting user is a Reseller, linking client company to portfolio...');
 
           // 1. Create portfolio link
           console.log(`🔗 Creating reseller_clients link: reseller=${targetCompanyId}, client=${accountId}`);
-          const { error: linkError } = await adminClient.from('reseller_clients').upsert({
+          const { error: linkError } = await adminClientForReseller.from('reseller_clients').upsert({
             reseller_id: targetCompanyId,
             client_company_id: accountId,
             status: 'ACTIVE',
@@ -699,7 +691,7 @@ export async function acceptInvitation(
 
           // 2. Link company to reseller
           console.log(`🔗 Updating company reseller_id: company=${accountId}, reseller=${targetCompanyId}`);
-          const { error: companyUpdateError } = await adminClient.from('companies').update({ reseller_id: targetCompanyId }).eq('id', accountId);
+          const { error: companyUpdateError } = await adminClientForReseller.from('companies').update({ reseller_id: targetCompanyId }).eq('id', accountId);
 
           if (companyUpdateError) {
             console.error('❌ Error updating company reseller_id:', companyUpdateError);
@@ -818,15 +810,10 @@ export async function acceptMultipleInvitations(
       console.log(`🔍 Checking if accepting user ${userId} is a Reseller (Multiple)...`);
 
       // Use credentials for admin lookup to bypass potential RLS issues
-      const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY || localStorage.getItem('VITE_SUPABASE_SERVICE_ROLE_KEY');
-      const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
-
       let targetRole: string | null = null;
       let targetCompanyId: string | null = null;
-
-      if (serviceRoleKey && supabaseUrl) {
-        const { createClient } = await import('@supabase/supabase-js');
-        const adminClient = createClient(supabaseUrl, serviceRoleKey);
+      const adminClient = await supabaseService.getAdminClient();
+      if (adminClient) {
         const { data: userData } = await adminClient.from('app_users').select('role, company_id').eq('id', userId).maybeSingle();
         targetRole = userData?.role;
         targetCompanyId = userData?.company_id;
@@ -874,10 +861,8 @@ export async function acceptMultipleInvitations(
           .in('id', invitationIds);
 
         if (acceptedInvites && acceptedInvites.length > 0) {
-          if (serviceRoleKey && supabaseUrl) {
-            const { createClient } = await import('@supabase/supabase-js');
-            const adminClient = createClient(supabaseUrl, serviceRoleKey);
-
+          const adminClient = await supabaseService.getAdminClient();
+          if (adminClient) {
             for (const invite of acceptedInvites) {
               console.log(`🔗 Linking company ${invite.account_id} to Reseller portfolio...`);
               // 1. Create portfolio link
