@@ -73,10 +73,22 @@ export const AccountMembersCard: React.FC<AccountMembersCardProps> = ({
     } finally {
       setRemoving(null);
     }
-  };
+  };  // Deduplicate members by email to prevent showing the owner (or others) twice
+  const displayMembers = members.reduce((acc: AccountMember[], current) => {
+    const x = acc.find(item => (item.email && item.email === current.email) || (item.user_id && item.user_id === current.user_id));
+    if (!x) {
+      return acc.concat([current]);
+    } else {
+      // If we find a duplicate, prefer the one that has a user_id or is 'accepted'
+      if (!x.user_id && current.user_id) {
+        return acc.map(item => item === x ? current : item);
+      }
+      return acc;
+    }
+  }, []);
 
-  const hasOwnerInMembers = members.some(m => m.role?.toUpperCase() === 'OWNER');
-  const totalSeatsUsed = hasOwnerInMembers ? members.length : members.length + 1;
+  const hasOwnerInMembers = displayMembers.some(m => m.role?.toUpperCase() === 'OWNER');
+  const totalSeatsUsed = hasOwnerInMembers ? displayMembers.length : displayMembers.length + 1;
 
   if (loading) {
     return (
@@ -98,14 +110,14 @@ export const AccountMembersCard: React.FC<AccountMembersCardProps> = ({
         </div>
       </div>
 
-      {members.length === 0 ? (
+      {displayMembers.length === 0 ? (
         <div className="text-center py-8">
           <p className="text-gray-500">No team members invited yet</p>
           <p className="text-sm text-gray-400 mt-2">Invite someone to collaborate</p>
         </div>
       ) : (
         <div className="space-y-2">
-          {members.map((member) => (
+          {displayMembers.map((member) => (
             <div
               key={member.id}
               className="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50"
