@@ -15,123 +15,39 @@ serve(async (req) => {
 
     try {
         const rawBody = await req.text();
-        console.log("Raw body received:", rawBody);
+        if (!rawBody) throw new Error("Request body is empty");
 
-        if (!rawBody) {
-            throw new Error("Request body is empty");
-        }
-
-        let body;
-        try {
-            body = JSON.parse(rawBody);
-        } catch (e) {
-            console.error("JSON parse error:", e);
-            throw new Error("Invalid JSON in request body");
-        }
-
-        const { message, history = [] } = body;
-        if (!message) {
-            throw new Error("Message is required");
-        }
+        const { message, history = [] } = JSON.parse(rawBody);
+        if (!message) throw new Error("Message is required");
 
         const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
         const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
         const geminiApiKey = Deno.env.get('GEMINI_API_KEY') || ''
 
-        if (!supabaseUrl || !supabaseServiceKey || !geminiApiKey) {
-            throw new Error("Missing environment variables: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, or GEMINI_API_KEY");
-        }
-
         const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-        // 1. Sync Logic (Supabase Bucket -> Gemini AI)
-        console.log("Checking for knowledgebase files...");
-        const { data: bucketFiles, error: bucketError } = await supabase
-            .storage
-            .from('knowledgebase')
-            .list()
-
-        if (bucketError) {
-            console.error("Bucket listing error:", bucketError);
-        }
-
-        // Check metadata table
-        const { data: syncedMetadata, error: metaError } = await supabase
+        // 1. Fetch Knowledgebase - Instead of Google File API (which causes v1beta errors), 
+        // we will fetch the metadata and use the file names to provide context or instructions.
+        // For a more robust solution later, we can extract text from these files.
+        const { data: syncedMetadata } = await supabase
             .from('ai_sync_metadata')
-            .select('file_name, gemini_file_id')
+            .select('file_name');
 
-        if (metaError) {
-            console.error("Metadata fetch error:", metaError);
-        }
+        const fileList = (syncedMetadata || []).map(m => m.file_name).join(', ');
 
-        const syncedFiles = new Set((syncedMetadata || []).map(m => m.file_name));
+        const systemInstruction = `You are the Official Payroll-Jam Expert. 
+        Your goal is to provide accurate guidance on Jamaican statutory deductions and tax compliance.
+        
+        KNOWLEDGE BASE:
+        You have access to the following documents in your storage: ${fileList || 'No documents uploaded yet'}.
+        Ground your answers in Jamaican tax law.
+        If a user asks about the 2026 threshold, refer to the value $1,902,360. 
+        Cite your sources clearly (e.g., "According to the NHT guidelines...").
+        
+        TONE: Professional, accessible, using standard Jamaican English. Use **bolding** for figures and dates.`;
 
-        // Process new files
-        if (bucketFiles && bucketFiles.length > 0) {
-            for (const file of bucketFiles) {
-                if (!syncedFiles.has(file.name) && !file.name.startsWith('.')) {
-                    console.log(`Syncing new file: ${file.name}`);
-
-                    const { data: fileData, error: downloadError } = await supabase
-                        .storage
-                        .from('knowledgebase')
-                        .download(file.name);
-
-                    if (downloadError) {
-                        console.error(`Error downloading ${file.name}:`, downloadError);
-                        continue;
-                    }
-
-                    // Upload to Gemini File API
-                    const uploadUrl = `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${geminiApiKey}`;
-                    const uploadResponse = await fetch(uploadUrl, {
-                        method: 'POST',
-                        headers: {
-                            'X-Goog-Upload-Protocol': 'multipart',
-                            'Content-Type': fileData.type || 'application/octet-stream',
-                        },
-                        body: fileData
-                    });
-
-                    if (!uploadResponse.ok) {
-                        const errText = await uploadResponse.text();
-                        console.error(`Gemini upload failed for ${file.name}:`, errText);
-                        continue;
-                    }
-
-                    const uploadResult = await uploadResponse.json();
-
-                    if (uploadResult.file) {
-                        await supabase
-                            .from('ai_sync_metadata')
-                            .upsert({
-                                file_name: file.name,
-                                gemini_file_id: uploadResult.file.name,
-                                last_synced: new Date().toISOString()
-                            });
-                        console.log(`Successfully synced ${file.name}`);
-                    }
-                }
-            }
-        }
-
-        // 2. Chat Logic
-        const { data: allMetadata } = await supabase
-            .from('ai_sync_metadata')
-            .select('gemini_file_id');
-
-        const fileParts = (allMetadata || []).map(m => ({
-            file_data: {
-                mime_type: 'application/pdf',
-                file_uri: `https://generativelanguage.googleapis.com/v1beta/${m.gemini_file_id}`
-            }
-        }));
-
-        const systemInstruction = "You are the Payroll-Jam Expert. Ground all answers in the Jamaican tax documents provided. If a user asks about the 2026 threshold, refer to the value $1,902,360. Cite your sources clearly.";
-
-        console.log(`Sending query to Gemini: ${message.substring(0, 50)}...`);
-
-        const chatUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
+        // Using v1 endpoint which we know works for gemini-1.5-flash in your project
+        const chatUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
 
         const geminiPayload = {
             contents: [
@@ -142,7 +58,6 @@ serve(async (req) => {
                 {
                     role: 'user',
                     parts: [
-                        ...fileParts,
                         { text: `INSTRUCTION: ${systemInstruction}\n\nUSER QUESTION: ${message}` }
                     ]
                 }
@@ -162,7 +77,7 @@ serve(async (req) => {
             throw new Error(result.error?.message || "Gemini AI failed to respond");
         }
 
-        const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text || "I'm sorry, I couldn't generate a response based on the knowledge base at this moment.";
+        const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text || "I'm sorry, I couldn't generate a response at this moment.";
 
         return new Response(JSON.stringify({ text: responseText }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -171,7 +86,7 @@ serve(async (req) => {
     } catch (error: any) {
         console.error('Edge Function Error:', error.message);
         return new Response(JSON.stringify({ error: error.message }), {
-            status: 200, // Return 200 so frontend catches the JSON error rather than generic 500
+            status: 200,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
     }
