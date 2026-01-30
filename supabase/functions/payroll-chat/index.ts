@@ -131,7 +131,7 @@ serve(async (req) => {
 
         console.log(`Sending query to Gemini: ${message.substring(0, 50)}...`);
 
-        const chatUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
+        const chatUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
 
         const geminiPayload = {
             contents: [
