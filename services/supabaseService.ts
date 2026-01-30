@@ -661,7 +661,7 @@ export const supabaseService = {
         return [];
       }
 
-      return (data || []).map(u => ({
+      return (data || []).map((u: any) => ({
         id: u.id,
         name: u.name,
         email: u.email,
@@ -707,7 +707,7 @@ export const supabaseService = {
       return planMap[dbPlan] || 'Free';
     };
 
-    return data.map(c => ({
+    return data.map((c: any) => ({
       id: c.id,
       companyName: c.name,
       contactName: c.settings?.contactName || 'Admin',
