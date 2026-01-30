@@ -127,11 +127,11 @@ serve(async (req) => {
             }
         }));
 
-        const systemInstruction = "You are the Payroll-Jam Expert. Ground all answers in the Jamaican tax documents found in the 'knowledgebase' store. If a user asks about the 2026 threshold, refer to the value $1,902,360. Cite your sources clearly.";
+        const systemInstruction = "You are the Payroll-Jam Expert. Ground all answers in the Jamaican tax documents provided. If a user asks about the 2026 threshold, refer to the value $1,902,360. Cite your sources clearly.";
 
         console.log(`Sending query to Gemini: ${message.substring(0, 50)}...`);
 
-        const chatUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
+        const chatUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
 
         const geminiPayload = {
             contents: [
@@ -143,13 +143,10 @@ serve(async (req) => {
                     role: 'user',
                     parts: [
                         ...fileParts,
-                        { text: message }
+                        { text: `INSTRUCTION: ${systemInstruction}\n\nUSER QUESTION: ${message}` }
                     ]
                 }
-            ],
-            system_instruction: {
-                parts: [{ text: systemInstruction }]
-            }
+            ]
         };
 
         const response = await fetch(chatUrl, {
