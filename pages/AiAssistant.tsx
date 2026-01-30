@@ -14,11 +14,11 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({ employees }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: 'model',
-      text: `Hello! I'm JamBot, your AI payroll assistant. I can help with Jamaican labour laws, drafting letters, or analyzing your payroll data. How can I help today?`,
+      text: `Good day! I am your Official Payroll-Jam Expert. I'm here to provide guidance on Jamaican statutory deductions, tax compliance, and how to get the most out of our platform. How can I assist you with your payroll today?`,
       timestamp: Date.now()
     }
   ]);
-  
+
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -43,7 +43,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({ employees }) => {
     `;
 
     const responseText = await getAIResponse(userMsg.text, context);
-    
+
     const modelMsg: ChatMessage = { role: 'model', text: responseText, timestamp: Date.now() };
     setMessages(prev => [...prev, modelMsg]);
     setIsLoading(false);
@@ -66,12 +66,11 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({ employees }) => {
       <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/50">
         {messages.map((msg, idx) => (
           <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div 
-              className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
-                msg.role === 'user' 
-                  ? 'bg-jam-black text-white rounded-br-none' 
+            <div
+              className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${msg.role === 'user'
+                  ? 'bg-jam-black text-white rounded-br-none'
                   : 'bg-white border border-gray-200 text-gray-800 rounded-bl-none shadow-sm'
-              }`}
+                }`}
             >
               {msg.text}
             </div>
@@ -105,7 +104,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({ employees }) => {
             disabled={isLoading || !input.trim()}
             className="bg-jam-orange hover:bg-yellow-500 text-jam-black font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-             Send
+            Send
           </button>
         </div>
         <p className="text-xs text-center text-gray-400 mt-2">AI can make mistakes. Review generated HR advice.</p>
