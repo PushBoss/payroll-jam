@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import Papa from 'papaparse';
-import { Employee, PayFrequency, Role, PayRun, CompanySettings, PayType, Department, Designation, Asset, PerformanceReview, TerminationDetails, BankAccount, PricingPlan, User } from '../types';
+import { Employee, PayFrequency, Role, PayRun, CompanySettings, PayType, Department, Designation, Asset, PerformanceReview, TerminationDetails, PricingPlan, User } from '../types';
 import { Icons } from '../components/Icons';
 import { EmployeeManager } from '../components/EmployeeManager';
 import { auditService } from '../services/auditService';
@@ -8,7 +8,7 @@ import { downloadFile, generateP45CSV } from '../utils/exportHelpers';
 import { emailService } from '../services/emailService';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
-import { isValidTRN, isValidNIS, isValidEmail, formatTRN } from '../utils/validators';
+import { isValidTRN, isValidNIS, isValidEmail } from '../utils/validators';
 import { generateUUID } from '../utils/uuid';
 
 interface EmployeesProps {
@@ -55,7 +55,6 @@ export const Employees: React.FC<EmployeesProps> = ({
     const [viewMode, setViewMode] = useState<'active' | 'onboarding' | 'archived'>('active');
 
     // Modals State
-    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
     const [isSendingInvite, setIsSendingInvite] = useState(false);
     const [showUpgradeModal, setShowUpgradeModal] = useState(false);
@@ -65,8 +64,6 @@ export const Employees: React.FC<EmployeesProps> = ({
     const [deleteWarning, setDeleteWarning] = useState<{ isOpen: boolean, empId: string }>({ isOpen: false, empId: '' });
     const [revokeWarning, setRevokeWarning] = useState<{ isOpen: boolean, empId: string, email: string }>({ isOpen: false, empId: '', email: '' });
     const [verificationModal, setVerificationModal] = useState<{ isOpen: boolean, employee: Employee | null }>({ isOpen: false, employee: null });
-    const [isAddingNewDept, setIsAddingNewDept] = useState(false);
-    const [newInlineDeptName, setNewInlineDeptName] = useState('');
 
     // Edit State
     const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
@@ -665,169 +662,6 @@ export const Employees: React.FC<EmployeesProps> = ({
                             <button onClick={() => setRevokeWarning({ isOpen: false, empId: '', email: '' })} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Cancel</button>
                             <button onClick={confirmRevokeInvite} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-bold">Revoke Invitation</button>
                         </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Add Employee Modal */}
-            {isAddModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-hidden animate-fade-in flex flex-col max-h-[90vh]">
-                        <div className="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center shrink-0">
-                            <h3 className="text-xl font-bold text-gray-900">Add New Employee</h3>
-                            <button onClick={() => {
-                                setIsAddModalOpen(false);
-                                setIsAddingNewDept(false);
-                                setNewInlineDeptName('');
-                            }} className="text-gray-400 hover:text-gray-600">
-                                <Icons.Close className="w-6 h-6" />
-                            </button>
-                        </div>
-                        <form onSubmit={onSubmitAdd} className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 overflow-y-auto">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
-                                <input required type="text" className="w-full border border-gray-300 rounded-lg p-2" value={addForm.firstName} onChange={e => setAddForm({ ...addForm, firstName: e.target.value })} />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
-                                <input required type="text" className="w-full border border-gray-300 rounded-lg p-2" value={addForm.lastName} onChange={e => setAddForm({ ...addForm, lastName: e.target.value })} />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Employee ID (Optional)</label>
-                                <input type="text" placeholder="e.g., EMP001, 12345" className="w-full border border-gray-300 rounded-lg p-2" value={addForm.employeeId} onChange={e => setAddForm({ ...addForm, employeeId: e.target.value })} />
-                                <p className="text-xs text-gray-500 mt-1">Custom identifier for this employee</p>
-                            </div>
-                            <div className="md:col-span-1">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                                <input required type="email" className="w-full border border-gray-300 rounded-lg p-2" value={addForm.email} onChange={e => setAddForm({ ...addForm, email: e.target.value })} />
-                            </div>
-                            <div>
-                                <div className="flex items-center mb-1">
-                                    <label className="block text-sm font-medium text-gray-700">TRN (9 Digits)</label>
-                                    <div className="ml-1.5 group relative">
-                                        <Icons.Alert className="w-3.5 h-3.5 text-gray-400 cursor-help" />
-                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-48 p-2 bg-gray-900 text-white text-[10px] rounded shadow-xl z-50 text-center">
-                                            Required for all employees. Enter "PENDING" if currently unknown.
-                                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900"></div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <input
-                                    required
-                                    type="text"
-                                    placeholder="123-456-789 or PENDING"
-                                    className={`w-full border rounded-lg p-2 ${!isValidTRN(addForm.trn) && addForm.trn && addForm.trn.toUpperCase() !== 'PENDING' ? 'border-red-500' : 'border-gray-300'}`}
-                                    value={addForm.trn}
-                                    onChange={e => setAddForm({ ...addForm, trn: e.target.value })}
-                                />
-                            </div>
-                            <div>
-                                <div className="flex items-center mb-1">
-                                    <label className="block text-sm font-medium text-gray-700">NIS</label>
-                                    <div className="ml-1.5 group relative">
-                                        <Icons.Alert className="w-3.5 h-3.5 text-gray-400 cursor-help" />
-                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-48 p-2 bg-gray-900 text-white text-[10px] rounded shadow-xl z-50 text-center">
-                                            National Insurance Scheme number. Enter "PENDING" if currently unknown.
-                                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900"></div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <input
-                                    required
-                                    type="text"
-                                    placeholder="A123456 or PENDING"
-                                    className={`w-full border rounded-lg p-2 ${!isValidNIS(addForm.nis) && addForm.nis && addForm.nis.toUpperCase() !== 'PENDING' ? 'border-red-500' : 'border-gray-300'}`}
-                                    value={addForm.nis}
-                                    onChange={e => setAddForm({ ...addForm, nis: e.target.value })}
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
-                                {!isAddingNewDept ? (
-                                    <select
-                                        className="w-full border border-gray-300 rounded-lg p-2"
-                                        value={addForm.department}
-                                        onChange={e => {
-                                            if (e.target.value === 'ADD_NEW') {
-                                                setIsAddingNewDept(true);
-                                            } else {
-                                                setAddForm({ ...addForm, department: e.target.value });
-                                            }
-                                        }}
-                                    >
-                                        <option value="">Select Dept</option>
-                                        {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                                        <option value="ADD_NEW" className="text-jam-orange font-bold">+ Add New Department</option>
-                                    </select>
-                                ) : (
-                                    <div className="flex space-x-2">
-                                        <input
-                                            autoFocus
-                                            className="flex-1 border border-gray-300 rounded-lg p-2"
-                                            placeholder="Dept Name"
-                                            value={newInlineDeptName}
-                                            onChange={e => setNewInlineDeptName(e.target.value)}
-                                            onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleInlineAddDept())}
-                                        />
-                                        <button type="button" onClick={handleInlineAddDept} className="bg-jam-black text-white px-3 rounded text-sm font-bold">Add</button>
-                                        <button type="button" onClick={() => setIsAddingNewDept(false)} className="text-gray-400">Cancel</button>
-                                    </div>
-                                )}
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Job Title</label>
-                                <input type="text" className="w-full border border-gray-300 rounded-lg p-2" value={addForm.jobTitle} onChange={e => setAddForm({ ...addForm, jobTitle: e.target.value })} />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Bank</label>
-                                <select className="w-full border border-gray-300 rounded-lg p-2" value={addForm.bankName} onChange={e => setAddForm({ ...addForm, bankName: e.target.value })}>
-                                    <option value="NCB">NCB</option>
-                                    <option value="BNS">BNS</option>
-                                </select>
-                            </div>
-                            <div>
-                                <div className="flex items-center mb-1">
-                                    <label className="block text-sm font-medium text-gray-700">Account #</label>
-                                    <div className="ml-1.5 group relative">
-                                        <Icons.Alert className="w-3.5 h-3.5 text-gray-400 cursor-help" />
-                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-48 p-2 bg-gray-900 text-white text-[10px] rounded shadow-xl z-50 text-center">
-                                            Required for payments. Enter "PENDING" if unknown.
-                                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900"></div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <input required type="text" placeholder="Account number or PENDING" className="w-full border border-gray-300 rounded-lg p-2" value={addForm.accountNumber} onChange={e => setAddForm({ ...addForm, accountNumber: e.target.value })} />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Gross Salary</label>
-                                <input required type="number" step="0.01" className="w-full border border-gray-300 rounded-lg p-2" value={addForm.grossSalary} onChange={e => setAddForm({ ...addForm, grossSalary: e.target.value })} />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Joining Date</label>
-                                <input required type="date" className="w-full border border-gray-300 rounded-lg p-2" value={addForm.joiningDate} onChange={e => setAddForm({ ...addForm, joiningDate: e.target.value })} />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Employee Type</label>
-                                <select className="w-full border border-gray-300 rounded-lg p-2" value={addForm.employeeType} onChange={e => setAddForm({ ...addForm, employeeType: e.target.value })}>
-                                    <option value="STAFF">Staff</option>
-                                    <option value="HOURLY">Hourly</option>
-                                    <option value="CONTRACTOR">Contractor</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Pension Contribution Rate (%)</label>
-                                <input type="number" min="0" max="100" step="0.1" className="w-full border border-gray-300 rounded-lg p-2" value={addForm.pensionContributionRate} onChange={e => setAddForm({ ...addForm, pensionContributionRate: parseFloat(e.target.value) })} />
-                                <p className="text-xs text-gray-500 mt-1">Deduction from salary, reduces statutory income for Ed Tax</p>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Pension Provider</label>
-                                <input type="text" placeholder="e.g., PICA, Proven, NCB Pension" className="w-full border border-gray-300 rounded-lg p-2" value={addForm.pensionProvider} onChange={e => setAddForm({ ...addForm, pensionProvider: e.target.value })} />
-                            </div>
-
-                            <div className="md:col-span-2 pt-4">
-                                <button type="submit" className="w-full bg-jam-black text-white font-bold py-3 rounded-lg hover:bg-gray-800">Create Employee</button>
-                            </div>
-                        </form>
                     </div>
                 </div>
             )}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Employee, EmployeeType, PayType, PayFrequency, Role, CustomDeduction, DeductionPeriodType, BankAccount, Department } from '../types';
+import { Employee, EmployeeType, PayType, PayFrequency, Role, CustomDeduction, BankAccount, Department } from '../types';
 import { Icons } from './Icons';
 import { isValidTRN, isValidNIS, isValidEmail, formatTRN } from '../utils/validators';
 
@@ -49,8 +49,6 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
       email: '',
       trn: '',
       nis: '',
-      nhtStatus: 'PENDING',
-      nhtNumber: '',
       employeeId: '',
       grossSalary: 0,
       hourlyRate: 0,
@@ -60,17 +58,14 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
       status: 'ACTIVE',
       hireDate: today,
       joiningDate: today,
-      annualLeave: 14,
-      employeeType: EmployeeType.FULL_TIME,
+      employeeType: EmployeeType.STAFF,
       jobTitle: '',
-      designation: '',
       department: '',
       phone: '',
       address: '',
-      gender: 'Male',
-      dateOfBirth: '',
-      profileImageUrl: '',
       emergencyContact: '',
+      pensionContributionRate: 0,
+      pensionProvider: '',
       bankDetails: {
         bankName: 'NCB',
         accountNumber: '',
@@ -78,12 +73,8 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
         currency: 'JMD'
       },
       customDeductions: [],
-      verificationDocuments: [],
-      leaveBalance: {
-        vacation: 14,
-        sick: 3,
-        personal: 0
-      }
+      allowances: [],
+      deductions: []
     };
   }
 
@@ -305,34 +296,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                   )}
                 </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Gender
-                  </label>
-                  <select
-                    value={formData.gender || ''}
-                    onChange={e => handleInputChange('gender', e.target.value === '' ? undefined : e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange bg-white transition-all"
-                  >
-                    <option value="">Select Gender</option>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                    <option value="Other">Other</option>
-                    <option value="Prefer not to say">Prefer not to say</option>
-                  </select>
-                </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Date of Birth
-                  </label>
-                  <input
-                    type="date"
-                    value={formData.dateOfBirth || ''}
-                    onChange={e => handleInputChange('dateOfBirth', e.target.value || undefined)}
-                    className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange bg-white transition-all"
-                  />
-                </div>
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -393,18 +357,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                   />
                 </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Designation
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.designation || ''}
-                    onChange={e => handleInputChange('designation', e.target.value || undefined)}
-                    className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange bg-white transition-all"
-                    placeholder="Senior Developer"
-                  />
-                </div>
+
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -504,18 +457,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                   />
                 </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Annual Leave (Days)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={(formData.annualLeave !== undefined && formData.annualLeave !== null ? formData.annualLeave : '') as any}
-                    onChange={e => handleInputChange('annualLeave', e.target.value ? parseInt(e.target.value) : undefined)}
-                    className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange bg-white transition-all"
-                  />
-                </div>
+
               </div>
             </div>
           )}
@@ -529,14 +471,13 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                     Employee Type *
                   </label>
                   <select
-                    value={formData.employeeType || EmployeeType.FULL_TIME}
+                    value={formData.employeeType || EmployeeType.STAFF}
                     onChange={e => handleInputChange('employeeType', e.target.value as EmployeeType)}
                     className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange bg-white transition-all"
                   >
-                    <option value={EmployeeType.FULL_TIME}>Full-Time</option>
-                    <option value={EmployeeType.PART_TIME}>Part-Time</option>
-                    <option value={EmployeeType.CONTRACTOR}>Contractor</option>
                     <option value={EmployeeType.STAFF}>Staff</option>
+                    <option value={EmployeeType.HOURLY}>Hourly</option>
+                    <option value={EmployeeType.CONTRACTOR}>Contractor</option>
                   </select>
                   <p className="text-xs text-gray-500 mt-2">
                     {formData.employeeType === EmployeeType.CONTRACTOR
@@ -749,33 +690,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                   <p className="text-xs text-gray-500 mt-2">Format: XXX-XXX-XXX or PENDING</p>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    NHT Status
-                  </label>
-                  <select
-                    value={formData.nhtStatus || 'REGISTERED'}
-                    onChange={e => handleInputChange('nhtStatus', e.target.value as any)}
-                    className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange bg-white transition-all"
-                  >
-                    <option value="REGISTERED">Registered</option>
-                    <option value="EXEMPT">Exempt</option>
-                    <option value="PENDING">Pending</option>
-                  </select>
-                </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    NHT Number
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.nhtNumber || ''}
-                    onChange={e => handleInputChange('nhtNumber', e.target.value || undefined)}
-                    className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange bg-white transition-all"
-                    placeholder="NHT number"
-                  />
-                </div>
               </div>
             </div>
           )}
@@ -821,18 +736,17 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                     </label>
                     <select
                       value={deductionToAdd.periodType || ''}
-                      onChange={e => setDeductionToAdd(prev => ({ ...prev, periodType: e.target.value as DeductionPeriodType }))}
+                      onChange={e => setDeductionToAdd(prev => ({ ...prev, periodType: e.target.value as 'FIXED_TERM' | 'TARGET_BALANCE' }))}
                       className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange bg-white transition-all"
                     >
                       <option value="">Select Type</option>
-                      <option value={DeductionPeriodType.FIXED_AMOUNT}>Fixed Amount</option>
-                      <option value={DeductionPeriodType.FIXED_TERM}>Fixed Term</option>
-                      <option value={DeductionPeriodType.TARGET_BALANCE}>Target Balance</option>
+                      <option value="FIXED_TERM">Fixed Term</option>
+                      <option value="TARGET_BALANCE">Target Balance</option>
                     </select>
                   </div>
                 </div>
 
-                {deductionToAdd.periodType === DeductionPeriodType.FIXED_TERM && (
+                {deductionToAdd.periodType === 'FIXED_TERM' && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     <div>
                       <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -850,7 +764,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                   </div>
                 )}
 
-                {deductionToAdd.periodType === DeductionPeriodType.TARGET_BALANCE && (
+                {deductionToAdd.periodType === 'TARGET_BALANCE' && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     <div>
                       <label className="block text-xs font-medium text-gray-700 mb-1">
