@@ -9,6 +9,7 @@ import {
   processCustomDeductions,
   calculateEmployerContributions
 } from './jamaica2026Fiscal';
+import type { Jamaica2026TaxConfig as Jamaica2026TaxConfigType } from '../types';
 
 export interface PayRunPeriod {
   startDate: string; // YYYY-MM-DD
@@ -80,12 +81,18 @@ export function getDefaultPeriodDates(payFrequency: PayFrequency, fromDate?: Dat
 
 /**
  * Calculate payroll for all employees in a period with pro-rating
+ * @param employees Array of employees to process
+ * @param period Pay period details
+ * @param additionalDeductions Ad-hoc deductions by employee ID
+ * @param additionalAdditions Ad-hoc additions by employee ID
+ * @param taxConfig Optional tax configuration (uses defaults if not provided)
  */
 export function calculatePayrunLineItems(
   employees: Employee[],
   period: PayRunPeriod,
   additionalDeductions: Record<string, number> = {},
-  additionalAdditions: Record<string, number> = {}
+  additionalAdditions: Record<string, number> = {},
+  taxConfig?: Partial<Jamaica2026TaxConfigType>
 ): PayRunLineItem[] {
   
   return employees
@@ -100,14 +107,15 @@ export function calculatePayrunLineItems(
         employeeGross = (emp.hourlyRate || 0) * standardHours;
       }
 
-      // Calculate pro-rated gross
+      // Calculate pro-rated gross (pass tax config)
       const payrollData = calculateEmployeePayroll(
         emp,
         employeeGross,
         period.startDate,
         period.endDate,
         additionalAdditions[emp.id] || 0,
-        additionalDeductions[emp.id] || 0
+        additionalDeductions[emp.id] || 0,
+        taxConfig
       );
 
       // Process custom deductions
@@ -115,8 +123,8 @@ export function calculatePayrunLineItems(
         emp.customDeductions
       );
 
-      // Calculate employer contributions
-      const employerContributions = calculateEmployerContributions(payrollData.grossPay || 0, emp.employeeType);
+      // Calculate employer contributions (pass tax config)
+      const employerContributions = calculateEmployerContributions(payrollData.grossPay || 0, emp.employeeType, taxConfig);
 
       // Combine all deductions
       const totalDeductions = (payrollData.totalDeductions || 0) + customDeductionAmount;
