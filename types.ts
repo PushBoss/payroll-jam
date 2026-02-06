@@ -83,23 +83,23 @@ export interface PAYEBracket {
 }
 
 export interface Jamaica2026TaxConfig {
-  nisRate?: number;
-  nisEmployerRate?: number;
-  nisCap?: number;
-  nisMaxContribution?: number;
-  nhtRate?: number;
-  nhtEmployeeRate?: number;
-  nhtEmployerRate?: number;
-  nhtCap?: number;
-  edTaxRate?: number;
-  payeThresholdPre?: number;
-  payeThresholdPost?: number;
-  payeRateStd?: number;
-  payeRateHigh?: number;
-  payeThreshold?: number;
-  payeBracketsPre?: PAYEBracket[];
-  payeBracketsPost?: PAYEBracket[];
-  estateLevyRate?: number;
+  nisRate: number;
+  nisEmployerRate: number;
+  nisCap: number;
+  nisMaxContribution: number;
+  nhtRate: number;
+  nhtEmployeeRate: number;
+  nhtEmployerRate: number;
+  nhtCap: number;
+  edTaxRate: number;
+  payeThresholdPre: number;
+  payeThresholdPost: number;
+  payeRateStd: number;
+  payeRateHigh: number;
+  payeThreshold: number;
+  payeBracketsPre: PAYEBracket[];
+  payeBracketsPost: PAYEBracket[];
+  estateLevyRate: number;
 }
 
 export interface BankAccount {
