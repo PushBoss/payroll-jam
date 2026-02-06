@@ -865,44 +865,54 @@ export const supabaseService = {
       return [];
     }
 
-    return data.map((e: any) => ({
-      id: e.id,
-      firstName: e.first_name,
-      lastName: e.last_name,
-      email: e.email,
-      trn: e.trn,
-      nis: e.nis,
-      employeeId: e.employee_number || undefined, // Map employee_number to employeeId
-      status: e.status,
-      role: e.role,
-      hireDate: e.hire_date,
-      joiningDate: e.joining_date || undefined,
-      jobTitle: e.job_title,
-      department: e.department,
-      employeeType: e.employee_type || undefined,
-      nhtStatus: e.nht_status || undefined,
-      nhtNumber: e.nht_number || undefined,
-      phone: e.phone || undefined,
-      address: e.address || undefined,
-      gender: e.gender || undefined,
-      dateOfBirth: e.date_of_birth || undefined,
-      designation: e.designation || undefined,
-      profileImageUrl: e.profile_image_url || undefined,
-      emergencyContact: e.emergency_contact || undefined,
-      annualLeave: e.annual_leave || 14,
-      // Unpack JSONB fields
-      grossSalary: e.pay_data?.grossSalary || 0,
-      hourlyRate: e.pay_data?.hourlyRate,
-      payType: e.pay_data?.payType || 'SALARIED',
-      payFrequency: e.pay_data?.payFrequency || 'MONTHLY',
-      bankDetails: e.bank_details || {},
-      leaveBalance: e.leave_balance || { vacation: 0, sick: 0, personal: 0 },
-      allowances: e.allowances || [],
-      deductions: e.deductions || [],
-      customDeductions: e.custom_deductions || [],
-      terminationDetails: e.termination_details || undefined,
-      onboardingToken: e.onboarding_token
-    }));
+    console.log('📥 getEmployees: Fetched', data.length, 'employees from DB');
+    
+    return data.map((e: any) => {
+      const mapped = {
+        id: e.id,
+        firstName: e.first_name,
+        lastName: e.last_name,
+        email: e.email,
+        trn: e.trn,
+        nis: e.nis,
+        employeeId: e.employee_number || undefined,
+        status: e.status,
+        role: e.role,
+        hireDate: e.hire_date,
+        joiningDate: e.joining_date || undefined,
+        jobTitle: e.job_title,
+        department: e.department,
+        employeeType: e.employee_type || undefined,
+        nhtStatus: e.nht_status || undefined,
+        nhtNumber: e.nht_number || undefined,
+        phone: e.phone || undefined,
+        address: e.address || undefined,
+        gender: e.gender || undefined,
+        dateOfBirth: e.date_of_birth || undefined,
+        designation: e.designation || undefined,
+        profileImageUrl: e.profile_image_url || undefined,
+        emergencyContact: e.emergency_contact || undefined,
+        annualLeave: e.annual_leave || 14,
+        grossSalary: e.pay_data?.grossSalary || 0,
+        hourlyRate: e.pay_data?.hourlyRate,
+        payType: e.pay_data?.payType || 'SALARIED',
+        payFrequency: e.pay_data?.payFrequency || 'MONTHLY',
+        bankDetails: e.bank_details || {},
+        leaveBalance: e.leave_balance || { vacation: 0, sick: 0, personal: 0 },
+        allowances: e.allowances || [],
+        deductions: e.deductions || [],
+        customDeductions: e.custom_deductions || [],
+        terminationDetails: e.termination_details || undefined,
+        onboardingToken: e.onboarding_token
+      };
+      
+      // Log if this employee has custom deductions
+      if (mapped.customDeductions && mapped.customDeductions.length > 0) {
+        console.log('🎯 Employee', mapped.firstName, 'has', mapped.customDeductions.length, 'custom deductions:', mapped.customDeductions);
+      }
+      
+      return mapped;
+    });
   },
 
   /**

@@ -473,11 +473,27 @@ function AppContent() {
   };
 
   const handleUpdateEmployee = async (emp: Employee) => {
+    console.log('💾 handleUpdateEmployee called with:', {
+      id: emp.id,
+      firstName: emp.firstName,
+      customDeductions: emp.customDeductions,
+      customDeductionsCount: emp.customDeductions?.length || 0
+    });
     setEmployees(prev => prev.map(e => e.id === emp.id ? emp : e));
     if (isSupabaseMode && user?.companyId) {
       await supabaseService.saveEmployee(emp, user.companyId);
       // Refetch the employee from DB to ensure we have latest data (including custom_deductions)
+      console.log('🔄 Refetching employees from DB after save...');
       const freshEmployees = await supabaseService.getEmployees(user.companyId);
+      console.log('✅ Refetched', freshEmployees.length, 'employees');
+      // Log the specific employee we just saved
+      const savedEmp = freshEmployees.find(e => e.id === emp.id);
+      console.log('📦 Saved employee fresh data:', {
+        id: savedEmp?.id,
+        firstName: savedEmp?.firstName,
+        customDeductions: savedEmp?.customDeductions,
+        customDeductionsCount: savedEmp?.customDeductions?.length || 0
+      });
       setEmployees(freshEmployees);
     }
   };
