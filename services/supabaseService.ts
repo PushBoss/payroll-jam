@@ -1051,8 +1051,10 @@ export const supabaseService = {
     // If RLS blocks (42501), use admin client fallback
     if (error && error.code === '42501') {
       console.debug('🛡️ RLS blocked employee save, using admin client...');
+      console.debug('Original error:', error);
       const adminClient = await supabaseService.getAdminClient();
       if (adminClient) {
+        console.debug('✅ Admin client available, attempting retry...');
         const { error: adminError } = await adminClient
           .from('employees')
           .upsert({
@@ -1090,12 +1092,66 @@ export const supabaseService = {
             termination_details: emp.terminationDetails,
             onboarding_token: emp.onboardingToken || null
           });
-        if (adminError) console.error("Error saving employee with admin client:", adminError);
+        if (adminError) {
+          console.error("❌ Admin client also failed:", adminError);
+        } else {
+          console.log("✅ Employee saved with admin client");
+        }
       } else {
-        console.error("Error saving employee (RLS blocked, no admin client):", error);
+        console.error("❌ No admin client available, RLS blocked original request:", error);
       }
     } else if (error) {
-      console.error("Error saving employee:", error);
+      console.error("❌ RLS or other error saving employee:", error);
+      // Always fallback to admin client on any error
+      console.debug('🛡️ Attempting admin client fallback for employee save...');
+      const adminClient = await supabaseService.getAdminClient();
+      if (adminClient) {
+        console.debug('✅ Admin client available, attempting retry...');
+        const { error: adminError } = await adminClient
+          .from('employees')
+          .upsert({
+            id: emp.id,
+            company_id: companyId,
+            first_name: emp.firstName,
+            last_name: emp.lastName,
+            email: emp.email,
+            trn: emp.trn,
+            nis: emp.nis,
+            employee_number: emp.employeeId || null,
+            phone: emp.phone || null,
+            address: emp.address || null,
+            status: emp.status,
+            role: emp.role,
+            hire_date: emp.hireDate,
+            joining_date: emp.joiningDate || null,
+            job_title: emp.jobTitle,
+            department: emp.department,
+            employee_type: emp.employeeType || null,
+            nht_status: emp.nhtStatus || null,
+            nht_number: emp.nhtNumber || null,
+            gender: emp.gender || null,
+            date_of_birth: emp.dateOfBirth || null,
+            designation: emp.designation || null,
+            profile_image_url: emp.profileImageUrl || null,
+            emergency_contact: emp.emergencyContact || null,
+            annual_leave: emp.annualLeave || 14,
+            pay_data: payData,
+            bank_details: emp.bankDetails,
+            leave_balance: emp.leaveBalance,
+            allowances: emp.allowances,
+            deductions: emp.deductions,
+            custom_deductions: emp.customDeductions || [],
+            termination_details: emp.terminationDetails,
+            onboarding_token: emp.onboardingToken || null
+          });
+        if (adminError) {
+          console.error("❌ Admin client fallback also failed:", adminError);
+        } else {
+          console.log("✅ Employee saved with admin client fallback");
+        }
+      } else {
+        console.error("❌ No admin client available for fallback");
+      }
     }
   },
 
