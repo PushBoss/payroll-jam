@@ -870,7 +870,12 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
 
                 <button
                   type="button"
-                  onClick={handleAddDeduction}
+                  onClick={(e) => {
+                    console.log('🔘 Add Deduction button clicked!');
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleAddDeduction();
+                  }}
                   className="w-full bg-jam-yellow text-jam-black font-semibold py-2 rounded-lg hover:bg-opacity-90 transition-all text-sm"
                 >
                   + Add Deduction
