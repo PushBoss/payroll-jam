@@ -127,12 +127,14 @@ export function calculateStatutoryDeductions(
   grossSalary: number,
   employeeType: EmployeeType | undefined,
   periodEndDate: string,
+  pensionContributionRate: number = 0,
   customConfig?: Partial<Jamaica2026TaxConfigType>
 ): {
   nis: number;
   nht: number;
   edTax: number;
   paye: number;
+  pension: number;
   totalDeductions: number;
 } {
   
@@ -148,6 +150,9 @@ export function calculateStatutoryDeductions(
     payeThresholdPost: customConfig?.payeThresholdPost ?? Jamaica2026TaxConfig.payeThresholdPost,
   };
   
+  // Calculate Pension contribution first
+  const pension = Math.round(grossSalary * pensionContributionRate * 100) / 100;
+
   // Contractors don't have statutory deductions (except estate levy applied separately)
   if (employeeType === EmployeeType.CONTRACTOR) {
     return {
@@ -155,37 +160,43 @@ export function calculateStatutoryDeductions(
       nht: 0,
       edTax: 0,
       paye: 0,
-      totalDeductions: 0
+      pension: pension,
+      totalDeductions: pension
     };
   }
 
-  // Calculate NIS (National Insurance Scheme)
-  const nisableEarnings = Math.min(grossSalary, config.nisCap);
+  // Calculate statutory income (gross - pension) for tax purposes
+  const statutoryIncome = grossSalary - pension;
+
+  // Calculate NIS on statutory income (National Insurance Scheme)
+  const nisableEarnings = Math.min(statutoryIncome, config.nisCap);
   const nis = Math.round(nisableEarnings * config.nisRate * 100) / 100;
 
-  // Calculate NHT (National Health Trust)
-  const nhtableEarnings = Math.min(grossSalary, config.nhtCap);
+  // Calculate NHT on statutory income (National Health Trust)
+  const nhtableEarnings = Math.min(statutoryIncome, config.nhtCap);
   const nht = Math.round(nhtableEarnings * config.nhtEmployeeRate * 100) / 100;
 
-  // Calculate Education Tax (on gross)
-  const edTax = Math.round(grossSalary * config.edTaxRate * 100) / 100;
+  // Calculate Education Tax (on statutory income: gross - pension - nis)
+  const edTaxBase = statutoryIncome - nis;
+  const edTax = edTaxBase > 0 ? Math.round(edTaxBase * config.edTaxRate * 100) / 100 : 0;
 
-  // Calculate PAYE - determine threshold based on date
+  // Calculate PAYE on statutory income (gross - pension)
   const date = new Date(periodEndDate);
   const isPostApril = date.getMonth() >= 3; // April = month 3
   const payeThreshold = isPostApril ? config.payeThresholdPost : config.payeThresholdPre;
   let paye = 0;
-  if (grossSalary > payeThreshold) {
-    paye = Math.round((grossSalary - payeThreshold) * config.payeRateStd * 100) / 100;
+  if (statutoryIncome > payeThreshold) {
+    paye = Math.round((statutoryIncome - payeThreshold) * config.payeRateStd * 100) / 100;
   }
 
-  const totalDeductions = nis + nht + edTax + paye;
+  const totalDeductions = nis + nht + edTax + paye + pension;
 
   return {
     nis,
     nht,
     edTax,
     paye,
+    pension,
     totalDeductions
   };
 }
@@ -231,10 +242,13 @@ export function calculateEmployeePayroll(
   );
   const { gross: proratedGross } = proRatingResult;
 
-  // 2. Calculate statutory deductions (using custom config if provided)
-  const statutoryDeductions = calculateStatutoryDeductions(proratedGross, employee.employeeType, periodEnd, customConfig);
+  // 2. Calculate pension contribution
+  const pensionAmount = Math.round(proratedGross * (employee.pensionContributionRate || 0) * 100) / 100;
 
-  // 3. Calculate net pay
+  // 3. Calculate statutory deductions (using custom config if provided)
+  const statutoryDeductions = calculateStatutoryDeductions(proratedGross, employee.employeeType, periodEnd, employee.pensionContributionRate || 0, customConfig);
+
+  // 4. Calculate net pay
   const netPay = proratedGross + additions - statutoryDeductions.totalDeductions - deductions;
 
   return {
@@ -248,6 +262,7 @@ export function calculateEmployeePayroll(
     nht: statutoryDeductions.nht,
     edTax: statutoryDeductions.edTax,
     paye: statutoryDeductions.paye,
+    pension: statutoryDeductions.pension,
     totalDeductions: Math.round(statutoryDeductions.totalDeductions * 100) / 100,
     netPay: Math.round(netPay * 100) / 100,
     prorationDetails: {

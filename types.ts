@@ -239,6 +239,7 @@ export interface StatutoryDeductions {
   nht: number;
   edTax: number;
   paye: number;
+  pension: number;
   totalDeductions: number;
   netPay: number;
 }
