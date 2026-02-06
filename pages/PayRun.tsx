@@ -242,6 +242,7 @@ const PayRunRow = ({
                 <div className="text-xs text-gray-500 space-y-0.5">
                     <div className="flex justify-end space-x-2"><span>PAYE:</span> <span className="font-medium text-gray-700">{item.paye.toLocaleString()}</span></div>
                     <div className="flex justify-end space-x-2"><span>NIS:</span> <span className="font-medium text-gray-700">{item.nis.toLocaleString()}</span></div>
+                    <div className="flex justify-end space-x-2"><span>NHT:</span> <span className="font-medium text-gray-700">{item.nht.toLocaleString()}</span></div>
                     <div className="flex justify-end space-x-2"><span>Ed:</span> <span className="font-medium text-gray-700">{item.edTax.toLocaleString()}</span></div>
                     <div className="mt-1 flex justify-end">
                         <button onClick={() => openTaxModal(item)} className="text-[10px] bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-0.5 rounded flex items-center" title="Manually Override Taxes">

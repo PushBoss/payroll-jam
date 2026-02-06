@@ -166,13 +166,14 @@ export const usePayroll = (
         const ytdData = getEmployeeYTD(emp.id, year);
 
         // Determine Period Number (e.g., Monthly: Jan=1, Feb=2)
-        let periodNumber = month; // Default for monthly
+        // For first payrun (no YTD history), use 1; otherwise use calendar position
+        let periodNumber = ytdData.ytdStatutoryIncome === 0 ? 1 : month;
         if (emp.payFrequency === PayFrequency.WEEKLY) {
             // Approximation for demo: Week number
             periodNumber = Math.ceil((new Date(periodStart).getTime() - new Date(year, 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000));
             if (periodNumber === 0) periodNumber = 1;
         } else if (emp.payFrequency === PayFrequency.FORTNIGHTLY) {
-            periodNumber = month * 2; // Rough approx for demo
+            periodNumber = ytdData.ytdStatutoryIncome === 0 ? 1 : month * 2; // Rough approx for demo
         }
 
         // Recalculate PAYE using Cumulative Method
