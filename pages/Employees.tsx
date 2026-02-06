@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import Papa from 'papaparse';
 import { Employee, PayFrequency, Role, PayRun, CompanySettings, PayType, Department, Designation, Asset, PerformanceReview, TerminationDetails, BankAccount, PricingPlan, User } from '../types';
 import { Icons } from '../components/Icons';
+import { EmployeeManager } from '../components/EmployeeManager';
 import { auditService } from '../services/auditService';
 import { downloadFile, generateP45CSV } from '../utils/exportHelpers';
 import { emailService } from '../services/emailService';
@@ -69,22 +70,13 @@ export const Employees: React.FC<EmployeesProps> = ({
 
     // Edit State
     const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
-    const [editTab, setEditTab] = useState<'profile' | 'financial' | 'banking' | 'pensions'>('profile');
+
+    // New EmployeeManager State
+    const [isEmployeeManagerOpen, setIsEmployeeManagerOpen] = useState(false);
+    const [employeeManagerMode, setEmployeeManagerMode] = useState<'add' | 'edit'>('add');
 
     const [searchTerm, setSearchTerm] = useState('');
     const fileInputRef = useRef<HTMLInputElement>(null);
-
-    // Add Employee Form State
-    const [addForm, setAddForm] = useState({
-        firstName: '', lastName: '', email: '', trn: '', nis: '',
-        employeeId: '', grossSalary: '', hourlyRate: '', role: Role.EMPLOYEE,
-        payType: PayType.SALARIED, department: '', jobTitle: '',
-        bankName: 'NCB', accountNumber: '',
-        joiningDate: new Date().toISOString().split('T')[0],
-        employeeType: 'STAFF',
-        pensionContributionRate: 0,
-        pensionProvider: ''
-    });
 
     const [inviteData, setInviteData] = useState({
         firstName: '',
@@ -126,9 +118,9 @@ export const Employees: React.FC<EmployeesProps> = ({
 
     const handleAddClick = () => {
         if (checkPlanLimit(1)) {
-            setIsAddingNewDept(false);
-            setNewInlineDeptName('');
-            setIsAddModalOpen(true);
+            setSelectedEmployee(null);
+            setEmployeeManagerMode('add');
+            setIsEmployeeManagerOpen(true);
         }
     };
 
@@ -263,86 +255,26 @@ export const Employees: React.FC<EmployeesProps> = ({
         setIsSendingInvite(false);
     };
 
-    const onSubmitAdd = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!checkPlanLimit(1)) return;
-
-        if (!addForm.trn || addForm.trn.trim() === '') {
-            toast.error('TRN is required. Enter "PENDING" if currently unavailable.');
-            return;
+    const handleEmployeeManagerSave = (employee: Employee) => {
+        if (employeeManagerMode === 'add') {
+            const newEmp: Employee = {
+                ...employee,
+                id: employee.id || generateUUID(),
+                status: 'ACTIVE',
+                payFrequency: employee.payFrequency || PayFrequency.MONTHLY,
+                role: employee.role || Role.EMPLOYEE
+            };
+            onAddEmployee(newEmp);
+            auditService.log(currentUser, 'CREATE', 'Employee', `Added new employee: ${newEmp.firstName} ${newEmp.lastName}`);
+            toast.success("Employee added successfully");
+        } else {
+            // Edit mode
+            onUpdateEmployee(employee);
+            auditService.log(currentUser, 'UPDATE', 'Employee', `Updated employee: ${employee.firstName} ${employee.lastName}`);
+            toast.success("Employee updated successfully");
         }
-        if (!isValidTRN(addForm.trn)) {
-            toast.error("Invalid TRN. Must be 9 digits (e.g. 123-456-789) or 'PENDING'");
-            return;
-        }
-
-        if (!addForm.nis || addForm.nis.trim() === '') {
-            toast.error('NIS is required. Enter "PENDING" if currently unavailable.');
-            return;
-        }
-        if (!isValidNIS(addForm.nis)) {
-            toast.error("Invalid NIS. Must be Letter + 6 Digits (e.g. A123456) or 'PENDING'");
-            return;
-        }
-
-        if (!addForm.accountNumber || addForm.accountNumber.trim() === '') {
-            toast.error('Bank Account Number is required. Enter "PENDING" if currently unavailable.');
-            return;
-        }
-
-        const newEmp: Employee = {
-            id: generateUUID(),
-            firstName: addForm.firstName,
-            lastName: addForm.lastName,
-            email: addForm.email,
-            trn: addForm.trn.toUpperCase() === 'PENDING' ? 'PENDING' : formatTRN(addForm.trn),
-            nis: addForm.nis.toUpperCase() === 'PENDING' ? 'PENDING' : addForm.nis.toUpperCase(),
-            employeeId: addForm.employeeId || undefined,
-            grossSalary: parseFloat(addForm.grossSalary) || 0,
-            hourlyRate: parseFloat(addForm.hourlyRate) || 0,
-            payType: addForm.payType,
-            payFrequency: PayFrequency.MONTHLY,
-            role: addForm.role,
-            status: 'ACTIVE',
-            hireDate: new Date().toISOString().split('T')[0],
-            joiningDate: addForm.joiningDate,
-            employeeType: addForm.employeeType as any,
-            pensionContributionRate: addForm.pensionContributionRate,
-            pensionProvider: addForm.pensionProvider || undefined,
-            allowances: [],
-            deductions: [],
-            customDeductions: [],
-            department: addForm.department,
-            jobTitle: addForm.jobTitle,
-            bankDetails: {
-                bankName: addForm.bankName as any,
-                accountNumber: addForm.accountNumber,
-                accountType: 'SAVINGS',
-                currency: 'JMD'
-            }
-        };
-        onAddEmployee(newEmp);
-        auditService.log(currentUser, 'CREATE', 'Employee', `Added new employee: ${newEmp.firstName} ${newEmp.lastName}`);
-        setIsAddModalOpen(false);
-        setAddForm({ firstName: '', lastName: '', email: '', trn: '', nis: '', employeeId: '', grossSalary: '', hourlyRate: '', role: Role.EMPLOYEE, payType: PayType.SALARIED, department: '', jobTitle: '', bankName: 'NCB', accountNumber: '', joiningDate: new Date().toISOString().split('T')[0], employeeType: 'STAFF', pensionContributionRate: 0, pensionProvider: '' });
-        toast.success("Employee added successfully");
-    };
-
-    const handleInlineAddDept = () => {
-        if (!newInlineDeptName.trim() || !onUpdateDepartments) return;
-        const newDep: Department = { id: `dept-${Date.now()}`, name: newInlineDeptName.trim() };
-        onUpdateDepartments([...departments, newDep]);
-
-        // Auto-select for the active form
-        if (selectedEmployee) {
-            setSelectedEmployee({ ...selectedEmployee, department: newDep.id });
-        } else if (isAddModalOpen) {
-            setAddForm({ ...addForm, department: newDep.id });
-        }
-
-        setNewInlineDeptName('');
-        setIsAddingNewDept(false);
-        toast.success(`Department "${newDep.name}" created`);
+        setIsEmployeeManagerOpen(false);
+        setSelectedEmployee(null);
     };
 
     const startTermination = (empId: string) => {
@@ -539,65 +471,6 @@ export const Employees: React.FC<EmployeesProps> = ({
         setVerificationModal({ isOpen: false, employee: null });
     };
 
-    const handleUpdateField = (field: keyof Employee, value: any) => {
-        if (!selectedEmployee) return;
-        setSelectedEmployee({ ...selectedEmployee, [field]: value });
-    };
-
-    const handleUpdateBank = (field: keyof BankAccount, value: any) => {
-        if (!selectedEmployee) return;
-        setSelectedEmployee({
-            ...selectedEmployee,
-            bankDetails: { ...selectedEmployee.bankDetails, [field]: value } as BankAccount
-        });
-    };
-
-    const saveProfileChanges = () => {
-        if (selectedEmployee) {
-            // Validation for mandatory fields
-            if (!selectedEmployee.trn || selectedEmployee.trn.trim() === '') {
-                toast.error('TRN is required. Enter "PENDING" if unavailable.');
-                return;
-            }
-            if (!isValidTRN(selectedEmployee.trn)) {
-                toast.error("Invalid TRN format. Must be 9 digits or 'PENDING'");
-                return;
-            }
-            if (!selectedEmployee.nis || selectedEmployee.nis.trim() === '') {
-                toast.error('NIS is required. Enter "PENDING" if unavailable.');
-                return;
-            }
-            if (!isValidNIS(selectedEmployee.nis)) {
-                toast.error("Invalid NIS format. Must be Letter + 6 Digits or 'PENDING'");
-                return;
-            }
-            if (!selectedEmployee.bankDetails?.accountNumber || selectedEmployee.bankDetails.accountNumber.trim() === '') {
-                toast.error('Bank Account Number is required. Enter "PENDING" if unavailable.');
-                return;
-            }
-
-            const status = selectedEmployee.status === 'PENDING_VERIFICATION' ? 'ACTIVE' : selectedEmployee.status;
-
-            // Normalize PENDING values
-            const updated: Employee = {
-                ...selectedEmployee,
-                status,
-                trn: selectedEmployee.trn.toUpperCase() === 'PENDING' ? 'PENDING' : formatTRN(selectedEmployee.trn),
-                nis: selectedEmployee.nis.toUpperCase() === 'PENDING' ? 'PENDING' : selectedEmployee.nis.toUpperCase()
-            };
-
-            onUpdateEmployee(updated);
-            auditService.log(currentUser, 'UPDATE', 'Employee', `Updated profile for ${updated.firstName} ${updated.lastName}`);
-
-            if (selectedEmployee.status === 'PENDING_VERIFICATION') {
-                toast.success('Employee verified and activated!');
-            } else {
-                toast.success('Profile updated successfully!');
-            }
-            setSelectedEmployee(null);
-        }
-    };
-
     const getDeptName = (id?: string) => {
         if (!id) return '-';
         const dept = departments.find(d => d.id === id);
@@ -694,193 +567,21 @@ export const Employees: React.FC<EmployeesProps> = ({
                     </div>
                 </div>
             )}
-
-            {/* Edit Employee Modal */}
-            {selectedEmployee && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-scale-in flex flex-col max-h-[90vh]">
-                        <div className="p-6 border-b border-gray-200 bg-gray-50 flex justify-between items-center shrink-0">
-                            <div className="flex items-center space-x-3">
-                                <div className="h-10 w-10 rounded-full bg-jam-yellow flex items-center justify-center font-bold text-jam-black">
-                                    {selectedEmployee.firstName[0]}{selectedEmployee.lastName[0]}
-                                </div>
-                                <div>
-                                    <h3 className="text-lg font-bold text-gray-900">{selectedEmployee.firstName} {selectedEmployee.lastName}</h3>
-                                    {selectedEmployee.employeeId ? (
-                                        <p className="text-xs text-gray-500">Employee ID: {selectedEmployee.employeeId}</p>
-                                    ) : (
-                                        <p className="text-xs text-gray-400 italic">No Employee ID set</p>
-                                    )}
-                                </div>
-                            </div>
-                            <button onClick={() => {
-                                setSelectedEmployee(null);
-                                setIsAddingNewDept(false);
-                                setNewInlineDeptName('');
-                            }} className="text-gray-400 hover:text-gray-600"><Icons.Close className="w-6 h-6" /></button>
-                        </div>
-
-                        <div className="border-b border-gray-200 px-6 shrink-0 bg-white">
-                            <nav className="-mb-px flex space-x-8">
-                                {['profile', 'financial', 'banking', 'pensions'].map((tab) => (
-                                    <button
-                                        key={tab}
-                                        onClick={() => setEditTab(tab as any)}
-                                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm capitalize ${editTab === tab ? 'border-jam-orange text-jam-black' : 'border-transparent text-gray-500 hover:text-gray-700'
-                                            }`}
-                                    >
-                                        {tab}
-                                    </button>
-                                ))}
-                            </nav>
-                        </div>
-
-                        <div className="p-6 overflow-y-auto">
-                            {editTab === 'profile' && (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">First Name</label><input className="w-full border rounded p-2" value={selectedEmployee.firstName} onChange={e => handleUpdateField('firstName', e.target.value)} /></div>
-                                    <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Last Name</label><input className="w-full border rounded p-2" value={selectedEmployee.lastName} onChange={e => handleUpdateField('lastName', e.target.value)} /></div>
-                                    <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Employee ID</label><input type="text" placeholder="e.g., EMP001, 12345" className="w-full border rounded p-2" value={selectedEmployee.employeeId || ''} onChange={e => handleUpdateField('employeeId', e.target.value)} /></div>
-                                    <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email</label><input className="w-full border rounded p-2" value={selectedEmployee.email} onChange={e => handleUpdateField('email', e.target.value)} /></div>
-                                    <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Job Title</label><input className="w-full border rounded p-2" value={selectedEmployee.jobTitle || ''} onChange={e => handleUpdateField('jobTitle', e.target.value)} /></div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Department</label>
-                                        {!isAddingNewDept ? (
-                                            <div className="flex space-x-2">
-                                                <select
-                                                    className="w-full border rounded p-2"
-                                                    value={selectedEmployee.department || ''}
-                                                    onChange={e => {
-                                                        if (e.target.value === 'ADD_NEW') {
-                                                            setIsAddingNewDept(true);
-                                                        } else {
-                                                            handleUpdateField('department', e.target.value);
-                                                        }
-                                                    }}
-                                                >
-                                                    <option value="">Select Dept</option>
-                                                    {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                                                    <option value="ADD_NEW" className="text-jam-orange font-bold">+ Add New Department</option>
-                                                </select>
-                                            </div>
-                                        ) : (
-                                            <div className="flex space-x-2">
-                                                <input
-                                                    autoFocus
-                                                    className="flex-1 border rounded p-2"
-                                                    placeholder="Dept Name"
-                                                    value={newInlineDeptName}
-                                                    onChange={e => setNewInlineDeptName(e.target.value)}
-                                                    onKeyDown={e => e.key === 'Enter' && handleInlineAddDept()}
-                                                />
-                                                <button onClick={handleInlineAddDept} className="bg-jam-black text-white px-3 rounded text-sm font-bold">Add</button>
-                                                <button onClick={() => setIsAddingNewDept(false)} className="text-gray-400">Cancel</button>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Joining Date</label><input type="date" className="w-full border rounded p-2" value={selectedEmployee.joiningDate || ''} onChange={e => handleUpdateField('joiningDate', e.target.value)} /></div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Employee Type</label>
-                                        <select className="w-full border rounded p-2" value={selectedEmployee.employeeType || 'STAFF'} onChange={e => handleUpdateField('employeeType', e.target.value)}>
-                                            <option value="STAFF">Staff</option>
-                                            <option value="HOURLY">Hourly</option>
-                                            <option value="CONTRACTOR">Contractor</option>
-                                        </select>
-                                    </div>
-                                </div>
-                            )}
-                            {editTab === 'financial' && (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div>
-                                        <div className="flex items-center mb-1">
-                                            <label className="block text-xs font-bold text-gray-500 uppercase">TRN</label>
-                                            <div className="ml-1.5 group relative">
-                                                <Icons.Alert className="w-3 h-3 text-gray-400 cursor-help" />
-                                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-48 p-2 bg-gray-900 text-white text-[10px] rounded shadow-xl z-50 text-center capitalize">
-                                                    Enter "PENDING" if unknown.
-                                                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900"></div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <input className="w-full border rounded p-2" value={selectedEmployee.trn} onChange={e => handleUpdateField('trn', e.target.value)} />
-                                    </div>
-                                    <div>
-                                        <div className="flex items-center mb-1">
-                                            <label className="block text-xs font-bold text-gray-500 uppercase">NIS</label>
-                                            <div className="ml-1.5 group relative">
-                                                <Icons.Alert className="w-3 h-3 text-gray-400 cursor-help" />
-                                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-48 p-2 bg-gray-900 text-white text-[10px] rounded shadow-xl z-50 text-center capitalize">
-                                                    Enter "PENDING" if unknown.
-                                                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900"></div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <input className="w-full border rounded p-2" value={selectedEmployee.nis} onChange={e => handleUpdateField('nis', e.target.value)} />
-                                    </div>
-                                    <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Gross Salary</label><input type="number" className="w-full border rounded p-2" value={selectedEmployee.grossSalary} onChange={e => handleUpdateField('grossSalary', parseFloat(e.target.value))} /></div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Pay Frequency</label>
-                                        <select className="w-full border rounded p-2" value={selectedEmployee.payFrequency} onChange={e => handleUpdateField('payFrequency', e.target.value)}>
-                                            <option value={PayFrequency.MONTHLY}>Monthly</option>
-                                            <option value={PayFrequency.FORTNIGHTLY}>Fortnightly</option>
-                                            <option value={PayFrequency.WEEKLY}>Weekly</option>
-                                        </select>
-                                    </div>
-                                </div>
-                            )}
-                            {editTab === 'banking' && (
-                                <div className="space-y-4">
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Bank Name</label>
-                                        <select className="w-full border rounded p-2" value={selectedEmployee.bankDetails?.bankName} onChange={e => handleUpdateBank('bankName', e.target.value)}>
-                                            <option value="NCB">NCB</option>
-                                            <option value="BNS">Scotiabank</option>
-                                            <option value="JN">JN Bank</option>
-                                            <option value="SAGICOR">Sagicor</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <div className="flex items-center mb-1">
-                                            <label className="block text-xs font-bold text-gray-500 uppercase">Account Number</label>
-                                            <div className="ml-1.5 group relative">
-                                                <Icons.Alert className="w-3 h-3 text-gray-400 cursor-help" />
-                                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-48 p-2 bg-gray-900 text-white text-[10px] rounded shadow-xl z-50 text-center capitalize">
-                                                    Enter "PENDING" if unknown.
-                                                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900"></div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <input className="w-full border rounded p-2" value={selectedEmployee.bankDetails?.accountNumber} onChange={e => handleUpdateBank('accountNumber', e.target.value)} />
-                                    </div>
-                                    <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Branch Code (Optional)</label><input className="w-full border rounded p-2" value={selectedEmployee.bankDetails?.branchCode || ''} onChange={e => handleUpdateBank('branchCode', e.target.value)} /></div>
-                                </div>
-                            )}
-                            {editTab === 'pensions' && (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Pension Contribution Rate (%)</label>
-                                        <input type="number" min="0" max="100" step="0.1" className="w-full border rounded p-2" value={selectedEmployee.pensionContributionRate || 0} onChange={e => handleUpdateField('pensionContributionRate', parseFloat(e.target.value))} />
-                                        <p className="text-[10px] text-gray-400 mt-1">Employee deduction: salary × rate. Reduces statutory income for Ed Tax.</p>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Pension Provider</label>
-                                        <input type="text" className="w-full border rounded p-2" placeholder="e.g., PICA, Proven, NCB Pension" value={selectedEmployee.pensionProvider || ''} onChange={e => handleUpdateField('pensionProvider', e.target.value)} />
-                                        <p className="text-[10px] text-gray-400 mt-1">Name of pension fund or provider</p>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-end space-x-3 shrink-0">
-                            <button onClick={() => {
-                                setSelectedEmployee(null);
-                                setIsAddingNewDept(false);
-                                setNewInlineDeptName('');
-                            }} className="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg">Cancel</button>
-                            <button onClick={saveProfileChanges} className="px-6 py-2 bg-jam-black text-white font-bold rounded-lg hover:bg-gray-800">Save Changes</button>
-                        </div>
-                    </div>
-                </div>
+            {/* EmployeeManager Component */}
+            {isEmployeeManagerOpen && (
+                <EmployeeManager
+                    employee={selectedEmployee}
+                    isOpen={isEmployeeManagerOpen}
+                    departments={departments}
+                    onAddDepartment={(dept) => {
+                        if (onUpdateDepartments) onUpdateDepartments([...departments, dept]);
+                    }}
+                    onClose={() => {
+                        setIsEmployeeManagerOpen(false);
+                        setSelectedEmployee(null);
+                    }}
+                    onSave={handleEmployeeManagerSave}
+                />
             )}
 
             {/* Termination Modal */}
@@ -1345,7 +1046,11 @@ export const Employees: React.FC<EmployeesProps> = ({
                                         ) : (
                                             <div className="flex justify-end items-center space-x-2">
                                                 {emp.status !== 'ARCHIVED' && (
-                                                    <button onClick={() => setSelectedEmployee(emp)} className="text-jam-orange hover:text-yellow-600 font-semibold">Edit</button>
+                                                    <button onClick={() => {
+                                                        setSelectedEmployee(emp);
+                                                        setEmployeeManagerMode('edit');
+                                                        setIsEmployeeManagerOpen(true);
+                                                    }} className="text-jam-orange hover:text-yellow-600 font-semibold">Edit</button>
                                                 )}
 
                                                 {/* Send Employee Portal Invite - Only for Pro/Reseller/Enterprise plans and ACTIVE employees */}
