@@ -79,7 +79,11 @@ export const Employees: React.FC<EmployeesProps> = ({
         firstName: '', lastName: '', email: '', trn: '', nis: '',
         employeeId: '', grossSalary: '', hourlyRate: '', role: Role.EMPLOYEE,
         payType: PayType.SALARIED, department: '', jobTitle: '',
-        bankName: 'NCB', accountNumber: ''
+        bankName: 'NCB', accountNumber: '',
+        joiningDate: new Date().toISOString().split('T')[0],
+        employeeType: 'STAFF',
+        pensionContributionRate: 0,
+        pensionProvider: ''
     });
 
     const [inviteData, setInviteData] = useState({
@@ -301,8 +305,13 @@ export const Employees: React.FC<EmployeesProps> = ({
             role: addForm.role,
             status: 'ACTIVE',
             hireDate: new Date().toISOString().split('T')[0],
+            joiningDate: addForm.joiningDate,
+            employeeType: addForm.employeeType as any,
+            pensionContributionRate: addForm.pensionContributionRate,
+            pensionProvider: addForm.pensionProvider || undefined,
             allowances: [],
             deductions: [],
+            customDeductions: [],
             department: addForm.department,
             jobTitle: addForm.jobTitle,
             bankDetails: {
@@ -315,7 +324,7 @@ export const Employees: React.FC<EmployeesProps> = ({
         onAddEmployee(newEmp);
         auditService.log(currentUser, 'CREATE', 'Employee', `Added new employee: ${newEmp.firstName} ${newEmp.lastName}`);
         setIsAddModalOpen(false);
-        setAddForm({ firstName: '', lastName: '', email: '', trn: '', nis: '', employeeId: '', grossSalary: '', hourlyRate: '', role: Role.EMPLOYEE, payType: PayType.SALARIED, department: '', jobTitle: '', bankName: 'NCB', accountNumber: '' });
+        setAddForm({ firstName: '', lastName: '', email: '', trn: '', nis: '', employeeId: '', grossSalary: '', hourlyRate: '', role: Role.EMPLOYEE, payType: PayType.SALARIED, department: '', jobTitle: '', bankName: 'NCB', accountNumber: '', joiningDate: new Date().toISOString().split('T')[0], employeeType: 'STAFF', pensionContributionRate: 0, pensionProvider: '' });
         toast.success("Employee added successfully");
     };
 
@@ -769,6 +778,15 @@ export const Employees: React.FC<EmployeesProps> = ({
                                             </div>
                                         )}
                                     </div>
+                                    <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Joining Date</label><input type="date" className="w-full border rounded p-2" value={selectedEmployee.joiningDate || ''} onChange={e => handleUpdateField('joiningDate', e.target.value)} /></div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Employee Type</label>
+                                        <select className="w-full border rounded p-2" value={selectedEmployee.employeeType || 'STAFF'} onChange={e => handleUpdateField('employeeType', e.target.value)}>
+                                            <option value="STAFF">Staff</option>
+                                            <option value="HOURLY">Hourly</option>
+                                            <option value="CONTRACTOR">Contractor</option>
+                                        </select>
+                                    </div>
                                 </div>
                             )}
                             {editTab === 'financial' && (
@@ -1078,6 +1096,31 @@ export const Employees: React.FC<EmployeesProps> = ({
                                     </div>
                                 </div>
                                 <input required type="text" placeholder="Account number or PENDING" className="w-full border border-gray-300 rounded-lg p-2" value={addForm.accountNumber} onChange={e => setAddForm({ ...addForm, accountNumber: e.target.value })} />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Gross Salary</label>
+                                <input required type="number" step="0.01" className="w-full border border-gray-300 rounded-lg p-2" value={addForm.grossSalary} onChange={e => setAddForm({ ...addForm, grossSalary: e.target.value })} />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Joining Date</label>
+                                <input required type="date" className="w-full border border-gray-300 rounded-lg p-2" value={addForm.joiningDate} onChange={e => setAddForm({ ...addForm, joiningDate: e.target.value })} />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Employee Type</label>
+                                <select className="w-full border border-gray-300 rounded-lg p-2" value={addForm.employeeType} onChange={e => setAddForm({ ...addForm, employeeType: e.target.value })}>
+                                    <option value="STAFF">Staff</option>
+                                    <option value="HOURLY">Hourly</option>
+                                    <option value="CONTRACTOR">Contractor</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Pension Contribution Rate (%)</label>
+                                <input type="number" min="0" max="100" step="0.1" className="w-full border border-gray-300 rounded-lg p-2" value={addForm.pensionContributionRate} onChange={e => setAddForm({ ...addForm, pensionContributionRate: parseFloat(e.target.value) })} />
+                                <p className="text-xs text-gray-500 mt-1">Deduction from salary, reduces statutory income for Ed Tax</p>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Pension Provider</label>
+                                <input type="text" placeholder="e.g., PICA, Proven, NCB Pension" className="w-full border border-gray-300 rounded-lg p-2" value={addForm.pensionProvider} onChange={e => setAddForm({ ...addForm, pensionProvider: e.target.value })} />
                             </div>
 
                             <div className="md:col-span-2 pt-4">
