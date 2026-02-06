@@ -84,7 +84,7 @@ export const calculateTaxes = (
 
   const paye = payeAnnual / periods;
 
-  const totalDeductions = nis + nht + edTax + paye + pensionAmount;
+  const totalDeductions = nis + nht + edTax + paye;
   const netPay = gross - totalDeductions;
 
   return {
@@ -92,6 +92,7 @@ export const calculateTaxes = (
     nht: parseFloat(nht.toFixed(2)),
     edTax: parseFloat(edTax.toFixed(2)),
     paye: parseFloat(paye.toFixed(2)),
+    pension: 0,
     totalDeductions: parseFloat(totalDeductions.toFixed(2)),
     netPay: parseFloat(netPay.toFixed(2))
   };

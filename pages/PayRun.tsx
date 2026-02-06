@@ -307,7 +307,7 @@ export const PayRun: React.FC<PayRunProps> = ({
     const [taxModalOpen, setTaxModalOpen] = useState(false);
     const [selectedTaxItem, setSelectedTaxItem] = useState<PayRunLineItem | null>(null);
     const [taxOverrideForm, setTaxOverrideForm] = useState<StatutoryDeductions>({
-        nis: 0, nht: 0, edTax: 0, paye: 0, totalDeductions: 0, netPay: 0
+        nis: 0, nht: 0, edTax: 0, paye: 0, pension: 0, totalDeductions: 0, netPay: 0
     });
 
     // Loading States

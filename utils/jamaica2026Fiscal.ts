@@ -243,9 +243,7 @@ export function calculateEmployeePayroll(
   const { gross: proratedGross } = proRatingResult;
 
   // 2. Calculate pension contribution
-  const pensionAmount = Math.round(proratedGross * (employee.pensionContributionRate || 0) * 100) / 100;
-
-  // 3. Calculate statutory deductions (using custom config if provided)
+  // Pension is included in statutory deductions return
   const statutoryDeductions = calculateStatutoryDeductions(proratedGross, employee.employeeType, periodEnd, employee.pensionContributionRate || 0, customConfig);
 
   // 4. Calculate net pay

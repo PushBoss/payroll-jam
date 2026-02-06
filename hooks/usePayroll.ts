@@ -59,7 +59,7 @@ export const usePayroll = (
         return { ytdGross, ytdNIS, ytdTaxPaid, ytdStatutoryIncome: ytdGross - ytdNIS };
     };
 
-    const calculateLineItem = (emp: Employee, period: string): PayRunLineItem => {
+    const calculateLineItem = (emp: Employee, period: string, periodStart?: string, periodEnd?: string): PayRunLineItem => {
         const [yearStr, monthStr] = period.split('-');
         const year = parseInt(yearStr);
         const month = parseInt(monthStr);
@@ -216,6 +216,7 @@ export const usePayroll = (
             nht: standardTaxes.nht,
             edTax: standardTaxes.edTax,
             paye: finalPAYE,
+            pension: standardTaxes.pension,
             totalDeductions: totalDeductions,
             netPay: netPay,
             prorationDetails,
