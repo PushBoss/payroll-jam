@@ -25,7 +25,7 @@ export const Jamaica2026TaxConfig: Jamaica2026TaxConfigType = {
   edTaxRate: 0.02, // 2% on gross above threshold
   
   // PAYE Thresholds 2026 - PRE-APRIL 1ST
-  payeThresholdPre: 400000, // JMD annual
+  payeThresholdPre: 1700096, // JMD 1.7M annual (2026 Official)
   payeBracketsPre: [
     {
       threshold: 0,
@@ -37,7 +37,7 @@ export const Jamaica2026TaxConfig: Jamaica2026TaxConfigType = {
   ],
   
   // PAYE Thresholds 2026 - POST-APRIL 1ST
-  payeThresholdPost: 480000, // JMD annual (increased)
+  payeThresholdPost: 1700096, // JMD 1.7M annual (2026 Official - same as pre-April)
   payeBracketsPost: [
     {
       threshold: 0,
@@ -50,7 +50,7 @@ export const Jamaica2026TaxConfig: Jamaica2026TaxConfigType = {
   
   payeRateStd: 0.25,
   payeRateHigh: 0.30,
-  payeThreshold: 480000, // Current default threshold (post-April 1st)
+  payeThreshold: 1700096, // Current default threshold (2026 Official - 1.7M)
   
   // Estate Levy for contractors
   estateLevyRate: 0.05 // 5% estate levy

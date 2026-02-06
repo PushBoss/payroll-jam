@@ -173,14 +173,14 @@ export function getPayeThresholdForPeriod(periodEndDate: string): {
   
   if (isPostApril) {
     return {
-      threshold: 480000, // Post-April threshold
+      threshold: 1700096, // Post-April threshold (2026 Official)
       effectiveDate: '2026-04-01',
       bracket: 'post-april'
     };
   }
   
   return {
-    threshold: 400000, // Pre-April threshold
+    threshold: 1700096, // Pre-April threshold (2026 Official)
     effectiveDate: '2026-01-01',
     bracket: 'pre-april'
   };
