@@ -474,7 +474,12 @@ function AppContent() {
 
   const handleUpdateEmployee = async (emp: Employee) => {
     setEmployees(prev => prev.map(e => e.id === emp.id ? emp : e));
-    if (isSupabaseMode && user?.companyId) await supabaseService.saveEmployee(emp, user.companyId);
+    if (isSupabaseMode && user?.companyId) {
+      await supabaseService.saveEmployee(emp, user.companyId);
+      // Refetch the employee from DB to ensure we have latest data (including custom_deductions)
+      const freshEmployees = await supabaseService.getEmployees(user.companyId);
+      setEmployees(freshEmployees);
+    }
   };
 
   const handleDeleteEmployee = async (employeeId: string) => {
