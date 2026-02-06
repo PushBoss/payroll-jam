@@ -99,6 +99,25 @@ export const usePayroll = (
         if (emp.deductions) {
             emp.deductions.forEach(d => deductionsBreakdown.push({ id: d.id, name: d.name, amount: d.amount }));
         }
+        // Add custom deductions to the breakdown
+        if (emp.customDeductions && emp.customDeductions.length > 0) {
+            emp.customDeductions.forEach(cd => {
+                // Only include in current period if the deduction is still active
+                if (cd.periodType === 'TARGET_BALANCE' && cd.currentBalance && cd.targetBalance && cd.currentBalance >= cd.targetBalance) {
+                    // Skip if target balance reached
+                    return;
+                }
+                if (cd.periodType === 'FIXED_TERM' && cd.remainingTerm && cd.remainingTerm <= 0) {
+                    // Skip if no periods remaining
+                    return;
+                }
+                deductionsBreakdown.push({
+                    id: cd.id,
+                    name: cd.name,
+                    amount: cd.amount
+                });
+            });
+        }
 
         // Unpaid Leave Logic
         const unpaidLeaves = leaveRequests.filter(r =>

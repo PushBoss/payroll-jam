@@ -530,6 +530,55 @@ export const PayRun: React.FC<PayRunProps> = ({
         // Don't send emails automatically - wait for user to click "Email All"
         onSave(newRun);
         auditService.log(currentUser, 'CREATE', 'PayRun', `Finalized payroll for ${payPeriod}`);
+        
+        // Update custom deductions for employees in this payrun
+        // FIXED_TERM deductions: decrement remainingTerm
+        // TARGET_BALANCE deductions: increment currentBalance
+        const { supabaseService } = await import('../services/supabaseService');
+        for (const lineItem of draftItems) {
+            const employee = employees.find(e => e.id === lineItem.employeeId);
+            if (!employee || !employee.customDeductions || employee.customDeductions.length === 0) continue;
+
+            // Process custom deductions
+            const updatedCustomDeductions = employee.customDeductions.map(deduction => {
+                // Check if this deduction is in the current payrun
+                const deductionInBreakdown = lineItem.deductionsBreakdown?.some(d => d.id === deduction.id);
+                if (!deductionInBreakdown) return deduction;
+
+                // Handle FIXED_TERM deductions
+                if (deduction.periodType === 'FIXED_TERM' && deduction.remainingTerm !== undefined) {
+                    return {
+                        ...deduction,
+                        remainingTerm: Math.max(0, deduction.remainingTerm - 1)
+                    };
+                }
+
+                // Handle TARGET_BALANCE deductions
+                if (deduction.periodType === 'TARGET_BALANCE') {
+                    const currentBalance = deduction.currentBalance || 0;
+                    return {
+                        ...deduction,
+                        currentBalance: currentBalance + deduction.amount
+                    };
+                }
+
+                return deduction;
+            });
+
+            // Save updated employee with modified custom deductions
+            const updatedEmployee = {
+                ...employee,
+                customDeductions: updatedCustomDeductions
+            };
+
+            try {
+                await supabaseService.saveEmployee(updatedEmployee, currentUser?.companyId || '');
+                console.log(`✅ Updated custom deductions for ${employee.firstName} ${employee.lastName}`);
+            } catch (error) {
+                console.error(`❌ Failed to update custom deductions for ${employee.firstName} ${employee.lastName}:`, error);
+            }
+        }
+
         setCurrentRun(newRun);
         setIsPayRunConfirmed(true);
         setIsFinalizing(false);
