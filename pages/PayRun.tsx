@@ -1209,7 +1209,6 @@ export const PayRun: React.FC<PayRunProps> = ({
             {/* Date Range Selector Modal */}
             {isDateRangeSelectorOpen && (
                 <PayRunDateRangeSelector
-                    isOpen={isDateRangeSelectorOpen}
                     onClose={() => setIsDateRangeSelectorOpen(false)}
                     payFrequency={payCycle !== 'ALL' ? payCycle : PayFrequency.MONTHLY}
                     onDateRangeChange={(startDate, endDate) => {

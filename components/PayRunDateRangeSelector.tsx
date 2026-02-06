@@ -13,7 +13,6 @@ interface PayRunDateRangeSelectorProps {
   onDateRangeChange: (startDate: string, endDate: string) => void;
   initialStartDate?: string;
   initialEndDate?: string;
-  isOpen: boolean;
   onClose: () => void;
 }
 
@@ -22,24 +21,21 @@ export const PayRunDateRangeSelector: React.FC<PayRunDateRangeSelectorProps> = (
   onDateRangeChange,
   initialStartDate,
   initialEndDate,
-  isOpen,
   onClose
 }) => {
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
 
   useEffect(() => {
-    if (isOpen) {
-      if (initialStartDate && initialEndDate) {
-        setStartDate(initialStartDate);
-        setEndDate(initialEndDate);
-      } else {
-        const defaults = getDefaultPeriodDates(payFrequency);
-        setStartDate(defaults.startDate);
-        setEndDate(defaults.endDate);
-      }
+    if (initialStartDate && initialEndDate) {
+      setStartDate(initialStartDate);
+      setEndDate(initialEndDate);
+    } else {
+      const defaults = getDefaultPeriodDates(payFrequency);
+      setStartDate(defaults.startDate);
+      setEndDate(defaults.endDate);
     }
-  }, [isOpen, payFrequency, initialStartDate, initialEndDate]);
+  }, [payFrequency, initialStartDate, initialEndDate]);
 
   const handleApply = () => {
     if (startDate && endDate) {
@@ -92,8 +88,6 @@ export const PayRunDateRangeSelector: React.FC<PayRunDateRangeSelectorProps> = (
     const end = new Date(endDate);
     return Math.ceil((end.getTime() - start.getTime()) / (1000 * 3600 * 24)) + 1;
   };
-
-  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">

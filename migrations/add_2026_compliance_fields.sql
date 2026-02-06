@@ -6,20 +6,36 @@ BEGIN;
 
 -- Add missing columns to employees table if they don't exist
 ALTER TABLE IF EXISTS public.employees
-  ADD COLUMN IF NOT EXISTS joining_date DATE COMMENT 'Date employee joined (for pro-rating calculations)',
-  ADD COLUMN IF NOT EXISTS annual_leave INTEGER DEFAULT 14 COMMENT 'Annual leave entitlement in days',
-  ADD COLUMN IF NOT EXISTS employee_type VARCHAR(50) DEFAULT 'FULL_TIME' COMMENT 'Employee type: FULL_TIME, PART_TIME, CONTRACTOR, STAFF',
-  ADD COLUMN IF NOT EXISTS nht_status VARCHAR(50) DEFAULT 'PENDING' COMMENT 'NHT registration status: REGISTERED, EXEMPT, PENDING',
-  ADD COLUMN IF NOT EXISTS nht_number VARCHAR(100) COMMENT 'NHT registration number',
-  ADD COLUMN IF NOT EXISTS phone VARCHAR(20) COMMENT 'Employee phone number',
-  ADD COLUMN IF NOT EXISTS address TEXT COMMENT 'Employee address',
-  ADD COLUMN IF NOT EXISTS gender VARCHAR(20) COMMENT 'Gender: MALE, FEMALE, OTHER',
-  ADD COLUMN IF NOT EXISTS date_of_birth DATE COMMENT 'Date of birth',
-  ADD COLUMN IF NOT EXISTS designation VARCHAR(255) COMMENT 'Job designation',
-  ADD COLUMN IF NOT EXISTS profile_image_url VARCHAR(500) COMMENT 'URL to profile image',
-  ADD COLUMN IF NOT EXISTS emergency_contact VARCHAR(255) COMMENT 'Emergency contact name and phone',
-  ADD COLUMN IF NOT EXISTS custom_deductions JSONB DEFAULT '[]' COMMENT 'Array of custom deductions with tracking (FixedAmount, FixedTerm, TargetBalance)',
-  ADD COLUMN IF NOT EXISTS leave_balance JSONB DEFAULT '{"vacation": 14, "sick": 3, "personal": 0}' COMMENT 'Leave balance tracking';
+  ADD COLUMN IF NOT EXISTS joining_date DATE,
+  ADD COLUMN IF NOT EXISTS annual_leave INTEGER DEFAULT 14,
+  ADD COLUMN IF NOT EXISTS employee_type VARCHAR(50) DEFAULT 'FULL_TIME',
+  ADD COLUMN IF NOT EXISTS nht_status VARCHAR(50) DEFAULT 'PENDING',
+  ADD COLUMN IF NOT EXISTS nht_number VARCHAR(100),
+  ADD COLUMN IF NOT EXISTS phone VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS address TEXT,
+  ADD COLUMN IF NOT EXISTS gender VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS date_of_birth DATE,
+  ADD COLUMN IF NOT EXISTS designation VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS profile_image_url VARCHAR(500),
+  ADD COLUMN IF NOT EXISTS emergency_contact VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS custom_deductions JSONB DEFAULT '[]',
+  ADD COLUMN IF NOT EXISTS leave_balance JSONB DEFAULT '{"vacation": 14, "sick": 3, "personal": 0}';
+
+-- Add column comments
+COMMENT ON COLUMN public.employees.joining_date IS 'Date employee joined (for pro-rating calculations)';
+COMMENT ON COLUMN public.employees.annual_leave IS 'Annual leave entitlement in days';
+COMMENT ON COLUMN public.employees.employee_type IS 'Employee type: FULL_TIME, PART_TIME, CONTRACTOR, STAFF';
+COMMENT ON COLUMN public.employees.nht_status IS 'NHT registration status: REGISTERED, EXEMPT, PENDING';
+COMMENT ON COLUMN public.employees.nht_number IS 'NHT registration number';
+COMMENT ON COLUMN public.employees.phone IS 'Employee phone number';
+COMMENT ON COLUMN public.employees.address IS 'Employee address';
+COMMENT ON COLUMN public.employees.gender IS 'Gender: MALE, FEMALE, OTHER';
+COMMENT ON COLUMN public.employees.date_of_birth IS 'Date of birth';
+COMMENT ON COLUMN public.employees.designation IS 'Job designation';
+COMMENT ON COLUMN public.employees.profile_image_url IS 'URL to profile image';
+COMMENT ON COLUMN public.employees.emergency_contact IS 'Emergency contact name and phone';
+COMMENT ON COLUMN public.employees.custom_deductions IS 'Array of custom deductions with tracking (FixedAmount, FixedTerm, TargetBalance)';
+COMMENT ON COLUMN public.employees.leave_balance IS 'Leave balance tracking';
 
 -- Create indexes for new columns used in filtering
 CREATE INDEX IF NOT EXISTS idx_employee_type ON public.employees(employee_type);
