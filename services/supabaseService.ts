@@ -886,7 +886,7 @@ export const supabaseService = {
       bankDetails: e.bank_details || {},
       leaveBalance: e.leave_balance || { vacation: 0, sick: 0, personal: 0 },
       allowances: e.allowances || [],
-      deductions: e.deductions || [],
+      customDeductions: e.deductions || [],
       terminationDetails: e.termination_details || undefined,
       onboardingToken: e.onboarding_token
     }));
