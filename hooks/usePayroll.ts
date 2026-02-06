@@ -59,13 +59,28 @@ export const usePayroll = (
         return { ytdGross, ytdNIS, ytdTaxPaid, ytdStatutoryIncome: ytdGross - ytdNIS };
     };
 
-    const calculateLineItem = (emp: Employee, period: string): PayRunLineItem => {
-        const [yearStr, monthStr] = period.split('-');
-        const year = parseInt(yearStr);
-        const month = parseInt(monthStr);
-        const periodStart = `${period}-01`;
-        const lastDay = new Date(year, month, 0).getDate();
-        const periodEnd = `${period}-${lastDay}`;
+    const calculateLineItem = (emp: Employee, period: string, customPeriodStart?: string, customPeriodEnd?: string): PayRunLineItem => {
+        let periodStart = customPeriodStart;
+        let periodEnd = customPeriodEnd;
+        let year = new Date().getFullYear();
+        let month = new Date().getMonth() + 1;
+
+        // If custom dates not provided, calculate from period string
+        if (!periodStart || !periodEnd) {
+            const [yearStr, monthStr] = period.split('-');
+            year = parseInt(yearStr);
+            month = parseInt(monthStr);
+            periodStart = `${period}-01`;
+            periodEnd = (() => {
+                const lastDay = new Date(year, month, 0).getDate();
+                return `${period}-${lastDay}`;
+            })();
+        } else {
+            // Extract year/month from custom dates for YTD calculations
+            const startParts = periodStart.split('-');
+            year = parseInt(startParts[0]);
+            month = parseInt(startParts[1]);
+        }
 
         let grossPay = 0;
         let prorationDetails = undefined;
@@ -222,13 +237,23 @@ export const usePayroll = (
         };
     };
 
-    const initializeRun = (payCycle: PayFrequency | 'ALL', period: string) => {
+    const initializeRun = (payCycle: PayFrequency | 'ALL', period: string, customStartDate?: string, customEndDate?: string) => {
         const eligibleEmployees = employees.filter(e =>
             e.status === 'ACTIVE' &&
             (payCycle === 'ALL' || e.payFrequency === payCycle)
         );
 
-        const lines = eligibleEmployees.map(emp => calculateLineItem(emp, period));
+        // Use custom dates if provided, otherwise use period-based dates
+        const periodStart = customStartDate || `${period}-01`;
+        const periodEnd = customEndDate || (() => {
+            const [yearStr, monthStr] = period.split('-');
+            const year = parseInt(yearStr);
+            const month = parseInt(monthStr);
+            const lastDay = new Date(year, month, 0).getDate();
+            return `${period}-${lastDay}`;
+        })();
+
+        const lines = eligibleEmployees.map(emp => calculateLineItem(emp, period, periodStart, periodEnd));
         setDraftItems(lines);
         return lines.length > 0;
     };

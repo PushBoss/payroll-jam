@@ -426,10 +426,12 @@ export const PayRun: React.FC<PayRunProps> = ({
     const handleInitializeSystem = () => {
         setIsCalculating(true);
         setTimeout(() => {
-            const hasData = initializeRun(payCycle, payPeriod);
+            // Pass custom dates if available
+            const hasData = initializeRun(payCycle, payPeriod, periodStartDate || undefined, periodEndDate || undefined);
             if (hasData) {
                 setStep('DRAFT');
-                auditService.log(currentUser, 'CREATE', 'PayRun', `Initialized draft payroll for ${payPeriod}`);
+                const dateInfo = periodStartDate && periodEndDate ? ` (${periodStartDate} to ${periodEndDate})` : '';
+                auditService.log(currentUser, 'CREATE', 'PayRun', `Initialized draft payroll for ${payPeriod}${dateInfo}`);
                 toast.success("Payroll calculated from system data (Cumulative YTD Applied)");
             } else {
                 toast.error("No eligible employees found for this selection.");
