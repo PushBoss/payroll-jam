@@ -166,7 +166,7 @@ export interface Employee {
   department?: string;
   phone?: string;
   address?: string;
-  gender?: 'MALE' | 'FEMALE' | 'OTHER';
+  gender?: 'Male' | 'Female' | 'Other' | 'Prefer not to say';
   dateOfBirth?: string;
   profileImageUrl?: string;
   emergencyContact?: string;

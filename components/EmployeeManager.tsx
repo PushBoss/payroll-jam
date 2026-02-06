@@ -67,7 +67,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
       department: '',
       phone: '',
       address: '',
-      gender: 'MALE',
+      gender: 'Male',
       dateOfBirth: '',
       profileImageUrl: '',
       emergencyContact: '',
@@ -315,9 +315,10 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                     className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange bg-white transition-all"
                   >
                     <option value="">Select Gender</option>
-                    <option value="MALE">Male</option>
-                    <option value="FEMALE">Female</option>
-                    <option value="OTHER">Other</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                    <option value="Prefer not to say">Prefer not to say</option>
                   </select>
                 </div>
 
