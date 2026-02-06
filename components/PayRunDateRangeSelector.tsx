@@ -192,8 +192,7 @@ export const PayRunDateRangeSelector: React.FC<PayRunDateRangeSelectorProps> = (
             disabled={!startDate || !endDate}
             className="px-6 py-2 bg-jam-black text-white rounded-lg font-medium hover:bg-gray-900 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
           >
-            <Icons.Check className="w-4 h-4 mr-2" />
-            Apply Dates
+            ✓ Apply Dates
           </button>
         </div>
       </div>
