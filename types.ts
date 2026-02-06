@@ -19,6 +19,29 @@ export enum PayType {
   COMMISSION = 'COMMISSION'
 }
 
+export enum EmployeeType {
+  FULL_TIME = 'FULL_TIME',
+  PART_TIME = 'PART_TIME',
+  CONTRACTOR = 'CONTRACTOR',
+  STAFF = 'STAFF'
+}
+
+export enum DeductionPeriodType {
+  FIXED_AMOUNT = 'FIXED_AMOUNT',
+  FIXED_TERM = 'FIXED_TERM',
+  TARGET_BALANCE = 'TARGET_BALANCE'
+}
+
+export interface CustomDeduction {
+  id: string;
+  name: string;
+  amount: number;
+  periodType: DeductionPeriodType;
+  remainingTerm?: number; // For FIXED_TERM: number of pay periods remaining
+  targetBalance?: number; // For TARGET_BALANCE: target amount to reach
+  currentBalance?: number; // For TARGET_BALANCE: amount collected so far
+}
+
 export interface User {
   id: string;
   name: string;
@@ -123,6 +146,7 @@ export interface Employee {
   email: string;
   trn: string; // Tax Registration Number
   nis: string; // National Insurance Scheme
+  nhtStatus?: 'REGISTERED' | 'EXEMPT' | 'PENDING'; // NHT (National Health Trust) status
   employeeId?: string; // User-defined Employee ID (e.g., "EMP001", "12345")
   grossSalary: number; // Base Salary for Salaried/Commission
   hourlyRate?: number; // For hourly employees
@@ -131,15 +155,28 @@ export interface Employee {
   role: Role;
   status: 'ACTIVE' | 'ARCHIVED' | 'PENDING_ONBOARDING' | 'PENDING_VERIFICATION' | 'TERMINATED';
   hireDate: string;
+  joiningDate?: string; // Exact date employee joined (for pro-rating)
+  annualLeave?: number; // Annual leave entitlement
+  employeeType?: EmployeeType; // Full-time, Part-time, Contractor, Staff
   onboardingToken?: string;
 
   // Extended Profile Fields
   jobTitle?: string;
+  designation?: string; // Job designation
   department?: string;
   phone?: string;
   address?: string;
+  gender?: 'MALE' | 'FEMALE' | 'OTHER';
+  dateOfBirth?: string;
+  profileImageUrl?: string;
   emergencyContact?: string;
 
+  // Banking Details
+  bankDetails?: BankAccount;
+
+  // Statutory Details
+  nhtNumber?: string; // NHT registration number
+  
   // Verification Documents
   verificationDocuments?: {
     fileName: string;
@@ -149,14 +186,15 @@ export interface Employee {
   documentsVerifiedAt?: string; // When employer verified the documents
   documentsVerifiedBy?: string; // User ID who verified
 
+  // Deductions & Allowances
   allowances?: Allowance[];
   deductions?: Deduction[];
+  customDeductions?: CustomDeduction[]; // Custom deductions with tracking
   leaveBalance?: {
     vacation: number;
     sick: number;
     personal: number;
   };
-  bankDetails?: BankAccount;
 
   // Exiting info
   terminationDetails?: TerminationDetails;
@@ -378,6 +416,43 @@ export interface TaxConfig {
   payeThreshold: number;
   payeRateStd: number;
   payeRateHigh: number;
+}
+
+// 2026 Jamaica PAYE Thresholds - Two brackets per year
+export interface PAYEBracket {
+  threshold: number;
+  rateStd: number;
+  rateHigh: number;
+  effectiveFrom: string; // YYYY-MM-DD
+  effectiveUntil?: string; // YYYY-MM-DD
+}
+
+export interface Jamaica2026TaxConfig extends TaxConfig {
+  // NIS Rates 2026
+  nisRate: number; // Employee contribution rate
+  nisEmployerRate: number; // Employer contribution rate
+  nisCap: number; // Maximum pensionable earnings
+  nisMaxContribution: number;
+  
+  // NHT Rates 2026
+  nhtRate: number; // Combined rate (employee + employer typically around 5.5%)
+  nhtEmployeeRate: number;
+  nhtEmployerRate: number;
+  nhtCap: number;
+  
+  // Education Tax 2026
+  edTaxRate: number;
+  
+  // PAYE Thresholds 2026
+  payeBracketsPre: PAYEBracket[]; // Pre-April 1st brackets
+  payeBracketsPost: PAYEBracket[]; // Post-April 1st brackets
+  payeThresholdPre: number; // Pre-April 1st threshold
+  payeThresholdPost: number; // Post-April 1st threshold
+  payeRateStd: number;
+  payeRateHigh: number;
+  
+  // Deduction handling
+  estateLevyRate?: number; // For contractor-specific calculations
 }
 
 export interface GlobalConfig {
