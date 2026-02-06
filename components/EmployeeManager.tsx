@@ -311,7 +311,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                   </label>
                   <select
                     value={formData.gender || ''}
-                    onChange={e => handleInputChange('gender', e.target.value || undefined)}
+                    onChange={e => handleInputChange('gender', e.target.value === '' ? undefined : e.target.value)}
                     className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange bg-white transition-all"
                   >
                     <option value="">Select Gender</option>
