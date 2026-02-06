@@ -716,7 +716,11 @@ export const PayRun: React.FC<PayRunProps> = ({
 
                     <div className="mb-6">
                         <button
-                            onClick={() => setIsDateRangeSelectorOpen(true)}
+                            type="button"
+                            onClick={() => {
+                                console.log('Opening date range selector...', {isOpen: isDateRangeSelectorOpen});
+                                setIsDateRangeSelectorOpen(true);
+                            }}
                             className="w-full py-2 px-4 border border-jam-orange text-jam-orange rounded-lg font-semibold hover:bg-orange-50 transition-colors flex items-center justify-center"
                         >
                             <Icons.Calendar className="w-4 h-4 mr-2" />

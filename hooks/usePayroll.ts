@@ -149,7 +149,9 @@ export const usePayroll = (
             grossPay = emp.grossSalary || 0;
         } else {
             const fullSalary = emp.grossSalary;
-            const proration = calculateProration(fullSalary, emp.hireDate, periodStart, periodEnd);
+            // Use joiningDate if available (new field), otherwise fall back to hireDate
+            const prorationDate = emp.joiningDate || emp.hireDate;
+            const proration = calculateProration(fullSalary, prorationDate, periodStart, periodEnd);
             if (proration.isProrated) {
                 grossPay = proration.amount;
                 prorationDetails = {
