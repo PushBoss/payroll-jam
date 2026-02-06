@@ -70,6 +70,7 @@ export interface CustomDeduction {
   amount: number;
   periodType: 'FIXED_TERM' | 'TARGET_BALANCE';
   remainingTerm?: number; // For fixed-term deductions
+  periodFrequency?: 'WEEKLY' | 'FORTNIGHTLY' | 'MONTHLY'; // Period frequency for remaining terms
   currentBalance?: number; // For target-balance deductions
   targetBalance?: number; // Target to reach
 }

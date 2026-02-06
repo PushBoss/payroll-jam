@@ -139,6 +139,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
       amount: deductionToAdd.amount,
       periodType: deductionToAdd.periodType,
       remainingTerm: deductionToAdd.remainingTerm,
+      periodFrequency: deductionToAdd.periodFrequency || 'MONTHLY',
       targetBalance: deductionToAdd.targetBalance
     };
 
@@ -790,6 +791,20 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                         placeholder="Number of pay periods"
                       />
                     </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Period Frequency
+                      </label>
+                      <select
+                        value={deductionToAdd.periodFrequency || 'MONTHLY'}
+                        onChange={e => setDeductionToAdd(prev => ({ ...prev, periodFrequency: e.target.value as 'WEEKLY' | 'FORTNIGHTLY' | 'MONTHLY' }))}
+                        className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange bg-white transition-all"
+                      >
+                        <option value="WEEKLY">Weekly</option>
+                        <option value="FORTNIGHTLY">Fortnightly</option>
+                        <option value="MONTHLY">Monthly</option>
+                      </select>
+                    </div>
                   </div>
                 )}
 
@@ -844,7 +859,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                           <p className="font-medium text-gray-900 text-sm">{deduction.name}</p>
                           <p className="text-xs text-gray-600">
                             ${deduction.amount.toLocaleString()} • {deduction.periodType}
-                            {deduction.remainingTerm && ` • ${deduction.remainingTerm} periods left`}
+                            {deduction.remainingTerm && ` • ${deduction.remainingTerm} ${(deduction.periodFrequency || 'MONTHLY').toLowerCase()} periods left`}
                             {deduction.targetBalance && ` • Target: $${deduction.targetBalance.toLocaleString()}`}
                           </p>
                         </div>
