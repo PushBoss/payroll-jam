@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import Papa from 'papaparse';
 import { Employee, PayFrequency, Role, PayRun, CompanySettings, PayType, Department, Designation, Asset, PerformanceReview, TerminationDetails, BankAccount, PricingPlan, User } from '../types';
 import { Icons } from '../components/Icons';
+import { EmployeeManager } from '../components/EmployeeManager';
 import { auditService } from '../services/auditService';
 import { downloadFile, generateP45CSV } from '../utils/exportHelpers';
 import { emailService } from '../services/emailService';
@@ -70,6 +71,10 @@ export const Employees: React.FC<EmployeesProps> = ({
     // Edit State
     const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
     const [editTab, setEditTab] = useState<'profile' | 'financial' | 'banking'>('profile');
+    
+    // New EmployeeManager State
+    const [isEmployeeManagerOpen, setIsEmployeeManagerOpen] = useState(false);
+    const [employeeManagerMode, setEmployeeManagerMode] = useState<'add' | 'edit'>('add');
 
     const [searchTerm, setSearchTerm] = useState('');
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -122,9 +127,9 @@ export const Employees: React.FC<EmployeesProps> = ({
 
     const handleAddClick = () => {
         if (checkPlanLimit(1)) {
-            setIsAddingNewDept(false);
-            setNewInlineDeptName('');
-            setIsAddModalOpen(true);
+            setSelectedEmployee(null);
+            setEmployeeManagerMode('add');
+            setIsEmployeeManagerOpen(true);
         }
     };
 
@@ -317,6 +322,27 @@ export const Employees: React.FC<EmployeesProps> = ({
         setIsAddModalOpen(false);
         setAddForm({ firstName: '', lastName: '', email: '', trn: '', nis: '', employeeId: '', grossSalary: '', hourlyRate: '', role: Role.EMPLOYEE, payType: PayType.SALARIED, department: '', jobTitle: '', bankName: 'NCB', accountNumber: '' });
         toast.success("Employee added successfully");
+    };
+
+    const handleEmployeeManagerSave = (employee: Employee) => {
+        if (employeeManagerMode === 'add') {
+            const newEmp: Employee = {
+                ...employee,
+                id: employee.id || generateUUID(),
+                status: 'ACTIVE',
+                payFrequency: employee.payFrequency || PayFrequency.MONTHLY,
+                role: employee.role || Role.EMPLOYEE
+            };
+            onAddEmployee(newEmp);
+            auditService.log(currentUser, 'CREATE', 'Employee', `Added new employee: ${newEmp.firstName} ${newEmp.lastName}`);
+            toast.success("Employee added successfully");
+        } else {
+            onUpdateEmployee(employee);
+            auditService.log(currentUser, 'UPDATE', 'Employee', `Updated employee: ${employee.firstName} ${employee.lastName}`);
+            toast.success("Employee updated successfully");
+        }
+        setIsEmployeeManagerOpen(false);
+        setSelectedEmployee(null);
     };
 
     const handleInlineAddDept = () => {
@@ -1430,6 +1456,19 @@ export const Employees: React.FC<EmployeesProps> = ({
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* New EmployeeManager Component */}
+            {isEmployeeManagerOpen && (
+                <EmployeeManager
+                    employee={selectedEmployee || { id: '', firstName: '', lastName: '', email: '', trn: '', nis: '', grossSalary: 0, payType: PayType.SALARIED, payFrequency: PayFrequency.MONTHLY, role: Role.EMPLOYEE, status: 'ACTIVE', hireDate: '', bankDetails: { bankName: 'NCB', accountNumber: '', accountType: 'SAVINGS', currency: 'JMD' }, customDeductions: [] }}
+                    isOpen={isEmployeeManagerOpen}
+                    onClose={() => {
+                        setIsEmployeeManagerOpen(false);
+                        setSelectedEmployee(null);
+                    }}
+                    onSave={handleEmployeeManagerSave}
+                />
             )}
         </div>
     );

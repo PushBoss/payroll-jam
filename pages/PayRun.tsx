@@ -6,6 +6,7 @@ import { generateNCBFile, generateBNSFile, generateGLCSV } from '../utils/export
 import { auditService } from '../services/auditService';
 import { emailService } from '../services/emailService';
 import { PayslipView } from '../components/PayslipView';
+import { PayRunDateRangeSelector } from '../components/PayRunDateRangeSelector';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { generateUUID } from '../utils/uuid';
@@ -284,6 +285,11 @@ export const PayRun: React.FC<PayRunProps> = ({
     const [payPeriod, setPayPeriod] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
     const [editingRun, setEditingRun] = useState<PayRunType | null>(null);
     const [hasLoadedEdit, setHasLoadedEdit] = useState(false);
+
+    // Date Range Selector State
+    const [isDateRangeSelectorOpen, setIsDateRangeSelectorOpen] = useState(false);
+    const [periodStartDate, setPeriodStartDate] = useState<string | null>(null);
+    const [periodEndDate, setPeriodEndDate] = useState<string | null>(null);
 
     // Modal States
     const [adHocModal, setAdHocModal] = useState<{
@@ -704,6 +710,21 @@ export const PayRun: React.FC<PayRunProps> = ({
                                 <option value="ALL">All Employees (Mixed)</option>
                             </select>
                         </div>
+                    </div>
+
+                    <div className="mb-6">
+                        <button
+                            onClick={() => setIsDateRangeSelectorOpen(true)}
+                            className="w-full py-2 px-4 border border-jam-orange text-jam-orange rounded-lg font-semibold hover:bg-orange-50 transition-colors flex items-center justify-center"
+                        >
+                            <Icons.Calendar className="w-4 h-4 mr-2" />
+                            Or Select Custom Date Range
+                        </button>
+                        {periodStartDate && periodEndDate && (
+                            <p className="text-xs text-gray-500 mt-2">
+                                Selected: {periodStartDate} to {periodEndDate}
+                            </p>
+                        )}
                     </div>
 
                     {isSuspended && (
@@ -1184,6 +1205,20 @@ export const PayRun: React.FC<PayRunProps> = ({
                     <p className="text-xs text-gray-500">All records have been archived to Reports / Payroll Register.</p>
                 </div>
             </div>
+
+            {/* Date Range Selector Modal */}
+            {isDateRangeSelectorOpen && (
+                <PayRunDateRangeSelector
+                    isOpen={isDateRangeSelectorOpen}
+                    onClose={() => setIsDateRangeSelectorOpen(false)}
+                    payFrequency={payCycle !== 'ALL' ? payCycle : PayFrequency.MONTHLY}
+                    onDateRangeChange={(startDate, endDate) => {
+                        setPeriodStartDate(startDate);
+                        setPeriodEndDate(endDate);
+                        setIsDateRangeSelectorOpen(false);
+                    }}
+                />
+            )}
         </div>
     );
 };
