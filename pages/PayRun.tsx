@@ -645,6 +645,7 @@ export const PayRun: React.FC<PayRunProps> = ({
             nht: item.nht,
             edTax: item.edTax,
             paye: item.paye,
+            pension: item.pension,
             totalDeductions: item.totalDeductions,
             netPay: item.netPay
         });

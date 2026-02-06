@@ -59,13 +59,27 @@ export const usePayroll = (
         return { ytdGross, ytdNIS, ytdTaxPaid, ytdStatutoryIncome: ytdGross - ytdNIS };
     };
 
-    const calculateLineItem = (emp: Employee, period: string, periodStart?: string, periodEnd?: string): PayRunLineItem => {
+    const calculateLineItem = (emp: Employee, period: string, customPeriodStart?: string, customPeriodEnd?: string): PayRunLineItem => {
         const [yearStr, monthStr] = period.split('-');
         const year = parseInt(yearStr);
         const month = parseInt(monthStr);
-        const periodStart = `${period}-01`;
-        const lastDay = new Date(year, month, 0).getDate();
-        const periodEnd = `${period}-${lastDay}`;
+        
+        // Ensure periods are always strings with defaults
+        let periodStart: string;
+        let periodEnd: string;
+        
+        if (customPeriodStart) {
+            periodStart = customPeriodStart;
+        } else {
+            periodStart = `${period}-01`;
+        }
+        
+        if (customPeriodEnd) {
+            periodEnd = customPeriodEnd;
+        } else {
+            const lastDay = new Date(year, month, 0).getDate();
+            periodEnd = `${period}-${lastDay}`;
+        }
 
         let grossPay = 0;
         let prorationDetails = undefined;
