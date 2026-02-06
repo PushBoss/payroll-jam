@@ -91,7 +91,7 @@ export const migrationService = {
               payFrequency: emp.payFrequency
             },
             allowances: emp.allowances || [],
-            deductions: emp.deductions || [],
+            deductions: emp.customDeductions || [],
             leave_balance: emp.leaveBalance || { vacation: 0, sick: 0, personal: 0 },
             bank_details: emp.bankDetails,
             termination_details: emp.terminationDetails,

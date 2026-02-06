@@ -95,8 +95,8 @@ export const usePayroll = (
                 isTaxable: a.isTaxable
             }));
         }
-        if (emp.deductions) {
-            emp.deductions.forEach(d => deductionsBreakdown.push({ id: d.id, name: d.name, amount: d.amount }));
+        if (emp.customDeductions) {
+            emp.customDeductions.forEach(d => deductionsBreakdown.push({ id: d.id, name: d.name, amount: d.amount }));
         }
 
         // Unpaid Leave Logic

@@ -1019,7 +1019,7 @@ export const supabaseService = {
         bank_details: emp.bankDetails,
         leave_balance: emp.leaveBalance,
         allowances: emp.allowances,
-        deductions: emp.deductions,
+        deductions: emp.customDeductions,
         termination_details: emp.terminationDetails,
         onboarding_token: emp.onboardingToken || null
       });
@@ -1051,7 +1051,7 @@ export const supabaseService = {
             bank_details: emp.bankDetails,
             leave_balance: emp.leaveBalance,
             allowances: emp.allowances,
-            deductions: emp.deductions,
+            deductions: emp.customDeductions,
             termination_details: emp.terminationDetails,
             onboarding_token: emp.onboardingToken || null
           });
