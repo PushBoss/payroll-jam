@@ -158,6 +158,10 @@ export interface Employee {
   };
   bankDetails?: BankAccount;
 
+  // Pension Details
+  pensionContributionRate?: number; // e.g., 5 for 5%
+  pensionProvider?: string; // Name of pension provider
+
   // Exiting info
   terminationDetails?: TerminationDetails;
 }

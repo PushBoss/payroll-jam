@@ -158,7 +158,11 @@ export const usePayroll = (
         const currentGross = Math.max(0, grossPay + taxableAdditions);
 
         // 1. Calculate Standard Period Taxes (NIS, NHT, Ed)
-        const standardTaxes = calculateTaxes(currentGross, emp.payFrequency, policies);
+        const policiesWithPension = {
+            ...policies,
+            pension: emp.pensionContributionRate || 0
+        };
+        const standardTaxes = calculateTaxes(currentGross, emp.payFrequency, policiesWithPension);
 
         // 2. Apply Cumulative Logic for PAYE if Salaried
         // (Cumulative mostly applies to regular employees. Hourly/Casual often taxed flatly in simpler systems, 
@@ -184,7 +188,7 @@ export const usePayroll = (
             ytdData.ytdTaxPaid,
             periodNumber,
             emp.payFrequency,
-            policies
+            policiesWithPension
         );
 
         // Override the standard period PAYE with the Cumulative one

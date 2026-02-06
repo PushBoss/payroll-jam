@@ -69,7 +69,7 @@ export const Employees: React.FC<EmployeesProps> = ({
 
     // Edit State
     const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
-    const [editTab, setEditTab] = useState<'profile' | 'financial' | 'banking'>('profile');
+    const [editTab, setEditTab] = useState<'profile' | 'financial' | 'banking' | 'pensions'>('profile');
 
     const [searchTerm, setSearchTerm] = useState('');
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -713,7 +713,7 @@ export const Employees: React.FC<EmployeesProps> = ({
 
                         <div className="border-b border-gray-200 px-6 shrink-0 bg-white">
                             <nav className="-mb-px flex space-x-8">
-                                {['profile', 'financial', 'banking'].map((tab) => (
+                                {['profile', 'financial', 'banking', 'pensions'].map((tab) => (
                                     <button
                                         key={tab}
                                         onClick={() => setEditTab(tab as any)}
@@ -835,6 +835,20 @@ export const Employees: React.FC<EmployeesProps> = ({
                                         <input className="w-full border rounded p-2" value={selectedEmployee.bankDetails?.accountNumber} onChange={e => handleUpdateBank('accountNumber', e.target.value)} />
                                     </div>
                                     <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Branch Code (Optional)</label><input className="w-full border rounded p-2" value={selectedEmployee.bankDetails?.branchCode || ''} onChange={e => handleUpdateBank('branchCode', e.target.value)} /></div>
+                                </div>
+                            )}
+                            {editTab === 'pensions' && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Pension Contribution Rate (%)</label>
+                                        <input type="number" min="0" max="100" step="0.1" className="w-full border rounded p-2" value={selectedEmployee.pensionContributionRate || 0} onChange={e => handleUpdateField('pensionContributionRate', parseFloat(e.target.value))} />
+                                        <p className="text-[10px] text-gray-400 mt-1">Employee deduction: salary × rate. Reduces statutory income for Ed Tax.</p>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Pension Provider</label>
+                                        <input type="text" className="w-full border rounded p-2" placeholder="e.g., PICA, Proven, NCB Pension" value={selectedEmployee.pensionProvider || ''} onChange={e => handleUpdateField('pensionProvider', e.target.value)} />
+                                        <p className="text-[10px] text-gray-400 mt-1">Name of pension fund or provider</p>
+                                    </div>
                                 </div>
                             )}
                         </div>
