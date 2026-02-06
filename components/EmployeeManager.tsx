@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Employee, EmployeeType, PayType, PayFrequency, Role, CustomDeduction, DeductionPeriodType, BankAccount } from '../types';
+import { Employee, EmployeeType, PayType, PayFrequency, Role, CustomDeduction, DeductionPeriodType, BankAccount, Department } from '../types';
 import { Icons } from './Icons';
 import { isValidTRN, isValidNIS, isValidEmail, formatTRN } from '../utils/validators';
 
@@ -9,6 +9,8 @@ interface EmployeeManagerProps {
   onClose: () => void;
   onSave: (employee: Employee) => void;
   isLoading?: boolean;
+  departments?: Department[];
+  onAddDepartment?: (dept: Department) => void;
 }
 
 type TabType = 'identity' | 'org' | 'compliance' | 'banking' | 'statutory' | 'deductions';
@@ -18,12 +20,16 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
   isOpen,
   onClose,
   onSave,
-  isLoading = false
+  isLoading = false,
+  departments = [],
+  onAddDepartment
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('identity');
   const [formData, setFormData] = useState<Employee>(getInitialEmployee());
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [deductionToAdd, setDeductionToAdd] = useState<Partial<CustomDeduction>>({});
+  const [isAddingDepartment, setIsAddingDepartment] = useState(false);
+  const [newDepartmentName, setNewDepartmentName] = useState('');
 
   useEffect(() => {
     if (employee) {
@@ -390,13 +396,69 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
                     Department
                   </label>
-                  <input
-                    type="text"
-                    value={formData.department || ''}
-                    onChange={e => handleInputChange('department', e.target.value || undefined)}
-                    className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange bg-white transition-all"
-                    placeholder="Engineering"
-                  />
+                  <div className="flex gap-2">
+                    {isAddingDepartment ? (
+                      <>
+                        <input
+                          type="text"
+                          value={newDepartmentName}
+                          onChange={(e) => setNewDepartmentName(e.target.value)}
+                          placeholder="Enter department name"
+                          className="flex-1 border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange bg-white transition-all"
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (newDepartmentName.trim()) {
+                              const newDept: Department = {
+                                id: `dept-${Date.now()}`,
+                                name: newDepartmentName.trim()
+                              };
+                              onAddDepartment?.(newDept);
+                              handleInputChange('department', newDept.id);
+                              setNewDepartmentName('');
+                              setIsAddingDepartment(false);
+                            }
+                          }}
+                          className="px-4 py-3 bg-jam-yellow text-jam-black rounded-lg font-semibold hover:bg-opacity-90 transition-all"
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAddingDepartment(false);
+                            setNewDepartmentName('');
+                          }}
+                          className="px-4 py-3 border border-gray-300 rounded-lg font-semibold hover:bg-gray-100 transition-all"
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <select
+                          value={formData.department || ''}
+                          onChange={(e) => handleInputChange('department', e.target.value || undefined)}
+                          className="flex-1 border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange bg-white transition-all"
+                        >
+                          <option value="">Select a department...</option>
+                          {departments.map(dept => (
+                            <option key={dept.id} value={dept.id}>{dept.name}</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => setIsAddingDepartment(true)}
+                          className="px-4 py-3 bg-jam-orange text-white rounded-lg font-semibold hover:bg-opacity-90 transition-all flex items-center"
+                          title="Add new department"
+                        >
+                          <Icons.Plus className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
 
                 <div>

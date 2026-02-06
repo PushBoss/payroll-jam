@@ -492,17 +492,42 @@ export const Employees: React.FC<EmployeesProps> = ({
                         lastName: row['Last Name'] || '',
                         email: email,
                         trn: row['TRN'] || '',
-                        nis: '',
+                        nis: row['NIS'] || 'PENDING',
+                        employeeId: row['Employee ID'] || undefined,
                         grossSalary: parseFloat(row['Gross Salary']) || 0,
+                        hourlyRate: parseFloat(row['Hourly Rate']) || undefined,
                         payType: PayType.SALARIED,
                         payFrequency: PayFrequency.MONTHLY,
                         role: Role.EMPLOYEE,
                         status: 'ACTIVE',
-                        hireDate: new Date().toISOString().split('T')[0],
+                        hireDate: row['Hire Date'] || new Date().toISOString().split('T')[0],
+                        joiningDate: row['Joining Date'] || undefined,
                         allowances: [],
                         deductions: [],
+                        customDeductions: [],
                         department: departmentId,
-                        jobTitle: row['Job Title']?.trim() || ''
+                        jobTitle: row['Job Title']?.trim() || '',
+                        designation: row['Designation']?.trim() || undefined,
+                        employeeType: row['Employee Type'] || undefined,
+                        nhtStatus: row['NHT Status'] || 'PENDING',
+                        nhtNumber: row['NHT Number'] || undefined,
+                        phone: row['Phone'] || undefined,
+                        address: row['Address'] || undefined,
+                        gender: row['Gender'] || undefined,
+                        dateOfBirth: row['Date of Birth'] || undefined,
+                        emergencyContact: row['Emergency Contact'] || undefined,
+                        annualLeave: parseInt(row['Annual Leave']) || 14,
+                        bankDetails: {
+                            bankName: row['Bank Name'] || 'NCB',
+                            accountNumber: row['Account Number'] || '',
+                            accountType: row['Account Type'] || 'SAVINGS',
+                            currency: 'JMD'
+                        },
+                        leaveBalance: {
+                            vacation: parseInt(row['Vacation Days']) || 14,
+                            sick: parseInt(row['Sick Days']) || 3,
+                            personal: parseInt(row['Personal Days']) || 0
+                        }
                     };
                     onAddEmployee(newEmp);
                     count++;
@@ -520,8 +545,8 @@ export const Employees: React.FC<EmployeesProps> = ({
     };
 
     const handleDownloadTemplate = () => {
-        const headers = "First Name,Last Name,Email,TRN,Gross Salary,Role,Department,Job Title";
-        const sample = "John,Doe,john.doe@example.com,123-456-789,250000,Employee,Operations,Driver";
+        const headers = "First Name,Last Name,Email,Employee ID,TRN,NIS,Hire Date,Joining Date,Gross Salary,Hourly Rate,Job Title,Designation,Department,Employee Type,NHT Status,NHT Number,Phone,Address,Gender,Date of Birth,Emergency Contact,Annual Leave,Vacation Days,Sick Days,Personal Days,Bank Name,Account Number,Account Type";
+        const sample = "John,Doe,john.doe@example.com,EMP001,123-456-789,123-456-789-01,2024-01-15,2024-02-01,250000,0,Driver,Senior,Operations,FULL_TIME,REGISTERED,NHT123456,555-0001,123 Main St,MALE,1985-05-10,Jane Doe 555-0002,14,14,3,0,NCB,1234567890,SAVINGS";
         downloadFile('Employee_Import_Template.csv', `${headers}\n${sample}`, 'text/csv');
     };
 
@@ -1250,6 +1275,10 @@ export const Employees: React.FC<EmployeesProps> = ({
                 <EmployeeManager
                     employee={selectedEmployee || { id: '', firstName: '', lastName: '', email: '', trn: '', nis: '', grossSalary: 0, payType: PayType.SALARIED, payFrequency: PayFrequency.MONTHLY, role: Role.EMPLOYEE, status: 'ACTIVE', hireDate: '', bankDetails: { bankName: 'NCB', accountNumber: '', accountType: 'SAVINGS', currency: 'JMD' }, customDeductions: [] }}
                     isOpen={isEmployeeManagerOpen}
+                    departments={departments}
+                    onAddDepartment={(dept) => {
+                        if (onUpdateDepartments) onUpdateDepartments([...departments, dept]);
+                    }}
                     onClose={() => {
                         setIsEmployeeManagerOpen(false);
                         setSelectedEmployee(null);
