@@ -227,7 +227,7 @@ export const usePayroll = (
         };
     };
 
-    const initializeRun = (payCycle: PayFrequency | 'ALL', period: string) => {
+    const initializeRun = (payCycle: PayFrequency | 'ALL', period: string, customStartDate?: string, customEndDate?: string) => {
         const eligibleEmployees = employees.filter(e =>
             e.status === 'ACTIVE' &&
             (payCycle === 'ALL' || e.payFrequency === payCycle)

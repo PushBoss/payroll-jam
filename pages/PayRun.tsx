@@ -286,6 +286,11 @@ export const PayRun: React.FC<PayRunProps> = ({
     const [editingRun, setEditingRun] = useState<PayRunType | null>(null);
     const [hasLoadedEdit, setHasLoadedEdit] = useState(false);
 
+    // Date Range Selector State
+    const [isDateRangeSelectorOpen, setIsDateRangeSelectorOpen] = useState(false);
+    const [periodStartDate, setPeriodStartDate] = useState<string | null>(null);
+    const [periodEndDate, setPeriodEndDate] = useState<string | null>(null);
+
     // Modal States
     const [adHocModal, setAdHocModal] = useState<{
         isOpen: boolean;
@@ -421,10 +426,12 @@ export const PayRun: React.FC<PayRunProps> = ({
     const handleInitializeSystem = () => {
         setIsCalculating(true);
         setTimeout(() => {
-            const hasData = initializeRun(payCycle, payPeriod);
+            // Pass custom dates if available
+            const hasData = initializeRun(payCycle, payPeriod, periodStartDate || undefined, periodEndDate || undefined);
             if (hasData) {
                 setStep('DRAFT');
-                auditService.log(currentUser, 'CREATE', 'PayRun', `Initialized draft payroll for ${payPeriod}`);
+                const dateInfo = periodStartDate && periodEndDate ? ` (${periodStartDate} to ${periodEndDate})` : '';
+                auditService.log(currentUser, 'CREATE', 'PayRun', `Initialized draft payroll for ${payPeriod}${dateInfo}`);
                 toast.success("Payroll calculated from system data (Cumulative YTD Applied)");
             } else {
                 toast.error("No eligible employees found for this selection.");
@@ -707,6 +714,25 @@ export const PayRun: React.FC<PayRunProps> = ({
                         </div>
                     </div>
 
+                    <div className="mb-6">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                console.log('Opening date range selector...', {isOpen: isDateRangeSelectorOpen});
+                                setIsDateRangeSelectorOpen(true);
+                            }}
+                            className="w-full py-2 px-4 border border-jam-orange text-jam-orange rounded-lg font-semibold hover:bg-orange-50 transition-colors flex items-center justify-center"
+                        >
+                            <Icons.Calendar className="w-4 h-4 mr-2" />
+                            Or Select Custom Date Range
+                        </button>
+                        {periodStartDate && periodEndDate && (
+                            <p className="text-xs text-gray-500 mt-2">
+                                Selected: {periodStartDate} to {periodEndDate}
+                            </p>
+                        )}
+                    </div>
+
                     {isSuspended && (
                         <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-lg text-sm flex items-start text-left mb-6">
                             <Icons.Alert className="w-5 h-5 mr-2 flex-shrink-0" />
@@ -731,6 +757,66 @@ export const PayRun: React.FC<PayRunProps> = ({
                         )}
                     </button>
                 </div>
+
+                {/* Date Range Selector Modal */}
+                {isDateRangeSelectorOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                        <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
+                            <div className="p-6 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+                                <h3 className="text-lg font-bold text-gray-900">Select Pay Period Dates</h3>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsDateRangeSelectorOpen(false)}
+                                    className="text-gray-400 hover:text-gray-600"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                            <div className="p-6 space-y-4">
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Start Date</label>
+                                    <input
+                                        type="date"
+                                        value={periodStartDate || ''}
+                                        onChange={(e) => setPeriodStartDate(e.target.value || null)}
+                                        className="w-full border border-gray-300 rounded-lg p-3 text-sm"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">End Date</label>
+                                    <input
+                                        type="date"
+                                        value={periodEndDate || ''}
+                                        onChange={(e) => setPeriodEndDate(e.target.value || null)}
+                                        className="w-full border border-gray-300 rounded-lg p-3 text-sm"
+                                    />
+                                </div>
+                            </div>
+                            <div className="border-t border-gray-200 px-6 py-4 bg-gray-50 flex justify-end space-x-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsDateRangeSelectorOpen(false)}
+                                    className="px-6 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-100"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (periodStartDate && periodEndDate) {
+                                            console.log('Applied dates:', {periodStartDate, periodEndDate});
+                                            setIsDateRangeSelectorOpen(false);
+                                        }
+                                    }}
+                                    disabled={!periodStartDate || !periodEndDate}
+                                    className="px-6 py-2 bg-jam-black text-white rounded-lg font-medium hover:bg-gray-900 disabled:opacity-50"
+                                >
+                                    Apply Dates
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }
