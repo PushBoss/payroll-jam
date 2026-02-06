@@ -8,7 +8,7 @@ import { downloadFile, generateP45CSV } from '../utils/exportHelpers';
 import { emailService } from '../services/emailService';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
-import { isValidTRN, isValidNIS, isValidEmail } from '../utils/validators';
+import { isValidEmail } from '../utils/validators';
 import { generateUUID } from '../utils/uuid';
 
 interface EmployeesProps {

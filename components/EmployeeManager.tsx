@@ -690,6 +690,35 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                   <p className="text-xs text-gray-500 mt-2">Format: XXX-XXX-XXX or PENDING</p>
                 </div>
 
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Pension Contribution Rate (%)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={formData.pensionContributionRate || ''}
+                    onChange={e => handleInputChange('pensionContributionRate', e.target.value ? parseFloat(e.target.value) : 0)}
+                    className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange bg-white transition-all"
+                    placeholder="0.0"
+                  />
+                  <p className="text-xs text-gray-500 mt-2">Deduction from salary, reduces statutory income for Ed Tax</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Pension Provider
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.pensionProvider || ''}
+                    onChange={e => handleInputChange('pensionProvider', e.target.value || '')}
+                    className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange bg-white transition-all"
+                    placeholder="e.g., PICA, Proven, NCB Pension"
+                  />
+                </div>
 
               </div>
             </div>
