@@ -13,6 +13,12 @@ export enum PayFrequency {
   MONTHLY = 'MONTHLY'
 }
 
+export enum EmployeeType {
+  STAFF = 'STAFF',
+  HOURLY = 'HOURLY',
+  CONTRACTOR = 'CONTRACTOR'
+}
+
 export enum PayType {
   SALARIED = 'SALARIED',
   HOURLY = 'HOURLY',
@@ -56,6 +62,44 @@ export interface Deduction {
   id: string;
   name: string;
   amount: number;
+}
+
+export interface CustomDeduction {
+  id: string;
+  name: string;
+  amount: number;
+  periodType: 'FIXED_TERM' | 'TARGET_BALANCE';
+  remainingTerm?: number; // For fixed-term deductions
+  currentBalance?: number; // For target-balance deductions
+  targetBalance?: number; // Target to reach
+}
+
+export interface PAYEBracket {
+  threshold: number;
+  rateStd: number;
+  rateHigh: number;
+  effectiveFrom: string;
+  effectiveUntil?: string;
+}
+
+export interface Jamaica2026TaxConfig {
+  nisRate?: number;
+  nisEmployerRate?: number;
+  nisCap?: number;
+  nisMaxContribution?: number;
+  nhtRate?: number;
+  nhtEmployeeRate?: number;
+  nhtEmployerRate?: number;
+  nhtCap?: number;
+  edTaxRate?: number;
+  payeThresholdPre?: number;
+  payeThresholdPost?: number;
+  payeRateStd?: number;
+  payeRateHigh?: number;
+  payeThreshold?: number;
+  payeBracketsPre?: PAYEBracket[];
+  payeBracketsPost?: PAYEBracket[];
+  estateLevyRate?: number;
 }
 
 export interface BankAccount {
@@ -131,6 +175,8 @@ export interface Employee {
   role: Role;
   status: 'ACTIVE' | 'ARCHIVED' | 'PENDING_ONBOARDING' | 'PENDING_VERIFICATION' | 'TERMINATED';
   hireDate: string;
+  joiningDate?: string; // When employee joined (for pro-rating)
+  employeeType?: EmployeeType; // STAFF, HOURLY, CONTRACTOR
   onboardingToken?: string;
 
   // Extended Profile Fields
@@ -151,6 +197,7 @@ export interface Employee {
 
   allowances?: Allowance[];
   deductions?: Deduction[];
+  customDeductions?: CustomDeduction[];
   leaveBalance?: {
     vacation: number;
     sick: number;
