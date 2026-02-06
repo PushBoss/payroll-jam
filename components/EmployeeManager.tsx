@@ -132,7 +132,9 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
   };
 
   const handleAddDeduction = () => {
+    console.log('🎯 handleAddDeduction called with:', deductionToAdd);
     if (!deductionToAdd.name || !deductionToAdd.amount || !deductionToAdd.periodType) {
+      console.warn('❌ Invalid deduction - missing required fields');
       setErrors(prev => ({
         ...prev,
         deductionError: 'Please fill in all deduction fields'
@@ -149,10 +151,12 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
       targetBalance: deductionToAdd.targetBalance
     };
 
+    console.log('✅ Adding deduction:', newDeduction);
     setFormData(prev => ({
       ...prev,
       customDeductions: [...(prev.customDeductions || []), newDeduction]
     }));
+    console.log('✅ formData.customDeductions updated to:', [...(formData.customDeductions || []), newDeduction]);
 
     setDeductionToAdd({});
     setErrors(prev => {
@@ -171,8 +175,17 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('💾 handleSubmit called with formData:', {
+      id: formData.id,
+      firstName: formData.firstName,
+      customDeductions: formData.customDeductions,
+      customDeductionsCount: formData.customDeductions?.length || 0
+    });
     if (validateForm()) {
+      console.log('✅ Form validation passed, calling onSave');
       onSave(formData);
+    } else {
+      console.warn('❌ Form validation failed');
     }
   };
 
