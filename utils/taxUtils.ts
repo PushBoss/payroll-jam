@@ -206,9 +206,9 @@ export const calculateProration = (
   end.setHours(0, 0, 0, 0);
   hired.setHours(0, 0, 0, 0);
 
-  if (hired <= start) return { amount: fullSalary, isProrated: false, daysWorked: 0, totalWorkDays: 0 };
   if (hired > end) return { amount: 0, isProrated: true, daysWorked: 0, totalWorkDays: 0 };
 
+  // Count working days in the actual period
   let totalWorkDays = 0;
   let daysWorked = 0;
 
@@ -217,6 +217,7 @@ export const calculateProration = (
     const day = loop.getDay();
     if (day !== 0 && day !== 6) {
       totalWorkDays++;
+      // Only count days worked if employee was hired by that date
       if (loop >= hired) daysWorked++;
     }
     loop.setDate(loop.getDate() + 1);
@@ -224,12 +225,24 @@ export const calculateProration = (
 
   if (totalWorkDays === 0) return { amount: fullSalary, isProrated: false, daysWorked: 0, totalWorkDays: 0 };
 
-  const amount = (fullSalary / totalWorkDays) * daysWorked;
+  // Calculate standard working days for a full month (22 days)
+  const standardMonthWorkDays = 22;
 
-  return {
-    amount: parseFloat(amount.toFixed(2)),
-    isProrated: true,
-    daysWorked,
-    totalWorkDays
-  };
+  // If the actual period is shorter than standard, pro-rate based on period length
+  // AND also account for new hires within the period
+  const periodIsShort = totalWorkDays < standardMonthWorkDays;
+  const isNewHireInPeriod = hired > start;
+
+  if (periodIsShort || isNewHireInPeriod) {
+    const amount = (fullSalary / standardMonthWorkDays) * daysWorked;
+    return {
+      amount: parseFloat(amount.toFixed(2)),
+      isProrated: true,
+      daysWorked,
+      totalWorkDays
+    };
+  }
+
+  // Employee was hired before period start AND period is full length
+  return { amount: fullSalary, isProrated: false, daysWorked: 0, totalWorkDays: 0 };
 };
