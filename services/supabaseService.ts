@@ -1098,7 +1098,7 @@ export const supabaseService = {
 
     if (error) {
       console.error("Error loading pay runs:", error);
-      return [];
+      throw error;
     }
 
     // Normalize status: map database statuses to app statuses
@@ -1278,10 +1278,14 @@ export const supabaseService = {
         // handle based on allowMultiple setting
         if (error && (error.code === '23505' || /duplicate key|unique constraint|already exists/i.test(error.message || ''))) {
           if (allowMultiple) {
-            // User wants multiple runs for same period - treat constraint error as success
-            console.log('ℹ️ Unique constraint hit but allowMultiple=true; multiple pay runs for same period are allowed. Treating as success.');
-            error = null;
-            result = { data: { id: run.id }, status: 200, statusText: 'Multiple runs allowed' };
+            console.error('❌ Unique constraint hit while allowMultiple=true. The database is still enforcing a single pay run per period.', {
+              attemptedId: run.id,
+              companyId,
+              periodStart,
+              periodEnd,
+              payFrequency
+            });
+            throw new Error('Failed to save pay run: database still enforces a unique pay run per period. Apply migrations/remove_pay_run_unique_constraint.sql.');
           } else {
             // Original behavior: attempt a safe fallback to update the existing period run
             console.warn('⚠️ Insert failed due to unique constraint; attempting to update existing period run instead.');
