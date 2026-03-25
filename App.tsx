@@ -489,22 +489,18 @@ function AppContent() {
     }
   };
 
-  const handleSavePayRun = async (run: PayRunType) => {
-    setPayRunHistory(prev => {
-      // Check if run already exists (updating existing)
-      const existingIndex = prev.findIndex(r => r.id === run.id);
-      if (existingIndex >= 0) {
-        // Update existing run
-        const updated = [...prev];
-        updated[existingIndex] = run;
-        return updated;
-      } else {
-        // Add new run
-        return [run, ...prev];
-      }
-    });
+  const upsertPayRunLocally = (runs: PayRunType[], run: PayRunType) => {
+    const existingIndex = runs.findIndex(r => r.id === run.id);
+    if (existingIndex >= 0) {
+      const updated = [...runs];
+      updated[existingIndex] = run;
+      return updated;
+    }
+    return [run, ...runs];
+  };
 
-    // Save to Supabase
+  const handleSavePayRun = async (run: PayRunType) => {
+    // Save to Supabase first so the UI doesn't show runs that were rejected by the DB
     if (isSupabaseMode && user?.companyId) {
       console.log('💾 Saving pay run to Supabase:', {
         runId: run.id,
@@ -516,18 +512,14 @@ function AppContent() {
       try {
         // Allow multiple pay runs for the same period (especially for drafts)
         await supabaseService.savePayRun(run, user.companyId, { allowMultiple: true });
+        setPayRunHistory(prev => upsertPayRunLocally(prev, run));
         console.log('✅ Pay run saved to Supabase successfully');
       } catch (error: any) {
-        // Only show error toast for actual failures, not duplicate handling
-        const isDuplicateError = error.message?.includes('duplicate') || error.message?.includes('unique constraint');
-        if (!isDuplicateError) {
-          console.error('❌ Failed to save pay run to Supabase:', error);
-          toast.error('Failed to save payroll to database. Payslip download may not work.');
-        } else {
-          console.log('ℹ️ Duplicate pay run handled gracefully - continuing normally');
-        }
+        console.error('❌ Failed to save pay run to Supabase:', error);
+        toast.error(error?.message || 'Failed to save payroll to database. Payslip download may not work.');
       }
     } else {
+      setPayRunHistory(prev => upsertPayRunLocally(prev, run));
       console.warn('⚠️ NOT saving to Supabase:', {
         isSupabaseMode,
         hasCompanyId: !!user?.companyId
@@ -832,11 +824,18 @@ function AppContent() {
         }
         return <Documents templates={templates} employees={employees} companyData={companyData!} onUpdateTemplates={setTemplates} />;
       case 'reports': return <Reports history={payRunHistory} companyData={companyData!} onUpdatePayRun={async (run) => {
+        if (isSupabaseMode && user?.companyId) {
+          await supabaseService.savePayRun(run, user.companyId, { allowMultiple: true });
+        }
         setPayRunHistory(prev => prev.map(r => r.id === run.id ? run : r));
-        if (isSupabaseMode && user?.companyId) await supabaseService.savePayRun(run, user.companyId, { allowMultiple: true });
       }} onDeletePayRun={async (runId) => {
+        if (isSupabaseMode && user?.companyId) {
+          const deleted = await supabaseService.deletePayRun(runId, user.companyId);
+          if (!deleted) {
+            throw new Error('Failed to delete pay run from database.');
+          }
+        }
         setPayRunHistory(prev => prev.filter(r => r.id !== runId));
-        if (isSupabaseMode && user?.companyId) await supabaseService.deletePayRun(runId, user.companyId);
       }} onNavigate={navigateTo} employees={employees} integrationConfig={integrationConfig} />;
       case 'compliance':
         if (!hasFeatureAccess(companyData || undefined, 'Compliance')) {

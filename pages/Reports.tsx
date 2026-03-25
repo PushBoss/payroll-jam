@@ -12,8 +12,8 @@ import { toast } from 'sonner';
 interface ReportsProps {
   history?: PayRun[];
   companyData?: CompanySettings;
-  onUpdatePayRun?: (run: PayRun) => void;
-  onDeletePayRun?: (runId: string) => void;
+  onUpdatePayRun?: (run: PayRun) => void | Promise<void>;
+  onDeletePayRun?: (runId: string) => void | Promise<void>;
   onNavigate?: (path: string, params?: { editRunId?: string }) => void;
   employees?: Employee[];
   integrationConfig?: IntegrationConfig;
@@ -74,7 +74,7 @@ export const Reports: React.FC<ReportsProps> = ({
   }, [displayHistory, statusFilter]);
 
   // Handle delete with confirmation
-  const handleDelete = (run: PayRun) => {
+  const handleDelete = async (run: PayRun) => {
     if (run.status !== 'DRAFT') {
       toast.error('Only draft pay runs can be deleted');
       return;
@@ -82,8 +82,13 @@ export const Reports: React.FC<ReportsProps> = ({
 
     if (window.confirm(`Are you sure you want to delete this ${run.status} pay run for ${run.periodStart}? This action cannot be undone.`)) {
       if (onDeletePayRun) {
-        onDeletePayRun(run.id);
-        toast.success('Pay run deleted successfully');
+        try {
+          await onDeletePayRun(run.id);
+          toast.success('Pay run deleted successfully');
+        } catch (error) {
+          console.error('❌ Failed to delete pay run:', error);
+          toast.error('Failed to delete pay run from database.');
+        }
       } else {
         toast.error('Delete function not available');
       }
