@@ -8,7 +8,7 @@ import { downloadFile, generateP45CSV } from '../utils/exportHelpers';
 import { emailService } from '../services/emailService';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
-import { isValidTRN, isValidNIS, isValidEmail, formatTRN } from '../utils/validators';
+import { isValidEmail } from '../utils/validators';
 import { generateUUID } from '../utils/uuid';
 
 interface EmployeesProps {
@@ -55,7 +55,6 @@ export const Employees: React.FC<EmployeesProps> = ({
     const [viewMode, setViewMode] = useState<'active' | 'onboarding' | 'archived'>('active');
 
     // Modals State
-    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
     const [isSendingInvite, setIsSendingInvite] = useState(false);
     const [showUpgradeModal, setShowUpgradeModal] = useState(false);
@@ -65,26 +64,16 @@ export const Employees: React.FC<EmployeesProps> = ({
     const [deleteWarning, setDeleteWarning] = useState<{ isOpen: boolean, empId: string }>({ isOpen: false, empId: '' });
     const [revokeWarning, setRevokeWarning] = useState<{ isOpen: boolean, empId: string, email: string }>({ isOpen: false, empId: '', email: '' });
     const [verificationModal, setVerificationModal] = useState<{ isOpen: boolean, employee: Employee | null }>({ isOpen: false, employee: null });
-    const [isAddingNewDept, setIsAddingNewDept] = useState(false);
-    const [newInlineDeptName, setNewInlineDeptName] = useState('');
 
     // Edit State
     const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
-    
+
     // New EmployeeManager State
     const [isEmployeeManagerOpen, setIsEmployeeManagerOpen] = useState(false);
     const [employeeManagerMode, setEmployeeManagerMode] = useState<'add' | 'edit'>('add');
 
     const [searchTerm, setSearchTerm] = useState('');
     const fileInputRef = useRef<HTMLInputElement>(null);
-
-    // Add Employee Form State
-    const [addForm, setAddForm] = useState({
-        firstName: '', lastName: '', email: '', trn: '', nis: '',
-        employeeId: '', grossSalary: '', hourlyRate: '', role: Role.EMPLOYEE,
-        payType: PayType.SALARIED, department: '', jobTitle: '',
-        bankName: 'NCB', accountNumber: ''
-    });
 
     const [inviteData, setInviteData] = useState({
         firstName: '',
@@ -263,66 +252,6 @@ export const Employees: React.FC<EmployeesProps> = ({
         setIsSendingInvite(false);
     };
 
-    const onSubmitAdd = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!checkPlanLimit(1)) return;
-
-        if (!addForm.trn || addForm.trn.trim() === '') {
-            toast.error('TRN is required. Enter "PENDING" if currently unavailable.');
-            return;
-        }
-        if (!isValidTRN(addForm.trn)) {
-            toast.error("Invalid TRN. Must be 9 digits (e.g. 123-456-789) or 'PENDING'");
-            return;
-        }
-
-        if (!addForm.nis || addForm.nis.trim() === '') {
-            toast.error('NIS is required. Enter "PENDING" if currently unavailable.');
-            return;
-        }
-        if (!isValidNIS(addForm.nis)) {
-            toast.error("Invalid NIS. Must be Letter + 6 Digits (e.g. A123456) or 'PENDING'");
-            return;
-        }
-
-        if (!addForm.accountNumber || addForm.accountNumber.trim() === '') {
-            toast.error('Bank Account Number is required. Enter "PENDING" if currently unavailable.');
-            return;
-        }
-
-        const newEmp: Employee = {
-            id: generateUUID(),
-            firstName: addForm.firstName,
-            lastName: addForm.lastName,
-            email: addForm.email,
-            trn: addForm.trn.toUpperCase() === 'PENDING' ? 'PENDING' : formatTRN(addForm.trn),
-            nis: addForm.nis.toUpperCase() === 'PENDING' ? 'PENDING' : addForm.nis.toUpperCase(),
-            employeeId: addForm.employeeId || undefined,
-            grossSalary: parseFloat(addForm.grossSalary) || 0,
-            hourlyRate: parseFloat(addForm.hourlyRate) || 0,
-            payType: addForm.payType,
-            payFrequency: PayFrequency.MONTHLY,
-            role: addForm.role,
-            status: 'ACTIVE',
-            hireDate: new Date().toISOString().split('T')[0],
-            allowances: [],
-            deductions: [],
-            department: addForm.department,
-            jobTitle: addForm.jobTitle,
-            bankDetails: {
-                bankName: addForm.bankName as any,
-                accountNumber: addForm.accountNumber,
-                accountType: 'SAVINGS',
-                currency: 'JMD'
-            }
-        };
-        onAddEmployee(newEmp);
-        auditService.log(currentUser, 'CREATE', 'Employee', `Added new employee: ${newEmp.firstName} ${newEmp.lastName}`);
-        setIsAddModalOpen(false);
-        setAddForm({ firstName: '', lastName: '', email: '', trn: '', nis: '', employeeId: '', grossSalary: '', hourlyRate: '', role: Role.EMPLOYEE, payType: PayType.SALARIED, department: '', jobTitle: '', bankName: 'NCB', accountNumber: '' });
-        toast.success("Employee added successfully");
-    };
-
     const handleEmployeeManagerSave = (employee: Employee) => {
         if (employeeManagerMode === 'add') {
             const newEmp: Employee = {
@@ -336,29 +265,13 @@ export const Employees: React.FC<EmployeesProps> = ({
             auditService.log(currentUser, 'CREATE', 'Employee', `Added new employee: ${newEmp.firstName} ${newEmp.lastName}`);
             toast.success("Employee added successfully");
         } else {
+            // Edit mode
             onUpdateEmployee(employee);
             auditService.log(currentUser, 'UPDATE', 'Employee', `Updated employee: ${employee.firstName} ${employee.lastName}`);
             toast.success("Employee updated successfully");
         }
         setIsEmployeeManagerOpen(false);
         setSelectedEmployee(null);
-    };
-
-    const handleInlineAddDept = () => {
-        if (!newInlineDeptName.trim() || !onUpdateDepartments) return;
-        const newDep: Department = { id: `dept-${Date.now()}`, name: newInlineDeptName.trim() };
-        onUpdateDepartments([...departments, newDep]);
-
-        // Auto-select for the active form
-        if (selectedEmployee) {
-            setSelectedEmployee({ ...selectedEmployee, department: newDep.id });
-        } else if (isAddModalOpen) {
-            setAddForm({ ...addForm, department: newDep.id });
-        }
-
-        setNewInlineDeptName('');
-        setIsAddingNewDept(false);
-        toast.success(`Department "${newDep.name}" created`);
     };
 
     const startTermination = (empId: string) => {
@@ -492,42 +405,17 @@ export const Employees: React.FC<EmployeesProps> = ({
                         lastName: row['Last Name'] || '',
                         email: email,
                         trn: row['TRN'] || '',
-                        nis: row['NIS'] || 'PENDING',
-                        employeeId: row['Employee ID'] || undefined,
+                        nis: '',
                         grossSalary: parseFloat(row['Gross Salary']) || 0,
-                        hourlyRate: parseFloat(row['Hourly Rate']) || undefined,
                         payType: PayType.SALARIED,
                         payFrequency: PayFrequency.MONTHLY,
                         role: Role.EMPLOYEE,
                         status: 'ACTIVE',
-                        hireDate: row['Hire Date'] || new Date().toISOString().split('T')[0],
-                        joiningDate: row['Joining Date'] || undefined,
+                        hireDate: new Date().toISOString().split('T')[0],
                         allowances: [],
                         deductions: [],
-                        customDeductions: [],
                         department: departmentId,
-                        jobTitle: row['Job Title']?.trim() || '',
-                        designation: row['Designation']?.trim() || undefined,
-                        employeeType: row['Employee Type'] || undefined,
-                        nhtStatus: row['NHT Status'] || 'PENDING',
-                        nhtNumber: row['NHT Number'] || undefined,
-                        phone: row['Phone'] || undefined,
-                        address: row['Address'] || undefined,
-                        gender: row['Gender'] || undefined,
-                        dateOfBirth: row['Date of Birth'] || undefined,
-                        emergencyContact: row['Emergency Contact'] || undefined,
-                        annualLeave: parseInt(row['Annual Leave']) || 14,
-                        bankDetails: {
-                            bankName: row['Bank Name'] || 'NCB',
-                            accountNumber: row['Account Number'] || '',
-                            accountType: row['Account Type'] || 'SAVINGS',
-                            currency: 'JMD'
-                        },
-                        leaveBalance: {
-                            vacation: parseInt(row['Vacation Days']) || 14,
-                            sick: parseInt(row['Sick Days']) || 3,
-                            personal: parseInt(row['Personal Days']) || 0
-                        }
+                        jobTitle: row['Job Title']?.trim() || ''
                     };
                     onAddEmployee(newEmp);
                     count++;
@@ -545,8 +433,8 @@ export const Employees: React.FC<EmployeesProps> = ({
     };
 
     const handleDownloadTemplate = () => {
-        const headers = "First Name,Last Name,Email,Employee ID,TRN,NIS,Hire Date,Joining Date,Gross Salary,Hourly Rate,Job Title,Designation,Department,Employee Type,NHT Status,NHT Number,Phone,Address,Gender,Date of Birth,Emergency Contact,Annual Leave,Vacation Days,Sick Days,Personal Days,Bank Name,Account Number,Account Type";
-        const sample = "John,Doe,john.doe@example.com,EMP001,123-456-789,123-456-789-01,2024-01-15,2024-02-01,250000,0,Driver,Senior,Operations,FULL_TIME,REGISTERED,NHT123456,555-0001,123 Main St,MALE,1985-05-10,Jane Doe 555-0002,14,14,3,0,NCB,1234567890,SAVINGS";
+        const headers = "First Name,Last Name,Email,TRN,Gross Salary,Role,Department,Job Title";
+        const sample = "John,Doe,john.doe@example.com,123-456-789,250000,Employee,Operations,Driver";
         downloadFile('Employee_Import_Template.csv', `${headers}\n${sample}`, 'text/csv');
     };
 
@@ -579,7 +467,6 @@ export const Employees: React.FC<EmployeesProps> = ({
         toast.info(`Verification rejected for ${emp.firstName} ${emp.lastName}. They will need to re-upload documents.`);
         setVerificationModal({ isOpen: false, employee: null });
     };
-
 
     const getDeptName = (id?: string) => {
         if (!id) return '-';
@@ -677,8 +564,22 @@ export const Employees: React.FC<EmployeesProps> = ({
                     </div>
                 </div>
             )}
-
-            {/* Edit Employee Modal - Now using EmployeeManager component (see below) */}
+            {/* EmployeeManager Component */}
+            {isEmployeeManagerOpen && (
+                <EmployeeManager
+                    employee={selectedEmployee}
+                    isOpen={isEmployeeManagerOpen}
+                    departments={departments}
+                    onAddDepartment={(dept) => {
+                        if (onUpdateDepartments) onUpdateDepartments([...departments, dept]);
+                    }}
+                    onClose={() => {
+                        setIsEmployeeManagerOpen(false);
+                        setSelectedEmployee(null);
+                    }}
+                    onSave={handleEmployeeManagerSave}
+                />
+            )}
 
             {/* Termination Modal */}
             {terminationModal.isOpen && (
@@ -761,144 +662,6 @@ export const Employees: React.FC<EmployeesProps> = ({
                             <button onClick={() => setRevokeWarning({ isOpen: false, empId: '', email: '' })} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Cancel</button>
                             <button onClick={confirmRevokeInvite} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-bold">Revoke Invitation</button>
                         </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Add Employee Modal */}
-            {isAddModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-hidden animate-fade-in flex flex-col max-h-[90vh]">
-                        <div className="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center shrink-0">
-                            <h3 className="text-xl font-bold text-gray-900">Add New Employee</h3>
-                            <button onClick={() => {
-                                setIsAddModalOpen(false);
-                                setIsAddingNewDept(false);
-                                setNewInlineDeptName('');
-                            }} className="text-gray-400 hover:text-gray-600">
-                                <Icons.Close className="w-6 h-6" />
-                            </button>
-                        </div>
-                        <form onSubmit={onSubmitAdd} className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 overflow-y-auto">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
-                                <input required type="text" className="w-full border border-gray-300 rounded-lg p-2" value={addForm.firstName} onChange={e => setAddForm({ ...addForm, firstName: e.target.value })} />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
-                                <input required type="text" className="w-full border border-gray-300 rounded-lg p-2" value={addForm.lastName} onChange={e => setAddForm({ ...addForm, lastName: e.target.value })} />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Employee ID (Optional)</label>
-                                <input type="text" placeholder="e.g., EMP001, 12345" className="w-full border border-gray-300 rounded-lg p-2" value={addForm.employeeId} onChange={e => setAddForm({ ...addForm, employeeId: e.target.value })} />
-                                <p className="text-xs text-gray-500 mt-1">Custom identifier for this employee</p>
-                            </div>
-                            <div className="md:col-span-1">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                                <input required type="email" className="w-full border border-gray-300 rounded-lg p-2" value={addForm.email} onChange={e => setAddForm({ ...addForm, email: e.target.value })} />
-                            </div>
-                            <div>
-                                <div className="flex items-center mb-1">
-                                    <label className="block text-sm font-medium text-gray-700">TRN (9 Digits)</label>
-                                    <div className="ml-1.5 group relative">
-                                        <Icons.Alert className="w-3.5 h-3.5 text-gray-400 cursor-help" />
-                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-48 p-2 bg-gray-900 text-white text-[10px] rounded shadow-xl z-50 text-center">
-                                            Required for all employees. Enter "PENDING" if currently unknown.
-                                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900"></div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <input
-                                    required
-                                    type="text"
-                                    placeholder="123-456-789 or PENDING"
-                                    className={`w-full border rounded-lg p-2 ${!isValidTRN(addForm.trn) && addForm.trn && addForm.trn.toUpperCase() !== 'PENDING' ? 'border-red-500' : 'border-gray-300'}`}
-                                    value={addForm.trn}
-                                    onChange={e => setAddForm({ ...addForm, trn: e.target.value })}
-                                />
-                            </div>
-                            <div>
-                                <div className="flex items-center mb-1">
-                                    <label className="block text-sm font-medium text-gray-700">NIS</label>
-                                    <div className="ml-1.5 group relative">
-                                        <Icons.Alert className="w-3.5 h-3.5 text-gray-400 cursor-help" />
-                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-48 p-2 bg-gray-900 text-white text-[10px] rounded shadow-xl z-50 text-center">
-                                            National Insurance Scheme number. Enter "PENDING" if currently unknown.
-                                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900"></div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <input
-                                    required
-                                    type="text"
-                                    placeholder="A123456 or PENDING"
-                                    className={`w-full border rounded-lg p-2 ${!isValidNIS(addForm.nis) && addForm.nis && addForm.nis.toUpperCase() !== 'PENDING' ? 'border-red-500' : 'border-gray-300'}`}
-                                    value={addForm.nis}
-                                    onChange={e => setAddForm({ ...addForm, nis: e.target.value })}
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
-                                {!isAddingNewDept ? (
-                                    <select
-                                        className="w-full border border-gray-300 rounded-lg p-2"
-                                        value={addForm.department}
-                                        onChange={e => {
-                                            if (e.target.value === 'ADD_NEW') {
-                                                setIsAddingNewDept(true);
-                                            } else {
-                                                setAddForm({ ...addForm, department: e.target.value });
-                                            }
-                                        }}
-                                    >
-                                        <option value="">Select Dept</option>
-                                        {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                                        <option value="ADD_NEW" className="text-jam-orange font-bold">+ Add New Department</option>
-                                    </select>
-                                ) : (
-                                    <div className="flex space-x-2">
-                                        <input
-                                            autoFocus
-                                            className="flex-1 border border-gray-300 rounded-lg p-2"
-                                            placeholder="Dept Name"
-                                            value={newInlineDeptName}
-                                            onChange={e => setNewInlineDeptName(e.target.value)}
-                                            onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleInlineAddDept())}
-                                        />
-                                        <button type="button" onClick={handleInlineAddDept} className="bg-jam-black text-white px-3 rounded text-sm font-bold">Add</button>
-                                        <button type="button" onClick={() => setIsAddingNewDept(false)} className="text-gray-400">Cancel</button>
-                                    </div>
-                                )}
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Job Title</label>
-                                <input type="text" className="w-full border border-gray-300 rounded-lg p-2" value={addForm.jobTitle} onChange={e => setAddForm({ ...addForm, jobTitle: e.target.value })} />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Bank</label>
-                                <select className="w-full border border-gray-300 rounded-lg p-2" value={addForm.bankName} onChange={e => setAddForm({ ...addForm, bankName: e.target.value })}>
-                                    <option value="NCB">NCB</option>
-                                    <option value="BNS">BNS</option>
-                                </select>
-                            </div>
-                            <div>
-                                <div className="flex items-center mb-1">
-                                    <label className="block text-sm font-medium text-gray-700">Account #</label>
-                                    <div className="ml-1.5 group relative">
-                                        <Icons.Alert className="w-3.5 h-3.5 text-gray-400 cursor-help" />
-                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-48 p-2 bg-gray-900 text-white text-[10px] rounded shadow-xl z-50 text-center">
-                                            Required for payments. Enter "PENDING" if unknown.
-                                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900"></div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <input required type="text" placeholder="Account number or PENDING" className="w-full border border-gray-300 rounded-lg p-2" value={addForm.accountNumber} onChange={e => setAddForm({ ...addForm, accountNumber: e.target.value })} />
-                            </div>
-
-                            <div className="md:col-span-2 pt-4">
-                                <button type="submit" className="w-full bg-jam-black text-white font-bold py-3 rounded-lg hover:bg-gray-800">Create Employee</button>
-                            </div>
-                        </form>
                     </div>
                 </div>
             )}
@@ -1117,16 +880,11 @@ export const Employees: React.FC<EmployeesProps> = ({
                                         ) : (
                                             <div className="flex justify-end items-center space-x-2">
                                                 {emp.status !== 'ARCHIVED' && (
-                                                    <button
-                                                        onClick={() => {
-                                                            setSelectedEmployee(emp);
-                                                            setEmployeeManagerMode('edit');
-                                                            setIsEmployeeManagerOpen(true);
-                                                        }}
-                                                        className="text-jam-orange hover:text-yellow-600 font-semibold"
-                                                    >
-                                                        Edit
-                                                    </button>
+                                                    <button onClick={() => {
+                                                        setSelectedEmployee(emp);
+                                                        setEmployeeManagerMode('edit');
+                                                        setIsEmployeeManagerOpen(true);
+                                                    }} className="text-jam-orange hover:text-yellow-600 font-semibold">Edit</button>
                                                 )}
 
                                                 {/* Send Employee Portal Invite - Only for Pro/Reseller/Enterprise plans and ACTIVE employees */}
@@ -1268,23 +1026,6 @@ export const Employees: React.FC<EmployeesProps> = ({
                         </div>
                     </div>
                 </div>
-            )}
-
-            {/* New EmployeeManager Component */}
-            {isEmployeeManagerOpen && (
-                <EmployeeManager
-                    employee={selectedEmployee || { id: '', firstName: '', lastName: '', email: '', trn: '', nis: '', grossSalary: 0, payType: PayType.SALARIED, payFrequency: PayFrequency.MONTHLY, role: Role.EMPLOYEE, status: 'ACTIVE', hireDate: '', bankDetails: { bankName: 'NCB', accountNumber: '', accountType: 'SAVINGS', currency: 'JMD' }, customDeductions: [] }}
-                    isOpen={isEmployeeManagerOpen}
-                    departments={departments}
-                    onAddDepartment={(dept) => {
-                        if (onUpdateDepartments) onUpdateDepartments([...departments, dept]);
-                    }}
-                    onClose={() => {
-                        setIsEmployeeManagerOpen(false);
-                        setSelectedEmployee(null);
-                    }}
-                    onSave={handleEmployeeManagerSave}
-                />
             )}
         </div>
     );

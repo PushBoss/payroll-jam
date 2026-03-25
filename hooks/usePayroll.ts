@@ -60,26 +60,25 @@ export const usePayroll = (
     };
 
     const calculateLineItem = (emp: Employee, period: string, customPeriodStart?: string, customPeriodEnd?: string): PayRunLineItem => {
-        let periodStart = customPeriodStart;
-        let periodEnd = customPeriodEnd;
-        let year = new Date().getFullYear();
-        let month = new Date().getMonth() + 1;
-
-        // If custom dates not provided, calculate from period string
-        if (!periodStart || !periodEnd) {
-            const [yearStr, monthStr] = period.split('-');
-            year = parseInt(yearStr);
-            month = parseInt(monthStr);
-            periodStart = `${period}-01`;
-            periodEnd = (() => {
-                const lastDay = new Date(year, month, 0).getDate();
-                return `${period}-${lastDay}`;
-            })();
+        const [yearStr, monthStr] = period.split('-');
+        const year = parseInt(yearStr);
+        const month = parseInt(monthStr);
+        
+        // Ensure periods are always strings with defaults
+        let periodStart: string;
+        let periodEnd: string;
+        
+        if (customPeriodStart) {
+            periodStart = customPeriodStart;
         } else {
-            // Extract year/month from custom dates for YTD calculations
-            const startParts = periodStart.split('-');
-            year = parseInt(startParts[0]);
-            month = parseInt(startParts[1]);
+            periodStart = `${period}-01`;
+        }
+        
+        if (customPeriodEnd) {
+            periodEnd = customPeriodEnd;
+        } else {
+            const lastDay = new Date(year, month, 0).getDate();
+            periodEnd = `${period}-${lastDay}`;
         }
 
         let grossPay = 0;
@@ -96,27 +95,8 @@ export const usePayroll = (
                 isTaxable: a.isTaxable
             }));
         }
-        if (emp.deductions) {
-            emp.deductions.forEach(d => deductionsBreakdown.push({ id: d.id, name: d.name, amount: d.amount }));
-        }
-        // Add custom deductions to the breakdown
-        if (emp.customDeductions && emp.customDeductions.length > 0) {
-            emp.customDeductions.forEach(cd => {
-                // Only include in current period if the deduction is still active
-                if (cd.periodType === 'TARGET_BALANCE' && cd.currentBalance && cd.targetBalance && cd.currentBalance >= cd.targetBalance) {
-                    // Skip if target balance reached
-                    return;
-                }
-                if (cd.periodType === 'FIXED_TERM' && cd.remainingTerm && cd.remainingTerm <= 0) {
-                    // Skip if no periods remaining
-                    return;
-                }
-                deductionsBreakdown.push({
-                    id: cd.id,
-                    name: cd.name,
-                    amount: cd.amount
-                });
-            });
+        if (emp.customDeductions) {
+            emp.customDeductions.forEach(d => deductionsBreakdown.push({ id: d.id, name: d.name, amount: d.amount }));
         }
 
         // Unpaid Leave Logic
@@ -168,9 +148,7 @@ export const usePayroll = (
             grossPay = emp.grossSalary || 0;
         } else {
             const fullSalary = emp.grossSalary;
-            // Use joiningDate if available (new field), otherwise fall back to hireDate
-            const prorationDate = emp.joiningDate || emp.hireDate;
-            const proration = calculateProration(fullSalary, prorationDate, periodStart, periodEnd);
+            const proration = calculateProration(fullSalary, emp.hireDate, periodStart, periodEnd);
             if (proration.isProrated) {
                 grossPay = proration.amount;
                 prorationDetails = {
@@ -194,7 +172,11 @@ export const usePayroll = (
         const currentGross = Math.max(0, grossPay + taxableAdditions);
 
         // 1. Calculate Standard Period Taxes (NIS, NHT, Ed)
-        const standardTaxes = calculateTaxes(currentGross, emp.payFrequency, policies);
+        const policiesWithPension = {
+            ...policies,
+            pension: emp.pensionContributionRate || 0
+        };
+        const standardTaxes = calculateTaxes(currentGross, emp.payFrequency, policiesWithPension);
 
         // 2. Apply Cumulative Logic for PAYE if Salaried
         // (Cumulative mostly applies to regular employees. Hourly/Casual often taxed flatly in simpler systems, 
@@ -202,13 +184,14 @@ export const usePayroll = (
         const ytdData = getEmployeeYTD(emp.id, year);
 
         // Determine Period Number (e.g., Monthly: Jan=1, Feb=2)
-        let periodNumber = month; // Default for monthly
+        // For first payrun (no YTD history), use 1; otherwise use calendar position
+        let periodNumber = ytdData.ytdStatutoryIncome === 0 ? 1 : month;
         if (emp.payFrequency === PayFrequency.WEEKLY) {
             // Approximation for demo: Week number
             periodNumber = Math.ceil((new Date(periodStart).getTime() - new Date(year, 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000));
             if (periodNumber === 0) periodNumber = 1;
         } else if (emp.payFrequency === PayFrequency.FORTNIGHTLY) {
-            periodNumber = month * 2; // Rough approx for demo
+            periodNumber = ytdData.ytdStatutoryIncome === 0 ? 1 : month * 2; // Rough approx for demo
         }
 
         // Recalculate PAYE using Cumulative Method
@@ -219,7 +202,7 @@ export const usePayroll = (
             ytdData.ytdTaxPaid,
             periodNumber,
             emp.payFrequency,
-            policies
+            policiesWithPension
         );
 
         // Override the standard period PAYE with the Cumulative one
@@ -247,6 +230,7 @@ export const usePayroll = (
             nht: standardTaxes.nht,
             edTax: standardTaxes.edTax,
             paye: finalPAYE,
+            pension: standardTaxes.pension,
             totalDeductions: totalDeductions,
             netPay: netPay,
             prorationDetails,

@@ -41,11 +41,15 @@ export const getPeriodsPerYear = (freq: PayFrequency): number => {
 export const calculateTaxes = (
   gross: number,
   frequency: PayFrequency = PayFrequency.MONTHLY,
-  overrides?: { nis_cap_annual?: number; paye_threshold?: number; }
+  overrides?: { nis_cap_annual?: number; paye_threshold?: number; pension?: number; }
 ): StatutoryDeductions => {
   const periods = getPeriodsPerYear(frequency);
   const nisCap = overrides?.nis_cap_annual ?? TAX_CONSTANTS.NIS_CAP_ANNUAL;
   const payeThreshold = overrides?.paye_threshold ?? TAX_CONSTANTS.PAYE_THRESHOLD;
+  const pensionRate = overrides?.pension ?? 0;
+
+  // 0. Pension Contribution (deducted before statutory income)
+  const pensionAmount = gross * (pensionRate / 100);
 
   // 1. NIS (3% Employee) - Capped Annually
   const nisPeriodCap = nisCap / periods;
@@ -55,11 +59,11 @@ export const calculateTaxes = (
   // 2. NHT (2% Employee)
   const nht = gross * TAX_CONSTANTS.NHT_RATE_EMPLOYEE;
 
-  // 3. Education Tax (2.25%) - on Statutory Income (Gross - NIS)
-  const edTax = (gross - nis) * TAX_CONSTANTS.ED_TAX_RATE;
+  // 3. Education Tax (2.25%) - on Statutory Income (Gross - Pension - NIS)
+  const statutoryIncomePeriod = gross - pensionAmount - nis;
+  const edTax = statutoryIncomePeriod * TAX_CONSTANTS.ED_TAX_RATE;
 
-  // 4. PAYE (Income Tax)
-  const statutoryIncomePeriod = gross - nis; // Statutory Income for PAYE purposes
+  // 4. PAYE (Income Tax) - on Statutory Income (Gross - Pension - NIS)
   const statutoryIncomeAnnual = statutoryIncomePeriod * periods;
 
   let payeAnnual = 0;
@@ -88,6 +92,7 @@ export const calculateTaxes = (
     nht: parseFloat(nht.toFixed(2)),
     edTax: parseFloat(edTax.toFixed(2)),
     paye: parseFloat(paye.toFixed(2)),
+    pension: 0,
     totalDeductions: parseFloat(totalDeductions.toFixed(2)),
     netPay: parseFloat(netPay.toFixed(2))
   };
@@ -145,17 +150,21 @@ export const calculateEmployerContributions = (
 export const calculateCumulativePAYE = (
   currentGross: number,
   currentNis: number,
-  ytdStatutoryIncome: number, // Previous YTD Gross - Previous YTD NIS
+  ytdStatutoryIncome: number, // Previous YTD Gross - Previous YTD Pension - Previous YTD NIS
   ytdTaxPaid: number,
   periodNumber: number, // e.g., Month 3
   frequency: PayFrequency = PayFrequency.MONTHLY,
-  overrides?: { nis_cap_annual?: number; paye_threshold?: number; }
+  overrides?: { nis_cap_annual?: number; paye_threshold?: number; pension?: number; }
 ): number => {
   const periodsPerYear = getPeriodsPerYear(frequency);
   const payeThreshold = overrides?.paye_threshold ?? TAX_CONSTANTS.PAYE_THRESHOLD;
+  const pensionRate = overrides?.pension ?? 0;
+
+  // Calculate pension for current period
+  const currentPension = currentGross * (pensionRate / 100);
 
   // 1. Calculate Total Cumulative Statutory Income to Date
-  const currentStatutoryIncome = currentGross - currentNis;
+  const currentStatutoryIncome = currentGross - currentPension - currentNis;
   const totalCumulativeStatutoryIncome = ytdStatutoryIncome + currentStatutoryIncome;
 
   // 2. Calculate Cumulative Tax Free Threshold to Date

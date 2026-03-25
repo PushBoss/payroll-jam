@@ -865,54 +865,31 @@ export const supabaseService = {
       return [];
     }
 
-    console.log('📥 getEmployees: Fetched', data.length, 'employees from DB');
-    
-    return data.map((e: any) => {
-      const mapped = {
-        id: e.id,
-        firstName: e.first_name,
-        lastName: e.last_name,
-        email: e.email,
-        trn: e.trn,
-        nis: e.nis,
-        employeeId: e.employee_number || undefined,
-        status: e.status,
-        role: e.role,
-        hireDate: e.hire_date,
-        joiningDate: e.joining_date || undefined,
-        jobTitle: e.job_title,
-        department: e.department,
-        employeeType: e.employee_type || undefined,
-        nhtStatus: e.nht_status || undefined,
-        nhtNumber: e.nht_number || undefined,
-        phone: e.phone || undefined,
-        address: e.address || undefined,
-        gender: e.gender || undefined,
-        dateOfBirth: e.date_of_birth || undefined,
-        designation: e.designation || undefined,
-        profileImageUrl: e.profile_image_url || undefined,
-        emergencyContact: e.emergency_contact || undefined,
-        annualLeave: e.annual_leave || 14,
-        grossSalary: e.pay_data?.grossSalary || 0,
-        hourlyRate: e.pay_data?.hourlyRate,
-        payType: e.pay_data?.payType || 'SALARIED',
-        payFrequency: e.pay_data?.payFrequency || 'MONTHLY',
-        bankDetails: e.bank_details || {},
-        leaveBalance: e.leave_balance || { vacation: 0, sick: 0, personal: 0 },
-        allowances: e.allowances || [],
-        deductions: e.deductions || [],
-        customDeductions: e.custom_deductions || [],
-        terminationDetails: e.termination_details || undefined,
-        onboardingToken: e.onboarding_token
-      };
-      
-      // Log if this employee has custom deductions
-      if (mapped.customDeductions && mapped.customDeductions.length > 0) {
-        console.log('🎯 Employee', mapped.firstName, 'has', mapped.customDeductions.length, 'custom deductions:', mapped.customDeductions);
-      }
-      
-      return mapped;
-    });
+    return data.map((e: any) => ({
+      id: e.id,
+      firstName: e.first_name,
+      lastName: e.last_name,
+      email: e.email,
+      trn: e.trn,
+      nis: e.nis,
+      employeeId: e.employee_number || undefined, // Map employee_number to employeeId
+      status: e.status,
+      role: e.role,
+      hireDate: e.hire_date,
+      jobTitle: e.job_title,
+      department: e.department,
+      // Unpack JSONB fields
+      grossSalary: e.pay_data?.grossSalary || 0,
+      hourlyRate: e.pay_data?.hourlyRate,
+      payType: e.pay_data?.payType || 'SALARIED',
+      payFrequency: e.pay_data?.payFrequency || 'MONTHLY',
+      bankDetails: e.bank_details || {},
+      leaveBalance: e.leave_balance || { vacation: 0, sick: 0, personal: 0 },
+      allowances: e.allowances || [],
+      customDeductions: e.deductions || [],
+      terminationDetails: e.termination_details || undefined,
+      onboardingToken: e.onboarding_token
+    }));
   },
 
   /**
@@ -1036,24 +1013,13 @@ export const supabaseService = {
         status: emp.status,
         role: emp.role,
         hire_date: emp.hireDate,
-        joining_date: emp.joiningDate || null,
         job_title: emp.jobTitle,
         department: emp.department,
-        employee_type: emp.employeeType || null,
-        nht_status: emp.nhtStatus || null,
-        nht_number: emp.nhtNumber || null,
-        gender: emp.gender || null,
-        date_of_birth: emp.dateOfBirth || null,
-        designation: emp.designation || null,
-        profile_image_url: emp.profileImageUrl || null,
-        emergency_contact: emp.emergencyContact || null,
-        annual_leave: emp.annualLeave || 14,
         pay_data: payData,
         bank_details: emp.bankDetails,
         leave_balance: emp.leaveBalance,
         allowances: emp.allowances,
-        deductions: emp.deductions,
-        custom_deductions: emp.customDeductions || [],
+        deductions: emp.customDeductions,
         termination_details: emp.terminationDetails,
         onboarding_token: emp.onboardingToken || null
       });
@@ -1061,10 +1027,8 @@ export const supabaseService = {
     // If RLS blocks (42501), use admin client fallback
     if (error && error.code === '42501') {
       console.debug('🛡️ RLS blocked employee save, using admin client...');
-      console.debug('Original error:', error);
       const adminClient = await supabaseService.getAdminClient();
       if (adminClient) {
-        console.debug('✅ Admin client available, attempting retry...');
         const { error: adminError } = await adminClient
           .from('employees')
           .upsert({
@@ -1081,87 +1045,22 @@ export const supabaseService = {
             status: emp.status,
             role: emp.role,
             hire_date: emp.hireDate,
-            joining_date: emp.joiningDate || null,
             job_title: emp.jobTitle,
             department: emp.department,
-            employee_type: emp.employeeType || null,
-            nht_status: emp.nhtStatus || null,
-            nht_number: emp.nhtNumber || null,
-            gender: emp.gender || null,
-            date_of_birth: emp.dateOfBirth || null,
-            designation: emp.designation || null,
-            profile_image_url: emp.profileImageUrl || null,
-            emergency_contact: emp.emergencyContact || null,
-            annual_leave: emp.annualLeave || 14,
             pay_data: payData,
             bank_details: emp.bankDetails,
             leave_balance: emp.leaveBalance,
             allowances: emp.allowances,
-            deductions: emp.deductions,
-            custom_deductions: emp.customDeductions || [],
+            deductions: emp.customDeductions,
             termination_details: emp.terminationDetails,
             onboarding_token: emp.onboardingToken || null
           });
-        if (adminError) {
-          console.error("❌ Admin client also failed:", adminError);
-        } else {
-          console.log("✅ Employee saved with admin client");
-        }
+        if (adminError) console.error("Error saving employee with admin client:", adminError);
       } else {
-        console.error("❌ No admin client available, RLS blocked original request:", error);
+        console.error("Error saving employee (RLS blocked, no admin client):", error);
       }
     } else if (error) {
-      console.error("❌ RLS or other error saving employee:", error);
-      // Always fallback to admin client on any error
-      console.debug('🛡️ Attempting admin client fallback for employee save...');
-      const adminClient = await supabaseService.getAdminClient();
-      if (adminClient) {
-        console.debug('✅ Admin client available, attempting retry...');
-        const { error: adminError } = await adminClient
-          .from('employees')
-          .upsert({
-            id: emp.id,
-            company_id: companyId,
-            first_name: emp.firstName,
-            last_name: emp.lastName,
-            email: emp.email,
-            trn: emp.trn,
-            nis: emp.nis,
-            employee_number: emp.employeeId || null,
-            phone: emp.phone || null,
-            address: emp.address || null,
-            status: emp.status,
-            role: emp.role,
-            hire_date: emp.hireDate,
-            joining_date: emp.joiningDate || null,
-            job_title: emp.jobTitle,
-            department: emp.department,
-            employee_type: emp.employeeType || null,
-            nht_status: emp.nhtStatus || null,
-            nht_number: emp.nhtNumber || null,
-            gender: emp.gender || null,
-            date_of_birth: emp.dateOfBirth || null,
-            designation: emp.designation || null,
-            profile_image_url: emp.profileImageUrl || null,
-            emergency_contact: emp.emergencyContact || null,
-            annual_leave: emp.annualLeave || 14,
-            pay_data: payData,
-            bank_details: emp.bankDetails,
-            leave_balance: emp.leaveBalance,
-            allowances: emp.allowances,
-            deductions: emp.deductions,
-            custom_deductions: emp.customDeductions || [],
-            termination_details: emp.terminationDetails,
-            onboarding_token: emp.onboardingToken || null
-          });
-        if (adminError) {
-          console.error("❌ Admin client fallback also failed:", adminError);
-        } else {
-          console.log("✅ Employee saved with admin client fallback");
-        }
-      } else {
-        console.error("❌ No admin client available for fallback");
-      }
+      console.error("Error saving employee:", error);
     }
   },
 
