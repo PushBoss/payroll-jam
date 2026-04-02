@@ -1,10 +1,21 @@
 /**
  * Re-export shim for backward compatibility.
  *
- * All new code should import directly from the specific service
- * (EmployeeService, CompanyService, etc.) or invoke the Edge Function.
+ * The monolith (supabaseService_monolith_DO_NOT_USE.ts) is being progressively
+ * split into focused, single-responsibility service modules:
  *
- * The monolith is in the process of being decommissioned.
- * Do NOT add new methods here — add them to the Edge Function instead.
+ *   EmployeeService  — employees, leave, timesheets, documents
+ *   CompanyService   — company CRUD, config, global config
+ *   PayrollService   — pay runs, timesheets
+ *   BillingService   — subscriptions, payments
+ *   ResellerService  — reseller portfolio, invites, client linking
+ *
+ * New code should import directly from the specific service, NOT from here.
+ * Do NOT add new methods to the monolith.
  */
 export { supabaseService } from './supabaseService_monolith_DO_NOT_USE';
+export { EmployeeService } from './EmployeeService';
+export { CompanyService } from './CompanyService';
+export { PayrollService } from './PayrollService';
+export { BillingService } from './BillingService';
+export { ResellerService } from './ResellerService';
