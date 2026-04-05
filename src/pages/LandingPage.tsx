@@ -1,5 +1,6 @@
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+
 import { Icons } from '../components/Icons';
 import { Footer } from '../components/Footer';
 import { PricingPlan } from '../core/types';
@@ -16,6 +17,10 @@ interface LandingPageProps {
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({ plans = [], onLogin, onSignup, onPricingClick, onFeaturesClick, onFaqClick, onPrivacyClick, onTermsClick }) => {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const closeMobileMenu = () => setIsMobileMenuOpen(false);
+
   // SEO: Update page title and meta tags
   useEffect(() => {
     document.title = 'Payroll-Jam | Jamaican Payroll Software - NIS, NHT & PAYE Compliance';
@@ -127,36 +132,99 @@ export const LandingPage: React.FC<LandingPageProps> = ({ plans = [], onLogin, o
   return (
     <div className="min-h-screen bg-white font-sans text-slate-900 scroll-smooth">
       {/* Navigation */}
-      <nav className="fixed w-full z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
+    <nav className="fixed w-full z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-20">
+            {/* Logo */}
             <div className="flex items-center">
               <span className="text-2xl font-extrabold text-jam-black tracking-tight">
                 Payroll<span className="text-jam-orange">-Jam</span>
               </span>
             </div>
+
+            {/* Desktop Nav Links */}
             <div className="hidden md:flex items-center space-x-8">
               <button onClick={onFeaturesClick} className="text-gray-600 hover:text-gray-900 font-medium">Features</button>
               <button onClick={onPricingClick} className="text-gray-600 hover:text-gray-900 font-medium">Pricing</button>
               <button onClick={onFaqClick} className="text-gray-600 hover:text-gray-900 font-medium">FAQ</button>
             </div>
+
+            {/* Desktop CTAs + Mobile Hamburger */}
             <div className="flex items-center space-x-4">
-              <button 
+              <button
                 onClick={onLogin}
-                className="text-gray-900 font-medium hover:text-jam-orange transition-colors"
+                className="hidden md:block text-gray-900 font-medium hover:text-jam-orange transition-colors"
               >
                 Log In
               </button>
-              <button 
+
+              <button
                 onClick={() => onSignup()}
-                className="bg-jam-black text-white px-6 py-2.5 rounded-full font-semibold hover:bg-gray-800 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                className="hidden sm:block bg-jam-black text-white px-6 py-2.5 rounded-full font-semibold hover:bg-gray-800 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
               >
                 Get Started
+              </button>
+              {/* Hamburger — mobile only */}
+              <button
+                onClick={() => setIsMobileMenuOpen(prev => !prev)}
+                className="md:hidden p-2 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
+                aria-label="Toggle menu"
+              >
+                {isMobileMenuOpen ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                )}
               </button>
             </div>
           </div>
         </div>
+
+        {/* Mobile Dropdown Menu */}
+        {isMobileMenuOpen && (
+          <div className="md:hidden border-t border-gray-100 bg-white/95 backdrop-blur-md shadow-lg">
+            <div className="px-4 py-4 space-y-1">
+              <button
+                onClick={() => { onFeaturesClick(); closeMobileMenu(); }}
+                className="w-full text-left px-4 py-3 rounded-lg text-gray-700 font-medium hover:bg-gray-50 hover:text-jam-orange transition-colors"
+              >
+                Features
+              </button>
+              <button
+                onClick={() => { onPricingClick(); closeMobileMenu(); }}
+                className="w-full text-left px-4 py-3 rounded-lg text-gray-700 font-medium hover:bg-gray-50 hover:text-jam-orange transition-colors"
+              >
+                Pricing
+              </button>
+              <button
+                onClick={() => { onFaqClick(); closeMobileMenu(); }}
+                className="w-full text-left px-4 py-3 rounded-lg text-gray-700 font-medium hover:bg-gray-50 hover:text-jam-orange transition-colors"
+              >
+                FAQ
+              </button>
+              <div className="pt-3 border-t border-gray-100 space-y-2">
+                <button
+                  onClick={() => { onLogin(); closeMobileMenu(); }}
+                  className="w-full text-center px-6 py-3 border-2 border-gray-200 rounded-full font-semibold text-gray-800 hover:border-gray-400 transition-colors"
+                >
+                  Log In
+                </button>
+                <button
+                  onClick={() => { onSignup(); closeMobileMenu(); }}
+                  className="w-full text-center px-6 py-3 bg-jam-black text-white rounded-full font-semibold hover:bg-gray-800 transition-all shadow-md"
+                >
+                  Get Started
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </nav>
+
 
       {/* Hero Section */}
       <section className="pt-32 pb-20 lg:pt-40 lg:pb-28 overflow-hidden">

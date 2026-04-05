@@ -1,5 +1,6 @@
-import { supabase } from './supabaseClient';
-import { emailService } from './emailService';
+import { supabase } from '../../services/supabaseClient';
+import { emailService } from '../../services/emailService';
+
 
 export type MemberRole = 'OWNER' | 'ADMIN' | 'MANAGER' | 'EMPLOYEE' | 'RESELLER' | 'owner' | 'admin' | 'manager' | 'employee' | 'reseller';
 
@@ -362,7 +363,7 @@ export async function getPendingInvitationsByEmail(
 
         if (invite.inviter && Array.isArray(invite.inviter) && invite.inviter.length > 0) {
           const ownerId = invite.inviter[0].owner_id;
-          if (ownerId) {
+          if (ownerId && supabase) {
             const { data: inviterUser } = await supabase
               .from('app_users')
               .select('name')
@@ -370,16 +371,18 @@ export async function getPendingInvitationsByEmail(
               .single();
             inviterName = inviterUser?.name || 'Team';
           }
+
         }
 
         let companyName = invite.companies?.[0]?.name as string | undefined;
         let companyPlan = invite.companies?.[0]?.plan as string | undefined;
 
-        if (!companyName && invite.account_id) {
+        if (!companyName && invite.account_id && supabase) {
           try {
             const { data: summary, error: summaryError } = await supabase.rpc('get_company_invite_summary', {
               p_company_id: invite.account_id
             });
+
 
             if (!summaryError && summary) {
               const summaryRow = Array.isArray(summary) ? summary[0] : summary;

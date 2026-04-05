@@ -1,4 +1,6 @@
 import { PayFrequency, StatutoryDeductions, TaxConfig } from './types';
+import { roundJMD } from '../utils/moneyUtils';
+
 
 // --- Constants for Jamaican Tax Year 2026 ---
 // Based on official Tax Administration Jamaica (TAJ) rates
@@ -47,11 +49,12 @@ export const calculateTaxes = (
   const nisCap = overrides?.nisCap ?? TAX_CONSTANTS.NIS_CAP_ANNUAL;
   const payeThreshold = overrides?.payeThreshold ?? TAX_CONSTANTS.PAYE_THRESHOLD;
   const payeThresholdHigh = overrides?.payeThresholdHigh ?? TAX_CONSTANTS.PAYE_THRESHOLD_HIGH;
-  const nisRate = overrides?.nisRate ?? TAX_CONSTANTS.NIS_RATE_EMPLOYEE;
-  const nhtRate = overrides?.nhtRate ?? TAX_CONSTANTS.NHT_RATE_EMPLOYEE;
-  const edTaxRate = overrides?.edTaxRate ?? TAX_CONSTANTS.ED_TAX_RATE;
+  const nisRate = overrides?.nisRateEmployee ?? TAX_CONSTANTS.NIS_RATE_EMPLOYEE;
+  const nhtRate = overrides?.nhtRateEmployee ?? TAX_CONSTANTS.NHT_RATE_EMPLOYEE;
+  const edTaxRate = overrides?.edTaxRateEmployee ?? TAX_CONSTANTS.ED_TAX_RATE;
   const payeRateStd = overrides?.payeRateStd ?? TAX_CONSTANTS.PAYE_RATE_STD;
   const payeRateHigh = overrides?.payeRateHigh ?? TAX_CONSTANTS.PAYE_RATE_HIGH;
+
   const pensionRate = overrides?.pension ?? 0;
 
   // 0. Pension Contribution (deducted before statutory income)
@@ -94,15 +97,16 @@ export const calculateTaxes = (
   const netPay = gross - totalDeductions;
 
   return {
-    nis: parseFloat(nis.toFixed(2)),
-    nht: parseFloat(nht.toFixed(2)),
-    edTax: parseFloat(edTax.toFixed(2)),
-    paye: parseFloat(paye.toFixed(2)),
+    nis: roundJMD(nis),
+    nht: roundJMD(nht),
+    edTax: roundJMD(edTax),
+    paye: roundJMD(paye),
     pension: 0,
-    totalDeductions: parseFloat(totalDeductions.toFixed(2)),
-    netPay: parseFloat(netPay.toFixed(2))
+    totalDeductions: roundJMD(totalDeductions),
+    netPay: roundJMD(netPay)
   };
 };
+
 
 /**
  * Calculates employer statutory contributions
@@ -125,7 +129,7 @@ export const calculateEmployerContributions = (
   const nhtRateEmployer = overrides?.nhtRateEmployer ?? TAX_CONSTANTS.NHT_RATE_EMPLOYER;
   const edTaxRateEmployer = overrides?.edTaxRateEmployer ?? TAX_CONSTANTS.ED_TAX_RATE_EMPLOYER;
   const heartRateEmployer = overrides?.heartRateEmployer ?? TAX_CONSTANTS.HEART_RATE_EMPLOYER;
-  const nisRateEmployee = overrides?.nisRate ?? TAX_CONSTANTS.NIS_RATE_EMPLOYEE;
+  const nisRateEmployee = overrides?.nisRateEmployee ?? TAX_CONSTANTS.NIS_RATE_EMPLOYEE;
 
   // 1. Employer NIS (2.5%) - Capped at same threshold as employee
   const nisPeriodCap = nisCap / periods;
@@ -146,13 +150,14 @@ export const calculateEmployerContributions = (
   const totalEmployerCost = employerNIS + employerNHT + employerEdTax + employerHEART;
 
   return {
-    employerNIS: parseFloat(employerNIS.toFixed(2)),
-    employerNHT: parseFloat(employerNHT.toFixed(2)),
-    employerEdTax: parseFloat(employerEdTax.toFixed(2)),
-    employerHEART: parseFloat(employerHEART.toFixed(2)),
-    totalEmployerCost: parseFloat(totalEmployerCost.toFixed(2))
+    employerNIS: roundJMD(employerNIS),
+    employerNHT: roundJMD(employerNHT),
+    employerEdTax: roundJMD(employerEdTax),
+    employerHEART: roundJMD(employerHEART),
+    totalEmployerCost: roundJMD(totalEmployerCost)
   };
 };
+
 
 /**
  * Calculates Cumulative PAYE based on YTD Earnings

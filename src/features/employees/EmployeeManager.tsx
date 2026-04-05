@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Employee, EmployeeType, PayType, PayFrequency, Role, CustomDeduction, BankAccount, Department } from '../../core/types';
-import { Icons } from './Icons';
-import { isValidTRN, isValidNIS, isValidEmail, formatTRN } from '../utils/validators';
+import { Icons } from '../../components/Icons';
+import { isValidTRN, isValidNIS, isValidEmail, formatTRN } from '../../utils/validators';
+
+
 
 interface EmployeeManagerProps {
   employee?: Employee | null;
@@ -13,7 +15,22 @@ interface EmployeeManagerProps {
   onAddDepartment?: (dept: Department) => void;
 }
 
+
+
+
 type TabType = 'identity' | 'org' | 'compliance' | 'banking' | 'statutory' | 'deductions';
+
+// Maps each form field to the tab it lives on — derived from actual JSX structure
+const TAB_FIELDS: Record<TabType, string[]> = {
+  identity:   ['firstName', 'lastName', 'email', 'phone', 'address', 'hireDate', 'joiningDate', 'emergencyContact'],
+  org:        ['jobTitle', 'department', 'role', 'status'],
+  compliance: ['employeeType', 'payType', 'payFrequency', 'grossSalary', 'hourlyRate'],
+  banking:    ['bankDetails'],
+  statutory:  ['trn', 'nis', 'pensionContributionRate', 'pensionProvider'],
+  deductions: ['customDeductions', 'deductionError'],
+};
+
+
 
 export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
   employee,
@@ -22,8 +39,9 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
   onSave,
   isLoading = false,
   departments = [],
-  onAddDepartment
+  onAddDepartment,
 }) => {
+
   const [activeTab, setActiveTab] = useState<TabType>('identity');
   const [formData, setFormData] = useState<Employee>(getInitialEmployee());
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -103,7 +121,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
     }));
   };
 
-  const validateForm = (): boolean => {
+  const validateForm = (): { valid: boolean; newErrors: Record<string, string> } => {
     const newErrors: Record<string, string> = {};
 
     if (!formData.firstName?.trim()) newErrors.firstName = 'First name is required';
@@ -119,7 +137,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
     if (formData.joiningDate && !formData.hireDate) newErrors.hireDate = 'Hire date is required if joining date is set';
 
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    return { valid: Object.keys(newErrors).length === 0, newErrors };
   };
 
   const handleAddDeduction = () => {
@@ -167,19 +185,28 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('💾 handleSubmit called with formData:', {
-      id: formData.id,
-      firstName: formData.firstName,
-      customDeductions: formData.customDeductions,
-      customDeductionsCount: formData.customDeductions?.length || 0
-    });
-    if (validateForm()) {
+    const { valid, newErrors } = validateForm();
+    if (valid) {
       console.log('✅ Form validation passed, calling onSave');
       onSave(formData);
     } else {
-      console.warn('❌ Form validation failed');
+      console.warn('❌ Form validation failed', newErrors);
+      // Auto-navigate to the first tab that has errors, using the fresh newErrors (not stale state)
+      const firstTabWithErrors = (Object.entries(TAB_FIELDS) as [TabType, string[]][]).find(
+        ([, fields]) => fields.some(f => Object.keys(newErrors).includes(f))
+      );
+      if (firstTabWithErrors) setActiveTab(firstTabWithErrors[0]);
     }
   };
+
+  // Derive which tabs have at least one error — used to show red dot badges on tabs
+  const tabsWithErrors = new Set<TabType>(
+    (Object.entries(TAB_FIELDS) as [TabType, string[]][])
+      .filter(([, fields]) => fields.some(f => errors[f]))
+      .map(([tab]) => tab)
+  );
+
+
 
   if (!isOpen) return null;
 
@@ -225,17 +252,27 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                className={`inline-flex items-center gap-1.5 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
                   activeTab === tab.id
                     ? 'border-jam-orange text-jam-black'
+                    : tabsWithErrors.has(tab.id)
+                    ? 'border-transparent text-red-500 hover:text-red-700 hover:border-red-300'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
                 {tab.label}
+                {tabsWithErrors.has(tab.id) && (
+                  <span className="flex h-2 w-2 shrink-0">
+                    <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-red-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                  </span>
+                )}
               </button>
+
             ))}
           </nav>
         </div>
+
 
         {/* Tab Content */}
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto flex-1 space-y-6">
@@ -644,7 +681,8 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
           {/* Statutory Tab */}
           {activeTab === 'statutory' && (
             <div className="space-y-6">
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+
                 <p className="text-sm text-blue-900">
                   Fill in statutory information required for Jamaican payroll compliance.
                 </p>

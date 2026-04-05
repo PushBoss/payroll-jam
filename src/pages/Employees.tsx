@@ -11,6 +11,7 @@ import { useAuth } from '../context/AuthContext';
 import { isValidEmail } from '../utils/validators';
 import { generateUUID } from '../utils/uuid';
 
+
 interface EmployeesProps {
     employees: Employee[];
     payRunHistory: PayRun[];
@@ -29,7 +30,9 @@ interface EmployeesProps {
     users?: User[];
     onNavigate?: (path: string) => void;
     onUpdateDepartments?: (depts: Department[]) => void;
+    onUpdateCompany?: (data: CompanySettings) => void;
 }
+
 
 export const Employees: React.FC<EmployeesProps> = ({
     employees,
@@ -49,8 +52,10 @@ export const Employees: React.FC<EmployeesProps> = ({
     users = [],
     onNavigate,
     onUpdateDepartments,
+    onUpdateCompany: _onUpdateCompany,
 }) => {
     const { user: currentUser } = useAuth();
+
 
     const [viewMode, setViewMode] = useState<'active' | 'onboarding' | 'archived'>('active');
 
@@ -184,6 +189,10 @@ export const Employees: React.FC<EmployeesProps> = ({
         setIsSendingInvite(false);
     };
 
+    const activeCount = employees.filter(e => e.status === 'ACTIVE').length;
+    const onboardingCount = employees.filter(e => e.status === 'PENDING_ONBOARDING' || e.status === 'PENDING_VERIFICATION').length;
+    const archivedCount = employees.filter(e => e.status === 'ARCHIVED' || e.status === 'TERMINATED').length;
+
     const filteredEmployees = employees.filter(e => {
         const matchesSearch = e.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
             e.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -192,9 +201,9 @@ export const Employees: React.FC<EmployeesProps> = ({
         if (!matchesSearch) return false;
 
         if (viewMode === 'active') {
-            return e.status === 'ACTIVE' || e.status === 'TERMINATED';
+            return e.status === 'ACTIVE';
         } else if (viewMode === 'archived') {
-            return e.status === 'ARCHIVED';
+            return e.status === 'ARCHIVED' || e.status === 'TERMINATED';
         } else {
             return e.status === 'PENDING_ONBOARDING' || e.status === 'PENDING_VERIFICATION';
         }
@@ -579,6 +588,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                     }}
                     onSave={handleEmployeeManagerSave}
                 />
+
             )}
 
             {/* Termination Modal */}
@@ -747,30 +757,33 @@ export const Employees: React.FC<EmployeesProps> = ({
                 <nav className="-mb-px flex space-x-8">
                     <button
                         onClick={() => setViewMode('active')}
-                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors ${viewMode === 'active'
+                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors flex items-center ${viewMode === 'active'
                             ? 'border-jam-orange text-jam-black'
                             : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                             }`}
                     >
                         Active Workforce
+                        <span className={`ml-2 py-0.5 px-2.5 rounded-full text-xs ${viewMode === 'active' ? 'bg-jam-orange text-jam-black' : 'bg-gray-100 text-gray-600'}`}>{activeCount}</span>
                     </button>
                     <button
                         onClick={() => setViewMode('onboarding')}
-                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors ${viewMode === 'onboarding'
+                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors flex items-center ${viewMode === 'onboarding'
                             ? 'border-jam-orange text-jam-black'
                             : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                             }`}
                     >
                         Onboarding / Pending
+                        <span className={`ml-2 py-0.5 px-2.5 rounded-full text-xs ${viewMode === 'onboarding' ? 'bg-jam-orange text-jam-black' : 'bg-gray-100 text-gray-600'}`}>{onboardingCount}</span>
                     </button>
                     <button
                         onClick={() => setViewMode('archived')}
-                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors ${viewMode === 'archived'
+                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors flex items-center ${viewMode === 'archived'
                             ? 'border-jam-orange text-jam-black'
                             : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                             }`}
                     >
                         Archived
+                        <span className={`ml-2 py-0.5 px-2.5 rounded-full text-xs ${viewMode === 'archived' ? 'bg-jam-orange text-jam-black' : 'bg-gray-100 text-gray-600'}`}>{archivedCount}</span>
                     </button>
                 </nav>
             </div>

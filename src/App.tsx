@@ -49,12 +49,13 @@ const PublicPayslipDownload = lazy(() => import('./pages/PublicPayslipDownload')
 
 
 const INITIAL_TAX_CONFIG: TaxConfig = {
-  nisRate: 0.03,
+  nisRateEmployee: 0.03,
   nisRateEmployer: 0.025,
   nisCap: 5000000,
-  nhtRate: 0.02,
+  nhtRateEmployee: 0.02,
   nhtRateEmployer: 0.03,
-  edTaxRate: 0.0225,
+  nhtCap: 5000000,
+  edTaxRateEmployee: 0.0225,
   edTaxRateEmployer: 0.0225,
   heartRateEmployer: 0.03,
   payeThreshold: 1700096,
@@ -62,6 +63,7 @@ const INITIAL_TAX_CONFIG: TaxConfig = {
   payeRateStd: 0.25,
   payeRateHigh: 0.30
 };
+
 
 function AppContent() {
   const { user, impersonate, updateUser, logout, isLoading } = useAuth();
@@ -369,11 +371,13 @@ function AppContent() {
           if (dbCompany) {
             console.log('✅ App: Company data loaded successfully');
             setCompanyData(dbCompany);
+            if (dbCompany.taxConfig) setTaxConfig(dbCompany.taxConfig);
             if ((dbCompany as any).departments) setDepartments((dbCompany as any).departments);
             if ((dbCompany as any).designations) setDesignations((dbCompany as any).designations);
             // Sync to local storage for offline support
             storage.saveCompanyData(dbCompany);
           } else {
+
             console.error(`❌ App: Failed to load company data for ${user.companyId}. Check RLS or existence.`);
             toast.error("Couldn't load company settings. Please try refreshing.");
           }
@@ -629,9 +633,14 @@ function AppContent() {
   const handleUpdateTaxConfig = async (newConfig: TaxConfig) => {
     setTaxConfig(newConfig);
     storage.saveTaxConfig(newConfig);
-    if (isSupabaseMode && user?.companyId) {
-      await CompanyService.saveCompany(user.companyId, { ...companyData, policies: { ...companyData?.policies, taxConfig: newConfig } } as any);
-      toast.success("Tax configuration updated");
+    if (companyData) {
+        const updated = { ...companyData, taxConfig: newConfig };
+        setCompanyData(updated);
+        storage.saveCompanyData(updated);
+        if (isSupabaseMode && user?.companyId) {
+            await CompanyService.saveCompany(user.companyId, updated);
+            toast.success("Tax configuration updated");
+        }
     }
   };
 
@@ -858,7 +867,9 @@ function AppContent() {
         {currentPath === 'privacy-policy' && <PrivacyPolicy onBack={() => navigateTo('home')} />}
         {currentPath === 'terms-of-service' && <TermsOfService onBack={() => navigateTo('home')} />}
         {currentPath === 'home' && <LandingPage plans={plans} onLogin={() => navigateTo('login')} onSignup={(plan) => { setSelectedPlan(plan || 'Free'); setSelectedCycle('monthly'); navigateTo('signup'); }} onPricingClick={() => navigateTo('pricing')} onFeaturesClick={() => navigateTo('features')} onFaqClick={() => navigateTo('faq')} onPrivacyClick={() => navigateTo('privacy-policy')} onTermsClick={() => navigateTo('terms-of-service')} />}
-        {!['login', 'signup', 'verify-email', 'pricing', 'features', 'faq', 'home', 'privacy-policy', 'terms-of-service'].includes(currentPath) &&
+        {['portal-home', 'portal-timesheets', 'portal-leave', 'portal-docs', 'portal-profile', 'dashboard', 'employees', 'payrun', 'settings', 'leave', 'documents', 'reseller-dashboard', 'sa-overview'].includes(currentPath) 
+          ? <Login onLoginSuccess={onLoginSuccess} onBack={() => navigateTo('home')} onRegisterClick={() => navigateTo('signup')} onVerifyEmailClick={(email) => { setVerifyEmail(email); navigateTo('verify-email'); }} />
+          : !['login', 'signup', 'verify-email', 'pricing', 'features', 'faq', 'home', 'privacy-policy', 'terms-of-service', 'download-payslip'].includes(currentPath) &&
           <NotFound onGoHome={() => navigateTo('home')} />
         }
       </Suspense>
@@ -878,7 +889,8 @@ function AppContent() {
 
     switch (currentPath) {
       case 'dashboard': return <Dashboard employees={employees} leaveRequests={leaveRequests} payRunHistory={payRunHistory} onNavigate={navigateTo} companyData={companyData || undefined} />;
-      case 'employees': return <Employees employees={employees} payRunHistory={payRunHistory} companyData={companyData!} onAddEmployee={handleAddEmployee} onUpdateEmployee={handleUpdateEmployee} onDeleteEmployee={handleDeleteEmployee} onSimulateOnboarding={e => alert(`Link: ${window.location.origin}/?token=${e.onboardingToken}`)} departments={departments} designations={designations} assets={assets} onUpdateAssets={setAssets} reviews={reviews} onUpdateReviews={setReviews} plans={plans} users={users} onNavigate={navigateTo} onUpdateDepartments={handleUpdateDepartments} />;
+      case 'employees': return <Employees employees={employees} payRunHistory={payRunHistory} companyData={companyData!} onAddEmployee={handleAddEmployee} onUpdateEmployee={handleUpdateEmployee} onDeleteEmployee={handleDeleteEmployee} onSimulateOnboarding={e => alert(`Link: ${window.location.origin}/?token=${e.onboardingToken}`)} departments={departments} designations={designations} assets={assets} onUpdateAssets={setAssets} reviews={reviews} onUpdateReviews={setReviews} plans={plans} users={users} onNavigate={navigateTo} onUpdateDepartments={handleUpdateDepartments} onUpdateCompany={handleUpdateCompany} />;
+
       case 'payrun': return <PayRun employees={employees} timesheets={timesheets} leaveRequests={leaveRequests} onSave={handleSavePayRun} companyData={companyData!} integrationConfig={integrationConfig} payRunHistory={payRunHistory} editRunId={editRunId} onNavigate={navigateTo} />;
       case 'leave': return <Leave requests={leaveRequests} employees={employees} onStatusChange={handleUpdateLeaveStatus} onAddRequest={handleSaveLeaveRequest} onUpdateEmployee={handleUpdateEmployee} />;
       case 'documents':

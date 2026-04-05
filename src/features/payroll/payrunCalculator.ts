@@ -9,7 +9,8 @@ import {
   processCustomDeductions,
   calculateEmployerContributions
 } from './jamaica2026Fiscal';
-import type { Jamaica2026TaxConfig as Jamaica2026TaxConfigType } from '../../core/types';
+import { TaxConfig } from '../../core/types';
+
 
 export interface PayRunPeriod {
   startDate: string; // YYYY-MM-DD
@@ -92,8 +93,9 @@ export function calculatePayrunLineItems(
   period: PayRunPeriod,
   additionalDeductions: Record<string, number> = {},
   additionalAdditions: Record<string, number> = {},
-  taxConfig?: Partial<Jamaica2026TaxConfigType>
+  taxConfig?: Partial<TaxConfig>
 ): PayRunLineItem[] {
+
   
   return employees
     .filter(emp => emp.status === 'ACTIVE')

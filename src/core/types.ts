@@ -421,15 +421,18 @@ export interface CompanySettings {
   resellerId?: string;
   policies?: Record<string, any>;
   reseller_defaults?: Record<string, any>;
+  taxConfig?: TaxConfig;
 }
 
+
 export interface TaxConfig {
-  nisRate: number;
+  nisRateEmployee: number;
   nisRateEmployer: number;
   nisCap: number;
-  nhtRate: number;
+  nhtRateEmployee: number;
   nhtRateEmployer: number;
-  edTaxRate: number;
+  nhtCap: number;
+  edTaxRateEmployee: number;
   edTaxRateEmployer: number;
   heartRateEmployer: number;
   payeThreshold: number;
@@ -437,6 +440,8 @@ export interface TaxConfig {
   payeRateStd: number;
   payeRateHigh: number;
 }
+
+
 
 export interface GlobalConfig {
   dataSource?: 'LOCAL' | 'SUPABASE';

@@ -20,6 +20,8 @@ import { useAccount } from '../hooks/useAccount';
 import { getUserRoleInAccount, MemberRole } from '../features/employees/inviteService';
 import { InviteUserCard } from '../components/InviteUserCard';
 import { AccountMembersCard } from '../components/AccountMembersCard';
+import { TaxConfigCard } from '../features/employees/TaxConfigCard';
+
 
 interface SettingsProps {
     companyData?: CompanySettings;
@@ -300,14 +302,27 @@ export const Settings: React.FC<SettingsProps> = ({
     };
 
     const handleRestore = () => {
-        if (confirm("Are you sure you want to restore default 2025 tax rates?")) {
+        if (confirm("Are you sure you want to restore default 2026 tax rates?")) {
             onUpdateTaxConfig({
-                nisRate: 0.03, nisCap: 5000000, nhtRate: 0.02, edTaxRate: 0.0225, payeThreshold: 1500009, payeRateStd: 0.25, payeRateHigh: 0.30
+                nisRateEmployee: 0.03,
+                nisRateEmployer: 0.025,
+                nisCap: 5000000,
+                nhtRateEmployee: 0.02,
+                nhtRateEmployer: 0.03,
+                nhtCap: 5000000,
+                edTaxRateEmployee: 0.0225,
+                edTaxRateEmployer: 0.0225,
+                heartRateEmployer: 0.03,
+                payeThreshold: 1700096,
+                payeRateStd: 0.25,
+                payeRateHigh: 0.30,
+                payeThresholdHigh: 6000000
             } as any);
-            auditService.log(currentUser, 'UPDATE', 'Settings', 'Restored default 2025 statutory tax rates');
+            auditService.log(currentUser, 'UPDATE', 'Settings', 'Restored default 2026 statutory tax rates');
             toast.success("Default tax rates restored");
         }
     };
+
 
     const handleCompanyUpdate = (newData: CompanySettings) => { onUpdateCompany(newData); };
 
@@ -909,16 +924,17 @@ export const Settings: React.FC<SettingsProps> = ({
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
                                 <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">NIS Rate (e.g. 0.03)</label>
-                                <input type="number" step="0.001" value={taxConfig.nisRate} onChange={(e) => handleTaxChange('nisRate', e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-jam-orange" />
+                                <input type="number" step="0.001" value={taxConfig.nisRateEmployee} onChange={(e) => handleTaxChange('nisRateEmployee', e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-jam-orange" />
                             </div>
                             <div>
                                 <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">NHT Rate (e.g. 0.02)</label>
-                                <input type="number" step="0.001" value={taxConfig.nhtRate} onChange={(e) => handleTaxChange('nhtRate', e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-jam-orange" />
+                                <input type="number" step="0.001" value={taxConfig.nhtRateEmployee} onChange={(e) => handleTaxChange('nhtRateEmployee', e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-jam-orange" />
                             </div>
                             <div>
                                 <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Ed Tax Rate (e.g. 0.0225)</label>
-                                <input type="number" step="0.0001" value={taxConfig.edTaxRate} onChange={(e) => handleTaxChange('edTaxRate', e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-jam-orange" />
+                                <input type="number" step="0.0001" value={taxConfig.edTaxRateEmployee} onChange={(e) => handleTaxChange('edTaxRateEmployee', e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-jam-orange" />
                             </div>
+
                             <div>
                                 <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">NIS Annual Cap</label>
                                 <input type="number" value={taxConfig.nisCap} onChange={(e) => handleTaxChange('nisCap', e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-jam-orange" />
@@ -934,8 +950,19 @@ export const Settings: React.FC<SettingsProps> = ({
                             </div>
                         </div>
                     </div>
+
+                    {/* Company-Level Tax Rate Overrides */}
+                    <TaxConfigCard
+                        config={taxConfig}
+                        onSave={async (newConfig) => {
+                            onUpdateTaxConfig(newConfig);
+                            toast.success('Tax configuration saved');
+                        }}
+                        isSaving={false}
+                    />
                 </div>
             )}
+
 
             {activeTab === 'company' && (
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 animate-fade-in">

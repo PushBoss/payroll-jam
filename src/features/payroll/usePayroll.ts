@@ -15,21 +15,32 @@ export const usePayroll = (
 ) => {
     const [draftItems, setDraftItems] = useState<PayRunLineItem[]>([]);
 
-    // Resolve Effective Policies for this company context
+    // Resolve Effective Tax Config for this company context
+    // Priority: company taxConfig > global TAX_CONSTANTS defaults
     const policies = useMemo(() => {
-        const global = {
-            nis_cap_annual: TAX_CONSTANTS.NIS_CAP_ANNUAL,
-            paye_threshold: TAX_CONSTANTS.PAYE_THRESHOLD
-        };
-
-        if (!companyData) return global;
-
-        // "Most-Specific-Wins" resolution: Local > Reseller > Global
+        const tc = (companyData as any)?.taxConfig;
         return {
-            nis_cap_annual: companyData.policies?.nis_cap_annual ?? companyData.reseller_defaults?.nis_cap_annual ?? global.nis_cap_annual,
-            paye_threshold: companyData.policies?.paye_threshold ?? companyData.reseller_defaults?.paye_threshold ?? global.paye_threshold
+            // Legacy policy fields
+            nis_cap_annual: tc?.nisCap ?? TAX_CONSTANTS.NIS_CAP_ANNUAL,
+            paye_threshold: tc?.payeThreshold ?? TAX_CONSTANTS.PAYE_THRESHOLD,
+            // Full TaxConfig overrides for calculateTaxes()
+            nisRateEmployee: tc?.nisRateEmployee ?? TAX_CONSTANTS.NIS_RATE_EMPLOYEE,
+            nisCap: tc?.nisCap ?? TAX_CONSTANTS.NIS_CAP_ANNUAL,
+            nhtRateEmployee: tc?.nhtRateEmployee ?? TAX_CONSTANTS.NHT_RATE_EMPLOYEE,
+            edTaxRateEmployee: tc?.edTaxRateEmployee ?? TAX_CONSTANTS.ED_TAX_RATE,
+            payeThreshold: tc?.payeThreshold ?? TAX_CONSTANTS.PAYE_THRESHOLD,
+            payeRateStd: tc?.payeRateStd ?? TAX_CONSTANTS.PAYE_RATE_STD,
+            payeRateHigh: tc?.payeRateHigh ?? TAX_CONSTANTS.PAYE_RATE_HIGH,
+            payeThresholdHigh: tc?.payeThresholdHigh ?? TAX_CONSTANTS.PAYE_THRESHOLD_HIGH,
+            // Employer rates for contributions
+            nisRateEmployer: tc?.nisRateEmployer ?? TAX_CONSTANTS.NIS_RATE_EMPLOYER,
+            nhtRateEmployer: tc?.nhtRateEmployer ?? TAX_CONSTANTS.NHT_RATE_EMPLOYER,
+            edTaxRateEmployer: tc?.edTaxRateEmployer ?? TAX_CONSTANTS.ED_TAX_RATE_EMPLOYER,
+            heartRateEmployer: tc?.heartRateEmployer ?? TAX_CONSTANTS.HEART_RATE_EMPLOYER,
         };
+
     }, [companyData]);
+
 
     const totals = useMemo(() => {
         return {
