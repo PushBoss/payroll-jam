@@ -192,8 +192,11 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             if (activeTab !== 'pending-payments') return;
             setIsLoadingPending(true);
             try {
-                const pending = await supabaseService.getPendingPaymentCompanies();
-                setPendingPayments(pending || []);
+                const { data, error } = await supabase!.functions.invoke('admin-handler', {
+                    body: { action: 'get-pending-companies', payload: {} }
+                });
+                if (error) throw error;
+                setPendingPayments(data?.companies || []);
             } catch (error) {
                 console.error('Error loading pending payments:', error);
                 toast.error('Failed to load pending payments');
@@ -242,12 +245,12 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
 
             setIsLoadingBilling(true);
             try {
-                // Fetch all subscriptions
+                // Fetch all subscriptions via BillingService (no admin client needed)
                 const subscriptions = await supabaseService.getAllSubscriptions();
-                const activeSubs = subscriptions.filter(s => s.status === 'active');
+                const activeSubs = subscriptions.filter((s: any) => s.status === 'active');
 
                 // Calculate MRR from active subscriptions
-                const mrr = activeSubs.reduce((sum, sub) => {
+                const mrr = activeSubs.reduce((sum: number, sub: any) => {
                     if (sub.billing_frequency === 'monthly') {
                         return sum + Number(sub.amount || 0);
                     } else if (sub.billing_frequency === 'yearly') {
@@ -560,8 +563,12 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         if (!confirm(`Approve payment for ${companyName}? This will activate their account.`)) return;
 
         try {
-            const success = await supabaseService.approveCompanyPayment(companyId);
-            if (success) {
+            const { data, error } = await supabase!.functions.invoke('admin-handler', {
+                body: { action: 'approve-company', payload: { companyId } }
+            });
+            if (error) throw error;
+
+            if (data?.success) {
                 toast.success(`Payment approved for ${companyName}`);
                 auditService.log(
                     { id: 'sys', name: 'Super Admin', email: 'sys', role: Role.SUPER_ADMIN },
@@ -570,8 +577,10 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     `Approved payment for company: ${companyName}`
                 );
                 // Reload pending payments
-                const pending = await supabaseService.getPendingPaymentCompanies();
-                setPendingPayments(pending || []);
+                const { data: refreshed } = await supabase!.functions.invoke('admin-handler', {
+                    body: { action: 'get-pending-companies', payload: {} }
+                });
+                setPendingPayments(refreshed?.companies || []);
             } else {
                 toast.error('Failed to approve payment');
             }

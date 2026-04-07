@@ -337,6 +337,170 @@ serve(async (req: Request) => {
                 return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
             }
 
+            case 'get-pending-companies': {
+                const { data: pending, error: pendingError } = await adminClient
+                    .from('companies')
+                    .select('id, name, email, plan, status, created_at')
+                    .in('status', ['PENDING_PAYMENT', 'PENDING_APPROVAL'])
+                    .order('created_at', { ascending: false });
+
+                if (pendingError) throw pendingError;
+
+                // Enrich with owner info from app_users
+                const enriched = await Promise.all((pending || []).map(async (company: any) => {
+                    const { data: owner } = await adminClient
+                        .from('app_users')
+                        .select('name, email')
+                        .eq('company_id', company.id)
+                        .in('role', ['OWNER'])
+                        .limit(1)
+                        .maybeSingle();
+
+                    const planFees: Record<string, number> = {
+                        'Free': 0, 'Starter': 3000, 'Professional': 7500, 'Enterprise': 15000
+                    };
+
+                    return {
+                        id: company.id,
+                        name: company.name,
+                        email: company.email || owner?.email || '',
+                        plan: company.plan,
+                        status: company.status,
+                        created_at: company.created_at,
+                        owner_name: owner?.name || 'N/A',
+                        owner_email: owner?.email || '',
+                        monthly_fee: planFees[company.plan] || 5000
+                    };
+                }));
+
+                return new Response(JSON.stringify({ companies: enriched }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'approve-company': {
+                const { companyId } = payload;
+                if (!companyId) throw new Error('companyId required');
+
+                const { error } = await adminClient
+                    .from('companies')
+                    .update({ status: 'ACTIVE' })
+                    .eq('id', companyId);
+
+                if (error) throw error;
+                return new Response(JSON.stringify({ success: true }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'sync-reseller-portfolio': {
+                const { resellerUserId } = payload;
+                if (!resellerUserId) throw new Error('resellerUserId required');
+
+                const { data: userData } = await adminClient
+                    .from('app_users')
+                    .select('role, company_id')
+                    .eq('id', resellerUserId)
+                    .maybeSingle();
+
+                if (!userData || (userData.role !== 'RESELLER' && userData.role !== 'Reseller')) {
+                    return new Response(JSON.stringify({ success: false, syncedCount: 0, error: 'User is not a Reseller' }), {
+                        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                    });
+                }
+
+                const resellerCompanyId = userData.company_id;
+                if (!resellerCompanyId) {
+                    return new Response(JSON.stringify({ success: false, syncedCount: 0, error: 'User has no Reseller Company ID' }), {
+                        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                    });
+                }
+
+                const { data: memberships } = await adminClient
+                    .from('account_members')
+                    .select('account_id')
+                    .eq('user_id', resellerUserId)
+                    .eq('status', 'accepted');
+
+                let syncedCount = 0;
+                for (const mem of (memberships || [])) {
+                    if (mem.account_id === resellerCompanyId) continue;
+                    const { error: linkError } = await adminClient.from('reseller_clients').upsert({
+                        reseller_id: resellerCompanyId,
+                        client_company_id: mem.account_id,
+                        status: 'ACTIVE',
+                        access_level: 'FULL'
+                    }, { onConflict: 'reseller_id,client_company_id' });
+
+                    if (!linkError) {
+                        await adminClient.from('companies').update({ reseller_id: resellerCompanyId }).eq('id', mem.account_id);
+                        syncedCount++;
+                    }
+                }
+
+                return new Response(JSON.stringify({ success: true, syncedCount }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'join-client-team': {
+                const { clientCompanyId, resellerUserId, resellerEmail } = payload;
+                if (!clientCompanyId || !resellerUserId) throw new Error('clientCompanyId and resellerUserId required');
+
+                const { error: memberError } = await adminClient.from('account_members').upsert({
+                    account_id: clientCompanyId,
+                    user_id: resellerUserId,
+                    email: resellerEmail?.toLowerCase() || '',
+                    role: 'MANAGER',
+                    status: 'accepted',
+                    accepted_at: new Date().toISOString(),
+                    invited_at: new Date().toISOString(),
+                }, { onConflict: 'account_id,email', ignoreDuplicates: false });
+
+                if (memberError) {
+                    // Fallback to user_id constraint
+                    await adminClient.from('account_members').upsert({
+                        account_id: clientCompanyId,
+                        user_id: resellerUserId,
+                        role: 'MANAGER',
+                        status: 'accepted',
+                        accepted_at: new Date().toISOString(),
+                        invited_at: new Date().toISOString(),
+                    }, { onConflict: 'account_id,user_id', ignoreDuplicates: false });
+                }
+
+                const { data: userData } = await adminClient.from('app_users').select('company_id').eq('id', resellerUserId).maybeSingle();
+                if (userData?.company_id) {
+                    await adminClient.from('companies').update({ reseller_id: userData.company_id }).eq('id', clientCompanyId);
+                    await adminClient.from('reseller_clients').upsert({
+                        reseller_id: userData.company_id,
+                        client_company_id: clientCompanyId,
+                        status: 'ACTIVE',
+                        access_level: 'FULL'
+                    }, { onConflict: 'reseller_id,client_company_id' });
+                }
+
+                return new Response(JSON.stringify({ success: true }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'get-user-by-email-admin': {
+                const { email } = payload;
+                if (!email) throw new Error('email required');
+
+                const { data: user, error: userError } = await adminClient
+                    .from('app_users')
+                    .select('id, name, email, role, company_id, is_onboarded')
+                    .eq('email', email.toLowerCase())
+                    .maybeSingle();
+
+                if (userError) throw userError;
+                return new Response(JSON.stringify({ user: user || null }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
             default:
                 throw new Error(`Unknown action: ${action}`);
         }

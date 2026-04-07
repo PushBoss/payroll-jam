@@ -4,6 +4,7 @@ import { Icons } from '../components/Icons';
 import { ResellerClient, PricingPlan } from '../core/types';
 import { getPlanPriceDetails } from '../utils/pricing';
 import { supabaseService } from '../services/supabaseService';
+import { supabase } from '../services/supabaseClient';
 import { dimePayService } from '../services/dimePayService';
 import { emailService } from '../services/emailService';
 import { useAuth } from '../context/AuthContext';
@@ -237,11 +238,15 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
 
         try {
             toast.loading(`Joining ${client.companyName} team...`, { id: 'join-team' });
-            const success = await supabaseService.joinClientTeam(client.id, user.id, user.email);
+            const { data, error } = await supabase!.functions.invoke('admin-handler', {
+                body: {
+                    action: 'join-client-team',
+                    payload: { clientCompanyId: client.id, resellerUserId: user.id, resellerEmail: user.email }
+                }
+            });
 
-            if (success) {
+            if (!error && data?.success) {
                 toast.success(`You are now a manager of ${client.companyName}`, { id: 'join-team' });
-                // Optional: trigger a refresh or just rely on the next navigation to work
             } else {
                 toast.error('Failed to join team. Please try again.', { id: 'join-team' });
             }
@@ -257,11 +262,13 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
         toast.loading('Syncing your client portfolio...', { id: 'sync-portfolio' });
 
         try {
-            const result = await supabaseService.syncResellerPortfolio(user.id);
-            if (result.success) {
-                if (result.syncedCount > 0) {
-                    toast.success(`Synced ${result.syncedCount} companies to your portfolio!`, { id: 'sync-portfolio' });
-                    // Reload clients
+            const { data, error } = await supabase!.functions.invoke('admin-handler', {
+                body: { action: 'sync-reseller-portfolio', payload: { resellerUserId: user.id } }
+            });
+
+            if (!error && data?.success) {
+                if (data.syncedCount > 0) {
+                    toast.success(`Synced ${data.syncedCount} companies to your portfolio!`, { id: 'sync-portfolio' });
                     if (user.companyId) {
                         const resellerClients = await supabaseService.getResellerClients(user.companyId);
                         setClients(Array.isArray(resellerClients) ? resellerClients : []);
@@ -270,7 +277,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                     toast.info('Portfolio is already up to date.', { id: 'sync-portfolio' });
                 }
             } else {
-                toast.error(`Sync failed: ${result.error}`, { id: 'sync-portfolio' });
+                toast.error(`Sync failed: ${data?.error || 'Unknown error'}`, { id: 'sync-portfolio' });
             }
         } catch (error) {
             console.error('Error syncing portfolio:', error);
@@ -300,21 +307,28 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
         }
 
         try {
-            // Check if user/company exists (use admin lookup to bypass RLS)
-            const existingUser = await supabaseService.getUserByEmailAdmin(clientEmail);
+            // Check if user/company exists via edge function (bypasses RLS)
+            const { data: lookupData } = await supabase!.functions.invoke('admin-handler', {
+                body: { action: 'get-user-by-email-admin', payload: { email: clientEmail } }
+            });
+            const existingUser = lookupData?.user ? {
+                id: lookupData.user.id,
+                companyId: lookupData.user.company_id,
+                role: lookupData.user.role
+            } : null;
 
             if (existingUser && existingUser.companyId) {
-                // Company exists - add reseller as team member (manager role) and link to portfolio
+                // Company exists - join team via edge function
                 const clientCompanyId = existingUser.companyId;
+                const { data: joinData, error: joinError } = await supabase!.functions.invoke('admin-handler', {
+                    body: {
+                        action: 'join-client-team',
+                        payload: { clientCompanyId, resellerUserId: user.id, resellerEmail: user.email }
+                    }
+                });
 
-                // 1. Add reseller user as team member (manager role) to the existing company directly (accepted status)
-                // This function also handles the linking in reseller_clients using admin privileges
-                const clientSaved = await supabaseService.joinClientTeam(clientCompanyId, user.id, user.email);
-
-                if (clientSaved) {
+                if (!joinError && joinData?.success) {
                     toast.success(`${formData.companyName || 'Company'} added to your portfolio!`);
-
-                    // Reload clients
                     const resellerClients = await supabaseService.getResellerClients(user.companyId);
                     setClients(Array.isArray(resellerClients) ? resellerClients : []);
                 } else {
