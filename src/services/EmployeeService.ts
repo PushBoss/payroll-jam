@@ -19,6 +19,10 @@ export const EmployeeService = {
       name: data.name,
       email: data.email,
       role: data.role as any,
+      companyId: data.company_id,
+      isOnboarded: data.is_onboarded,
+      avatarUrl: data.avatar_url,
+      phone: data.phone,
       onboardingToken: data.onboarding_token
     } as any;
   },
