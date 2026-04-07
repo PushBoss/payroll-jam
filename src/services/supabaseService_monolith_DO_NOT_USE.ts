@@ -323,20 +323,13 @@ export const supabaseService = {
   saveCompany: async (companyId: string, settings: CompanySettings, userId?: string) => {
     if (!supabase) return null;
 
-    // Use admin client for high-privilege write during signup/sync
-    const adminClient = await supabaseService.getAdminClient();
-    const effectiveClient = adminClient || supabase;
-
+    console.log('🛡️ Migrating to Secure Edge Function for saveCompany...');
+    
     // Get owner ID - use provided userId or fetch from auth
     let ownerId = userId;
     if (!ownerId) {
       const { data: authData } = await supabase.auth.getUser();
       ownerId = authData.user?.id;
-    }
-
-    if (!ownerId) {
-      console.error('Unable to determine user ID for company owner');
-      return null;
     }
 
     // Map plan names to match database constraint: ('Free', 'Starter', 'Professional', 'Enterprise')
@@ -347,14 +340,12 @@ export const supabaseService = {
         'Starter': 'Starter',
         'Pro': 'Professional',
         'Professional': 'Professional',
-        'Reseller': 'Enterprise', // Map Reseller to Enterprise for now
+        'Reseller': 'Enterprise',
         'Enterprise': 'Enterprise'
       };
       return planMap[plan] || 'Free';
     };
 
-    // Pack extra fields into settings JSONB
-    // Pack extra fields into settings JSONB
     const settingsJson = {
       phone: settings.phone,
       bankName: settings.bankName,
@@ -371,8 +362,6 @@ export const supabaseService = {
 
     const dbPlan = mapPlanToDbFormat(settings.plan);
 
-    // Parse employee limit to integer for DB
-    // Handle "Unlimited" -> 999999, "5 Employees" -> 5
     let dbLimit = 999999;
     if (settings.employeeLimit && settings.employeeLimit.toLowerCase() !== 'unlimited') {
       const match = settings.employeeLimit.match(/(\d+)/);
@@ -381,94 +370,47 @@ export const supabaseService = {
       }
     }
 
-    const { data: companyData, error } = await effectiveClient
-      .from('companies')
-      .upsert({
-        id: companyId,
-        // owner_id: ownerId, // Removed: Not in schema
-        name: settings.name,
-        email: settings.email,
-        phone: settings.phone,
-        trn: settings.trn,
-        address: settings.address,
-        settings: settingsJson,
-        status: settings.subscriptionStatus || 'ACTIVE',
-        plan: dbPlan, // Map to database format
-        billing_cycle: settings.billingCycle || 'MONTHLY', // Save billing cycle
-        employee_limit: dbLimit // Save employee limit as integer
-        // payment_method: settings.paymentMethod // Removed: Not in schema, moved to settings JSON
-      }, {
-        onConflict: 'id'
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error('❌ Error saving company:', error);
-      // Fallback: Use the Secure RPC if direct upsert failed despite admin client attempt
-      console.warn("Retrying company creation via RPC fallback...");
-      const { data: rpcData, error: rpcError } = await effectiveClient.rpc('create_company_secure', {
-        p_company_id: companyId,
-        p_owner_id: ownerId,
-        p_name: settings.name,
-        p_email: settings.email || null,
-        p_phone: settings.phone || null,
-        p_trn: settings.trn || null,
-        p_address: settings.address || null,
-        p_status: settings.subscriptionStatus || 'ACTIVE',
-        p_plan: dbPlan,
-        p_billing_cycle: settings.billingCycle || 'MONTHLY',
-        p_employee_limit: dbLimit,
-        p_payment_method: settings.paymentMethod,
-        p_settings: settingsJson
+    try {
+      // Use the new secure admin-handler Edge Function
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-handler`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`
+        },
+        body: JSON.stringify({
+          action: 'save-company',
+          payload: {
+            companyId,
+            userId: ownerId,
+            settings: {
+              name: settings.name,
+              email: settings.email,
+              phone: settings.phone,
+              trn: settings.trn,
+              address: settings.address,
+              settings: settingsJson,
+              status: settings.subscriptionStatus || 'ACTIVE',
+              plan: dbPlan,
+              billing_cycle: settings.billingCycle || 'MONTHLY',
+              employee_limit: dbLimit
+            }
+          }
+        })
       });
 
-      if (rpcError) {
-        console.error("RPC Fallback failed:", rpcError);
-        return null;
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to save company via Edge Function');
       }
-      return rpcData;
+
+      const result = await response.json();
+      return result.company;
+    } catch (e) {
+      console.error('❌ Edge Function saveCompany failed:', e);
+      throw e;
     }
-
-    // CRITICAL: Explicitly ensure the owner is in account_members table
-    if (ownerId && companyId) {
-      console.log('👥 Ensuring owner is added to account_members...');
-      try {
-        // Try upsert with email constraint first
-        const { error: memError } = await effectiveClient.from('account_members').upsert({
-          account_id: companyId,
-          user_id: ownerId,
-          email: settings.email || '',
-          role: 'OWNER',
-          status: 'accepted',
-          accepted_at: new Date().toISOString(),
-          invited_at: new Date().toISOString()
-        }, {
-          onConflict: 'account_id,email'
-        });
-
-        // Fallback: If 400 (likely missing constraint), try user_id constraint
-        if (memError && (memError.code === '400' || (memError as any).status === 400)) {
-          console.warn('⚠️ account_id+email constraint missing, retrying with user_id...');
-          await effectiveClient.from('account_members').upsert({
-            account_id: companyId,
-            user_id: ownerId,
-            role: 'OWNER',
-            status: 'accepted',
-            accepted_at: new Date().toISOString(),
-            invited_at: new Date().toISOString()
-          }, {
-            onConflict: 'account_id,user_id'
-          });
-        } else if (memError) {
-          console.error('❌ Error in account_members upsert:', memError);
-        }
-      } catch (err) {
-        console.error('⚠️ Critical error adding owner to account_members:', err);
-      }
-    }
-
-    return companyData;
   },
 
   // Save payment gateway settings to company settings JSONB
@@ -693,7 +635,7 @@ export const supabaseService = {
         'Free': 'Free',
         'Starter': 'Starter',
         'Professional': 'Pro',
-        'Enterprise': 'Enterprise'
+        'Enterprise': 'Reseller'
       };
       return planMap[dbPlan] || 'Free';
     };
@@ -730,7 +672,7 @@ export const supabaseService = {
         'Free': 'Free',
         'Starter': 'Starter',
         'Professional': 'Pro',
-        'Enterprise': 'Enterprise'
+        'Enterprise': 'Reseller'
       };
       return planMap[dbPlan] || 'Free';
     };

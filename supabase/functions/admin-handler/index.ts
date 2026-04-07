@@ -413,6 +413,72 @@ serve(async (req: Request) => {
                 });
             }
 
+            case 'save-company': {
+                const { companyId, settings, userId } = payload;
+                if (!companyId || !settings) throw new Error('companyId and settings are required');
+
+                // 1. Authorization check: Either Super Admin or the User is the Owner
+                const isSuperAdmin = authUser?.app_metadata?.role === 'SUPER_ADMIN' || 
+                                     authUser?.user_metadata?.role === 'SUPER_ADMIN';
+                
+                if (!isSuperAdmin && userId) {
+                    // Check if the user has OWNER role for this company
+                    const { data: membership } = await adminClient
+                        .from('account_members')
+                        .select('role')
+                        .eq('account_id', companyId)
+                        .eq('user_id', userId)
+                        .maybeSingle();
+                    
+                    if (membership?.role !== 'OWNER') {
+                        throw new Error('Unauthorized: Only Owners or Super Admins can save company settings via this secure channel.');
+                    }
+                }
+
+                // 2. Prepare the update data (mimicking the monolith mapping)
+                const {
+                    name, email, phone, trn, address, status, plan, 
+                    billing_cycle, employee_limit, settings: settingsJson
+                } = settings;
+
+                const { data: updated, error: updateError } = await adminClient
+                    .from('companies')
+                    .upsert({
+                        id: companyId,
+                        name: name,
+                        email: email,
+                        phone: phone,
+                        trn: trn,
+                        address: address,
+                        settings: settingsJson,
+                        status: status || 'ACTIVE',
+                        plan: plan,
+                        billing_cycle: billing_cycle || 'MONTHLY',
+                        employee_limit: employee_limit
+                    }, { onConflict: 'id' })
+                    .select()
+                    .single();
+
+                if (updateError) throw updateError;
+
+                // 3. Ensure owner is in account_members (critical for sync)
+                if (userId) {
+                     await adminClient.from('account_members').upsert({
+                        account_id: companyId,
+                        user_id: userId,
+                        email: email || '',
+                        role: 'OWNER',
+                        status: 'accepted',
+                        accepted_at: new Date().toISOString(),
+                        invited_at: new Date().toISOString()
+                    }, { onConflict: 'account_id,email' });
+                }
+
+                return new Response(JSON.stringify({ success: true, company: updated }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
             case 'join-client-team': {
                 const { clientCompanyId, resellerUserId, resellerEmail } = payload;
                 if (!clientCompanyId || !resellerUserId) throw new Error('clientCompanyId and resellerUserId required');

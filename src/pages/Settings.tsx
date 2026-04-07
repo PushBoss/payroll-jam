@@ -826,14 +826,18 @@ export const Settings: React.FC<SettingsProps> = ({
                             )}
                         </div>
                         <div className="mt-4 md:mt-0 flex flex-col space-y-2">
-                            {companyData?.plan !== 'Pro' && companyData?.plan !== 'Professional' && (
+                            {companyData?.plan !== 'Pro' && companyData?.plan !== 'Professional' && companyData?.plan !== 'Reseller' && companyData?.plan !== 'Enterprise' && (
                                 <button
                                     onClick={() => {
                                         // Show all paid plans except current plan (consistent with cards below)
                                         const currentPlan = companyData?.plan || 'Free';
                                         const availablePlans = plans.filter(p => {
-                                            // Don't show current plan
+                                            // Don't show current plan (handle potential name variations)
                                             if (p.name === currentPlan) return false;
+                                            if (p.name === 'Reseller' && currentPlan === 'Enterprise') return false;
+                                            if (p.name === 'Enterprise' && currentPlan === 'Reseller') return false;
+                                            if (p.name === 'Pro' && currentPlan === 'Professional') return false;
+                                            if (p.name === 'Professional' && currentPlan === 'Pro') return false;
                                             // Don't show Free plan (no one upgrades to Free)
                                             if (p.priceConfig.type === 'free') return false;
                                             // Show all other paid plans (Starter, Pro, Reseller, etc.)
