@@ -43,7 +43,7 @@ interface CheckoutModalProps {
     plan: PricingPlan;
     currentUser: User | null;
     onClose: () => void;
-    onSuccess: () => void;
+    onSuccess: (data?: any) => void | Promise<void>;
 }
 
 const CheckoutModal: React.FC<CheckoutModalProps> = ({ plan, currentUser, onClose, onSuccess }) => {
@@ -88,7 +88,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ plan, currentUser, onClos
                         console.log('DimePay Upgrade Success:', data);
                         console.log('📦 Subscription updated:', data.subscription_id);
                         setPaymentSuccess(true);
-                        setTimeout(() => { if (isMountedRef.current) onSuccess(); }, 2000);
+                        setTimeout(() => { if (isMountedRef.current) onSuccess(data); }, 2000);
                     }
                 },
                 onError: (msg) => {
@@ -259,17 +259,25 @@ export const Settings: React.FC<SettingsProps> = ({
         return subscription;
     };
 
-    const waitForBillingSync = async (companyId: string) => {
-        for (let attempt = 0; attempt < 6; attempt++) {
+    const waitForBillingSync = async (companyId: string, attempts = 6, delayMs = 1500) => {
+        for (let attempt = 0; attempt < attempts; attempt++) {
             const subscription = await refreshBillingData(companyId);
             if (subscription?.dimepaySubscriptionId || subscription?.metadata?.card_last4) {
                 return true;
             }
 
-            await new Promise(resolve => setTimeout(resolve, 1500));
+            await new Promise(resolve => setTimeout(resolve, delayMs));
         }
 
         return false;
+    };
+
+    const refreshBillingDataInBackground = async (companyId: string) => {
+        try {
+            await waitForBillingSync(companyId, 12, 5000);
+        } catch (error) {
+            console.warn('Background billing refresh failed:', error);
+        }
     };
 
     const normalizePlanName = (planName?: string | null) => {
@@ -722,17 +730,27 @@ export const Settings: React.FC<SettingsProps> = ({
                     plan={paymentMethodCheckoutPlan}
                     currentUser={currentUser} 
                     onClose={() => setIsAddingPaymentMethod(false)} 
-                    onSuccess={async () => { 
+                    onSuccess={async (paymentData) => { 
                         setIsAddingPaymentMethod(false);
 
                         if (currentUser?.companyId) {
                             setIsLoadingBilling(true);
                             try {
-                                const synced = await waitForBillingSync(currentUser.companyId);
+                                const synced = await waitForBillingSync(currentUser.companyId, 8, 2000);
                                 if (synced) {
                                     toast.success('Billing details updated successfully.');
                                 } else {
-                                    toast.success('Payment completed. Billing details are still syncing.');
+                                    if (paymentData?.subscription_id) {
+                                        setCurrentSubscription((previous: any) => ({
+                                            ...(previous || {}),
+                                            dimepaySubscriptionId: paymentData.subscription_id,
+                                            status: previous?.status || 'active',
+                                            metadata: previous?.metadata || {}
+                                        }));
+                                    }
+
+                                    toast.success('Payment completed successfully. Billing details may take a minute to update.');
+                                    void refreshBillingDataInBackground(currentUser.companyId);
                                 }
                             } catch (e) {
                                 console.error('Failed to refresh billing data after payment:', e);
