@@ -424,7 +424,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           plan: dbPlan as any,
           billingCycle: billingCycle, // Save billing cycle
           employeeLimit: employeeLimit, // Save employee limit
-          paymentMethod: (userData as any).paymentMethod || 'card',
+          paymentMethod: (userData as any).paymentMethod,
           status: companyStatus // Add status field for approval workflow
         };
 

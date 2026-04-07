@@ -25,6 +25,7 @@ export const CompanyService = {
       branchCode: settings.branchCode || '',
       plan: data.plan as any,
       subscriptionStatus: data.status || 'ACTIVE',
+      paymentMethod: settings.paymentMethod,
       policies: settings.policies,
       taxConfig: settings.taxConfig
     } as any;
@@ -44,6 +45,7 @@ export const CompanyService = {
           bankName: settings.bankName,
           accountNumber: settings.accountNumber,
           branchCode: settings.branchCode,
+          paymentMethod: settings.paymentMethod,
           policies: settings.policies
         },
         status: settings.subscriptionStatus || 'ACTIVE',

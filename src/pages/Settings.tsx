@@ -235,6 +235,75 @@ export const Settings: React.FC<SettingsProps> = ({
     const [isCancelling, setIsCancelling] = useState(false);
     const [isAddingPaymentMethod, setIsAddingPaymentMethod] = useState(false);
 
+    const mapPaymentHistoryToInvoices = (payments: any[]): PaymentRecord[] => (
+        payments.map(p => ({
+            id: p.invoiceNumber || p.id,
+            date: new Date(p.paymentDate).toLocaleDateString(),
+            amount: p.amount,
+            plan: p.description || 'Subscription',
+            method: (p.paymentMethod === 'card' ? 'Card' : 'Bank Transfer') as any,
+            status: p.status.toUpperCase() as any,
+            referenceId: p.transactionId || p.id
+        }))
+    );
+
+    const refreshBillingData = async (companyId: string) => {
+        const subscription = await supabaseService.getSubscription(companyId);
+        const payments = await supabaseService.getPaymentHistory(companyId);
+
+        setCurrentSubscription(subscription);
+        setInvoices(mapPaymentHistoryToInvoices(payments));
+
+        return subscription;
+    };
+
+    const waitForBillingSync = async (companyId: string) => {
+        for (let attempt = 0; attempt < 6; attempt++) {
+            const subscription = await refreshBillingData(companyId);
+            if (subscription?.dimepaySubscriptionId || subscription?.metadata?.card_last4) {
+                return true;
+            }
+
+            await new Promise(resolve => setTimeout(resolve, 1500));
+        }
+
+        return false;
+    };
+
+    const buildPaymentMethodCheckoutPlan = (): PricingPlan | null => {
+        const planName = currentSubscription?.planName || companyData?.plan;
+        const matchedPlan = plans.find(p => p.name === planName);
+
+        if (matchedPlan) {
+            return matchedPlan.priceConfig.type === 'free' ? null : matchedPlan;
+        }
+
+        if (!currentSubscription?.amount) return null;
+
+        return {
+            id: 'current-subscription',
+            name: planName || 'Current Plan',
+            description: 'Recurring billing for your current subscription.',
+            priceConfig: {
+                type: 'flat',
+                monthly: Number(currentSubscription.amount) || 0,
+                annual: (Number(currentSubscription.amount) || 0) * 12
+            },
+            limit: companyData?.employeeLimit || 'N/A',
+            features: [],
+            cta: 'Continue',
+            highlight: false,
+            color: 'bg-jam-orange',
+            textColor: 'text-jam-black',
+            isActive: true
+        };
+    };
+
+    const paymentMethodCheckoutPlan = buildPaymentMethodCheckoutPlan();
+    const storedCardLast4 = currentSubscription?.metadata?.card_last4;
+    const storedCardBrand = currentSubscription?.metadata?.card_brand;
+    const hasStoredBillingMethod = !!currentSubscription?.dimepaySubscriptionId || !!storedCardLast4;
+
     // Early return if companyData is not available
     if (!companyData) {
         return <div className="p-8 text-center">Loading company settings...</div>;
@@ -270,25 +339,11 @@ export const Settings: React.FC<SettingsProps> = ({
             if (!currentUser?.companyId) return;
 
             setIsLoadingBilling(true);
-
-            // Load current subscription
-            const subscription = await supabaseService.getSubscription(currentUser.companyId);
-            setCurrentSubscription(subscription);
-
-            // Load payment history
-            const payments = await supabaseService.getPaymentHistory(currentUser.companyId);
-            const formattedPayments: PaymentRecord[] = payments.map(p => ({
-                id: p.invoiceNumber || p.id,
-                date: new Date(p.paymentDate).toLocaleDateString(),
-                amount: p.amount,
-                plan: p.description || 'Subscription',
-                method: (p.paymentMethod === 'card' ? 'Card' : 'Bank Transfer') as any,
-                status: p.status.toUpperCase() as any,
-                referenceId: p.transactionId || p.id
-            }));
-            setInvoices(formattedPayments);
-
-            setIsLoadingBilling(false);
+            try {
+                await refreshBillingData(currentUser.companyId);
+            } finally {
+                setIsLoadingBilling(false);
+            }
         };
 
         if (activeTab === 'billing') {
@@ -433,17 +488,7 @@ export const Settings: React.FC<SettingsProps> = ({
             setUpgradeTarget(null);
 
             // Reload billing data
-            const payments = await supabaseService.getPaymentHistory(currentUser.companyId);
-            const formattedPayments: PaymentRecord[] = payments.map(p => ({
-                id: p.invoiceNumber || p.id,
-                date: new Date(p.paymentDate).toLocaleDateString(),
-                amount: p.amount,
-                plan: p.description || 'Subscription',
-                method: (p.paymentMethod === 'card' ? 'Card' : 'Bank Transfer') as any,
-                status: p.status.toUpperCase() as any,
-                referenceId: p.transactionId || p.id
-            }));
-            setInvoices(formattedPayments);
+            await refreshBillingData(currentUser.companyId);
         }
     };
 
@@ -632,17 +677,7 @@ export const Settings: React.FC<SettingsProps> = ({
             // Reload billing data after a delay
             setTimeout(async () => {
                 if (currentUser?.companyId) {
-                    const payments = await supabaseService.getPaymentHistory(currentUser.companyId);
-                    const formattedPayments: PaymentRecord[] = payments.map(p => ({
-                        id: p.invoiceNumber || p.id,
-                        date: new Date(p.paymentDate).toLocaleDateString(),
-                        amount: p.amount,
-                        plan: p.description || 'Subscription',
-                        method: (p.paymentMethod === 'card' ? 'Card' : 'Bank Transfer') as any,
-                        status: p.status.toUpperCase() as any,
-                        referenceId: p.transactionId || p.id
-                    }));
-                    setInvoices(formattedPayments);
+                    await refreshBillingData(currentUser.companyId);
                 }
             }, 1000);
 
@@ -668,41 +703,29 @@ export const Settings: React.FC<SettingsProps> = ({
     return (
         <div className="space-y-6">
             {upgradeTarget && <CheckoutModal plan={upgradeTarget} currentUser={currentUser} onClose={() => setUpgradeTarget(null)} onSuccess={handleUpgradeSuccess} />}
-            {isAddingPaymentMethod && (
+            {isAddingPaymentMethod && paymentMethodCheckoutPlan && (
                 <CheckoutModal 
-                    plan={{ 
-                        id: 'vault', 
-                        name: 'Secure Card Update', 
-                        description: 'Store card for recurring usage.', 
-                        priceConfig: { type: 'flat', monthly: 100, annual: 1200 }, 
-                        limit: 'N/A', features: [], isActive: true, 
-                        cta: 'Update Card', highlight: false, 
-                        color: 'bg-jam-orange', textColor: 'text-jam-black' 
-                    }} 
+                    plan={paymentMethodCheckoutPlan}
                     currentUser={currentUser} 
                     onClose={() => setIsAddingPaymentMethod(false)} 
                     onSuccess={async () => { 
-                        setIsAddingPaymentMethod(false); 
-                        
-                        // SECURE DATA SYNC: Explicitly update the database to mark method as 'card'
-                        if (currentUser?.companyId && companyData) {
+                        setIsAddingPaymentMethod(false);
+
+                        if (currentUser?.companyId) {
+                            setIsLoadingBilling(true);
                             try {
-                                await supabaseService.saveCompany(currentUser.companyId, {
-                                    ...companyData,
-                                    paymentMethod: 'card'
-                                } as any);
-                                toast.success('Payment Method updated successfully!');
-                                
-                                // Give the database a moment to sync before reloading
-                                setTimeout(() => {
-                                    window.location.reload();
-                                }, 1500);
+                                const synced = await waitForBillingSync(currentUser.companyId);
+                                if (synced) {
+                                    toast.success('Billing details updated successfully.');
+                                } else {
+                                    toast.success('Payment completed. Billing details are still syncing.');
+                                }
                             } catch (e) {
-                                console.error('Failed to update payment method in DB:', e);
-                                toast.error('Failed to sync payment info. Please refresh.');
+                                console.error('Failed to refresh billing data after payment:', e);
+                                toast.error('Payment completed, but billing details could not be refreshed yet.');
+                            } finally {
+                                setIsLoadingBilling(false);
                             }
-                        } else {
-                            window.location.reload(); 
                         }
                     }} 
                 />
@@ -936,29 +959,38 @@ export const Settings: React.FC<SettingsProps> = ({
                                 <p className="text-sm text-gray-500">Used for recurring monthly billing</p>
                             </div>
                             <button
-                                onClick={() => setIsAddingPaymentMethod(true)}
+                                onClick={() => {
+                                    if (!paymentMethodCheckoutPlan) {
+                                        toast.error('Unable to determine the billing plan for this checkout.');
+                                        return;
+                                    }
+                                    setIsAddingPaymentMethod(true);
+                                }}
                                 className="bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm font-semibold px-4 py-2 rounded-lg transition-colors border border-gray-300"
                             >
-                                {currentSubscription?.dimepaySubscriptionId ? "Update Method" : "Add Payment Method"}
+                                {hasStoredBillingMethod ? "Update Method" : "Add Payment Method"}
                             </button>
                         </div>
                         
-                        {(currentSubscription?.dimepaySubscriptionId || (companyData as any)?.paymentMethod === 'card') ? (
+                        {hasStoredBillingMethod ? (
                             <div className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg border border-gray-200 max-w-md">
                                 <div className="p-3 bg-white rounded shadow-sm border border-gray-100">
                                     <Icons.Company className="w-6 h-6 text-gray-600" />
                                 </div>
                                 <div>
                                     <p className="font-bold text-gray-800 text-lg tracking-wide uppercase">
-                                        {currentSubscription?.dimepaySubscriptionId 
-                                            ? `•••• •••• •••• ${currentSubscription.id.substring(0, 4).toUpperCase()}`
-                                            : "Secure Card Vaulted"}
+                                        {storedCardLast4
+                                            ? `•••• •••• •••• ${storedCardLast4}`
+                                            : 'Stored Billing Method'}
                                     </p>
                                     <p className={`text-xs font-semibold uppercase mt-1 ${currentSubscription?.status === 'active' ? 'text-green-600' : 'text-jam-orange'}`}>
                                         {currentSubscription?.status === 'active' 
                                             ? 'Active Recurring Subscription' 
-                                            : 'Card on File (Reserved)'}
+                                            : 'Billing Method On File'}
                                     </p>
+                                    {storedCardBrand && (
+                                        <p className="text-xs text-gray-500 mt-1">{storedCardBrand}</p>
+                                    )}
                                 </div>
                             </div>
                         ) : (

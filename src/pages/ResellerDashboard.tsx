@@ -438,6 +438,8 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                     onError: handlePaymentError,
                     metadata: {
                         plan: 'Reseller Commission',
+                        planName: 'Reseller Commission',
+                        planType: 'commission',
                         companyId: user?.companyId,
                         name: (user as any)?.user_metadata?.full_name || 'Reseller'
                     }

@@ -8,6 +8,40 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY! // Admin key to bypass RLS
 );
 
+const updateCompanyBillingState = async (
+  companyId: string,
+  status: 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED',
+  paymentMethod?: string
+) => {
+  const { data: company, error: fetchError } = await supabase
+    .from('companies')
+    .select('settings')
+    .eq('id', companyId)
+    .single();
+
+  if (fetchError) {
+    console.error('❌ Error loading company billing settings:', fetchError);
+    return;
+  }
+
+  const nextSettings = {
+    ...(company?.settings || {}),
+    ...(paymentMethod ? { paymentMethod } : {})
+  };
+
+  const { error: updateError } = await supabase
+    .from('companies')
+    .update({
+      status,
+      settings: nextSettings
+    })
+    .eq('id', companyId);
+
+  if (updateError) {
+    console.error('❌ Error updating company billing state:', updateError);
+  }
+};
+
 /**
  * DimePay Webhook Handler for Recurring Subscriptions
  * 
@@ -77,8 +111,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return res.status(400).json({ error: 'Missing company_id in metadata' });
         }
 
-        // Create subscription record in database
-        const { error: subError } = await supabase.from('subscriptions').insert({
+        const subscriptionPayload = {
           company_id: companyId,
           dimepay_subscription_id: data.subscription_id,
           dimepay_customer_id: data.customer_id,
@@ -96,35 +129,77 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             card_last4: data.card_last4,
             card_brand: data.card_brand,
             billing_cycles: data.billing_cycles
-          }
-        });
+          },
+          updated_at: new Date().toISOString()
+        };
 
-        if (subError) {
-          console.error('❌ Error creating subscription:', subError);
-          // Don't fail the webhook - log and continue
+        const { data: existingSubscription } = await supabase
+          .from('subscriptions')
+          .select('id')
+          .eq('company_id', companyId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        let storedSubscriptionId: string | null = existingSubscription?.id || null;
+
+        if (existingSubscription?.id) {
+          const { error: subError } = await supabase
+            .from('subscriptions')
+            .update(subscriptionPayload)
+            .eq('id', existingSubscription.id);
+
+          if (subError) {
+            console.error('❌ Error updating subscription:', subError);
+          } else {
+            console.log('✅ Subscription updated in database');
+          }
         } else {
-          console.log('✅ Subscription created in database');
+          const { data: createdSubscription, error: subError } = await supabase
+            .from('subscriptions')
+            .insert(subscriptionPayload)
+            .select('id')
+            .single();
+
+          if (subError) {
+            console.error('❌ Error creating subscription:', subError);
+          } else {
+            storedSubscriptionId = createdSubscription.id;
+            console.log('✅ Subscription created in database');
+          }
         }
 
-        // Record initial payment
-        const { error: payError } = await supabase.from('payment_history').insert({
-          company_id: companyId,
-          amount: data.amount || 0,
-          currency: data.currency || 'JMD',
-          status: 'completed',
-          payment_method: 'card',
-          transaction_id: data.transaction_id || data.order_id,
-          invoice_number: data.invoice_number || `INV-${Date.now()}`,
-          description: `${data.metadata?.plan_name || 'Subscription'} - Initial Payment`,
-          payment_date: new Date().toISOString(),
-          metadata: {
-            subscription_id: data.subscription_id,
-            card_last4: data.card_last4
-          }
-        });
+        await updateCompanyBillingState(companyId, 'ACTIVE', 'card');
 
-        if (payError) {
-          console.error('❌ Error recording initial payment:', payError);
+        const transactionId = data.transaction_id || data.order_id;
+        const { data: existingPayment } = await supabase
+          .from('payment_history')
+          .select('id')
+          .eq('transaction_id', transactionId)
+          .maybeSingle();
+
+        // Record initial payment
+        if (!existingPayment) {
+          const { error: payError } = await supabase.from('payment_history').insert({
+            company_id: companyId,
+            subscription_id: storedSubscriptionId,
+            amount: data.amount || 0,
+            currency: data.currency || 'JMD',
+            status: 'completed',
+            payment_method: 'card',
+            transaction_id: transactionId,
+            invoice_number: data.invoice_number || `INV-${Date.now()}`,
+            description: `${data.metadata?.plan_name || 'Subscription'} - Initial Payment`,
+            payment_date: new Date().toISOString(),
+            metadata: {
+              subscription_id: data.subscription_id,
+              card_last4: data.card_last4
+            }
+          });
+
+          if (payError) {
+            console.error('❌ Error recording initial payment:', payError);
+          }
         }
 
         break;
@@ -189,6 +264,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           status: 'active',
           metadata: {
             ...subscription.metadata,
+            card_last4: data.card_last4 || subscription.metadata?.card_last4,
+            card_brand: data.card_brand || subscription.metadata?.card_brand,
             last_payment_date: new Date().toISOString(),
             total_payments: (subscription.metadata?.total_payments || 0) + 1
           },
@@ -199,14 +276,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           console.error('❌ Error updating subscription:', updateError);
         }
 
-        // Ensure company subscription status is ACTIVE
-        const { error: companyError } = await supabase.from('companies').update({
-          subscription_status: 'ACTIVE'
-        }).eq('id', subscription.company_id);
-
-        if (companyError) {
-          console.error('❌ Error updating company status:', companyError);
-        }
+        await updateCompanyBillingState(subscription.company_id, 'ACTIVE', 'card');
 
         console.log('✅ Recurring payment recorded successfully');
         break;
@@ -267,9 +337,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
           }).eq('id', subscription.id);
 
-          await supabase.from('companies').update({
-            subscription_status: 'SUSPENDED'
-          }).eq('id', subscription.company_id);
+          await updateCompanyBillingState(subscription.company_id, 'SUSPENDED');
 
           // TODO: Send suspension email notification
         } else {
@@ -285,9 +353,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
           }).eq('id', subscription.id);
 
-          await supabase.from('companies').update({
-            subscription_status: 'PAST_DUE'
-          }).eq('id', subscription.company_id);
+          await updateCompanyBillingState(subscription.company_id, 'PAST_DUE');
 
           // TODO: Send payment failed email with retry info
         }
@@ -320,9 +386,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .single();
 
         if (subscription) {
-          await supabase.from('companies').update({
-            subscription_status: 'SUSPENDED'
-          }).eq('id', subscription.company_id);
+          await updateCompanyBillingState(subscription.company_id, 'SUSPENDED');
         }
 
         console.log('✅ Subscription cancelled successfully');

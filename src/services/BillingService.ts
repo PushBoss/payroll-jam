@@ -17,12 +17,15 @@ export const BillingService = {
       id: data.id,
       companyId: data.company_id,
       planName: data.plan_name,
+      planType: data.plan_type,
       status: data.status,
       billingFrequency: data.billing_frequency,
       amount: data.amount,
       currency: data.currency,
       nextBillingDate: data.next_billing_date,
-      dimepaySubscriptionId: data.dimepay_subscription_id
+      dimepaySubscriptionId: data.dimepay_subscription_id,
+      dimepayCustomerId: data.dimepay_customer_id,
+      metadata: data.metadata || {}
     };
   },
 

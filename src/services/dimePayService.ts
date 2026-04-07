@@ -157,6 +157,10 @@ export const dimePayService = {
         // Prepare Payload to send to backend for signing
         const orderId = `ORD-${Date.now()}`;
 
+        const planName = props.metadata?.planName || props.metadata?.plan || props.description;
+        const planType = props.metadata?.planType || props.metadata?.plan_type || 'subscription';
+        const companyId = props.companyId || props.metadata?.companyId || props.metadata?.company_id;
+
         // DimePay Payment Payload
         const payloadData: any = {
             // Standard order fields
@@ -175,12 +179,20 @@ export const dimePayService = {
             // Items array (required by DimePay)
             items: [
                 {
-                    id: `PLAN-${props.metadata?.plan || 'payment'}`.replace(/\s+/g, '-').toUpperCase(),
+                    id: `PLAN-${planName || 'payment'}`.replace(/\s+/g, '-').toUpperCase(),
                     name: props.description,
                     price: props.amount,
                     quantity: 1
                 }
             ],
+
+            // Metadata used by the webhook to attach billing activity to a company
+            metadata: {
+                ...props.metadata,
+                ...(companyId ? { company_id: companyId } : {}),
+                plan_name: planName,
+                plan_type: planType
+            },
 
             // Fee routing
             pass_fees_to: passFeesTo === 'CUSTOMER' ? 'CUSTOMER' : 'MERCHANT'

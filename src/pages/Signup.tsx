@@ -247,6 +247,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                     name: formData.name,
                     company: formData.companyName,
                     plan: formData.plan,
+                    planName: formData.plan,
                     planType: formData.plan.toLowerCase()
                 },
                 onReady: () => {

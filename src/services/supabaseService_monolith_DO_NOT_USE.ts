@@ -316,7 +316,7 @@ export const supabaseService = {
       reseller_defaults: settings.reseller_defaults,
       departments: settings.departments || [],
       designations: settings.designations || [],
-      paymentMethod: settings.paymentMethod || 'card' // Added missing mapping here
+      paymentMethod: settings.paymentMethod
     } as any;
   },
 
@@ -1915,6 +1915,8 @@ export const supabaseService = {
       return {
         id: data.id,
         companyId: data.company_id,
+        dimepaySubscriptionId: data.dimepay_subscription_id,
+        dimepayCustomerId: data.dimepay_customer_id,
         planName: data.plan_name,
         planType: data.plan_type,
         status: data.status,
