@@ -53,7 +53,7 @@ export const BillingService = {
     if (!supabase) return [];
     const { data, error } = await supabase
       .from('subscriptions')
-      .select('*, companies(name)')
+      .select('*')
       .order('created_at', { ascending: false });
     if (error) return [];
     return data || [];
@@ -63,7 +63,7 @@ export const BillingService = {
     if (!supabase) return [];
     const { data, error } = await supabase
       .from('payment_history')
-      .select('*, companies(name)')
+      .select('*')
       .order('created_at', { ascending: false })
       .limit(limit);
     if (error) return [];
