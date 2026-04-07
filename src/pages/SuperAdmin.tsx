@@ -108,9 +108,12 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     // Billing State
     const [revenueData, setRevenueData] = useState<{ name: string; revenue: number }[]>([]);
     const [isLoadingBilling, setIsLoadingBilling] = useState(false);
+    const [revenueFilter, setRevenueFilter] = useState<'month' | 'quarter' | 'year' | 'all'>('6M' as any); // Default 6M to maintain current chart shape, but we'll add the new filters
+    
     const [billingStats, setBillingStats] = useState({
         totalRevenue: 0,
         monthlyRecurringRevenue: 0,
+        annualRecurringRevenue: 0,
         totalSubscriptions: 0,
         activeSubscriptions: 0,
         totalPayments: 0
@@ -249,16 +252,32 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     }
                     return sum;
                 }, 0);
+                
+                const arr = mrr * 12;
 
                 // Fetch all completed payments
-                const payments = await supabaseService.getAllPayments();
+                let payments = await supabaseService.getAllPayments();
+                
+                // Filter payments by selected timeframe
+                const now = new Date();
+                const filteredPayments = payments.filter(p => {
+                    if (revenueFilter === 'all') return true;
+                    const pDate = new Date(p.payment_date);
+                    const diffTime = Math.abs(now.getTime() - pDate.getTime());
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    
+                    if (revenueFilter === 'month') return diffDays <= 30;
+                    if (revenueFilter === 'quarter') return diffDays <= 90;
+                    if (revenueFilter === 'year') return diffDays <= 365;
+                    return true;
+                });
 
-                // Calculate total revenue
-                const totalRevenue = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+                // Calculate total revenue from filtered timeframe
+                const totalRevenue = filteredPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
-                // Group payments by month for chart
+                // Group payments by month for chart (Always group by month for visual trend, but only within filter)
                 const monthlyRevenue: Record<string, number> = {};
-                payments.forEach(payment => {
+                filteredPayments.forEach(payment => {
                     const date = new Date(payment.payment_date);
                     const monthKey = date.toLocaleDateString('en-US', { month: 'short' });
                     if (!monthlyRevenue[monthKey]) {
@@ -267,12 +286,14 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     monthlyRevenue[monthKey] += Number(payment.amount || 0);
                 });
 
-                // Convert to chart data format (last 6 months)
+                // Convert to chart data format
                 const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
                 const currentMonth = new Date().getMonth();
-                // Get last 6 months including current month
                 const chartData = [];
-                for (let i = 5; i >= 0; i--) {
+                // standard 6 months look back if month/quarter, or 12 months if year/all
+                const lookBackMonths = (revenueFilter === 'year' || revenueFilter === 'all') ? 12 : 6;
+                
+                for (let i = lookBackMonths - 1; i >= 0; i--) {
                     const monthIndex = (currentMonth - i + 12) % 12;
                     const monthName = months[monthIndex];
                     chartData.push({
@@ -284,9 +305,10 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 setBillingStats({
                     totalRevenue,
                     monthlyRecurringRevenue: mrr,
+                    annualRecurringRevenue: arr,
                     totalSubscriptions: subscriptions.length,
                     activeSubscriptions: activeSubs.length,
-                    totalPayments: payments.length
+                    totalPayments: filteredPayments.length
                 });
 
                 setRevenueData(chartData.length > 0 ? chartData : MOCK_REVENUE_DATA);
@@ -299,7 +321,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         };
 
         loadBillingData();
-    }, [activeTab]);
+    }, [activeTab, revenueFilter]);
 
     // Check DB Connection when Settings tab is active
     useEffect(() => {
@@ -1091,7 +1113,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     const renderBilling = () => (
         <div className="space-y-6 animate-fade-in">
             {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
                     <p className="text-xs text-gray-500 uppercase font-bold mb-1">Total Revenue</p>
                     <p className="text-2xl font-bold text-gray-900">${billingStats.totalRevenue.toLocaleString()}</p>
@@ -1101,11 +1123,15 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     <p className="text-2xl font-bold text-jam-orange">${billingStats.monthlyRecurringRevenue.toLocaleString()}</p>
                 </div>
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-                    <p className="text-xs text-gray-500 uppercase font-bold mb-1">Total Subscriptions</p>
+                    <p className="text-xs text-gray-500 uppercase font-bold mb-1">ARR</p>
+                    <p className="text-2xl font-bold text-jam-orange">${billingStats.annualRecurringRevenue.toLocaleString()}</p>
+                </div>
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                    <p className="text-xs text-gray-500 uppercase font-bold mb-1">Total Subs</p>
                     <p className="text-2xl font-bold text-gray-900">{billingStats.totalSubscriptions}</p>
                 </div>
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-                    <p className="text-xs text-gray-500 uppercase font-bold mb-1">Active Subscriptions</p>
+                    <p className="text-xs text-gray-500 uppercase font-bold mb-1">Active Subs</p>
                     <p className="text-2xl font-bold text-green-600">{billingStats.activeSubscriptions}</p>
                 </div>
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
@@ -1117,13 +1143,26 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             {/* Revenue Chart */}
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                 <div className="flex justify-between items-center mb-6">
-                    <h3 className="font-bold text-gray-900">Platform Revenue (Last 6 Months)</h3>
-                    {isLoadingBilling && (
-                        <div className="flex items-center text-sm text-gray-500">
-                            <Icons.Refresh className="w-4 h-4 mr-2 animate-spin" />
-                            Loading...
-                        </div>
-                    )}
+                    <h3 className="font-bold text-gray-900">Platform Revenue</h3>
+                    <div className="flex items-center space-x-4">
+                        {isLoadingBilling && (
+                            <div className="flex items-center text-sm text-gray-500">
+                                <Icons.Refresh className="w-4 h-4 mr-2 animate-spin" />
+                                Loading...
+                            </div>
+                        )}
+                        <select
+                            value={revenueFilter}
+                            onChange={(e) => setRevenueFilter(e.target.value as any)}
+                            className="text-sm font-medium bg-gray-50 border border-gray-300 text-gray-700 rounded-lg focus:ring-jam-orange focus:border-jam-orange block p-2"
+                        >
+                            <option value="month">Last 30 Days</option>
+                            <option value="quarter">This Quarter</option>
+                            <option value="6M">Last 6 Months</option>
+                            <option value="year">Last 12 Months</option>
+                            <option value="all">All Time</option>
+                        </select>
+                    </div>
                 </div>
                 <div className="h-72">
                     {isLoadingBilling ? (

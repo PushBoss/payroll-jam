@@ -129,14 +129,13 @@ export const dimePayService = {
         }
 
         // Validate credentials exist
-        // Note: Production environment only REQUIRES apiKey (client_id) on the frontend.
-        // Secret key is handled by the backend /api/sign-payment endpoint.
-        const hasSecretKey = activeCredentials?.secretKey ? !!activeCredentials.secretKey : false;
+        // Note: Both environments only REQUIRE apiKey (client_id) on the frontend.
+        // Secret key is handled ONLY by the backend /api/sign-payment endpoint.
         const hasApiKey = activeCredentials?.apiKey ? !!activeCredentials.apiKey : false;
 
-        if (!hasApiKey || (activeEnv === 'sandbox' && !hasSecretKey)) {
-            console.error(`❌ Missing ${activeEnv} credentials`);
-            props.onError(`Payment gateway ${activeEnv} credentials not configured accurately.`);
+        if (!hasApiKey) {
+            console.error(`❌ Missing ${activeEnv} API Key credentials`);
+            props.onError(`Payment gateway ${activeEnv} API Key not configured accurately.`);
             return;
         }
 
@@ -158,8 +157,8 @@ export const dimePayService = {
         // Prepare Payload to send to backend for signing
         const orderId = `ORD-${Date.now()}`;
 
-        // DimePay One-Time Payment Payload
-        const payloadData = {
+        // DimePay Payment Payload
+        const payloadData: any = {
             // Standard order fields
             id: orderId,
             currency: props.currency,
@@ -187,6 +186,13 @@ export const dimePayService = {
             pass_fees_to: passFeesTo === 'CUSTOMER' ? 'CUSTOMER' : 'MERCHANT'
         };
 
+        // Add Recurring properties if appropriate
+        if (props.frequency) {
+            payloadData.recurring = true;
+            payloadData.frequency = props.frequency; // usually 'monthly' or 'annual'
+            payloadData.billing_cycles = props.billingCycles || 9999;
+        }
+
         try {
             // Try to use backend signing API (production-ready)
             let jwt: string;
@@ -213,21 +219,9 @@ export const dimePayService = {
                     throw new Error('Backend signing failed');
                 }
             } catch (backendError: any) {
-                // In local development, API endpoints aren't available - this is expected
-                const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-
-                // Fallback to client-side signing for sandbox only
-                if (activeEnv === 'sandbox') {
-                    if (isLocalDev) {
-                        console.log("ℹ️ Local dev mode: Using client-side signing (sandbox)");
-                    } else {
-                        console.warn("⚠️ Backend unavailable, using client-side signing (sandbox only)");
-                    }
-                    jwt = await signPayloadWithHMAC(payloadData, activeCredentials.secretKey);
-                } else {
-                    console.error("❌ Backend signing required for production");
-                    throw new Error('Secure payment signing unavailable');
-                }
+                // Backend signing is the ONLY allowed method for security.
+                console.error("❌ Backend signing failed or unavailable:", backendError);
+                throw new Error('Secure payment signing unavailable. Ensure backend is running.');
             }
 
             // Wait for mount element to exist in DOM
@@ -326,44 +320,4 @@ export const dimePayService = {
             props.onError("Payment initialization failed.");
         }
     }
-};
-
-// Sign JWT with HMAC-SHA256 using Web Crypto API
-const signPayloadWithHMAC = async (payload: any, secretKey: string): Promise<string> => {
-    const header = { alg: "HS256", typ: "JWT" };
-
-    const base64url = (source: string) => {
-        return btoa(source)
-            .replace(/=/g, '')
-            .replace(/\+/g, '-')
-            .replace(/\//g, '_');
-    };
-
-    const encodedHeader = base64url(JSON.stringify(header));
-    const encodedPayload = base64url(JSON.stringify(payload));
-    const signatureInput = `${encodedHeader}.${encodedPayload}`;
-
-    // Use Web Crypto API to sign with HMAC-SHA256
-    const encoder = new TextEncoder();
-    const keyData = encoder.encode(secretKey);
-    const dataToSign = encoder.encode(signatureInput);
-
-    const cryptoKey = await crypto.subtle.importKey(
-        'raw',
-        keyData,
-        { name: 'HMAC', hash: 'SHA-256' },
-        false,
-        ['sign']
-    );
-
-    const signature = await crypto.subtle.sign('HMAC', cryptoKey, dataToSign);
-
-    // Convert signature to base64url
-    const signatureArray = Array.from(new Uint8Array(signature));
-    const signatureBase64 = btoa(String.fromCharCode(...signatureArray))
-        .replace(/=/g, '')
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_');
-
-    return `${encodedHeader}.${encodedPayload}.${signatureBase64}`;
 };

@@ -30,24 +30,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 1. VERIFY WEBHOOK SIGNATURE (Critical for security!)
     const signature = req.headers['dimepay-signature'] || req.headers['x-dimepay-signature'];
 
-    // Determine environment
-    const isProduction =
-      process.env.VERCEL_ENV === 'production' ||
-      process.env.APP_ENV === 'production';
+    // Resolve both potential secrets
+    const prodSecret = process.env.DIMEPAY_WEBHOOK_SECRET_PROD || process.env.DIMEPAY_WEBHOOK_SECRET;
+    const sandboxSecret = process.env.DIMEPAY_WEBHOOK_SECRET_SANDBOX || process.env.DIMEPAY_WEBHOOK_SECRET;
 
-    const webhookSecret = isProduction
-      ? (process.env.DIMEPAY_WEBHOOK_SECRET_PROD || process.env.DIMEPAY_WEBHOOK_SECRET)
-      : (process.env.DIMEPAY_WEBHOOK_SECRET_SANDBOX || process.env.DIMEPAY_WEBHOOK_SECRET);
-
-    if (!webhookSecret) {
-      console.error('❌ DIMEPAY_WEBHOOK_SECRET not configured for environment');
+    if (!prodSecret && !sandboxSecret) {
+      console.error('❌ DIMEPAY_WEBHOOK_SECRET not configured');
       return res.status(500).json({ error: 'Webhook secret not configured' });
     }
 
-    if (!verifyWebhookSignature(req.body, signature as string, webhookSecret)) {
-      console.error('❌ Invalid webhook signature');
+    // Try verifying against both configured secrets. If one matches, the webhook is valid.
+    let isValidSignature = false;
+    let actualEnvironment = 'unknown';
+
+    if (prodSecret && verifyWebhookSignature(req.body, signature as string, prodSecret)) {
+      isValidSignature = true;
+      actualEnvironment = 'production';
+    } else if (sandboxSecret && verifyWebhookSignature(req.body, signature as string, sandboxSecret)) {
+      isValidSignature = true;
+      actualEnvironment = 'sandbox';
+    }
+
+    if (!isValidSignature) {
+      console.error('❌ Invalid webhook signature (Tried Prod & Sandbox secrets)');
       return res.status(401).json({ error: 'Invalid signature' });
     }
+
+    // You can now optionally use `actualEnvironment` below if needed
+
 
     const event = req.body;
     console.log('🔔 DimePay Webhook received:', event.type);

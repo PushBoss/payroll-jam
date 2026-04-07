@@ -232,6 +232,7 @@ export const Settings: React.FC<SettingsProps> = ({
     const [isLoadingBilling, setIsLoadingBilling] = useState(false);
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [isCancelling, setIsCancelling] = useState(false);
+    const [isAddingPaymentMethod, setIsAddingPaymentMethod] = useState(false);
 
     // Early return if companyData is not available
     if (!companyData) {
@@ -666,6 +667,14 @@ export const Settings: React.FC<SettingsProps> = ({
     return (
         <div className="space-y-6">
             {upgradeTarget && <CheckoutModal plan={upgradeTarget} currentUser={currentUser} onClose={() => setUpgradeTarget(null)} onSuccess={handleUpgradeSuccess} />}
+            {isAddingPaymentMethod && (
+                <CheckoutModal 
+                    plan={{ id: 'vault', name: 'Secure Card Update', description: 'Store card for recurring usage.', priceConfig: { type: 'flat', monthly: 100, annual: 1200 }, limit: 'N/A', features: [], isActive: true, cta: 'Update Card', highlight: false, color: 'bg-jam-orange', textColor: 'text-jam-black' }} 
+                    currentUser={currentUser} 
+                    onClose={() => setIsAddingPaymentMethod(false)} 
+                    onSuccess={() => { setIsAddingPaymentMethod(false); toast.success('Payment Method updated successfully!'); window.location.reload(); }} 
+                />
+            )}
 
             {/* Cancel Subscription Confirmation Modal */}
             {showCancelModal && (
@@ -882,6 +891,42 @@ export const Settings: React.FC<SettingsProps> = ({
                             </div>
                         </div>
                     )}
+                    
+                    {/* Payment Method / Vault Card */}
+                    <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                        <div className="flex justify-between items-start mb-4">
+                            <div>
+                                <h3 className="text-lg font-bold mb-1">Primary Payment Method</h3>
+                                <p className="text-sm text-gray-500">Used for recurring monthly billing</p>
+                            </div>
+                            <button
+                                onClick={() => setIsAddingPaymentMethod(true)}
+                                className="bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm font-semibold px-4 py-2 rounded-lg transition-colors border border-gray-300"
+                            >
+                                {currentSubscription?.dimepaySubscriptionId ? "Update Method" : "Add Payment Method"}
+                            </button>
+                        </div>
+                        
+                        {currentSubscription?.dimepaySubscriptionId ? (
+                            <div className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg border border-gray-200 max-w-md">
+                                <div className="p-3 bg-white rounded shadow-sm border border-gray-100">
+                                    <Icons.Company className="w-6 h-6 text-gray-600" />
+                                </div>
+                                <div>
+                                    <p className="font-bold text-gray-800 text-lg tracking-wide">
+                                        •••• •••• •••• {currentSubscription.id.substring(0, 4).toUpperCase()}
+                                    </p>
+                                    <p className="text-xs text-green-600 font-semibold uppercase mt-1">Active Recurring Subscription</p>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex items-center space-x-3 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                                <Icons.Alert className="w-5 h-5 text-yellow-600" />
+                                <p className="text-sm text-yellow-800">No payment method on file. Your subscription may be interrupted.</p>
+                            </div>
+                        )}
+                    </div>
+
                     <div className="bg-white p-6 rounded-xl border border-gray-200">
                         <h3 className="text-lg font-bold mb-4">Payment History</h3>
                         {isLoadingBilling ? (

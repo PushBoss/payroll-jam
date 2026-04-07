@@ -31,14 +31,9 @@ export default async function handler(
       return res.status(400).json({ error: 'Payload is required' });
     }
 
-    // Get secret key from environment variables
-    // Use VERCEL_ENV or APP_ENV to determine if we are in production
-    const isProduction =
-      process.env.VERCEL_ENV === 'production' ||
-      process.env.APP_ENV === 'production';
-
-    // Force sandbox for everything except production
-    const effectiveEnvironment = isProduction ? 'production' : 'sandbox';
+    // Determine effective environment based strictly on the client's request
+    // This ensures sandbox client tests correctly use the sandbox secret, matching the sandbox API key cleanly.
+    const effectiveEnvironment = environment === 'production' ? 'production' : 'sandbox';
 
     console.log(`🔍 [${effectiveEnvironment}] resolving keys...`);
 

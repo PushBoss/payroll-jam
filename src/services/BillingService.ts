@@ -29,7 +29,7 @@ export const BillingService = {
   getPaymentHistory: async (companyId: string, limit = 50) => {
     if (!supabase) return [];
     const { data, error } = await supabase
-      .from('payment_records')
+      .from('payment_history')
       .select('*')
       .eq('company_id', companyId)
       .order('created_at', { ascending: false })
@@ -62,7 +62,7 @@ export const BillingService = {
   getAllPayments: async (limit = 1000) => {
     if (!supabase) return [];
     const { data, error } = await supabase
-      .from('payment_records')
+      .from('payment_history')
       .select('*, companies(name)')
       .order('created_at', { ascending: false })
       .limit(limit);

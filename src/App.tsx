@@ -867,10 +867,8 @@ function AppContent() {
         {currentPath === 'privacy-policy' && <PrivacyPolicy onBack={() => navigateTo('home')} />}
         {currentPath === 'terms-of-service' && <TermsOfService onBack={() => navigateTo('home')} />}
         {currentPath === 'home' && <LandingPage plans={plans} onLogin={() => navigateTo('login')} onSignup={(plan) => { setSelectedPlan(plan || 'Free'); setSelectedCycle('monthly'); navigateTo('signup'); }} onPricingClick={() => navigateTo('pricing')} onFeaturesClick={() => navigateTo('features')} onFaqClick={() => navigateTo('faq')} onPrivacyClick={() => navigateTo('privacy-policy')} onTermsClick={() => navigateTo('terms-of-service')} />}
-        {['portal-home', 'portal-timesheets', 'portal-leave', 'portal-docs', 'portal-profile', 'dashboard', 'employees', 'payrun', 'settings', 'leave', 'documents', 'reseller-dashboard', 'sa-overview'].includes(currentPath) 
-          ? <Login onLoginSuccess={onLoginSuccess} onBack={() => navigateTo('home')} onRegisterClick={() => navigateTo('signup')} onVerifyEmailClick={(email) => { setVerifyEmail(email); navigateTo('verify-email'); }} />
-          : !['login', 'signup', 'verify-email', 'pricing', 'features', 'faq', 'home', 'privacy-policy', 'terms-of-service', 'download-payslip'].includes(currentPath) &&
-          <NotFound onGoHome={() => navigateTo('home')} />
+        {!['login', 'signup', 'verify-email', 'pricing', 'features', 'faq', 'home', 'privacy-policy', 'terms-of-service', 'download-payslip'].includes(currentPath) &&
+          <Login onLoginSuccess={onLoginSuccess} onBack={() => navigateTo('home')} onRegisterClick={() => navigateTo('signup')} onVerifyEmailClick={(email) => { setVerifyEmail(email); navigateTo('verify-email'); }} />
         }
       </Suspense>
     );
