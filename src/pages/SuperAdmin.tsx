@@ -278,7 +278,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 
                 // Filter payments by selected timeframe
                 const now = new Date();
-                const filteredPayments = payments.filter(p => {
+                const filteredPayments = (payments || []).filter((p: any) => {
                     if (revenueFilter === 'all') return true;
                     const pDate = new Date(p.payment_date);
                     const diffTime = Math.abs(now.getTime() - pDate.getTime());
@@ -291,11 +291,11 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 });
 
                 // Calculate total revenue from filtered timeframe
-                const totalRevenue = filteredPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+                const totalRevenue = filteredPayments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
 
                 // Group payments by month for chart (Always group by month for visual trend, but only within filter)
                 const monthlyRevenue: Record<string, number> = {};
-                filteredPayments.forEach(payment => {
+                filteredPayments.forEach((payment: any) => {
                     const date = new Date(payment.payment_date);
                     const monthKey = date.toLocaleDateString('en-US', { month: 'short' });
                     if (!monthlyRevenue[monthKey]) {
