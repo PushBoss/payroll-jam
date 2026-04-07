@@ -2164,47 +2164,43 @@ export const supabaseService = {
     }
   },
 
-  getAllSubscriptions: async () => {
-    if (!supabase) return [];
-    try {
-      const { data, error } = await supabase
-        .from('subscriptions')
-        .select('*, companies(name)')
-        .order('created_at', { ascending: false });
+   getAllSubscriptions: async () => {
+     if (!supabase) return [];
+     try {
+       const { data, error } = await supabase.functions.invoke('admin-handler', {
+         body: { action: 'get-all-subscriptions', payload: {} }
+       });
+ 
+       if (error || !data?.subscriptions) {
+         console.error("Error fetching all subscriptions via Edge Function:", error);
+         return [];
+       }
+ 
+       return data.subscriptions;
+     } catch (e) {
+       console.error("Error fetching all subscriptions:", e);
+       return [];
+     }
+   },
 
-      if (error) {
-        console.error("Error fetching all subscriptions:", error);
-        return [];
-      }
-
-      return data;
-    } catch (e) {
-      console.error("Error fetching all subscriptions:", e);
-      return [];
-    }
-  },
-
-  getAllPayments: async (limit: number = 1000) => {
-    if (!supabase) return [];
-    try {
-      const { data, error } = await supabase
-        .from('payment_history')
-        .select('*, companies(name)')
-        .eq('status', 'completed')
-        .order('payment_date', { ascending: false })
-        .limit(limit);
-
-      if (error) {
-        console.error("Error fetching all payments:", error);
-        return [];
-      }
-
-      return data;
-    } catch (e) {
-      console.error("Error fetching all payments:", e);
-      return [];
-    }
-  },
+   getAllPayments: async (limit: number = 1000) => {
+     if (!supabase) return [];
+     try {
+       const { data, error } = await supabase.functions.invoke('admin-handler', {
+         body: { action: 'get-all-payments', payload: { limit } }
+       });
+ 
+       if (error || !data?.payments) {
+         console.error("Error fetching all payments via Edge Function:", error);
+         return [];
+       }
+ 
+       return data.payments;
+     } catch (e) {
+       console.error("Error fetching all payments:", e);
+       return [];
+     }
+   },
 
   getAllSuperAdmins: async (): Promise<User[]> => {
     if (!supabase) return [];

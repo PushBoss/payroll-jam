@@ -12,6 +12,7 @@ import { INITIAL_PLANS } from './services/planService';
 import { supabase } from './services/supabaseClient';
 import { getAuthRedirectUrl } from './utils/domainConfig';
 import { initializeCacheValidation } from './utils/cacheUtils';
+import { AdminService } from './services/AdminService';
 import { User, Role, Employee, PayRun as PayRunType, LeaveRequest, WeeklyTimesheet, CompanySettings, IntegrationConfig, TaxConfig, DocumentTemplate, PricingPlan, Department, Designation, Asset, PerformanceReview } from './core/types';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { useSubscription } from './hooks/useSubscription';
@@ -361,12 +362,27 @@ function AppContent() {
         console.log(`📡 App: Initializing data sync for company: ${user.companyId}`);
         setDataLoading(true);
         try {
-          const [dbCompany, dbEmps, dbRuns, dbLeaves] = await Promise.all([
-            CompanyService.getCompany(user.companyId),
-            EmployeeService.getEmployees(user.companyId),
-            PayrollService.getPayRuns(user.companyId),
-            EmployeeService.getLeaveRequests(user.companyId)
-          ]);
+          const isImpersonating = !!user.originalRole;
+          let dbCompany, dbEmps, dbRuns, dbLeaves, dbUsers;
+
+          if (isImpersonating) {
+            console.log('🎭 Mode: Impersonation (Bypassing RLS via Edge Function)');
+            const context = await AdminService.getCompanyContext(user.companyId);
+            dbCompany = context.company;
+            dbEmps = context.employees;
+            dbRuns = context.payRuns;
+            dbLeaves = context.leaveRequests;
+            dbUsers = context.users;
+          } else {
+            console.log('👤 Mode: Standard User (Respecting RLS)');
+            [dbCompany, dbEmps, dbRuns, dbLeaves, dbUsers] = await Promise.all([
+              CompanyService.getCompany(user.companyId),
+              EmployeeService.getEmployees(user.companyId),
+              PayrollService.getPayRuns(user.companyId),
+              EmployeeService.getLeaveRequests(user.companyId),
+              EmployeeService.getCompanyUsers(user.companyId)
+            ]);
+          }
 
           if (dbCompany) {
             console.log('✅ App: Company data loaded successfully');
@@ -377,16 +393,13 @@ function AppContent() {
             // Sync to local storage for offline support
             storage.saveCompanyData(dbCompany);
           } else {
-
             console.error(`❌ App: Failed to load company data for ${user.companyId}. Check RLS or existence.`);
             toast.error("Couldn't load company settings. Please try refreshing.");
           }
+          
           if (dbEmps) setEmployees(dbEmps);
           if (dbRuns) setPayRunHistory(dbRuns);
           if (dbLeaves) setLeaveRequests(dbLeaves);
-
-          // Load users
-          const dbUsers = await EmployeeService.getCompanyUsers(user.companyId);
           if (dbUsers) setUsers(dbUsers);
 
           toast.success("Sync complete: Loaded data from Supabase Cloud");

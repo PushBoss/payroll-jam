@@ -533,6 +533,119 @@ serve(async (req: Request) => {
                 });
             }
 
+            case 'get-company-context': {
+                const { companyId } = payload;
+                if (!companyId) throw new Error('companyId required');
+
+                // 1. Validate Caller role
+                if (!authUser) throw new Error('Unauthorized');
+                const { data: callerProfile } = await adminClient
+                    .from('app_users')
+                    .select('role, company_id')
+                    .eq('id', authUser.id)
+                    .maybeSingle();
+
+                const callerRole = callerProfile?.role?.toUpperCase();
+                const isSuperAdmin = callerRole === 'SUPER_ADMIN';
+                const isReseller = callerRole === 'RESELLER';
+
+                if (!isSuperAdmin && !isReseller) {
+                    throw new Error('Unauthorized: Admin or Reseller role required');
+                }
+
+                // 2. If Reseller, validate relationship
+                if (isReseller) {
+                    const { data: relationship } = await adminClient
+                        .from('reseller_clients')
+                        .select('*')
+                        .eq('reseller_id', callerProfile.company_id)
+                        .eq('client_company_id', companyId)
+                        .eq('status', 'ACTIVE')
+                        .maybeSingle();
+
+                    if (!relationship) {
+                        // Also check if they are a member of the team
+                        const { data: membership } = await adminClient
+                            .from('account_members')
+                            .select('*')
+                            .eq('account_id', companyId)
+                            .eq('user_id', authUser.id)
+                            .eq('status', 'accepted')
+                            .maybeSingle();
+
+                        if (!membership) {
+                            throw new Error('Unauthorized: No relationship with this company');
+                        }
+                    }
+                }
+
+                // 3. Fetch all data in parallel
+                const [
+                    { data: company },
+                    { data: employees },
+                    { data: payRuns },
+                    { data: leaveRequests },
+                    { data: users }
+                ] = await Promise.all([
+                    adminClient.from('companies').select('*').eq('id', companyId).maybeSingle(),
+                    adminClient.from('employees').select('*').eq('company_id', companyId),
+                    adminClient.from('pay_runs').select('*').eq('company_id', companyId).order('period_start', { ascending: false }),
+                    adminClient.from('leave_requests').select('*').eq('company_id', companyId),
+                    adminClient.from('app_users').select('*').eq('company_id', companyId)
+                ]);
+
+                return new Response(JSON.stringify({
+                    company,
+                    employees,
+                    payRuns,
+                    leaveRequests,
+                    users
+                }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'get-all-subscriptions': {
+                if (!authUser) throw new Error('Unauthorized');
+                
+                // Simple role check for Super Admin
+                const { data: profile } = await adminClient.from('app_users').select('role').eq('id', authUser.id).maybeSingle();
+                if (profile?.role?.toUpperCase() !== 'SUPER_ADMIN') {
+                    throw new Error('Unauthorized: Super Admin required');
+                }
+
+                const { data, error } = await adminClient
+                    .from('subscriptions')
+                    .select('*, companies(name)')
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+                return new Response(JSON.stringify({ subscriptions: data }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'get-all-payments': {
+                if (!authUser) throw new Error('Unauthorized');
+                
+                // Simple role check for Super Admin
+                const { data: profile } = await adminClient.from('app_users').select('role').eq('id', authUser.id).maybeSingle();
+                if (profile?.role?.toUpperCase() !== 'SUPER_ADMIN') {
+                    throw new Error('Unauthorized: Super Admin required');
+                }
+
+                const { data, error } = await adminClient
+                    .from('payment_history')
+                    .select('*, companies(name)')
+                    .eq('status', 'completed')
+                    .order('payment_date', { ascending: false });
+
+                if (error) throw error;
+                return new Response(JSON.stringify({ payments: data }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
             default:
                 throw new Error(`Unknown action: ${action}`);
         }
