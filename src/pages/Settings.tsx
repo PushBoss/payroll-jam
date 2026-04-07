@@ -78,7 +78,8 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ plan, currentUser, onClos
                     planId: plan.id,
                     planName: plan.name,
                     plan: plan.name,
-                    planType: plan.name.toLowerCase()
+                    planType: plan.name.toLowerCase(),
+                    name: currentUser?.name // FIX: Pass user name to fix "Hi Guest" email issue
                 },
                 onSuccess: (data) => {
                     if (isMountedRef.current) {
@@ -669,10 +670,35 @@ export const Settings: React.FC<SettingsProps> = ({
             {upgradeTarget && <CheckoutModal plan={upgradeTarget} currentUser={currentUser} onClose={() => setUpgradeTarget(null)} onSuccess={handleUpgradeSuccess} />}
             {isAddingPaymentMethod && (
                 <CheckoutModal 
-                    plan={{ id: 'vault', name: 'Secure Card Update', description: 'Store card for recurring usage.', priceConfig: { type: 'flat', monthly: 100, annual: 1200 }, limit: 'N/A', features: [], isActive: true, cta: 'Update Card', highlight: false, color: 'bg-jam-orange', textColor: 'text-jam-black' }} 
+                    plan={{ 
+                        id: 'vault', 
+                        name: 'Secure Card Update', 
+                        description: 'Store card for recurring usage.', 
+                        priceConfig: { type: 'flat', monthly: 100, annual: 1200 }, 
+                        limit: 'N/A', features: [], isActive: true, 
+                        cta: 'Update Card', highlight: false, 
+                        color: 'bg-jam-orange', textColor: 'text-jam-black' 
+                    }} 
                     currentUser={currentUser} 
                     onClose={() => setIsAddingPaymentMethod(false)} 
-                    onSuccess={() => { setIsAddingPaymentMethod(false); toast.success('Payment Method updated successfully!'); window.location.reload(); }} 
+                    onSuccess={async () => { 
+                        setIsAddingPaymentMethod(false); 
+                        
+                        // SECURE DATA SYNC: Explicitly update the database to mark method as 'card'
+                        if (currentUser?.companyId && companyData) {
+                            try {
+                                await supabaseService.saveCompany(currentUser.companyId, {
+                                    ...companyData,
+                                    paymentMethod: 'card'
+                                } as any);
+                                toast.success('Payment Method updated successfully!');
+                            } catch (e) {
+                                console.error('Failed to update payment method in DB:', e);
+                            }
+                        }
+                        
+                        window.location.reload(); 
+                    }} 
                 />
             )}
 
@@ -907,16 +933,22 @@ export const Settings: React.FC<SettingsProps> = ({
                             </button>
                         </div>
                         
-                        {currentSubscription?.dimepaySubscriptionId ? (
+                        {(currentSubscription?.dimepaySubscriptionId || (companyData as any)?.paymentMethod === 'card') ? (
                             <div className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg border border-gray-200 max-w-md">
                                 <div className="p-3 bg-white rounded shadow-sm border border-gray-100">
                                     <Icons.Company className="w-6 h-6 text-gray-600" />
                                 </div>
                                 <div>
-                                    <p className="font-bold text-gray-800 text-lg tracking-wide">
-                                        •••• •••• •••• {currentSubscription.id.substring(0, 4).toUpperCase()}
+                                    <p className="font-bold text-gray-800 text-lg tracking-wide uppercase">
+                                        {currentSubscription?.dimepaySubscriptionId 
+                                            ? `•••• •••• •••• ${currentSubscription.id.substring(0, 4).toUpperCase()}`
+                                            : "Secure Card Vaulted"}
                                     </p>
-                                    <p className="text-xs text-green-600 font-semibold uppercase mt-1">Active Recurring Subscription</p>
+                                    <p className={`text-xs font-semibold uppercase mt-1 ${currentSubscription?.status === 'active' ? 'text-green-600' : 'text-jam-orange'}`}>
+                                        {currentSubscription?.status === 'active' 
+                                            ? 'Active Recurring Subscription' 
+                                            : 'Card on File (Reserved)'}
+                                    </p>
                                 </div>
                             </div>
                         ) : (
