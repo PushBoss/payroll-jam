@@ -216,10 +216,11 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             setIsLoadingPending(true);
             try {
                 const { data, error } = await supabase!.functions.invoke('admin-handler', {
-                    body: { action: 'get-pending-companies', payload: {} }
+                    body: { action: 'get-pending-approvals', payload: {} }
                 });
                 if (error) throw error;
-                setPendingPayments(data?.companies || []);
+                // Our new action returns { pending: [...] }
+                setPendingPayments(data?.pending || []);
             } catch (error) {
                 console.error('Error loading pending payments:', error);
                 toast.error('Failed to load pending payments');
@@ -236,7 +237,14 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             if (activeTab !== 'users') return;
 
             try {
-                const dbAdmins = await supabaseService.getAllSuperAdmins();
+                // Use admin-handler to bypass RLS and see ALL admins
+                const { data, error } = await supabase!.functions.invoke('admin-handler', {
+                    body: { action: 'get-all-super-admins', payload: {} }
+                });
+                
+                if (error) throw error;
+                
+                const dbAdmins = data?.admins || [];
                 if (dbAdmins && dbAdmins.length > 0) {
                     setAdmins(dbAdmins);
                     // Also save to localStorage as backup
@@ -617,7 +625,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
 
         try {
             const { data, error } = await supabase!.functions.invoke('admin-handler', {
-                body: { action: 'approve-company', payload: { companyId } }
+                body: { action: 'approve-payment', payload: { companyId } }
             });
             if (error) throw error;
 
@@ -629,11 +637,12 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     'Payment',
                     `Approved payment for company: ${companyName}`
                 );
-                // Reload pending payments
+                
+                // Reload pending payments using the new action
                 const { data: refreshed } = await supabase!.functions.invoke('admin-handler', {
-                    body: { action: 'get-pending-companies', payload: {} }
+                    body: { action: 'get-pending-approvals', payload: {} }
                 });
-                setPendingPayments(refreshed?.companies || []);
+                setPendingPayments(refreshed?.pending || []);
             } else {
                 toast.error('Failed to approve payment');
             }

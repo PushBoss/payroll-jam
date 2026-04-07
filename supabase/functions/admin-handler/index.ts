@@ -343,45 +343,9 @@ serve(async (req: Request) => {
                 return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
             }
 
+            // Legacy action - see get-pending-approvals instead
             case 'get-pending-companies': {
-                const { data: pending, error: pendingError } = await adminClient
-                    .from('companies')
-                    .select('id, name, email, plan, status, created_at')
-                    .in('status', ['PENDING_PAYMENT', 'PENDING_APPROVAL'])
-                    .order('created_at', { ascending: false });
-
-                if (pendingError) throw pendingError;
-
-                // Enrich with owner info from app_users
-                const enriched = await Promise.all((pending || []).map(async (company: any) => {
-                    const { data: owner } = await adminClient
-                        .from('app_users')
-                        .select('name, email')
-                        .eq('company_id', company.id)
-                        .in('role', ['OWNER'])
-                        .limit(1)
-                        .maybeSingle();
-
-                    const planFees: Record<string, number> = {
-                        'Free': 0, 'Starter': 3000, 'Professional': 7500, 'Enterprise': 15000
-                    };
-
-                    return {
-                        id: company.id,
-                        name: company.name,
-                        email: company.email || owner?.email || '',
-                        plan: company.plan,
-                        status: company.status,
-                        created_at: company.created_at,
-                        owner_name: owner?.name || 'N/A',
-                        owner_email: owner?.email || '',
-                        monthly_fee: planFees[company.plan] || 5000
-                    };
-                }));
-
-                return new Response(JSON.stringify({ companies: enriched }), {
-                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-                });
+                throw new Error('Action get-pending-companies is deprecated. Use get-pending-approvals.');
             }
 
             case 'approve-company': {
@@ -683,6 +647,81 @@ serve(async (req: Request) => {
 
                 if (error) throw error;
                 return new Response(JSON.stringify({ payments: data }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'get-all-super-admins': {
+                if (!authUser) throw new Error('Unauthorized');
+                
+                const { data: profile } = await adminClient.from('app_users').select('role').eq('id', authUser.id).maybeSingle();
+                if (profile?.role?.toUpperCase() !== 'SUPER_ADMIN') {
+                    throw new Error('Unauthorized: Super Admin required');
+                }
+
+                // Fetch all Super Admins using the server role (RLS bypass)
+                const { data, error } = await adminClient
+                    .from('app_users')
+                    .select('*')
+                    .eq('role', 'SUPER_ADMIN')
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+                return new Response(JSON.stringify({ admins: data }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'get-pending-approvals': {
+                if (!authUser) throw new Error('Unauthorized');
+                
+                const { data: profile } = await adminClient.from('app_users').select('role').eq('id', authUser.id).maybeSingle();
+                if (profile?.role?.toUpperCase() !== 'SUPER_ADMIN') {
+                    throw new Error('Unauthorized: Super Admin required');
+                }
+
+                const { data, error } = await adminClient
+                    .from('companies')
+                    .select(`
+                        id,
+                        name,
+                        email,
+                        plan,
+                        status,
+                        created_at,
+                        owner:app_users!companies_owner_id_fkey (
+                            name,
+                            email
+                        )
+                    `)
+                    .in('status', ['PENDING_PAYMENT', 'PENDING_APPROVAL'])
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+                return new Response(JSON.stringify({ pending: data }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'approve-payment': {
+                if (!authUser) throw new Error('Unauthorized');
+                
+                const { data: profile } = await adminClient.from('app_users').select('role').eq('id', authUser.id).maybeSingle();
+                if (profile?.role?.toUpperCase() !== 'SUPER_ADMIN') {
+                    throw new Error('Unauthorized: Super Admin required');
+                }
+
+                const { companyId } = payload;
+                if (!companyId) throw new Error('Company ID is required for approval');
+
+                const { data, error } = await adminClient
+                    .from('companies')
+                    .update({ status: 'ACTIVE' })
+                    .eq('id', companyId)
+                    .select();
+
+                if (error) throw error;
+                return new Response(JSON.stringify({ success: true, company: data }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });
             }

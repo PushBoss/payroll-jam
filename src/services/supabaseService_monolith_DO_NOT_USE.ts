@@ -2202,7 +2202,9 @@ export const supabaseService = {
      }
    },
 
+  // ⛔ DEPRECATED — Use admin-handler get-all-super-admins instead
   getAllSuperAdmins: async (): Promise<User[]> => {
+    console.warn('⛔ getAllSuperAdmins is DEPRECATED. Use admin-handler instead.');
     if (!supabase) return [];
     try {
       const { data, error } = await supabase
@@ -2923,7 +2925,9 @@ export const supabaseService = {
   },
 
   // Get companies with pending payment approval (Direct Deposit or Reseller Billing)
+  // ⛔ DEPRECATED — Use admin-handler get-pending-approvals instead
   getPendingPaymentCompanies: async (): Promise<any[]> => {
+    console.warn('⛔ getPendingPaymentCompanies is DEPRECATED. Use admin-handler instead.');
     try {
       const adminClient = await supabaseService.getAdminClient();
       if (!adminClient) {
@@ -2972,7 +2976,9 @@ export const supabaseService = {
   },
 
   // Approve a company's payment and activate their account
+  // ⛔ DEPRECATED — Use admin-handler approve-payment instead
   approveCompanyPayment: async (companyId: string): Promise<boolean> => {
+    console.warn('⛔ approveCompanyPayment is DEPRECATED. Use admin-handler instead.');
     try {
       const adminClient = await supabaseService.getAdminClient();
       if (!adminClient) {
