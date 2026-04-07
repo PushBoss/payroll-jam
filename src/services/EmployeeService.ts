@@ -8,7 +8,7 @@ export const EmployeeService = {
   getUserByEmail: async (email: string): Promise<User | null> => {
     if (!supabase) return null;
     const { data, error } = await supabase
-      .from('users')
+      .from('app_users')
       .select('*')
       .eq('email', email)
       .maybeSingle();
