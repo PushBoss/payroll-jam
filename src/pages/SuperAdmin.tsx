@@ -87,8 +87,11 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         }
     }, [initialTab]);
 
-    // Tenant State - Always fetch from Supabase
+    // Tenant State - Always fetch from Supabase via Edge Function
     const [tenants, setTenants] = useState<ResellerClient[]>([]);
+    const [tenantPage, setTenantPage] = useState(0);
+    const [tenantTotal, setTenantTotal] = useState(0);
+    const TENANTS_PER_PAGE = 20;
 
     const [isLoadingTenants, setIsLoadingTenants] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -356,26 +359,30 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         }
     };
 
-    // --- Fetch Tenants from Supabase ---
+    // --- Fetch Tenants from Supabase via Edge Function (bypasses RLS) ---
     useEffect(() => {
         async function fetchDBTenants() {
             setIsLoadingTenants(true);
             try {
-                const dbTenants = await supabaseService.getAllCompanies();
-                setTenants(dbTenants || []);
-                if (!dbTenants || dbTenants.length === 0) {
-                    console.log('No companies found in database');
-                }
+                const { data, error } = await supabase!.functions.invoke('admin-handler', {
+                    body: {
+                        action: 'get-all-companies',
+                        payload: { page: tenantPage, pageSize: TENANTS_PER_PAGE }
+                    }
+                });
+                if (error) throw error;
+                setTenants(data?.companies || []);
+                setTenantTotal(data?.total || 0);
             } catch (e) {
                 console.error('Error fetching tenants:', e);
-                toast.error("Failed to fetch companies from Supabase");
+                toast.error('Failed to fetch companies');
                 setTenants([]);
             } finally {
                 setIsLoadingTenants(false);
             }
         }
         fetchDBTenants();
-    }, [activeTab]); // Re-fetch on tab change
+    }, [activeTab, tenantPage]); // Re-fetch whenever tab or page changes
 
     // --- Handlers ---
     const handleSuspend = async (id: string) => {
@@ -738,10 +745,12 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
 
     const renderTenants = () => {
         const filteredTenants = tenants.filter(t => {
-            const matchesSearch = t.companyName.toLowerCase().includes(searchTerm.toLowerCase()) || t.email.toLowerCase().includes(searchTerm.toLowerCase());
+            const matchesSearch = t.companyName.toLowerCase().includes(searchTerm.toLowerCase()) || (t.email || '').toLowerCase().includes(searchTerm.toLowerCase());
             const matchesFilter = filterStatus === 'ALL' || t.status === filterStatus;
             return matchesSearch && matchesFilter;
         });
+
+        const totalPages = Math.ceil(tenantTotal / TENANTS_PER_PAGE);
 
         return (
             <div className="space-y-6 animate-fade-in">
@@ -753,20 +762,23 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                             placeholder="Search tenants..."
                             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-jam-orange"
                             value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
+                            onChange={(e) => { setSearchTerm(e.target.value); setTenantPage(0); }}
                         />
                     </div>
-                    <div className="flex space-x-2">
-                        {(['ALL', 'ACTIVE', 'SUSPENDED'] as const).map(status => (
-                            <button
-                                key={status}
-                                onClick={() => setFilterStatus(status)}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterStatus === status ? 'bg-jam-black text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                    }`}
-                            >
-                                {status}
-                            </button>
-                        ))}
+                    <div className="flex items-center space-x-4">
+                        <span className="text-xs text-gray-500">{tenantTotal} total tenants</span>
+                        <div className="flex space-x-2">
+                            {(['ALL', 'ACTIVE', 'SUSPENDED'] as const).map(status => (
+                                <button
+                                    key={status}
+                                    onClick={() => setFilterStatus(status)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterStatus === status ? 'bg-jam-black text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                        }`}
+                                >
+                                    {status}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </div>
 
@@ -801,7 +813,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                     </tr>
                                 ) : (
                                     filteredTenants.map(tenant => (
-                                        <tr key={tenant.id} className="hover:bg-gray-50">
+                                        <tr key={tenant.id} className="hover:bg-gray-50 border-b border-gray-100 last:border-0">
                                             <td className="px-6 py-4 font-medium text-gray-900">{tenant.companyName}</td>
                                             <td className="px-6 py-4 text-sm text-gray-500">
                                                 {tenant.contactName}
@@ -836,6 +848,44 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                             </tbody>
                         </table>
                     </div>
+
+                    {/* Pagination Controls */}
+                    {totalPages > 1 && (
+                        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
+                            <p className="text-sm text-gray-500">
+                                Showing {tenantPage * TENANTS_PER_PAGE + 1}–{Math.min((tenantPage + 1) * TENANTS_PER_PAGE, tenantTotal)} of {tenantTotal} tenants
+                            </p>
+                            <div className="flex items-center space-x-2">
+                                <button
+                                    onClick={() => setTenantPage(p => Math.max(0, p - 1))}
+                                    disabled={tenantPage === 0}
+                                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                    ← Prev
+                                </button>
+                                {Array.from({ length: totalPages }, (_, i) => i).map(pg => (
+                                    <button
+                                        key={pg}
+                                        onClick={() => setTenantPage(pg)}
+                                        className={`w-8 h-8 rounded-lg text-xs font-bold transition-colors ${
+                                            pg === tenantPage
+                                                ? 'bg-jam-orange text-jam-black'
+                                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                        }`}
+                                    >
+                                        {pg + 1}
+                                    </button>
+                                ))}
+                                <button
+                                    onClick={() => setTenantPage(p => Math.min(totalPages - 1, p + 1))}
+                                    disabled={tenantPage >= totalPages - 1}
+                                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                    Next →
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         );

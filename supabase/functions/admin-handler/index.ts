@@ -282,6 +282,54 @@ serve(async (req: Request) => {
                 return new Response(JSON.stringify({ requiresUpgrade }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
             }
 
+            case 'get-all-companies': {
+                const page = payload?.page ?? 0;
+                const pageSize = payload?.pageSize ?? 20;
+                const from = page * pageSize;
+                const to = from + pageSize - 1;
+
+                const { data: companies, error: compError, count } = await adminClient
+                    .from('companies')
+                    .select('id, name, email, plan, status, settings, created_at', { count: 'exact' })
+                    .order('created_at', { ascending: false })
+                    .range(from, to);
+
+                if (compError) throw compError;
+
+                // Enrich with owner name from app_users
+                const enriched = await Promise.all((companies || []).map(async (c: any) => {
+                    const { data: ownerData } = await adminClient
+                        .from('app_users')
+                        .select('name, email')
+                        .eq('company_id', c.id)
+                        .in('role', ['OWNER', 'ADMIN'])
+                        .order('role', { ascending: true }) // ADMIN < OWNER alphabetically, but OWNER preferred
+                        .limit(1)
+                        .maybeSingle();
+
+                    const planMap: Record<string, string> = {
+                        'Free': 'Free', 'Starter': 'Starter',
+                        'Professional': 'Pro', 'Enterprise': 'Enterprise'
+                    };
+
+                    return {
+                        id: c.id,
+                        companyName: c.name,
+                        email: c.email || ownerData?.email || '',
+                        contactName: ownerData?.name || c.settings?.contactName || 'N/A',
+                        plan: planMap[c.plan] || 'Free',
+                        status: c.status || 'ACTIVE',
+                        employeeCount: c.settings?.employeeCount || 0,
+                        mrr: c.settings?.mrr || 0,
+                        createdAt: c.created_at
+                    };
+                }));
+
+                return new Response(JSON.stringify({ companies: enriched, total: count }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
             case 'delete-super-admin': {
                 const { userId } = payload;
                 const { error } = await adminClient.auth.admin.deleteUser(userId);
