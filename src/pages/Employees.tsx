@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { isValidEmail } from '../utils/validators';
 import { generateUUID } from '../utils/uuid';
+import { isResellerEquivalentPlan, normalizePlanToFrontend } from '../utils/planNames';
 
 
 interface EmployeesProps {
@@ -153,9 +154,8 @@ export const Employees: React.FC<EmployeesProps> = ({
     };
 
     const handleSendLoginInvite = async (emp: Employee) => {
-        // Check if plan is Pro, Reseller, or Enterprise
-        const planName = companyData?.plan === 'Professional' ? 'Pro' : companyData?.plan;
-        if (planName !== 'Pro' && planName !== 'Reseller' && planName !== 'Enterprise') {
+        const planName = normalizePlanToFrontend(companyData?.plan);
+        if (planName !== 'Pro' && !isResellerEquivalentPlan(companyData?.plan)) {
             toast.error('This feature is only available for Pro and Reseller plans. Please upgrade to send employee portal invites.');
             return;
         }

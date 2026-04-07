@@ -315,7 +315,7 @@ serve(async (req: Request) => {
 
                     const planMap: Record<string, string> = {
                         'Free': 'Free', 'Starter': 'Starter',
-                        'Professional': 'Pro', 'Enterprise': 'Enterprise'
+                        'Professional': 'Pro', 'Enterprise': 'Reseller'
                     };
 
                     return {

@@ -7,6 +7,7 @@ import { CompanyService } from '../services/CompanyService';
 import { supabase } from '../services/supabaseClient';
 import { getAuthRedirectUrl } from '../utils/domainConfig';
 import { getPendingInvitationsByEmail, acceptMultipleInvitations, AccountMember } from '../features/employees/inviteService';
+import { normalizePlanToDatabase } from '../utils/planNames';
 import { toast } from 'sonner';
 
 interface AuthContextType {
@@ -367,21 +368,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         console.log('🏢 Creating new company for Owner/Reseller...');
         const isPaidPlan = userData.plan && userData.plan !== 'Free';
 
-        // Map plan names to match database constraint: ('Free', 'Starter', 'Professional', 'Enterprise')
-        const mapPlanToDbFormat = (plan: string | undefined): string => {
-          if (!plan) return 'Free';
-          const planMap: Record<string, string> = {
-            'Free': 'Free',
-            'Starter': 'Starter',
-            'Pro': 'Professional',
-            'Professional': 'Professional',
-            'Reseller': 'Enterprise', // Map Reseller to Enterprise for now
-            'Enterprise': 'Enterprise'
-          };
-          return planMap[plan] || 'Free';
-        };
-
-        const dbPlan = mapPlanToDbFormat(userData.plan);
+        const dbPlan = normalizePlanToDatabase(userData.plan);
 
         // Map billing cycle to database format (MONTHLY/ANNUAL uppercase)
         const billingCycle: 'MONTHLY' | 'ANNUAL' = (userData as any).billingCycle === 'annual' ? 'ANNUAL' : 'MONTHLY';

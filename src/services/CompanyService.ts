@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient';
 import { CompanySettings, GlobalConfig } from '../core/types';
+import { normalizePlanToDatabase, normalizePlanToFrontend } from '../utils/planNames';
 
 
 export const CompanyService = {
@@ -23,7 +24,7 @@ export const CompanyService = {
       bankName: settings.bankName || 'NCB',
       accountNumber: settings.accountNumber || '',
       branchCode: settings.branchCode || '',
-      plan: data.plan as any,
+      plan: normalizePlanToFrontend(data.plan) as any,
       subscriptionStatus: data.status || 'ACTIVE',
       paymentMethod: settings.paymentMethod,
       policies: settings.policies,
@@ -49,7 +50,7 @@ export const CompanyService = {
           policies: settings.policies
         },
         status: settings.subscriptionStatus || 'ACTIVE',
-        plan: settings.plan
+        plan: normalizePlanToDatabase(settings.plan)
       });
     if (error) throw error;
   },

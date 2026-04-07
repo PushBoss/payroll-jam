@@ -289,7 +289,7 @@ export const supabaseService = {
         'Free': 'Free',
         'Starter': 'Starter',
         'Professional': 'Pro',
-        'Enterprise': 'Enterprise'
+        'Enterprise': 'Reseller'
       };
       return planMap[dbPlan] || 'Free';
     };

@@ -4,7 +4,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Icons } from '../components/Icons';
 import { GLMapping, IntegrationConfig, CompanySettings, TaxConfig, User, Role, Department, Designation, PricingPlan, PaymentRecord } from '../core/types';
 import { getPlanPriceDetails } from '../utils/pricing';
+import { normalizePlanToFrontend } from '../utils/planNames';
 import { storage } from '../services/storage';
+import { INITIAL_PLANS } from '../services/planService';
 import { auditService } from '../core/auditService';
 import { checkDbConnection } from '../services/supabaseClient';
 import { supabaseService } from '../services/supabaseService';
@@ -270,9 +272,21 @@ export const Settings: React.FC<SettingsProps> = ({
         return false;
     };
 
+    const normalizePlanName = (planName?: string | null) => {
+        return normalizePlanToFrontend(planName).trim().toLowerCase();
+    };
+
     const buildPaymentMethodCheckoutPlan = (): PricingPlan | null => {
-        const planName = currentSubscription?.planName || companyData?.plan;
-        const matchedPlan = plans.find(p => p.name === planName);
+        const availablePlans = plans.length > 0 ? plans : INITIAL_PLANS;
+        const planCandidates = [
+            currentSubscription?.planName,
+            companyData?.plan
+        ].filter(Boolean) as string[];
+        const fallbackPlanName = planCandidates[0];
+
+        const matchedPlan = availablePlans.find((plan) =>
+            planCandidates.some((candidate) => normalizePlanName(candidate) === normalizePlanName(plan.name))
+        );
 
         if (matchedPlan) {
             return matchedPlan.priceConfig.type === 'free' ? null : matchedPlan;
@@ -282,7 +296,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
         return {
             id: 'current-subscription',
-            name: planName || 'Current Plan',
+            name: fallbackPlanName || 'Current Plan',
             description: 'Recurring billing for your current subscription.',
             priceConfig: {
                 type: 'flat',
