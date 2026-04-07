@@ -501,6 +501,38 @@ serve(async (req: Request) => {
                 });
             }
 
+            case 'get-audit-logs': {
+                const { companyId: filterCompanyId, limit: logLimit = 500 } = payload || {};
+
+                let query = adminClient
+                    .from('audit_logs')
+                    .select('*')
+                    .order('timestamp', { ascending: false })
+                    .limit(logLimit);
+
+                if (filterCompanyId) {
+                    query = query.eq('company_id', filterCompanyId);
+                }
+
+                const { data: logs, error: logsError } = await query;
+                if (logsError) throw logsError;
+
+                const mapped = (logs || []).map((log: any) => ({
+                    id: log.id,
+                    timestamp: log.timestamp,
+                    actorId: log.actor_id,
+                    actorName: log.actor_name,
+                    action: log.action,
+                    entity: log.entity,
+                    description: log.description,
+                    ipAddress: log.ip_address
+                }));
+
+                return new Response(JSON.stringify({ logs: mapped }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
             default:
                 throw new Error(`Unknown action: ${action}`);
         }

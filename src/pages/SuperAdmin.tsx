@@ -178,9 +178,21 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     useEffect(() => {
         const loadLogs = async () => {
             if (activeTab === 'overview' || activeTab === 'logs') {
-                // Super admins can see all audit logs (pass null for companyId)
-                const allLogs = await auditService.getLogs(null, 'SUPER_ADMIN');
-                setLogs(allLogs);
+                try {
+                    // Use Edge Function to bypass RLS for super admin audit log access
+                    const { data, error } = await supabase!.functions.invoke('admin-handler', {
+                        body: { action: 'get-audit-logs', payload: { limit: 500 } }
+                    });
+                    if (!error && data?.logs) {
+                        setLogs(data.logs);
+                    } else {
+                        // Fallback to regular auditService (reads own company only)
+                        const fallbackLogs = await auditService.getLogs(null, 'SUPER_ADMIN');
+                        setLogs(fallbackLogs);
+                    }
+                } catch (e) {
+                    console.error('Error loading audit logs:', e);
+                }
             }
         };
         loadLogs();
