@@ -307,6 +307,12 @@ serve(async (req: Request) => {
                         .limit(1)
                         .maybeSingle();
 
+                    // Accurate employee count instead of settings cache
+                    const { count: empCount } = await adminClient
+                        .from('employees')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('company_id', c.id);
+
                     const planMap: Record<string, string> = {
                         'Free': 'Free', 'Starter': 'Starter',
                         'Professional': 'Pro', 'Enterprise': 'Enterprise'
@@ -319,7 +325,7 @@ serve(async (req: Request) => {
                         contactName: ownerData?.name || c.settings?.contactName || 'N/A',
                         plan: planMap[c.plan] || 'Free',
                         status: c.status || 'ACTIVE',
-                        employeeCount: c.settings?.employeeCount || 0,
+                        employeeCount: empCount || 0,
                         mrr: c.settings?.mrr || 0,
                         createdAt: c.created_at
                     };
@@ -600,6 +606,41 @@ serve(async (req: Request) => {
                     payRuns,
                     leaveRequests,
                     users
+                }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'get-platform-stats': {
+                if (!authUser) throw new Error('Unauthorized');
+                const { data: profile } = await adminClient.from('app_users').select('role').eq('id', authUser.id).maybeSingle();
+                if (profile?.role?.toUpperCase() !== 'SUPER_ADMIN') {
+                    throw new Error('Unauthorized: Super Admin required');
+                }
+
+                const [
+                    { count: totalTenants },
+                    { count: activeTenants },
+                    { count: pendingApprovals },
+                    { count: totalEmployees },
+                    { data: activeCompanies }
+                ] = await Promise.all([
+                    adminClient.from('companies').select('*', { count: 'exact', head: true }),
+                    adminClient.from('companies').select('*', { count: 'exact', head: true }).eq('status', 'ACTIVE'),
+                    adminClient.from('companies').select('*', { count: 'exact', head: true }).in('status', ['PENDING_PAYMENT', 'PENDING_APPROVAL']),
+                    adminClient.from('employees').select('*', { count: 'exact', head: true }),
+                    adminClient.from('companies').select('settings').eq('status', 'ACTIVE')
+                ]);
+
+                // Sum up MRR from settings
+                const totalMRR = (activeCompanies || []).reduce((sum: number, c: any) => sum + (c.settings?.mrr || 0), 0);
+
+                return new Response(JSON.stringify({
+                    totalTenants: totalTenants || 0,
+                    activeTenants: activeTenants || 0,
+                    pendingApprovals: pendingApprovals || 0,
+                    totalEmployees: totalEmployees || 0,
+                    totalMRR
                 }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });

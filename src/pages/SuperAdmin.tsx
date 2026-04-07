@@ -137,11 +137,22 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     const [manualCreds, setManualCreds] = useState({ url: '', key: '' });
     const [manualTestResult, setManualTestResult] = useState<{ success?: boolean, msg?: string } | null>(null);
 
-    // Stats
-    const totalMRR = tenants.reduce((acc, t) => t.status === 'ACTIVE' ? acc + t.mrr : acc, 0);
-    const totalTenants = tenants.length;
-    const activeTenants = tenants.filter(t => t.status === 'ACTIVE').length;
-    const totalEmployees = tenants.reduce((acc, t) => acc + t.employeeCount, 0);
+    // Platform-wide Stats (cached from edge function)
+    const [platformStats, setPlatformStats] = useState({
+        totalTenants: 0,
+        activeTenants: 0,
+        pendingApprovals: 0,
+        totalEmployees: 0,
+        totalMRR: 0
+    });
+
+    // Stats - These are now primarily fetched via Edge Function for accuracy across pages
+    // We fall back to local count if edge function isn't used
+    const totalMRR = (platformStats.totalMRR > 0) ? platformStats.totalMRR : tenants.reduce((acc, t) => t.status === 'ACTIVE' ? acc + t.mrr : acc, 0);
+    const totalTenants = (platformStats.totalTenants > 0) ? platformStats.totalTenants : tenants.length;
+    const activeTenants = (platformStats.activeTenants > 0) ? platformStats.activeTenants : tenants.filter(t => t.status === 'ACTIVE').length;
+    const totalEmployees = (platformStats.totalEmployees > 0) ? platformStats.totalEmployees : tenants.reduce((acc, t) => acc + (t.employeeCount || 0), 0);
+    const pendingApprovals = platformStats.pendingApprovals;
 
     // --- Persistence Effects ---
     useEffect(() => {
@@ -249,6 +260,36 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
 
         loadSuperAdmins();
     }, [activeTab]);
+
+    // Load platform stats when overview or tenants tab is active
+    useEffect(() => {
+        const loadPlatformStats = async () => {
+            if (activeTab !== 'overview' && activeTab !== 'tenants') return;
+            
+            try {
+                const { data, error } = await supabase!.functions.invoke('admin-handler', {
+                    body: { action: 'get-platform-stats', payload: {} }
+                });
+                
+                if (error) throw error;
+                if (data) {
+                    setPlatformStats({
+                        totalTenants: data.totalTenants || 0,
+                        activeTenants: data.activeTenants || 0,
+                        pendingApprovals: data.pendingApprovals || 0,
+                        totalEmployees: data.totalEmployees || 0,
+                        totalMRR: data.totalMRR || 0
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading platform stats:', error);
+            }
+        };
+
+        if (paymentConfig.dataSource === 'SUPABASE') {
+            loadPlatformStats();
+        }
+    }, [activeTab, paymentConfig.dataSource]);
 
     // Load billing data when billing tab is active
     useEffect(() => {
@@ -751,14 +792,30 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                     <div className="flex items-center justify-between">
                         <div>
-                            <p className="text-sm text-gray-500 uppercase font-bold">System Health</p>
-                            <h3 className="text-3xl font-bold text-green-600 mt-2">99.9%</h3>
+                            <p className="text-sm text-gray-500 uppercase font-bold">Pending Approvals</p>
+                            <h3 className={`text-3xl font-bold mt-2 ${pendingApprovals > 0 ? 'text-jam-orange' : 'text-gray-900'}`}>{pendingApprovals}</h3>
                         </div>
-                        <div className="p-3 bg-green-50 text-green-600 rounded-lg">
-                            <Icons.Zap className="w-6 h-6" />
+                        <div className={`p-3 rounded-lg ${pendingApprovals > 0 ? 'bg-orange-50 text-jam-orange' : 'bg-gray-50 text-gray-400'}`}>
+                            <Icons.Alert className="w-6 h-6" />
                         </div>
                     </div>
-                    <p className="text-xs text-gray-400 mt-2">All systems operational</p>
+                    <p className="text-xs text-gray-400 mt-2">Requires admin review</p>
+                </div>
+            </div>
+            
+            {/* System Status Banner */}
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                 <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                        <div className="p-3 bg-green-50 text-green-600 rounded-lg mr-4">
+                            <Icons.Zap className="w-6 h-6" />
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-bold text-gray-900">System Status</h3>
+                            <p className="text-sm text-gray-500">All systems operational</p>
+                        </div>
+                    </div>
+                    <span className="px-3 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full uppercase">Healthy</span>
                 </div>
             </div>
         </div>
