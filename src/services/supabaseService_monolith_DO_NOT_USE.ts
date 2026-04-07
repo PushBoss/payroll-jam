@@ -315,7 +315,8 @@ export const supabaseService = {
       policies: settings.policies,
       reseller_defaults: settings.reseller_defaults,
       departments: settings.departments || [],
-      designations: settings.designations || []
+      designations: settings.designations || [],
+      paymentMethod: settings.paymentMethod || 'card' // Added missing mapping here
     } as any;
   },
 

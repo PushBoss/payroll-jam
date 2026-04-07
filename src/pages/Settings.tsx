@@ -692,12 +692,18 @@ export const Settings: React.FC<SettingsProps> = ({
                                     paymentMethod: 'card'
                                 } as any);
                                 toast.success('Payment Method updated successfully!');
+                                
+                                // Give the database a moment to sync before reloading
+                                setTimeout(() => {
+                                    window.location.reload();
+                                }, 1500);
                             } catch (e) {
                                 console.error('Failed to update payment method in DB:', e);
+                                toast.error('Failed to sync payment info. Please refresh.');
                             }
+                        } else {
+                            window.location.reload(); 
                         }
-                        
-                        window.location.reload(); 
                     }} 
                 />
             )}
