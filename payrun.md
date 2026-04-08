@@ -58,7 +58,8 @@ Date: 2026-04-08
 
 ## Validation status
 - Editor/type validation passed for changed files
-- Full runtime test execution is still blocked locally by Node 12.x in terminal
+- Switched terminal to Node 20.x via `nvm install 20 && nvm use 20`
+- Ran `npm test` successfully (Vitest: all payrun refactor tests passing)
 - Project requires Node 20.x per [package.json](package.json)
 
 ## Architecture alignment notes
@@ -69,6 +70,5 @@ Date: 2026-04-08
 
 ## Recommended next steps
 1. Move email/export sequencing into workflow helpers or a dedicated delivery module
-2. Validate under Node 20.x and run the full test suite
-3. Continue replacing remaining payrun page inline sections with feature-scoped view components
-4. Add focused tests for the new UI state hook and finalize-step integration points
+2. Continue replacing remaining payrun page inline sections with feature-scoped view components
+3. Add focused tests for the new UI state hook and finalize-step integration points
