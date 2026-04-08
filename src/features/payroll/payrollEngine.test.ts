@@ -160,4 +160,26 @@ describe('payrollEngine', () => {
     expect(Number.isFinite(lineItem.edTax)).toBe(true);
     expect(Number.isFinite(lineItem.paye)).toBe(true);
   });
+
+  it('includes employee other deductions in pay run deductions', () => {
+    const employeeWithOtherDeductions: Employee = {
+      ...defaultEmployee,
+      customDeductions: [],
+      deductions: [{ id: 'union-1', name: 'Union Fee', amount: 500 }]
+    };
+
+    const lineItem = calculatePayRunLineItem({
+      employee: employeeWithOtherDeductions,
+      period: '2026-01',
+      context: {
+        timesheets: [],
+        leaveRequests: [],
+        payRunHistory: [],
+        companyData: defaultCompanyData
+      }
+    });
+
+    expect(lineItem.deductions).toBe(500);
+    expect(lineItem.deductionsBreakdown?.some(d => d.name === 'Union Fee')).toBe(true);
+  });
 });

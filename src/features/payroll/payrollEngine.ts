@@ -214,6 +214,14 @@ export const calculatePayRunLineItem = ({
     amount: toFiniteNumber(deduction.amount)
   }));
 
+  // Support legacy/simple employee deductions (non-term based) as “Other Deductions” in Pay Run.
+  // Some parts of the app still populate `employee.deductions` (vs `customDeductions`).
+  employee.deductions?.forEach(deduction => deductionsBreakdown.push({
+    id: `other-${deduction.id}`,
+    name: deduction.name,
+    amount: toFiniteNumber(deduction.amount)
+  }));
+
   const unpaidLeaves = context.leaveRequests.filter(request =>
     request.employeeId === employee.id &&
     request.status === 'APPROVED' &&

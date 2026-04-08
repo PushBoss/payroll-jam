@@ -152,6 +152,10 @@ export const EmployeeService = {
       payFrequency: emp.payFrequency
     };
 
+    const persistedDeductions = (emp.customDeductions && emp.customDeductions.length > 0)
+      ? emp.customDeductions
+      : (emp.deductions || []);
+
     const basePayload: Record<string, any> = {
         id: emp.id,
         company_id: companyId,
@@ -183,7 +187,7 @@ export const EmployeeService = {
       ...basePayload,
       employee_number: emp.employeeId || null,
       pay_data: payData,
-      deductions: emp.customDeductions || []
+      deductions: persistedDeductions
     };
 
     let { error } = await tryUpsert(attemptNew);
@@ -196,7 +200,7 @@ export const EmployeeService = {
       gross_salary: emp.grossSalary,
       pay_type: emp.payType,
       pay_frequency: emp.payFrequency,
-      custom_deductions: emp.customDeductions || []
+      custom_deductions: persistedDeductions
     };
 
     const { error: legacyError } = await tryUpsert(attemptLegacy);
