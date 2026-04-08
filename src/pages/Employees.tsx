@@ -18,7 +18,7 @@ interface EmployeesProps {
     payRunHistory: PayRun[];
     companyData: CompanySettings;
     onAddEmployee: (emp: Employee) => void;
-    onUpdateEmployee: (emp: Employee) => void;
+    onUpdateEmployee: (emp: Employee) => void | boolean | Promise<boolean>;
     onDeleteEmployee?: (id: string) => void;
     onSimulateOnboarding?: (emp: Employee) => void;
     departments?: Department[];
@@ -261,7 +261,7 @@ export const Employees: React.FC<EmployeesProps> = ({
         setIsSendingInvite(false);
     };
 
-    const handleEmployeeManagerSave = (employee: Employee) => {
+    const handleEmployeeManagerSave = async (employee: Employee) => {
         if (employeeManagerMode === 'add') {
             const newEmp: Employee = {
                 ...employee,
@@ -273,12 +273,19 @@ export const Employees: React.FC<EmployeesProps> = ({
             onAddEmployee(newEmp);
             auditService.log(currentUser, 'CREATE', 'Employee', `Added new employee: ${newEmp.firstName} ${newEmp.lastName}`);
             toast.success("Employee added successfully");
-        } else {
-            // Edit mode
-            onUpdateEmployee(employee);
-            auditService.log(currentUser, 'UPDATE', 'Employee', `Updated employee: ${employee.firstName} ${employee.lastName}`);
-            toast.success("Employee updated successfully");
+            setIsEmployeeManagerOpen(false);
+            setSelectedEmployee(null);
+            return;
         }
+
+        // Edit mode
+        const updateResult = await Promise.resolve(onUpdateEmployee(employee) as any);
+        if (updateResult === false) {
+            // App-level handler should already toast an error.
+            return;
+        }
+        auditService.log(currentUser, 'UPDATE', 'Employee', `Updated employee: ${employee.firstName} ${employee.lastName}`);
+        toast.success("Employee updated successfully");
         setIsEmployeeManagerOpen(false);
         setSelectedEmployee(null);
     };
@@ -288,7 +295,7 @@ export const Employees: React.FC<EmployeesProps> = ({
         setTerminationData({ reason: 'RESIGNATION', date: new Date().toISOString().split('T')[0], payoutVacationDays: 0, severanceAmount: 0 });
     };
 
-    const finalizeTermination = () => {
+    const finalizeTermination = async () => {
         const emp = employees.find(e => e.id === terminationModal.empId);
         if (!emp) return;
 
@@ -307,7 +314,8 @@ export const Employees: React.FC<EmployeesProps> = ({
             terminationDetails: details
         };
 
-        onUpdateEmployee(updatedEmp);
+        const updateResult = await Promise.resolve(onUpdateEmployee(updatedEmp) as any);
+        if (updateResult === false) return;
         auditService.log(currentUser, 'UPDATE', 'Employee', `Terminated ${emp.firstName} ${emp.lastName}. Reason: ${details.reason}`);
         generateP45CSV(companyData, payRunHistory, updatedEmp);
         toast.success("Employee terminated and P45 generated.");

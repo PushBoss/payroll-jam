@@ -482,29 +482,42 @@ function AppContent() {
     if (isSupabaseMode && user?.companyId) await EmployeeService.saveEmployee(emp, user.companyId);
   };
 
-  const handleUpdateEmployee = async (emp: Employee) => {
+  const handleUpdateEmployee = async (emp: Employee): Promise<boolean> => {
     console.log('💾 handleUpdateEmployee called with:', {
       id: emp.id,
       firstName: emp.firstName,
       customDeductions: emp.customDeductions,
       customDeductionsCount: emp.customDeductions?.length || 0
     });
-    setEmployees(prev => prev.map(e => e.id === emp.id ? emp : e));
-    if (isSupabaseMode && user?.companyId) {
+    let previousEmployees: Employee[] | null = null;
+    setEmployees(prev => {
+      previousEmployees = prev;
+      return prev.map(e => e.id === emp.id ? emp : e);
+    });
+
+    if (!isSupabaseMode || !user?.companyId) return true;
+
+    try {
       await EmployeeService.saveEmployee(emp, user.companyId);
-      // Refetch the employee from DB to ensure we have latest data (including custom_deductions)
+
+      // Refetch employees from DB to ensure we have latest server canonical data
       console.log('🔄 Refetching employees from DB after save...');
       const freshEmployees = await EmployeeService.getEmployees(user.companyId);
       console.log('✅ Refetched', freshEmployees.length, 'employees');
-      // Log the specific employee we just saved
       const savedEmp = freshEmployees.find(e => e.id === emp.id);
       console.log('📦 Saved employee fresh data:', {
         id: savedEmp?.id,
         firstName: savedEmp?.firstName,
-        customDeductions: savedEmp?.customDeductions,
+        deductionsCount: (savedEmp as any)?.deductions?.length || 0,
         customDeductionsCount: savedEmp?.customDeductions?.length || 0
       });
       setEmployees(freshEmployees);
+      return true;
+    } catch (error: any) {
+      console.error('❌ Failed to save employee to Supabase:', error);
+      toast.error(error?.message || 'Failed to save employee to database.');
+      if (previousEmployees) setEmployees(previousEmployees);
+      return false;
     }
   };
 
