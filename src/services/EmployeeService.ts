@@ -7,6 +7,24 @@ const requireSupabase = () => {
   return supabase;
 };
 
+const getCustomDeductionsFromRow = (row: any) => {
+  if (!row) return [];
+  if (Array.isArray(row.deductions)) return row.deductions;
+  if (Array.isArray(row.custom_deductions)) return row.custom_deductions;
+  return [];
+};
+
+const getPayDataFromRow = (row: any) => {
+  if (!row) return {};
+  if (row.pay_data && typeof row.pay_data === 'object') return row.pay_data;
+  return {
+    grossSalary: row.gross_salary,
+    hourlyRate: row.hourly_rate,
+    payType: row.pay_type,
+    payFrequency: row.pay_frequency
+  };
+};
+
 
 export const EmployeeService = {
   // --- Users & Profiles ---
@@ -85,14 +103,16 @@ export const EmployeeService = {
       .eq('company_id', companyId);
 
     if (error) throw error;
-    return (data || []).map((e: any) => ({
+    return (data || []).map((e: any) => {
+      const payData = getPayDataFromRow(e);
+      return ({
       id: e.id,
       firstName: e.first_name,
       lastName: e.last_name,
       email: e.email,
       trn: e.trn,
       nis: e.nis,
-      employeeId: e.employee_number || undefined,
+      employeeId: e.employee_number || e.employee_id || undefined,
       status: e.status,
       role: e.role,
       hireDate: e.hire_date,
@@ -103,22 +123,23 @@ export const EmployeeService = {
       address: e.address || undefined,
       emergencyContact: e.emergency_contact || undefined,
 
-      grossSalary: e.pay_data?.grossSalary || 0,
-      hourlyRate: e.pay_data?.hourlyRate,
-      payType: e.pay_data?.payType || 'SALARIED',
-      payFrequency: e.pay_data?.payFrequency || 'MONTHLY',
+      grossSalary: payData?.grossSalary || 0,
+      hourlyRate: payData?.hourlyRate,
+      payType: payData?.payType || 'SALARIED',
+      payFrequency: payData?.payFrequency || 'MONTHLY',
 
       bankDetails: e.bank_details || undefined,
       leaveBalance: e.leave_balance || undefined,
       allowances: e.allowances || [],
-      customDeductions: e.deductions || [],
+      customDeductions: getCustomDeductionsFromRow(e),
 
       pensionContributionRate: e.pension_contribution_rate || undefined,
       pensionProvider: e.pension_provider || undefined,
 
       terminationDetails: e.termination_details || undefined,
       onboardingToken: e.onboarding_token || undefined
-    } as any));
+    } as any);
+    });
   },
 
   saveEmployee: async (emp: Employee, companyId: string) => {
@@ -131,9 +152,7 @@ export const EmployeeService = {
       payFrequency: emp.payFrequency
     };
 
-    const { error } = await client
-      .from('employees')
-      .upsert({
+    const basePayload: Record<string, any> = {
         id: emp.id,
         company_id: companyId,
         first_name: emp.firstName,
@@ -141,23 +160,47 @@ export const EmployeeService = {
         email: emp.email,
         trn: emp.trn,
         nis: emp.nis,
-        employee_number: emp.employeeId || null,
-        phone: emp.phone || null,
-        address: emp.address || null,
-        role: emp.role,
-        status: emp.status,
-        hire_date: emp.hireDate,
-        job_title: emp.jobTitle || null,
-        department: emp.department || null,
-        pay_data: payData,
-        bank_details: emp.bankDetails || null,
-        leave_balance: emp.leaveBalance || null,
-        allowances: emp.allowances || [],
-        deductions: emp.customDeductions || [],
-        termination_details: emp.terminationDetails || null,
-        onboarding_token: emp.onboardingToken || null
-      });
-    if (error) throw error;
+      phone: emp.phone || null,
+      address: emp.address || null,
+      role: emp.role,
+      status: emp.status,
+      hire_date: emp.hireDate,
+      job_title: emp.jobTitle || null,
+      department: emp.department || null,
+      bank_details: emp.bankDetails || null,
+      leave_balance: emp.leaveBalance || null,
+      allowances: emp.allowances || [],
+      termination_details: emp.terminationDetails || null,
+      onboarding_token: emp.onboardingToken || null
+    };
+
+    const tryUpsert = async (payload: Record<string, any>) => {
+      return client.from('employees').upsert(payload);
+    };
+
+    // Attempt newer schema first (pay_data + deductions + employee_number)
+    const attemptNew = {
+      ...basePayload,
+      employee_number: emp.employeeId || null,
+      pay_data: payData,
+      deductions: emp.customDeductions || []
+    };
+
+    let { error } = await tryUpsert(attemptNew);
+    if (!error) return;
+
+    // Fallback: legacy schema (gross_salary/pay_type/pay_frequency + custom_deductions + employee_id)
+    const attemptLegacy = {
+      ...basePayload,
+      employee_id: emp.employeeId || null,
+      gross_salary: emp.grossSalary,
+      pay_type: emp.payType,
+      pay_frequency: emp.payFrequency,
+      custom_deductions: emp.customDeductions || []
+    };
+
+    const { error: legacyError } = await tryUpsert(attemptLegacy);
+    if (legacyError) throw legacyError;
   },
 
   deleteEmployee: async (employeeId: string, companyId: string) => {
@@ -182,6 +225,8 @@ export const EmployeeService = {
     const { data, error } = await query.maybeSingle();
     if (error || !data) return null;
 
+    const payData = getPayDataFromRow(data);
+
     return {
       employee: {
         id: data.id,
@@ -190,7 +235,7 @@ export const EmployeeService = {
         email: data.email,
         trn: data.trn || '',
         nis: data.nis || '',
-        employeeId: data.employee_number || undefined,
+        employeeId: data.employee_number || data.employee_id || undefined,
         status: data.status,
         role: data.role,
         hireDate: data.hire_date,
@@ -199,14 +244,14 @@ export const EmployeeService = {
         phone: data.phone || undefined,
         address: data.address || undefined,
         emergencyContact: data.emergency_contact || undefined,
-        grossSalary: data.pay_data?.grossSalary || 0,
-        hourlyRate: data.pay_data?.hourlyRate,
-        payType: data.pay_data?.payType || 'SALARIED',
-        payFrequency: data.pay_data?.payFrequency || 'MONTHLY',
+        grossSalary: payData?.grossSalary || 0,
+        hourlyRate: payData?.hourlyRate,
+        payType: payData?.payType || 'SALARIED',
+        payFrequency: payData?.payFrequency || 'MONTHLY',
         bankDetails: data.bank_details || undefined,
         leaveBalance: data.leave_balance || undefined,
         allowances: data.allowances || [],
-        customDeductions: data.deductions || [],
+        customDeductions: getCustomDeductionsFromRow(data),
         terminationDetails: data.termination_details || undefined,
         onboardingToken: data.onboarding_token || undefined
       } as any,

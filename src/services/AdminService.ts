@@ -42,13 +42,15 @@ export const AdminService = {
         ...e,
         firstName: e.first_name,
         lastName: e.last_name,
-        grossSalary: e.gross_salary,
-        payFrequency: e.pay_frequency as any,
-        payType: e.pay_type as any,
-        employeeId: e.employee_id,
+        grossSalary: e.pay_data?.grossSalary ?? e.gross_salary,
+        hourlyRate: e.pay_data?.hourlyRate ?? e.hourly_rate,
+        payFrequency: (e.pay_data?.payFrequency ?? e.pay_frequency) as any,
+        payType: (e.pay_data?.payType ?? e.pay_type) as any,
+        employeeId: e.employee_number || e.employee_id,
         hireDate: e.hire_date,
         bankDetails: e.bank_details,
-        customDeductions: e.custom_deductions || []
+        allowances: e.allowances || [],
+        customDeductions: e.deductions || e.custom_deductions || []
       }));
 
       // Map Pay Runs
