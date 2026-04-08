@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createHmac } from 'crypto';
+import { buildAbsoluteUrl } from './_dimepay';
 
 // CORS headers for security
 const corsHeaders = {
@@ -29,6 +30,11 @@ export default async function handler(
 
     if (!payload) {
       return res.status(400).json({ error: 'Payload is required' });
+    }
+
+    // Inject webhook URL into payload if not already present
+    if (!payload.webhookUrl) {
+      payload.webhookUrl = buildAbsoluteUrl(req, '/api/dimepay-webhook');
     }
 
     // Determine effective environment based strictly on the client's request
