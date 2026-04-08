@@ -227,6 +227,9 @@ const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({ currentUser, cu
 
         const poll = async () => {
             try {
+                const companyId = currentUser?.companyId;
+                if (!companyId) return;
+
                 const details = await dimePayService.getCardDetails(cardRequestToken);
                 if (cancelled) return;
 
@@ -237,7 +240,7 @@ const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({ currentUser, cu
                     setIsApplying(true);
 
                     await dimePayService.updateSubscriptionPaymentMethod({
-                        companyId: currentUser.companyId,
+                        companyId,
                         localSubscriptionId: currentSubscription?.id,
                         subscriptionId: currentSubscription?.dimepaySubscriptionId,
                         cardToken: details.token,
