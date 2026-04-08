@@ -31,7 +31,7 @@ interface PayRunProps {
     employees: Employee[];
     timesheets: WeeklyTimesheet[];
     leaveRequests: LeaveRequest[];
-    onSave: (run: PayRunType) => void;
+    onSave: (run: PayRunType) => Promise<boolean>;
     companyData: CompanySettings;
     integrationConfig: IntegrationConfig;
     payRunHistory: PayRunType[];
@@ -224,13 +224,16 @@ export const PayRun: React.FC<PayRunProps> = ({
             lineItems: draftItems
         });
 
-        // Update editingRun state
+        const saved = await onSave(draftRun);
+        if (!saved) {
+            toast.error('Could not save draft pay run to database.');
+            return;
+        }
+
         setEditingRun(draftRun);
         setCurrentRun(draftRun);
-        onSave(draftRun);
         auditService.log(currentUser, 'UPDATE', 'PayRun', `Saved draft / Proceeded to review for ${payPeriod}`);
 
-        // Move to finalize step (but not finalized yet)
         setStep('FINALIZE');
         setIsPayRunConfirmed(false);
         toast.success("Review your pay run and click Finalize to complete");
@@ -259,8 +262,13 @@ export const PayRun: React.FC<PayRunProps> = ({
             lineItems: draftItems
         });
 
-        // Don't send emails automatically - wait for user to click "Email All"
-        onSave(newRun);
+        const saved = await onSave(newRun);
+        if (!saved) {
+            setIsFinalizing(false);
+            toast.error('Could not finalize pay run because the database save failed.');
+            return;
+        }
+
         auditService.log(currentUser, 'CREATE', 'PayRun', `Finalized payroll for ${payPeriod}`);
         
         // Update custom deductions for employees in this payrun

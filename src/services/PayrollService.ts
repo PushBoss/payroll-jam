@@ -1,6 +1,13 @@
 import { supabase } from './supabaseClient';
 import { PayRun, WeeklyTimesheet } from '../core/types';
 
+const requireSupabase = () => {
+  if (!supabase) {
+    throw new Error('Supabase client not initialized. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY (or configure local overrides).');
+  }
+  return supabase;
+};
+
 export const PayrollService = {
   getPayRuns: async (companyId: string): Promise<PayRun[]> => {
     if (!supabase) return [];
@@ -25,8 +32,8 @@ export const PayrollService = {
   },
 
   savePayRun: async (run: PayRun, companyId: string) => {
-    if (!supabase) return;
-    const { error } = await supabase
+    const client = requireSupabase();
+    const { error } = await client
       .from('pay_runs')
       .upsert({
         id: run.id,
@@ -44,8 +51,8 @@ export const PayrollService = {
   },
 
   deletePayRun: async (runId: string, companyId: string) => {
-    if (!supabase) return false;
-    const { error } = await supabase
+    const client = requireSupabase();
+    const { error } = await client
       .from('pay_runs')
       .delete()
       .eq('id', runId)

@@ -530,7 +530,7 @@ function AppContent() {
     return [run, ...runs];
   };
 
-  const handleSavePayRun = async (run: PayRunType) => {
+  const handleSavePayRun = async (run: PayRunType): Promise<boolean> => {
     // Save to Supabase first so the UI doesn't show runs that were rejected by the DB
     if (isSupabaseMode && user?.companyId) {
       console.log('💾 Saving pay run to Supabase:', {
@@ -553,9 +553,11 @@ function AppContent() {
           return [run, ...prev];
         });
         console.log('✅ Pay run saved to Supabase successfully');
+        return true;
       } catch (error: any) {
         console.error('❌ Failed to save pay run to Supabase:', error);
         toast.error(error?.message || 'Failed to save payroll to database. Payslip download may not work.');
+        return false;
       }
     } else {
       setPayRunHistory(prev => upsertPayRunLocally(prev, run));
@@ -563,6 +565,9 @@ function AppContent() {
         isSupabaseMode,
         hasCompanyId: !!user?.companyId
       });
+
+      toast.error('Database not configured. Pay run saved locally only.');
+      return false;
     }
   };
 
