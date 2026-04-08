@@ -119,4 +119,45 @@ describe('payrollEngine', () => {
     expect(updated.totalDeductions).toBeGreaterThan(original.totalDeductions);
     expect(totals.net).toBe(updated.netPay);
   });
+
+  it('coerces missing/non-numeric inputs to avoid NaN outputs', () => {
+    const dirtyEmployee = {
+      ...defaultEmployee,
+      grossSalary: undefined as unknown as number,
+      hourlyRate: 'not-a-number' as unknown as number,
+      allowances: [
+        { id: 'a-1', name: 'Allowance', amount: undefined as unknown as number, isTaxable: true }
+      ],
+      customDeductions: [
+        {
+          id: 'd-1',
+          name: 'Deduction',
+          amount: 'oops' as unknown as number,
+          periodType: 'FIXED_TERM' as const,
+          remainingTerm: 1,
+          periodFrequency: 'MONTHLY' as const
+        }
+      ]
+    } as Employee;
+
+    const lineItem = calculatePayRunLineItem({
+      employee: dirtyEmployee,
+      period: '2026-01',
+      context: {
+        timesheets: [],
+        leaveRequests: [],
+        payRunHistory: [],
+        companyData: defaultCompanyData
+      }
+    });
+
+    expect(Number.isFinite(lineItem.grossPay)).toBe(true);
+    expect(Number.isFinite(lineItem.additions)).toBe(true);
+    expect(Number.isFinite(lineItem.totalDeductions)).toBe(true);
+    expect(Number.isFinite(lineItem.netPay)).toBe(true);
+    expect(Number.isFinite(lineItem.nis)).toBe(true);
+    expect(Number.isFinite(lineItem.nht)).toBe(true);
+    expect(Number.isFinite(lineItem.edTax)).toBe(true);
+    expect(Number.isFinite(lineItem.paye)).toBe(true);
+  });
 });

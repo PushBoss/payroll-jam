@@ -18,6 +18,11 @@ import {
 } from '../../core/taxUtils';
 import { buildPayrollOverrides, resolveCompanyTaxConfig } from './payrollConfig';
 
+const toFiniteNumber = (value: unknown, fallback = 0): number => {
+  const num = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(num) ? num : fallback;
+};
+
 export interface PayrollEngineContext {
   timesheets: WeeklyTimesheet[];
   leaveRequests: LeaveRequest[];
@@ -32,9 +37,12 @@ const getEmployeeTaxOverrides = (companyData: CompanySettings | undefined, emplo
 };
 
 export const calculatePayrollTotals = (items: PayRunLineItem[]) => ({
-  gross: items.reduce((sum, line) => sum + line.grossPay + line.additions, 0),
-  deductions: items.reduce((sum, line) => sum + line.totalDeductions, 0),
-  net: items.reduce((sum, line) => sum + line.netPay, 0)
+  gross: items.reduce(
+    (sum, line) => sum + toFiniteNumber(line.grossPay) + toFiniteNumber(line.additions),
+    0
+  ),
+  deductions: items.reduce((sum, line) => sum + toFiniteNumber(line.totalDeductions), 0),
+  net: items.reduce((sum, line) => sum + toFiniteNumber(line.netPay), 0)
 });
 
 export const getEmployeeYTD = (
@@ -50,9 +58,9 @@ export const getEmployeeYTD = (
     if (run.periodStart.startsWith(year.toString()) && run.status === 'FINALIZED') {
       const line = run.lineItems.find(item => item.employeeId === employeeId);
       if (line) {
-        ytdGross += line.grossPay + line.additions;
-        ytdNIS += line.nis;
-        ytdTaxPaid += line.paye;
+        ytdGross += toFiniteNumber(line.grossPay) + toFiniteNumber(line.additions);
+        ytdNIS += toFiniteNumber(line.nis);
+        ytdTaxPaid += toFiniteNumber(line.paye);
       }
     }
   });
@@ -113,16 +121,17 @@ const calculateComputedAmounts = ({
   period: { year: number; month: number; periodStart: string; periodEnd: string };
   context: PayrollEngineContext;
 }) => {
+  const safeGrossPay = toFiniteNumber(grossPay);
   const taxableAdditions = additionsBreakdown
     .filter(item => item.isTaxable !== false)
-    .reduce((sum, item) => sum + item.amount, 0);
+    .reduce((sum, item) => sum + toFiniteNumber(item.amount), 0);
   const nonTaxableAdditions = additionsBreakdown
     .filter(item => item.isTaxable === false)
-    .reduce((sum, item) => sum + item.amount, 0);
+    .reduce((sum, item) => sum + toFiniteNumber(item.amount), 0);
   const allAdditions = taxableAdditions + nonTaxableAdditions;
-  const customDeductions = deductionsBreakdown.reduce((sum, item) => sum + item.amount, 0);
+  const customDeductions = deductionsBreakdown.reduce((sum, item) => sum + toFiniteNumber(item.amount), 0);
 
-  const currentGross = Math.max(0, grossPay + taxableAdditions);
+  const currentGross = Math.max(0, safeGrossPay + taxableAdditions);
   const taxOverrides = getEmployeeTaxOverrides(context.companyData, employee);
   const standardTaxes = calculateTaxes(currentGross, employee.payFrequency, taxOverrides);
   const ytdData = getEmployeeYTD(context.payRunHistory || [], employee.id, period.year);
@@ -146,7 +155,7 @@ const calculateComputedAmounts = ({
 
   const finalPAYE = Math.max(0, cumulativePAYE);
   const totalDeductions = standardTaxes.nis + standardTaxes.nht + standardTaxes.edTax + finalPAYE + customDeductions;
-  const netPay = grossPay + allAdditions - totalDeductions;
+  const netPay = safeGrossPay + allAdditions - totalDeductions;
   const employerContributions = calculateEmployerContributions(
     currentGross,
     employee.payFrequency,
@@ -186,20 +195,23 @@ export const calculatePayRunLineItem = ({
   let grossPay = 0;
   let prorationDetails = undefined;
 
+  const grossSalary = toFiniteNumber(employee.grossSalary);
+  const hourlyRate = toFiniteNumber(employee.hourlyRate);
+
   const additionsBreakdown: PayrollItemDetail[] = [];
   const deductionsBreakdown: PayrollItemDetail[] = [];
 
   employee.allowances?.forEach(allowance => additionsBreakdown.push({
     id: allowance.id,
     name: allowance.name,
-    amount: allowance.amount,
+    amount: toFiniteNumber(allowance.amount),
     isTaxable: allowance.isTaxable
   }));
 
   employee.customDeductions?.forEach(deduction => deductionsBreakdown.push({
     id: deduction.id,
     name: deduction.name,
-    amount: deduction.amount
+    amount: toFiniteNumber(deduction.amount)
   }));
 
   const unpaidLeaves = context.leaveRequests.filter(request =>
@@ -218,7 +230,7 @@ export const calculatePayRunLineItem = ({
   });
 
   if (totalUnpaidDays > 0 && employee.payType === PayType.SALARIED) {
-    const dailyRate = employee.grossSalary / 22;
+    const dailyRate = grossSalary / 22;
     additionsBreakdown.push({
       id: `unpaid-leave-${employee.id}`,
       name: `Unpaid Leave (${totalUnpaidDays} days)`,
@@ -234,34 +246,40 @@ export const calculatePayRunLineItem = ({
       isTimesheetInPeriod(timesheet, period)
     );
 
-    if (employeeTimesheets.length > 0 && employee.hourlyRate) {
-      const totalRegularHours = employeeTimesheets.reduce((sum, timesheet) => sum + timesheet.totalRegularHours, 0);
-      const totalOvertimeHours = employeeTimesheets.reduce((sum, timesheet) => sum + timesheet.totalOvertimeHours, 0);
-      grossPay = totalRegularHours * employee.hourlyRate;
+    if (employeeTimesheets.length > 0 && hourlyRate > 0) {
+      const totalRegularHours = employeeTimesheets.reduce(
+        (sum, timesheet) => sum + toFiniteNumber(timesheet.totalRegularHours),
+        0
+      );
+      const totalOvertimeHours = employeeTimesheets.reduce(
+        (sum, timesheet) => sum + toFiniteNumber(timesheet.totalOvertimeHours),
+        0
+      );
+      grossPay = totalRegularHours * hourlyRate;
 
       if (totalOvertimeHours > 0) {
         additionsBreakdown.push({
           id: 'ot-sys',
           name: 'Overtime',
-          amount: totalOvertimeHours * (employee.hourlyRate * 1.5),
+          amount: totalOvertimeHours * (hourlyRate * 1.5),
           isTaxable: true
         });
       }
     }
   } else if (employee.payType === PayType.COMMISSION) {
-    grossPay = employee.grossSalary || 0;
+    grossPay = grossSalary;
   } else {
-    const proration = calculateProration(employee.grossSalary, employee.hireDate, periodBounds.periodStart, periodBounds.periodEnd);
+    const proration = calculateProration(grossSalary, employee.hireDate, periodBounds.periodStart, periodBounds.periodEnd);
     if (proration.isProrated) {
       grossPay = proration.amount;
       prorationDetails = {
         isProrated: true,
         daysWorked: proration.daysWorked,
         totalWorkDays: proration.totalWorkDays,
-        originalGross: employee.grossSalary
+        originalGross: grossSalary
       };
     } else {
-      grossPay = employee.grossSalary;
+      grossPay = grossSalary;
     }
   }
 
@@ -278,7 +296,7 @@ export const calculatePayRunLineItem = ({
     employeeId: employee.id,
     employeeName: `${employee.firstName} ${employee.lastName}`,
     employeeCustomId: employee.employeeId,
-    grossPay,
+    grossPay: toFiniteNumber(grossPay),
     prorationDetails,
     isTaxOverridden: false,
     isGrossOverridden: false,
@@ -325,18 +343,25 @@ export const recalculateDraftLineItem = ({
 }): PayRunLineItem => {
   if (!employee) return item;
 
-  const additionsBreakdown = item.additionsBreakdown || [];
-  const deductionsBreakdown = item.deductionsBreakdown || [];
+  const additionsBreakdown = (item.additionsBreakdown || []).map(detail => ({
+    ...detail,
+    amount: toFiniteNumber(detail.amount)
+  }));
+  const deductionsBreakdown = (item.deductionsBreakdown || []).map(detail => ({
+    ...detail,
+    amount: toFiniteNumber(detail.amount)
+  }));
   const taxableAdditions = additionsBreakdown
     .filter(detail => detail.isTaxable !== false)
-    .reduce((sum, detail) => sum + detail.amount, 0);
+    .reduce((sum, detail) => sum + toFiniteNumber(detail.amount), 0);
   const nonTaxableAdditions = additionsBreakdown
     .filter(detail => detail.isTaxable === false)
-    .reduce((sum, detail) => sum + detail.amount, 0);
+    .reduce((sum, detail) => sum + toFiniteNumber(detail.amount), 0);
   const allAdditions = taxableAdditions + nonTaxableAdditions;
-  const deductionTotal = deductionsBreakdown.reduce((sum, detail) => sum + detail.amount, 0);
+  const deductionTotal = deductionsBreakdown.reduce((sum, detail) => sum + toFiniteNumber(detail.amount), 0);
+  const safeGrossPay = toFiniteNumber(item.grossPay);
   const taxOverrides = getEmployeeTaxOverrides(companyData, employee);
-  const taxes = calculateTaxes(item.grossPay + taxableAdditions, employee.payFrequency || PayFrequency.MONTHLY, taxOverrides);
+  const taxes = calculateTaxes(safeGrossPay + taxableAdditions, employee.payFrequency || PayFrequency.MONTHLY, taxOverrides);
   const totalDeductions = taxes.totalDeductions + deductionTotal;
 
   return {
@@ -347,9 +372,9 @@ export const recalculateDraftLineItem = ({
     deductionsBreakdown,
     ...taxes,
     totalDeductions,
-    netPay: item.grossPay + allAdditions - totalDeductions,
+    netPay: safeGrossPay + allAdditions - totalDeductions,
     employerContributions: calculateEmployerContributions(
-      Math.max(0, item.grossPay + taxableAdditions),
+      Math.max(0, safeGrossPay + taxableAdditions),
       employee.payFrequency,
       resolveCompanyTaxConfig(companyData)
     ),
