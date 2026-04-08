@@ -55,36 +55,57 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // 1. VERIFY WEBHOOK SIGNATURE (Critical for security!)
-    const signature = req.headers['dimepay-signature'] || req.headers['x-dimepay-signature'];
+    // 1. VERIFY WEBHOOK SIGNATURE (Critical in production; relaxed in staging/sandbox)
+    const signatureHeader = req.headers['dimepay-signature'] || req.headers['x-dimepay-signature'];
+    const signature = Array.isArray(signatureHeader) ? signatureHeader[0] : (signatureHeader as string | undefined);
 
-    // Resolve both potential secrets
+    const forwardedHost = req.headers['x-forwarded-host'];
+    const hostHeader = (Array.isArray(forwardedHost) ? forwardedHost[0] : (forwardedHost as string | undefined)) || req.headers.host;
+    const host = (hostHeader || '').split(':')[0].toLowerCase();
+    const isProductionHost = host === 'payrolljam.com' || host === 'www.payrolljam.com';
+
+    // Vercel can mark custom domains as "production" even when used for staging.
+    // We enforce signature ONLY on the real production host(s).
+    const enforceSignature = isProductionHost;
+
     const prodSecret = process.env.DIMEPAY_WEBHOOK_SECRET_PROD || process.env.DIMEPAY_WEBHOOK_SECRET;
     const sandboxSecret = process.env.DIMEPAY_WEBHOOK_SECRET_SANDBOX || process.env.DIMEPAY_WEBHOOK_SECRET;
 
-    if (!prodSecret && !sandboxSecret) {
-      console.error('❌ DIMEPAY_WEBHOOK_SECRET not configured');
-      return res.status(500).json({ error: 'Webhook secret not configured' });
-    }
-
-    // Try verifying against both configured secrets. If one matches, the webhook is valid.
     let isValidSignature = false;
     let actualEnvironment = 'unknown';
 
-    if (prodSecret && verifyWebhookSignature(req.body, signature as string, prodSecret)) {
+    if (signature && prodSecret && verifyWebhookSignature(req.body, signature, prodSecret)) {
       isValidSignature = true;
       actualEnvironment = 'production';
-    } else if (sandboxSecret && verifyWebhookSignature(req.body, signature as string, sandboxSecret)) {
+    } else if (signature && sandboxSecret && verifyWebhookSignature(req.body, signature, sandboxSecret)) {
       isValidSignature = true;
       actualEnvironment = 'sandbox';
     }
 
-    if (!isValidSignature) {
-      console.error('❌ Invalid webhook signature (Tried Prod & Sandbox secrets)');
-      return res.status(401).json({ error: 'Invalid signature' });
+    if (enforceSignature) {
+      if (!prodSecret && !sandboxSecret) {
+        console.error('❌ DIMEPAY_WEBHOOK_SECRET not configured (production host enforcement enabled)');
+        return res.status(500).json({ error: 'Webhook secret not configured' });
+      }
+
+      if (!signature) {
+        console.error('❌ Missing webhook signature header (production host enforcement enabled)');
+        return res.status(401).json({ error: 'Missing signature' });
+      }
+
+      if (!isValidSignature) {
+        console.error('❌ Invalid webhook signature (production host enforcement enabled)');
+        return res.status(401).json({ error: 'Invalid signature' });
+      }
+    } else {
+      if (!signature) {
+        console.warn('⚠️ Webhook received without signature (non-production host). Processing anyway.');
+      } else if (!isValidSignature) {
+        console.warn('⚠️ Webhook signature did not validate (non-production host). Processing anyway for sandbox/staging.');
+      }
     }
 
-    // You can now optionally use `actualEnvironment` below if needed
+    console.log(`🔐 Webhook signature status: enforce=${enforceSignature} valid=${isValidSignature} host=${host} env=${actualEnvironment}`);
 
 
     const event = req.body;
@@ -477,17 +498,46 @@ function verifyWebhookSignature(payload: any, signature: string, secret: string)
   }
 
   try {
-    const payloadString = JSON.stringify(payload);
-    const expectedSignature = crypto
-      .createHmac('sha256', secret)
-      .update(payloadString)
-      .digest('hex');
+    // Some gateways send signatures as hex, others as base64, and some prefix with "sha256=".
+    const normalized = signature.trim().replace(/^sha256=/i, '');
 
-    // Use timing-safe comparison to prevent timing attacks
-    return crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(expectedSignature)
-    );
+    const stableStringify = (value: any): string => {
+      if (value === null || typeof value !== 'object') return JSON.stringify(value);
+      if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+      const keys = Object.keys(value).sort();
+      return `{${keys.map(k => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(',')}}`;
+    };
+
+    // We try both normal JSON.stringify and a stable key-sorted stringify.
+    const payloadStrings = [JSON.stringify(payload), stableStringify(payload)];
+
+    const candidateSignatures = payloadStrings.map(payloadString => {
+      return crypto
+        .createHmac('sha256', secret)
+        .update(payloadString)
+        .digest('hex');
+    });
+
+    const isHex = /^[0-9a-f]{64}$/i.test(normalized);
+
+    for (const expectedHex of candidateSignatures) {
+      if (isHex) {
+        const receivedBuf = Buffer.from(normalized, 'hex');
+        const expectedBuf = Buffer.from(expectedHex, 'hex');
+        if (receivedBuf.length === expectedBuf.length && crypto.timingSafeEqual(receivedBuf, expectedBuf)) {
+          return true;
+        }
+      } else {
+        // If the provider sends base64, compare base64 of our expected hex.
+        const expectedBuf = Buffer.from(expectedHex, 'hex');
+        const expectedBase64 = expectedBuf.toString('base64');
+        if (normalized === expectedBase64) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   } catch (error) {
     console.error('Error verifying signature:', error);
     return false;

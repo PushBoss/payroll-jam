@@ -103,7 +103,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ plan, currentUser, onClos
                 onSuccess: (data) => {
                     if (isMountedRef.current) {
                         console.log('DimePay Upgrade Success:', data);
-                        console.log('📦 Subscription updated:', data.subscription_id);
+                        console.log('📦 Subscription updated:', data?.subscription_id || data?.data?.subscription_id || data?.data?.subscription?.subscription_id);
                         setPaymentSuccess(true);
                         setTimeout(() => { if (isMountedRef.current) onSuccessRef.current(data); }, 2000);
                     }
@@ -564,7 +564,7 @@ export const Settings: React.FC<SettingsProps> = ({
         if (targetPlan) setUpgradeTarget(targetPlan);
     };
 
-    const handleUpgradeSuccess = async () => {
+    const handleUpgradeSuccess = async (_paymentData?: any) => {
         if (upgradeTarget && currentUser?.companyId) {
             // Note: DimePay webhook will automatically create/update subscription record
             // and payment record, so we don't need to do it here
@@ -637,8 +637,14 @@ export const Settings: React.FC<SettingsProps> = ({
 
             setUpgradeTarget(null);
 
-            // Reload billing data
-            await refreshBillingData(currentUser.companyId);
+            // Reload billing data (wait for webhook to create subscription/payment rows)
+            setIsLoadingBilling(true);
+            try {
+                await waitForBillingSync(currentUser.companyId, 10, 1500);
+                await refreshBillingData(currentUser.companyId);
+            } finally {
+                setIsLoadingBilling(false);
+            }
         }
     };
 
