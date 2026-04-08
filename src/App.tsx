@@ -13,6 +13,7 @@ import { supabase } from './services/supabaseClient';
 import { getAuthRedirectUrl } from './utils/domainConfig';
 import { initializeCacheValidation } from './utils/cacheUtils';
 import { AdminService } from './services/AdminService';
+import { DEFAULT_TAX_CONFIG } from './features/payroll/payrollConfig';
 import { User, Role, Employee, PayRun as PayRunType, LeaveRequest, WeeklyTimesheet, CompanySettings, IntegrationConfig, TaxConfig, DocumentTemplate, PricingPlan, Department, Designation, Asset, PerformanceReview } from './core/types';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { useSubscription } from './hooks/useSubscription';
@@ -47,23 +48,6 @@ const NotFound = lazy(() => import('./pages/NotFound').then(m => ({ default: m.N
 const Profile = lazy(() => import('./pages/Profile').then(m => ({ default: m.Profile })));
 const VerifyEmail = lazy(() => import('./pages/VerifyEmail').then(m => ({ default: m.VerifyEmail })));
 const PublicPayslipDownload = lazy(() => import('./pages/PublicPayslipDownload').then(m => ({ default: m.PublicPayslipDownload })));
-
-
-const INITIAL_TAX_CONFIG: TaxConfig = {
-  nisRateEmployee: 0.03,
-  nisRateEmployer: 0.025,
-  nisCap: 5000000,
-  nhtRateEmployee: 0.02,
-  nhtRateEmployer: 0.03,
-  nhtCap: 5000000,
-  edTaxRateEmployee: 0.0225,
-  edTaxRateEmployer: 0.0225,
-  heartRateEmployer: 0.03,
-  payeThreshold: 1700096,
-  payeThresholdHigh: 6000000,
-  payeRateStd: 0.25,
-  payeRateHigh: 0.30
-};
 
 
 function AppContent() {
@@ -123,7 +107,7 @@ function AppContent() {
 
   // Config State
   const [companyData, setCompanyData] = useState<CompanySettings | null>(storage.getCompanyData());
-  const [taxConfig, setTaxConfig] = useState<TaxConfig>(storage.getTaxConfig() || INITIAL_TAX_CONFIG);
+  const [taxConfig, setTaxConfig] = useState<TaxConfig>(storage.getTaxConfig() || DEFAULT_TAX_CONFIG);
   const [integrationConfig, setIntegrationConfig] = useState<IntegrationConfig>(storage.getIntegrationConfig() || { provider: 'CSV', mappings: [] });
   const [templates, setTemplates] = useState<DocumentTemplate[]>(storage.getTemplates() || []);
   // Initialize plans with cached plans or INITIAL_PLANS as fallback

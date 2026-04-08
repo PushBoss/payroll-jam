@@ -40,6 +40,15 @@ export const CompanyService = {
 
   saveCompany: async (companyId: string, settings: CompanySettings) => {
     if (!supabase) return null;
+
+    const { data: existingCompany } = await supabase
+      .from('companies')
+      .select('settings')
+      .eq('id', companyId)
+      .maybeSingle();
+
+    const existingSettings = existingCompany?.settings || {};
+
     const { error } = await supabase
       .from('companies')
       .upsert({
@@ -48,12 +57,17 @@ export const CompanyService = {
         trn: settings.trn,
         address: settings.address,
         settings: {
+          ...existingSettings,
           phone: settings.phone,
           bankName: settings.bankName,
           accountNumber: settings.accountNumber,
           branchCode: settings.branchCode,
           paymentMethod: settings.paymentMethod,
-          policies: settings.policies
+          payFrequency: settings.payFrequency ?? existingSettings.payFrequency,
+          defaultPayDate: settings.defaultPayDate ?? existingSettings.defaultPayDate,
+          policies: settings.policies ?? existingSettings.policies,
+          reseller_defaults: settings.reseller_defaults ?? existingSettings.reseller_defaults,
+          taxConfig: settings.taxConfig ?? existingSettings.taxConfig
         },
         status: settings.subscriptionStatus || 'ACTIVE',
         plan: normalizePlanToDatabase(settings.plan)

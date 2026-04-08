@@ -16,6 +16,7 @@ export const PayrollService = {
       periodStart: r.period_start,
       periodEnd: r.period_end,
       payDate: r.pay_date,
+      payFrequency: r.pay_frequency,
       status: r.status,
       totalGross: r.total_gross,
       totalNet: r.total_net,
@@ -33,6 +34,7 @@ export const PayrollService = {
         period_start: run.periodStart,
         period_end: run.periodEnd,
         pay_date: run.payDate,
+        pay_frequency: run.payFrequency,
         status: run.status,
         total_gross: run.totalGross,
         total_net: run.totalNet,
@@ -47,7 +49,7 @@ export const PayrollService = {
       .from('pay_runs')
       .delete()
       .eq('id', runId)
-      .eq('account_id', companyId);
+      .eq('company_id', companyId);
     
     return !error;
   },
