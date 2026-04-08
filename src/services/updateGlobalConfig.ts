@@ -1,15 +1,15 @@
 // Update global config for Supabase backend ONLY (no localStorage for plans)
 import { GlobalConfig } from '../core/types';
-import { supabaseService } from './supabaseService';
+import { CompanyService } from './CompanyService';
 
 export async function updateGlobalConfig(partial: Partial<GlobalConfig & { pricingPlans?: any }>) {
   // Get current config from Supabase
-  const current = await supabaseService.getGlobalConfig() || {} as GlobalConfig;
+  const current = await CompanyService.getGlobalConfig() || {} as GlobalConfig;
   const updated = { ...current, ...partial };
   
   // Save to Supabase backend ONLY
   try {
-    const success = await supabaseService.saveGlobalConfig(updated);
+    const success = await CompanyService.saveGlobalConfig(updated);
     if (success) {
       console.log('✅ Global config (including pricing plans) updated in Supabase backend');
       return updated;

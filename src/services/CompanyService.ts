@@ -27,9 +27,15 @@ export const CompanyService = {
       plan: normalizePlanToFrontend(data.plan) as any,
       subscriptionStatus: data.status || 'ACTIVE',
       paymentMethod: settings.paymentMethod,
+      resellerId: data.reseller_id,
       policies: settings.policies,
+      reseller_defaults: settings.reseller_defaults,
       taxConfig: settings.taxConfig
     } as any;
+  },
+
+  getCompanyById: async (companyId: string): Promise<CompanySettings | null> => {
+    return CompanyService.getCompany(companyId);
   },
 
   saveCompany: async (companyId: string, settings: CompanySettings) => {
@@ -57,14 +63,100 @@ export const CompanyService = {
 
   getGlobalConfig: async (): Promise<GlobalConfig | null> => {
     if (!supabase) return null;
-    const { data, error } = await supabase
-      .from('global_config')
-      .select('config')
-      .eq('id', 'platform')
-      .maybeSingle();
+    try {
+      const { data, error } = await supabase
+        .from('global_config')
+        .select('config')
+        .eq('id', 'platform')
+        .maybeSingle();
 
-    if (error || !data) return null;
-    return data.config as GlobalConfig;
+      if (!error && data) {
+        return data.config as GlobalConfig;
+      }
+
+      const { data: publicData, error: publicError } = await supabase
+        .from('public_settings')
+        .select('config')
+        .eq('id', 'platform')
+        .maybeSingle();
+
+      if (!publicError && publicData) {
+        return publicData.config as GlobalConfig;
+      }
+
+      const { data: companyData, error: companyError } = await supabase
+        .from('companies')
+        .select('settings')
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (companyError || !companyData) return null;
+      return companyData.settings?.globalConfig as GlobalConfig;
+    } catch {
+      return null;
+    }
+  },
+
+  saveGlobalConfig: async (config: GlobalConfig): Promise<boolean> => {
+    const client = supabase;
+    if (!client) return false;
+
+    try {
+      const { error } = await client
+        .from('global_config')
+        .upsert({
+          id: 'platform',
+          config,
+          updated_at: new Date().toISOString()
+        });
+
+      if (!error) {
+        return true;
+      }
+
+      const { data: companies, error: fetchError } = await client
+        .from('companies')
+        .select('id, settings');
+
+      if (fetchError) {
+        return false;
+      }
+
+      await Promise.all((companies || []).map((company: any) => {
+        const currentSettings = company.settings || {};
+        return client
+          .from('companies')
+          .update({
+            settings: {
+              ...currentSettings,
+              globalConfig: config
+            }
+          })
+          .eq('id', company.id);
+      }));
+
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  getPaymentGatewaySettings: async (companyId: string) => {
+    if (!supabase || !companyId) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from('companies')
+        .select('settings')
+        .eq('id', companyId)
+        .maybeSingle();
+
+      if (error || !data) return null;
+      return data.settings?.paymentGateway || null;
+    } catch {
+      return null;
+    }
   },
 
   acceptResellerInvite: async (token: string, companyId: string) => {

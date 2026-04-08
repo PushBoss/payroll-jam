@@ -4,6 +4,7 @@ import { Employee, WeeklyTimesheet, LeaveRequest, PayRun as PayRunType, CompanyS
 import { usePayroll } from '../features/payroll/usePayroll';
 import { generateNCBFile, generateBNSFile, generateGLCSV } from '../utils/exportHelpers';
 import { auditService } from '../core/auditService';
+import { EmployeeService } from '../services/EmployeeService';
 import { emailService } from '../services/emailService';
 import { PayslipView } from '../components/PayslipView';
 import { toast } from 'sonner';
@@ -535,7 +536,6 @@ export const PayRun: React.FC<PayRunProps> = ({
         // Update custom deductions for employees in this payrun
         // FIXED_TERM deductions: decrement remainingTerm
         // TARGET_BALANCE deductions: increment currentBalance
-        const { supabaseService } = await import('../services/supabaseService');
         for (const lineItem of draftItems) {
             const employee = employees.find(e => e.id === lineItem.employeeId);
             if (!employee || !employee.customDeductions || employee.customDeductions.length === 0) continue;
@@ -573,7 +573,7 @@ export const PayRun: React.FC<PayRunProps> = ({
             };
 
             try {
-                await supabaseService.saveEmployee(updatedEmployee, currentUser?.companyId || '');
+                await EmployeeService.saveEmployee(updatedEmployee, currentUser?.companyId || '');
                 console.log(`✅ Updated custom deductions for ${employee.firstName} ${employee.lastName}`);
             } catch (error) {
                 console.error(`❌ Failed to update custom deductions for ${employee.firstName} ${employee.lastName}:`, error);

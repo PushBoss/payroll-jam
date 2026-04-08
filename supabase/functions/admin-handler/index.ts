@@ -11,6 +11,25 @@ const corsHeaders = {
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const normalizePlanToFrontend = (plan?: string | null): string => {
+    if (!plan) return 'Free';
+
+    const normalized = plan.trim().toLowerCase();
+    const planMap: Record<string, string> = {
+        free: 'Free',
+        starter: 'Starter',
+        professional: 'Pro',
+        pro: 'Pro',
+        enterprise: 'Reseller',
+        reseller: 'Reseller'
+    };
+
+    return planMap[normalized] || plan;
+};
+
+const isResellerEquivalentPlan = (plan?: string | null): boolean =>
+    normalizePlanToFrontend(plan) === 'Reseller';
+
 serve(async (req: Request) => {
     // 1. CORS Preflight
     if (req.method === 'OPTIONS') {
@@ -267,7 +286,7 @@ serve(async (req: Request) => {
                     const allCompanies = [...(ownedCompanies || []), ...memberCompanies];
 
                     if (allCompanies.length > 0) {
-                        const hasResellerPlan = allCompanies.some((c: any) => c.plan === 'Enterprise' || c.plan === 'Reseller');
+                        const hasResellerPlan = allCompanies.some((c: any) => isResellerEquivalentPlan(c.plan));
                         if (!hasResellerPlan) requiresUpgrade = true;
                     } else if (userProfile?.company_id) {
                         const { data: primaryComp } = await adminClient
@@ -276,7 +295,7 @@ serve(async (req: Request) => {
                           .eq('id', userProfile.company_id)
                           .maybeSingle();
 
-                        if (primaryComp && primaryComp.plan !== 'Enterprise') requiresUpgrade = true;
+                        if (primaryComp && !isResellerEquivalentPlan(primaryComp.plan)) requiresUpgrade = true;
                     }
                 }
                 return new Response(JSON.stringify({ requiresUpgrade }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -313,17 +332,12 @@ serve(async (req: Request) => {
                         .select('*', { count: 'exact', head: true })
                         .eq('company_id', c.id);
 
-                    const planMap: Record<string, string> = {
-                        'Free': 'Free', 'Starter': 'Starter',
-                        'Professional': 'Pro', 'Enterprise': 'Reseller'
-                    };
-
                     return {
                         id: c.id,
                         companyName: c.name,
                         email: c.email || ownerData?.email || '',
                         contactName: ownerData?.name || c.settings?.contactName || 'N/A',
-                        plan: planMap[c.plan] || 'Free',
+                        plan: normalizePlanToFrontend(c.plan),
                         status: c.status || 'ACTIVE',
                         employeeCount: empCount || 0,
                         mrr: c.settings?.mrr || 0,

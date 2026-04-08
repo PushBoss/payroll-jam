@@ -48,8 +48,8 @@ export const dimePayService = {
 
         // Try Supabase if available - get global config from backend
         try {
-            const { supabaseService } = await import('./supabaseService');
-            globalConfig = await supabaseService.getGlobalConfig();
+            const { CompanyService } = await import('./CompanyService');
+            globalConfig = await CompanyService.getGlobalConfig();
 
             // Only try to get company-specific settings if companyId is provided AND we're not in signup mode
             // During signup, the company doesn't exist yet, so skip this to avoid errors
@@ -57,7 +57,7 @@ export const dimePayService = {
             const isSignupFlow = props.metadata?.plan || props.metadata?.company;
             if (props.companyId && !isSignupFlow) {
                 // Only fetch company settings for existing companies (e.g., upgrade flow)
-                companyConfig = await supabaseService.getPaymentGatewaySettings(props.companyId);
+                companyConfig = await CompanyService.getPaymentGatewaySettings(props.companyId);
             }
         } catch (e) {
             console.log('Supabase not available, using localStorage');
