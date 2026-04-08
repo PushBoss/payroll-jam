@@ -640,8 +640,12 @@ export const Settings: React.FC<SettingsProps> = ({
             // Reload billing data (wait for webhook to create subscription/payment rows)
             setIsLoadingBilling(true);
             try {
-                await waitForBillingSync(currentUser.companyId, 10, 1500);
+                const synced = await waitForBillingSync(currentUser.companyId, 10, 1500);
                 await refreshBillingData(currentUser.companyId);
+
+                if (!synced) {
+                    toast.warning('Payment received, but subscription confirmation has not arrived yet. If this persists, check DimePay webhook configuration for this environment.');
+                }
             } finally {
                 setIsLoadingBilling(false);
             }
