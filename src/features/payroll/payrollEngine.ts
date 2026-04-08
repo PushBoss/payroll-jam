@@ -53,14 +53,24 @@ export const getEmployeeYTD = (
   let ytdGross = 0;
   let ytdNIS = 0;
   let ytdTaxPaid = 0;
+  let ytdPension = 0;
 
   payRunHistory.forEach(run => {
     if (run.periodStart.startsWith(year.toString()) && run.status === 'FINALIZED') {
       const line = run.lineItems.find(item => item.employeeId === employeeId);
       if (line) {
-        ytdGross += toFiniteNumber(line.grossPay) + toFiniteNumber(line.additions);
+        const hasBreakdown = Array.isArray(line.additionsBreakdown) && line.additionsBreakdown.length > 0;
+        const taxableAdditions = hasBreakdown
+          ? line.additionsBreakdown!
+            .filter(detail => detail.isTaxable !== false)
+            .reduce((sum, detail) => sum + toFiniteNumber(detail.amount), 0)
+          : toFiniteNumber(line.additions);
+
+        // For tax/YTD statutory income purposes, only taxable additions should be included.
+        ytdGross += toFiniteNumber(line.grossPay) + taxableAdditions;
         ytdNIS += toFiniteNumber(line.nis);
         ytdTaxPaid += toFiniteNumber(line.paye);
+        ytdPension += toFiniteNumber(line.pension);
       }
     }
   });
@@ -69,7 +79,7 @@ export const getEmployeeYTD = (
     ytdGross,
     ytdNIS,
     ytdTaxPaid,
-    ytdStatutoryIncome: ytdGross - ytdNIS
+    ytdStatutoryIncome: ytdGross - ytdNIS - ytdPension
   };
 };
 
@@ -154,7 +164,7 @@ const calculateComputedAmounts = ({
   );
 
   const finalPAYE = Math.max(0, cumulativePAYE);
-  const totalDeductions = standardTaxes.nis + standardTaxes.nht + standardTaxes.edTax + finalPAYE + customDeductions;
+  const totalDeductions = standardTaxes.nis + standardTaxes.nht + standardTaxes.edTax + standardTaxes.pension + finalPAYE + customDeductions;
   const netPay = safeGrossPay + allAdditions - totalDeductions;
   const employerContributions = calculateEmployerContributions(
     currentGross,

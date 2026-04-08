@@ -93,7 +93,7 @@ export const calculateTaxes = (
 
   const paye = payeAnnual / periods;
 
-  const totalDeductions = nis + nht + edTax + paye;
+  const totalDeductions = nis + nht + edTax + paye + pensionAmount;
   const netPay = gross - totalDeductions;
 
   return {
@@ -101,7 +101,7 @@ export const calculateTaxes = (
     nht: roundJMD(nht),
     edTax: roundJMD(edTax),
     paye: roundJMD(paye),
-    pension: 0,
+    pension: roundJMD(pensionAmount),
     totalDeductions: roundJMD(totalDeductions),
     netPay: roundJMD(netPay)
   };
@@ -170,10 +170,21 @@ export const calculateCumulativePAYE = (
   ytdTaxPaid: number,
   periodNumber: number, // e.g., Month 3
   frequency: PayFrequency = PayFrequency.MONTHLY,
-  overrides?: { nis_cap_annual?: number; paye_threshold?: number; pension?: number; }
+  overrides?: (Partial<TaxConfig> & {
+    pension?: number;
+    paye_threshold?: number;
+    paye_threshold_high?: number;
+    paye_rate_std?: number;
+    paye_rate_high?: number;
+  })
 ): number => {
   const periodsPerYear = getPeriodsPerYear(frequency);
-  const payeThreshold = overrides?.paye_threshold ?? TAX_CONSTANTS.PAYE_THRESHOLD;
+  const safePeriodNumber = Math.max(1, Math.floor(Number.isFinite(periodNumber) ? periodNumber : 1));
+
+  const payeThreshold = overrides?.payeThreshold ?? overrides?.paye_threshold ?? TAX_CONSTANTS.PAYE_THRESHOLD;
+  const payeThresholdHigh = overrides?.payeThresholdHigh ?? overrides?.paye_threshold_high ?? TAX_CONSTANTS.PAYE_THRESHOLD_HIGH;
+  const payeRateStd = overrides?.payeRateStd ?? overrides?.paye_rate_std ?? TAX_CONSTANTS.PAYE_RATE_STD;
+  const payeRateHigh = overrides?.payeRateHigh ?? overrides?.paye_rate_high ?? TAX_CONSTANTS.PAYE_RATE_HIGH;
   const pensionRate = overrides?.pension ?? 0;
 
   // Calculate pension for current period
@@ -185,7 +196,7 @@ export const calculateCumulativePAYE = (
 
   // 2. Calculate Cumulative Tax Free Threshold to Date
   const annualThreshold = payeThreshold;
-  const cumulativeThreshold = (annualThreshold / periodsPerYear) * periodNumber;
+  const cumulativeThreshold = (annualThreshold / periodsPerYear) * safePeriodNumber;
 
   // 3. Determine Cumulative Taxable Income
   const cumulativeTaxableIncome = Math.max(0, totalCumulativeStatutoryIncome - cumulativeThreshold);
@@ -196,19 +207,19 @@ export const calculateCumulativePAYE = (
   let totalTaxDueToDate = 0;
 
   // Calculate cumulative annual statutory income
-  const annualizedStatutoryIncome = (totalCumulativeStatutoryIncome / periodNumber) * periodsPerYear;
+  const annualizedStatutoryIncome = (totalCumulativeStatutoryIncome / safePeriodNumber) * periodsPerYear;
 
-  if (annualizedStatutoryIncome > TAX_CONSTANTS.PAYE_THRESHOLD_HIGH) {
+  if (annualizedStatutoryIncome > payeThresholdHigh) {
     // High bracket: Split between 25% and 30%
-    const standardBand = TAX_CONSTANTS.PAYE_THRESHOLD_HIGH - payeThreshold;
-    const highBand = annualizedStatutoryIncome - TAX_CONSTANTS.PAYE_THRESHOLD_HIGH;
-    const annualTax = (standardBand * TAX_CONSTANTS.PAYE_RATE_STD) + (highBand * TAX_CONSTANTS.PAYE_RATE_HIGH);
-    totalTaxDueToDate = (annualTax / periodsPerYear) * periodNumber;
+    const standardBand = Math.max(0, payeThresholdHigh - payeThreshold);
+    const highBand = Math.max(0, annualizedStatutoryIncome - payeThresholdHigh);
+    const annualTax = (standardBand * payeRateStd) + (highBand * payeRateHigh);
+    totalTaxDueToDate = (annualTax / periodsPerYear) * safePeriodNumber;
   } else if (annualizedStatutoryIncome > payeThreshold) {
     // Standard bracket: 25%
     const taxableAmount = annualizedStatutoryIncome - payeThreshold;
-    const annualTax = taxableAmount * TAX_CONSTANTS.PAYE_RATE_STD;
-    totalTaxDueToDate = (annualTax / periodsPerYear) * periodNumber;
+    const annualTax = taxableAmount * payeRateStd;
+    totalTaxDueToDate = (annualTax / periodsPerYear) * safePeriodNumber;
   }
 
   // 5. Tax for this specific period
