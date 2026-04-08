@@ -112,14 +112,29 @@ export const migrationService = {
       if (payRuns && payRuns.length > 0) {
       for (const run of payRuns) {
         if (!supabase) continue;
+
+        // Normalize YYYY-MM labels to valid DATE strings expected by Supabase.
+        let periodStart = run.periodStart;
+        if (/^\d{4}-\d{2}$/.test(periodStart)) {
+          periodStart = `${periodStart}-01`;
+        }
+
+        let periodEnd = run.periodEnd;
+        if (/^\d{4}-\d{2}$/.test(periodEnd)) {
+          const [yearStr, monthStr] = periodEnd.split('-');
+          const year = parseInt(yearStr, 10);
+          const month = parseInt(monthStr, 10);
+          const lastDay = new Date(year, month, 0).getDate();
+          periodEnd = `${periodEnd}-${String(lastDay).padStart(2, '0')}`;
+        }
         
         const { error } = await supabase
           .from('pay_runs')
           .upsert({
             id: run.id,
             company_id: companyId,
-            period_start: run.periodStart,
-            period_end: run.periodEnd,
+            period_start: periodStart,
+            period_end: periodEnd,
             pay_date: run.payDate,
             pay_frequency: 'MONTHLY', // Default
             status: run.status,

@@ -1,6 +1,30 @@
 import { supabase } from './supabaseClient';
 import { CompanySettings, Employee, PayRun, LeaveRequest, User } from '../core/types';
 
+const normalizeDbPeriodToApp = (start: any, end: any): { periodStart: string; periodEnd: string } => {
+  const isDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
+  const startStr = typeof start === 'string' ? start : '';
+  const endStr = typeof end === 'string' ? end : '';
+
+  if (isDate(startStr) && isDate(endStr)) {
+    const ym = startStr.substring(0, 7);
+    const startDay = startStr.substring(8, 10);
+    const endDay = endStr.substring(8, 10);
+    const [yearStr, monthStr] = ym.split('-');
+    const year = Number(yearStr);
+    const month = Number(monthStr);
+    const lastDay = String(new Date(year, month, 0).getDate()).padStart(2, '0');
+    if (startDay === '01' && endStr.startsWith(ym) && endDay === lastDay) {
+      return { periodStart: ym, periodEnd: ym };
+    }
+  }
+
+  return {
+    periodStart: startStr || String(start ?? ''),
+    periodEnd: endStr || String(end ?? '')
+  };
+};
+
 export const AdminService = {
   getCompanyContext: async (companyId: string): Promise<{
     company: CompanySettings | null,
@@ -56,8 +80,7 @@ export const AdminService = {
       // Map Pay Runs
       const payRuns = (data.payRuns || []).map((r: any) => ({
         id: r.id,
-        periodStart: r.period_start,
-        periodEnd: r.period_end,
+        ...normalizeDbPeriodToApp(r.period_start, r.period_end),
         payDate: r.pay_date,
         status: r.status,
         totalGross: r.total_gross,
