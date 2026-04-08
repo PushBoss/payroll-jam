@@ -1,6 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createHmac } from 'crypto';
-import { buildAbsoluteUrl } from './_dimepay';
 
 // CORS headers for security
 const corsHeaders = {
@@ -32,10 +31,33 @@ export default async function handler(
       return res.status(400).json({ error: 'Payload is required' });
     }
 
-    // Inject webhook URL into payload if not already present
-    if (!payload.webhookUrl) {
-      payload.webhookUrl = buildAbsoluteUrl(req, '/api/dimepay-webhook');
+    const buildWebhookUrl = () => {
+      const protoHeader = req.headers['x-forwarded-proto'];
+      const hostHeader = req.headers['x-forwarded-host'] || req.headers.host;
+
+      const proto = Array.isArray(protoHeader) ? protoHeader[0] : (protoHeader as string | undefined);
+      const host = Array.isArray(hostHeader) ? hostHeader[0] : (hostHeader as string | undefined);
+
+      return `${proto || 'https'}://${host || 'localhost'}/api/dimepay-webhook`;
+    };
+
+    let payloadObject: any = payload;
+    if (typeof payloadObject === 'string') {
+      payloadObject = JSON.parse(payloadObject);
     }
+
+    if (!payloadObject || typeof payloadObject !== 'object' || Array.isArray(payloadObject)) {
+      return res.status(400).json({ error: 'Payload must be an object' });
+    }
+
+    const webhookUrl = payloadObject.webhookUrl || payloadObject.webhook_url || buildWebhookUrl();
+
+    // Include both cases to match gateway expectations.
+    const payloadWithWebhook = {
+      ...payloadObject,
+      webhookUrl,
+      webhook_url: webhookUrl
+    };
 
     // Determine effective environment based strictly on the client's request
     // This ensures sandbox client tests correctly use the sandbox secret, matching the sandbox API key cleanly.
@@ -68,7 +90,7 @@ export default async function handler(
     };
 
     const encodedHeader = base64url(JSON.stringify(header));
-    const encodedPayload = base64url(JSON.stringify(payload));
+    const encodedPayload = base64url(JSON.stringify(payloadWithWebhook));
     const signatureInput = `${encodedHeader}.${encodedPayload}`;
 
     // Sign with HMAC-SHA256
