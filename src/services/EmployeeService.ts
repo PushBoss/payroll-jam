@@ -144,11 +144,9 @@ export const EmployeeService = {
         employee_number: emp.employeeId || null,
         phone: emp.phone || null,
         address: emp.address || null,
-        emergency_contact: emp.emergencyContact || null,
         role: emp.role,
         status: emp.status,
         hire_date: emp.hireDate,
-        joining_date: emp.joiningDate || null,
         job_title: emp.jobTitle || null,
         department: emp.department || null,
         pay_data: payData,
@@ -156,8 +154,6 @@ export const EmployeeService = {
         leave_balance: emp.leaveBalance || null,
         allowances: emp.allowances || [],
         deductions: emp.customDeductions || [],
-        pension_contribution_rate: emp.pensionContributionRate || null,
-        pension_provider: emp.pensionProvider || null,
         termination_details: emp.terminationDetails || null,
         onboarding_token: emp.onboardingToken || null
       });
