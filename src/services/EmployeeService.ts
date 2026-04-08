@@ -2,6 +2,12 @@ import { supabase } from './supabaseClient';
 import { Employee, User, LeaveRequest } from '../core/types';
 
 
+const requireSupabase = () => {
+  if (!supabase) throw new Error('Supabase client not initialized');
+  return supabase;
+};
+
+
 export const EmployeeService = {
   // --- Users & Profiles ---
   
@@ -73,29 +79,59 @@ export const EmployeeService = {
 
   getEmployees: async (companyId: string): Promise<Employee[]> => {
     if (!supabase) return [];
-    const { data, error } = await supabase
+    const { data, error } = await requireSupabase()
       .from('employees')
       .select('*')
       .eq('company_id', companyId);
 
-    if (error) return [];
-    return data.map((e: any) => ({
-      ...e,
+    if (error) throw error;
+    return (data || []).map((e: any) => ({
+      id: e.id,
       firstName: e.first_name,
       lastName: e.last_name,
-      grossSalary: e.gross_salary,
-      payFrequency: e.pay_frequency as any,
-      payType: e.pay_type as any,
-      employeeId: e.employee_id,
+      email: e.email,
+      trn: e.trn,
+      nis: e.nis,
+      employeeId: e.employee_number || undefined,
+      status: e.status,
+      role: e.role,
       hireDate: e.hire_date,
-      bankDetails: e.bank_details,
-      customDeductions: e.custom_deductions || []
+      joiningDate: e.joining_date || undefined,
+      jobTitle: e.job_title || undefined,
+      department: e.department || undefined,
+      phone: e.phone || undefined,
+      address: e.address || undefined,
+      emergencyContact: e.emergency_contact || undefined,
+
+      grossSalary: e.pay_data?.grossSalary || 0,
+      hourlyRate: e.pay_data?.hourlyRate,
+      payType: e.pay_data?.payType || 'SALARIED',
+      payFrequency: e.pay_data?.payFrequency || 'MONTHLY',
+
+      bankDetails: e.bank_details || undefined,
+      leaveBalance: e.leave_balance || undefined,
+      allowances: e.allowances || [],
+      customDeductions: e.deductions || [],
+
+      pensionContributionRate: e.pension_contribution_rate || undefined,
+      pensionProvider: e.pension_provider || undefined,
+
+      terminationDetails: e.termination_details || undefined,
+      onboardingToken: e.onboarding_token || undefined
     } as any));
   },
 
   saveEmployee: async (emp: Employee, companyId: string) => {
-    if (!supabase) return;
-    const { error } = await supabase
+    const client = requireSupabase();
+
+    const payData = {
+      grossSalary: emp.grossSalary,
+      hourlyRate: emp.hourlyRate,
+      payType: emp.payType,
+      payFrequency: emp.payFrequency
+    };
+
+    const { error } = await client
       .from('employees')
       .upsert({
         id: emp.id,
@@ -105,50 +141,81 @@ export const EmployeeService = {
         email: emp.email,
         trn: emp.trn,
         nis: emp.nis,
-        gross_salary: emp.grossSalary,
-        pay_type: emp.payType,
-        pay_frequency: emp.payFrequency,
+        employee_number: emp.employeeId || null,
+        phone: emp.phone || null,
+        address: emp.address || null,
+        emergency_contact: emp.emergencyContact || null,
         role: emp.role,
         status: emp.status,
         hire_date: emp.hireDate,
-        bank_details: emp.bankDetails,
-        custom_deductions: emp.customDeductions
+        joining_date: emp.joiningDate || null,
+        job_title: emp.jobTitle || null,
+        department: emp.department || null,
+        pay_data: payData,
+        bank_details: emp.bankDetails || null,
+        leave_balance: emp.leaveBalance || null,
+        allowances: emp.allowances || [],
+        deductions: emp.customDeductions || [],
+        pension_contribution_rate: emp.pensionContributionRate || null,
+        pension_provider: emp.pensionProvider || null,
+        termination_details: emp.terminationDetails || null,
+        onboarding_token: emp.onboardingToken || null
       });
     if (error) throw error;
   },
 
   deleteEmployee: async (employeeId: string, companyId: string) => {
     if (!supabase) return null;
-    const { error } = await supabase
+    const { error } = await requireSupabase()
       .from('employees')
       .delete()
       .eq('id', employeeId)
-      .eq('account_id', companyId);
+      .eq('company_id', companyId);
     if (error) throw error;
   },
 
   getEmployeeByToken: async (token: string, email?: string): Promise<{ employee: Employee; companyName: string; companyId: string } | null> => {
     if (!supabase) return null;
-    const query = supabase
+    let query = requireSupabase()
       .from('employees')
       .select('*, companies(name)')
       .eq('onboarding_token', token);
-    
-    if (email) query.eq('email', email);
-    
+
+    if (email) query = query.eq('email', email);
+
     const { data, error } = await query.maybeSingle();
     if (error || !data) return null;
-    
+
     return {
       employee: {
         id: data.id,
         firstName: data.first_name,
         lastName: data.last_name,
         email: data.email,
-        onboardingToken: data.onboarding_token
+        trn: data.trn || '',
+        nis: data.nis || '',
+        employeeId: data.employee_number || undefined,
+        status: data.status,
+        role: data.role,
+        hireDate: data.hire_date,
+        jobTitle: data.job_title || undefined,
+        department: data.department || undefined,
+        phone: data.phone || undefined,
+        address: data.address || undefined,
+        emergencyContact: data.emergency_contact || undefined,
+        grossSalary: data.pay_data?.grossSalary || 0,
+        hourlyRate: data.pay_data?.hourlyRate,
+        payType: data.pay_data?.payType || 'SALARIED',
+        payFrequency: data.pay_data?.payFrequency || 'MONTHLY',
+        bankDetails: data.bank_details || undefined,
+        leaveBalance: data.leave_balance || undefined,
+        allowances: data.allowances || [],
+        customDeductions: data.deductions || [],
+        terminationDetails: data.termination_details || undefined,
+        onboardingToken: data.onboarding_token || undefined
       } as any,
       companyName: (data.companies as any)?.name || 'Unknown',
-      companyId: data.account_id
+      companyId: data.company_id
     };
   },
 
