@@ -187,6 +187,54 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
     e.preventDefault();
     const { valid, newErrors } = validateForm();
     if (valid) {
+      // If the user filled out the deduction inputs but forgot to click “+ Add Deduction”,
+      // we auto-commit it on save to avoid silently dropping it.
+      const hasAnyPendingDeductionInput = Boolean(
+        deductionToAdd.name ||
+        deductionToAdd.amount ||
+        deductionToAdd.periodType ||
+        deductionToAdd.remainingTerm ||
+        deductionToAdd.targetBalance
+      );
+
+      if (hasAnyPendingDeductionInput) {
+        const isPendingDeductionValid = Boolean(
+          deductionToAdd.name &&
+          deductionToAdd.amount &&
+          deductionToAdd.periodType
+        );
+
+        if (!isPendingDeductionValid) {
+          console.warn('❌ Pending deduction inputs are incomplete; blocking save');
+          setErrors(prev => ({
+            ...prev,
+            deductionError: 'You have an unfinished deduction. Please complete it or clear it before saving.'
+          }));
+          setActiveTab('deductions');
+          return;
+        }
+
+        const pendingDeduction: CustomDeduction = {
+          id: `deduction_${Date.now()}`,
+          name: deductionToAdd.name as string,
+          amount: Number(deductionToAdd.amount) || 0,
+          periodType: deductionToAdd.periodType as 'FIXED_TERM' | 'TARGET_BALANCE',
+          remainingTerm: deductionToAdd.remainingTerm,
+          periodFrequency: deductionToAdd.periodFrequency || 'MONTHLY',
+          targetBalance: deductionToAdd.targetBalance
+        };
+
+        const employeeToSave: Employee = {
+          ...formData,
+          customDeductions: [...(formData.customDeductions || []), pendingDeduction]
+        };
+
+        console.log('✅ Form validation passed (auto-added pending deduction), calling onSave');
+        setDeductionToAdd({});
+        onSave(employeeToSave);
+        return;
+      }
+
       console.log('✅ Form validation passed, calling onSave');
       onSave(formData);
     } else {

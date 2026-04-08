@@ -7,10 +7,58 @@ const requireSupabase = () => {
   return supabase;
 };
 
+const coerceFiniteNumber = (value: any, fallback = 0) => {
+  const num = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(num) ? num : fallback;
+};
+
+const parseJsonArrayIfNeeded = (value: any): any[] | null => {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string') return null;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const normalizeCustomDeductions = (value: any) => {
+  const arr = parseJsonArrayIfNeeded(value) ?? (Array.isArray(value) ? value : []);
+  return arr
+    .filter(Boolean)
+    .map((raw: any) => {
+      const periodType = raw?.periodType === 'TARGET_BALANCE' ? 'TARGET_BALANCE' : 'FIXED_TERM';
+      return {
+        id: String(raw?.id ?? `deduction_${Date.now()}`),
+        name: String(raw?.name ?? ''),
+        amount: coerceFiniteNumber(raw?.amount, 0),
+        periodType,
+        remainingTerm: raw?.remainingTerm === undefined ? undefined : coerceFiniteNumber(raw?.remainingTerm, 0),
+        periodFrequency: raw?.periodFrequency,
+        currentBalance: raw?.currentBalance === undefined ? undefined : coerceFiniteNumber(raw?.currentBalance, 0),
+        targetBalance: raw?.targetBalance === undefined ? undefined : coerceFiniteNumber(raw?.targetBalance, 0)
+      };
+    })
+    .filter((d: any) => d.name && coerceFiniteNumber(d.amount, 0) > 0);
+};
+
+const normalizeSimpleDeductions = (value: any) => {
+  const arr = parseJsonArrayIfNeeded(value) ?? (Array.isArray(value) ? value : []);
+  return arr
+    .filter(Boolean)
+    .map((raw: any) => ({
+      id: String(raw?.id ?? `other_${Date.now()}`),
+      name: String(raw?.name ?? ''),
+      amount: coerceFiniteNumber(raw?.amount, 0)
+    }))
+    .filter((d: any) => d.name && coerceFiniteNumber(d.amount, 0) > 0);
+};
+
 const getCustomDeductionsFromRow = (row: any) => {
   if (!row) return [];
-  if (Array.isArray(row.deductions)) return row.deductions;
-  if (Array.isArray(row.custom_deductions)) return row.custom_deductions;
+  if (row.deductions !== undefined && row.deductions !== null) return normalizeCustomDeductions(row.deductions);
+  if (row.custom_deductions !== undefined && row.custom_deductions !== null) return normalizeCustomDeductions(row.custom_deductions);
   return [];
 };
 
@@ -152,9 +200,11 @@ export const EmployeeService = {
       payFrequency: emp.payFrequency
     };
 
-    const persistedDeductions = (emp.customDeductions && emp.customDeductions.length > 0)
-      ? emp.customDeductions
-      : (emp.deductions || []);
+    const normalizedCustomDeductions = normalizeCustomDeductions(emp.customDeductions);
+    const normalizedSimpleDeductions = normalizeSimpleDeductions(emp.deductions);
+    const persistedDeductions = (normalizedCustomDeductions.length > 0)
+      ? normalizedCustomDeductions
+      : normalizedSimpleDeductions;
 
     const basePayload: Record<string, any> = {
         id: emp.id,
