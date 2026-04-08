@@ -58,13 +58,24 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ plan, currentUser, onClos
     const [error, setError] = useState<string | null>(null);
     const [paymentSuccess, setPaymentSuccess] = useState(false);
     const isMountedRef = useRef(true);
+    const onSuccessRef = useRef(onSuccess);
 
     // Calculate price based on plan type - settings always monthly
     const { amount: price } = getPlanPriceDetails(plan, 'monthly');
     const isPaid = price > 0;
 
     useEffect(() => {
+        onSuccessRef.current = onSuccess;
+    }, [onSuccess]);
+
+    useEffect(() => {
         isMountedRef.current = true;
+
+        if (paymentSuccess) {
+            return () => {
+                isMountedRef.current = false;
+            };
+        }
 
         if (!isPaid) {
             setLoading(false);
@@ -94,7 +105,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ plan, currentUser, onClos
                         console.log('DimePay Upgrade Success:', data);
                         console.log('📦 Subscription updated:', data.subscription_id);
                         setPaymentSuccess(true);
-                        setTimeout(() => { if (isMountedRef.current) onSuccess(data); }, 2000);
+                        setTimeout(() => { if (isMountedRef.current) onSuccessRef.current(data); }, 2000);
                     }
                 },
                 onError: (msg) => {
@@ -126,7 +137,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ plan, currentUser, onClos
                 }
             }
         };
-    }, [plan, isPaid, currentUser, price, onSuccess, error]);
+    }, [plan, isPaid, currentUser, price, paymentSuccess]);
 
     const handleFreeDowngrade = () => { setPaymentSuccess(true); setTimeout(onSuccess, 1500); };
 
