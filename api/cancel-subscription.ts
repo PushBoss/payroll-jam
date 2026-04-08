@@ -1,11 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createClient } from '@supabase/supabase-js';
-
-// Initialize Supabase with service role key for admin access
-const supabase = createClient(
-  process.env.VITE_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { supabaseAdmin } from './_supabaseAdmin';
+import { cancelDimePaySubscription, resolveDimePayEnvironment } from './_dimepay';
 
 /**
  * Cancel DimePay Subscription API Endpoint
@@ -28,73 +23,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Missing subscription_id or company_id' });
     }
 
-    // Get DimePay credentials
-    // Use VERCEL_ENV or APP_ENV to determine if we are in production
-    const isProduction =
-      process.env.VERCEL_ENV === 'production' ||
-      process.env.APP_ENV === 'production';
-
-    // Force sandbox for everything except production
-    const effectiveIsProduction = isProduction;
-
-    const apiKey = effectiveIsProduction
-      ? process.env.DIMEPAY_CLIENT_ID_PROD
-      : process.env.DIMEPAY_CLIENT_ID_SANDBOX;
-
-    const secretKey = effectiveIsProduction
-      ? process.env.DIMEPAY_SECRET_KEY_PROD
-      : process.env.DIMEPAY_SECRET_KEY_SANDBOX;
-
-    if (!apiKey || !secretKey) {
-      console.error('❌ DimePay credentials not configured');
-      return res.status(500).json({ error: 'Payment gateway not configured' });
-    }
-
-    const dimePayUrl = effectiveIsProduction
-      ? 'https://api.dimepay.app/v1/subscriptions/cancel'
-      : 'https://sandbox-api.dimepay.app/v1/subscriptions/cancel';
-
     console.log('🔄 Cancelling DimePay subscription:', subscription_id);
 
-    // Attempt to cancel in DimePay
-    try {
-      const dimePayResponse = await fetch(`${dimePayUrl}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-          'X-Secret-Key': secretKey
-        },
-        body: JSON.stringify({
-          subscription_id: subscription_id
-        })
-      });
+    const environment = resolveDimePayEnvironment(undefined, req);
+    const remoteCancellation = await cancelDimePaySubscription({
+      environment,
+      subscriptionId: subscription_id
+    });
 
-      if (!dimePayResponse.ok) {
-        const errorData = await dimePayResponse.text();
-        console.error('❌ DimePay cancellation failed:', errorData);
-
-        // Continue with local cancellation even if DimePay call fails
-        // The webhook will handle the actual cancellation when DimePay processes it
-      } else {
-        console.log('✅ DimePay subscription cancelled successfully');
-      }
-    } catch (dimePayError: any) {
-      console.error('❌ Error calling DimePay API:', dimePayError.message);
-      // Continue with local cancellation
+    if (!remoteCancellation.ok) {
+      console.warn('⚠️ Remote DimePay cancellation did not confirm:', remoteCancellation.error);
     }
 
-    // Update subscription status in database (immediate feedback for user)
-    const { error: updateError } = await supabase
+    const { data: currentSubscription } = await supabaseAdmin
+      .from('subscriptions')
+      .select('next_billing_date, metadata')
+      .eq('dimepay_subscription_id', subscription_id)
+      .eq('company_id', company_id)
+      .maybeSingle();
+
+    const { error: updateError } = await supabaseAdmin
       .from('subscriptions')
       .update({
         status: 'cancelled',
-        end_date: new Date().toISOString(),
+        end_date: currentSubscription?.next_billing_date || null,
         auto_renew: false,
         updated_at: new Date().toISOString(),
         metadata: {
+          ...(currentSubscription?.metadata || {}),
           cancelled_at: new Date().toISOString(),
-          cancelled_by: 'user'
+          cancelled_by: 'user',
+          cancel_at_period_end: true
         }
       })
       .eq('dimepay_subscription_id', subscription_id)
@@ -105,23 +64,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: 'Failed to update subscription status' });
     }
 
-    // Update company subscription status
-    const { error: companyError } = await supabase
-      .from('companies')
-      .update({
-        subscription_status: 'SUSPENDED',
-        plan: 'Free' // Downgrade to free plan
-      })
-      .eq('id', company_id);
-
-    if (companyError) {
-      console.error('❌ Error updating company status:', companyError);
-    }
-
-    console.log('✅ Subscription cancelled successfully in database');
+    console.log('✅ Subscription marked for cancellation in database');
 
     return res.status(200).json({
       success: true,
+      remoteCancellation,
       message: 'Subscription cancelled successfully. You will retain access until the end of your current billing period.'
     });
 

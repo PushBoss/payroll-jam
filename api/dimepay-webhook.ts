@@ -1,12 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
-
-// Initialize Supabase with service role key for admin access
-const supabase = createClient(
-  process.env.VITE_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY! // Admin key to bypass RLS
-);
+import { supabaseAdmin as supabase } from './_supabaseAdmin';
 
 const updateCompanyBillingState = async (
   companyId: string,
@@ -124,10 +118,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           next_billing_date: data.next_billing_date || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
           start_date: new Date().toISOString(),
           auto_renew: true,
+          payment_method_last4: data.card_last4 || null,
+          payment_method_brand: data.card_brand || null,
           metadata: {
             order_id: data.order_id,
+            dime_card_token: data.card_token,
+            card_request_token: data.card_request_token,
             card_last4: data.card_last4,
             card_brand: data.card_brand,
+            card_expiry: data.card_expiry,
             billing_cycles: data.billing_cycles
           },
           updated_at: new Date().toISOString()
@@ -262,10 +261,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const { error: updateError } = await supabase.from('subscriptions').update({
           next_billing_date: nextBillingDate,
           status: 'active',
+          payment_method_last4: data.card_last4 || subscription.payment_method_last4 || null,
+          payment_method_brand: data.card_brand || subscription.payment_method_brand || null,
           metadata: {
             ...subscription.metadata,
+            dime_card_token: data.card_token || subscription.metadata?.dime_card_token,
+            card_request_token: data.card_request_token || subscription.metadata?.card_request_token,
             card_last4: data.card_last4 || subscription.metadata?.card_last4,
             card_brand: data.card_brand || subscription.metadata?.card_brand,
+            card_expiry: data.card_expiry || subscription.metadata?.card_expiry,
             last_payment_date: new Date().toISOString(),
             total_payments: (subscription.metadata?.total_payments || 0) + 1
           },
@@ -279,6 +283,50 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         await updateCompanyBillingState(subscription.company_id, 'ACTIVE', 'card');
 
         console.log('✅ Recurring payment recorded successfully');
+        break;
+      }
+
+      case 'subscription.updated': {
+        const data = event.data;
+        console.log('🔁 Processing subscription update:', data.subscription_id);
+
+        const { data: subscription, error: findError } = await supabase
+          .from('subscriptions')
+          .select('*')
+          .eq('dimepay_subscription_id', data.subscription_id)
+          .single();
+
+        if (findError || !subscription) {
+          console.error('❌ Subscription not found for update:', data.subscription_id, findError);
+          return res.status(200).json({ received: true });
+        }
+
+        const { error: updateError } = await supabase
+          .from('subscriptions')
+          .update({
+            status: 'active',
+            next_billing_date: data.next_billing_date || subscription.next_billing_date,
+            payment_method_last4: data.card_last4 || subscription.payment_method_last4 || null,
+            payment_method_brand: data.card_brand || subscription.payment_method_brand || null,
+            metadata: {
+              ...subscription.metadata,
+              dime_card_token: data.card_token || subscription.metadata?.dime_card_token,
+              card_request_token: data.card_request_token || subscription.metadata?.card_request_token,
+              card_last4: data.card_last4 || subscription.metadata?.card_last4,
+              card_brand: data.card_brand || subscription.metadata?.card_brand,
+              card_expiry: data.card_expiry || subscription.metadata?.card_expiry,
+              retry_count: 0,
+              subscription_updated_at: new Date().toISOString()
+            },
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', subscription.id);
+
+        if (updateError) {
+          console.error('❌ Error processing subscription update:', updateError);
+        }
+
+        await updateCompanyBillingState(subscription.company_id, 'ACTIVE', 'card');
         break;
       }
 
@@ -376,17 +424,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         if (subError) {
           console.error('❌ Error cancelling subscription:', subError);
-        }
-
-        // Get company_id to update status
-        const { data: subscription } = await supabase
-          .from('subscriptions')
-          .select('company_id')
-          .eq('dimepay_subscription_id', data.subscription_id)
-          .single();
-
-        if (subscription) {
-          await updateCompanyBillingState(subscription.company_id, 'SUSPENDED');
         }
 
         console.log('✅ Subscription cancelled successfully');

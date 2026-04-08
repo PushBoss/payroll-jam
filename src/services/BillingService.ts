@@ -20,11 +20,16 @@ export const BillingService = {
       planType: data.plan_type,
       status: data.status,
       billingFrequency: data.billing_frequency,
-      amount: data.amount,
+      amount: Number(data.amount) || 0,
       currency: data.currency,
+      startDate: data.start_date,
+      endDate: data.end_date,
       nextBillingDate: data.next_billing_date,
+      autoRenew: data.auto_renew,
       dimepaySubscriptionId: data.dimepay_subscription_id,
       dimepayCustomerId: data.dimepay_customer_id,
+      paymentMethodLast4: data.payment_method_last4 || data.metadata?.card_last4,
+      paymentMethodBrand: data.payment_method_brand || data.metadata?.card_brand,
       metadata: data.metadata || {}
     };
   },

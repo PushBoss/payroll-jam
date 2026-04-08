@@ -4,12 +4,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Icons } from '../components/Icons';
 import { GLMapping, IntegrationConfig, CompanySettings, TaxConfig, User, Role, Department, Designation, PricingPlan, PaymentRecord } from '../core/types';
 import { getPlanPriceDetails } from '../utils/pricing';
-import { normalizePlanToFrontend } from '../utils/planNames';
 import { storage } from '../services/storage';
-import { INITIAL_PLANS } from '../services/planService';
 import { auditService } from '../core/auditService';
 import { checkDbConnection } from '../services/supabaseClient';
 import { supabaseService } from '../services/supabaseService';
+import { BillingService } from '../services/BillingService';
 import { supabase } from '../services/supabaseClient';
 
 import { dimePayService } from '../services/dimePayService';
@@ -44,6 +43,13 @@ interface CheckoutModalProps {
     currentUser: User | null;
     onClose: () => void;
     onSuccess: (data?: any) => void | Promise<void>;
+}
+
+interface PaymentMethodModalProps {
+    currentUser: User | null;
+    currentSubscription: any;
+    onClose: () => void;
+    onSuccess: () => Promise<void> | void;
 }
 
 const CheckoutModal: React.FC<CheckoutModalProps> = ({ plan, currentUser, onClose, onSuccess }) => {
@@ -164,6 +170,164 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ plan, currentUser, onClos
     );
 };
 
+const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({ currentUser, currentSubscription, onClose, onSuccess }) => {
+    const [isLoading, setIsLoading] = useState(true);
+    const [isApplying, setIsApplying] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [cardUrl, setCardUrl] = useState<string | null>(null);
+    const [cardRequestToken, setCardRequestToken] = useState<string | null>(null);
+    const [verificationStatus, setVerificationStatus] = useState<string>('Initializing secure card form...');
+    const appliedRef = useRef(false);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const init = async () => {
+            if (!currentUser?.companyId) {
+                setError('Missing company information.');
+                setIsLoading(false);
+                return;
+            }
+
+            try {
+                const data = await dimePayService.createCardRequest({
+                    companyId: currentUser.companyId,
+                    localSubscriptionId: currentSubscription?.id,
+                    subscriptionId: currentSubscription?.dimepaySubscriptionId,
+                    redirectUrl: window.location.href
+                });
+
+                if (cancelled) return;
+
+                setCardUrl(data.card_url);
+                setCardRequestToken(data.token);
+                setVerificationStatus('Complete verification in the secure form below.');
+            } catch (requestError: any) {
+                if (!cancelled) {
+                    setError(requestError.message || 'Failed to initialize card verification.');
+                }
+            } finally {
+                if (!cancelled) {
+                    setIsLoading(false);
+                }
+            }
+        };
+
+        void init();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [currentSubscription?.dimepaySubscriptionId, currentSubscription?.id, currentUser?.companyId]);
+
+    useEffect(() => {
+        if (!cardRequestToken || !currentUser?.companyId || appliedRef.current) return;
+
+        let cancelled = false;
+
+        const poll = async () => {
+            try {
+                const details = await dimePayService.getCardDetails(cardRequestToken);
+                if (cancelled) return;
+
+                setVerificationStatus(`Card status: ${details.status}`);
+
+                if (details.status === 'SUCCESS' && details.token && !appliedRef.current) {
+                    appliedRef.current = true;
+                    setIsApplying(true);
+
+                    await dimePayService.updateSubscriptionPaymentMethod({
+                        companyId: currentUser.companyId,
+                        localSubscriptionId: currentSubscription?.id,
+                        subscriptionId: currentSubscription?.dimepaySubscriptionId,
+                        cardToken: details.token,
+                        cardRequestToken: details.card_request_token || cardRequestToken,
+                        cardLast4: details.last_four_digits,
+                        cardBrand: details.card_scheme,
+                        cardExpiry: details.card_expiry
+                    });
+
+                    if (!cancelled) {
+                        toast.success('Payment method updated successfully.');
+                        await onSuccess();
+                    }
+                }
+            } catch (pollError: any) {
+                if (!cancelled) {
+                    setVerificationStatus(pollError.message || 'Waiting for card verification...');
+                }
+            } finally {
+                if (!cancelled) {
+                    setIsApplying(false);
+                }
+            }
+        };
+
+        void poll();
+        const interval = window.setInterval(() => void poll(), 3000);
+
+        return () => {
+            cancelled = true;
+            window.clearInterval(interval);
+        };
+    }, [cardRequestToken, currentSubscription?.dimepaySubscriptionId, currentSubscription?.id, currentUser?.companyId, onSuccess]);
+
+    return (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh] animate-scale-in">
+                <div className="bg-jam-black text-white p-6 flex justify-between items-center shrink-0">
+                    <div>
+                        <h3 className="text-xl font-bold">{currentSubscription?.paymentMethodLast4 ? 'Update Payment Method' : 'Add Payment Method'}</h3>
+                        <p className="text-xs text-gray-400">Securely verify a card and bind it to your recurring subscription.</p>
+                    </div>
+                    <button onClick={onClose}><Icons.Close className="w-6 h-6 text-gray-400 hover:text-white" /></button>
+                </div>
+                <div className="p-6 overflow-y-auto space-y-4">
+                    <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+                        <div>
+                            <p className="text-sm font-semibold text-gray-900">Verification status</p>
+                            <p className="text-xs text-gray-500 mt-1">{verificationStatus}</p>
+                        </div>
+                        {isApplying && <Icons.Refresh className="w-5 h-5 text-jam-orange animate-spin" />}
+                    </div>
+
+                    {isLoading ? (
+                        <div className="h-[480px] flex flex-col items-center justify-center text-center">
+                            <Icons.Refresh className="w-8 h-8 animate-spin text-jam-orange mb-3" />
+                            <p className="text-sm text-gray-600">Preparing secure card verification...</p>
+                        </div>
+                    ) : error ? (
+                        <div className="h-[240px] flex flex-col items-center justify-center text-center">
+                            <Icons.Alert className="w-10 h-10 text-red-500 mb-3" />
+                            <p className="text-red-600 font-medium mb-2">Unable to start card verification</p>
+                            <p className="text-xs text-gray-500 max-w-md">{error}</p>
+                        </div>
+                    ) : cardUrl ? (
+                        <>
+                            <iframe
+                                src={cardUrl}
+                                title="DimePay card verification"
+                                className="w-full h-[520px] rounded-lg border border-gray-200"
+                            />
+                            <div className="flex justify-between items-center text-xs text-gray-500">
+                                <span>If the secure form does not load, open it in a new tab.</span>
+                                <a
+                                    href={cardUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-jam-orange font-semibold hover:underline"
+                                >
+                                    Open verification page
+                                </a>
+                            </div>
+                        </>
+                    ) : null}
+                </div>
+            </div>
+        </div>
+    );
+};
+
 export const Settings: React.FC<SettingsProps> = ({
     companyData,
     onUpdateCompany,
@@ -250,8 +414,8 @@ export const Settings: React.FC<SettingsProps> = ({
     );
 
     const refreshBillingData = async (companyId: string) => {
-        const subscription = await supabaseService.getSubscription(companyId);
-        const payments = await supabaseService.getPaymentHistory(companyId);
+        const subscription = await BillingService.getSubscription(companyId);
+        const payments = await BillingService.getPaymentHistory(companyId);
 
         setCurrentSubscription(subscription);
         setInvoices(mapPaymentHistoryToInvoices(payments));
@@ -272,59 +436,9 @@ export const Settings: React.FC<SettingsProps> = ({
         return false;
     };
 
-    const refreshBillingDataInBackground = async (companyId: string) => {
-        try {
-            await waitForBillingSync(companyId, 12, 5000);
-        } catch (error) {
-            console.warn('Background billing refresh failed:', error);
-        }
-    };
-
-    const normalizePlanName = (planName?: string | null) => {
-        return normalizePlanToFrontend(planName).trim().toLowerCase();
-    };
-
-    const buildPaymentMethodCheckoutPlan = (): PricingPlan | null => {
-        const availablePlans = plans.length > 0 ? plans : INITIAL_PLANS;
-        const planCandidates = [
-            currentSubscription?.planName,
-            companyData?.plan
-        ].filter(Boolean) as string[];
-        const fallbackPlanName = planCandidates[0];
-
-        const matchedPlan = availablePlans.find((plan) =>
-            planCandidates.some((candidate) => normalizePlanName(candidate) === normalizePlanName(plan.name))
-        );
-
-        if (matchedPlan) {
-            return matchedPlan.priceConfig.type === 'free' ? null : matchedPlan;
-        }
-
-        if (!currentSubscription?.amount) return null;
-
-        return {
-            id: 'current-subscription',
-            name: fallbackPlanName || 'Current Plan',
-            description: 'Recurring billing for your current subscription.',
-            priceConfig: {
-                type: 'flat',
-                monthly: Number(currentSubscription.amount) || 0,
-                annual: (Number(currentSubscription.amount) || 0) * 12
-            },
-            limit: companyData?.employeeLimit || 'N/A',
-            features: [],
-            cta: 'Continue',
-            highlight: false,
-            color: 'bg-jam-orange',
-            textColor: 'text-jam-black',
-            isActive: true
-        };
-    };
-
-    const paymentMethodCheckoutPlan = buildPaymentMethodCheckoutPlan();
-    const storedCardLast4 = currentSubscription?.metadata?.card_last4;
-    const storedCardBrand = currentSubscription?.metadata?.card_brand;
-    const hasStoredBillingMethod = !!currentSubscription?.dimepaySubscriptionId || !!storedCardLast4;
+    const storedCardLast4 = currentSubscription?.paymentMethodLast4 || currentSubscription?.metadata?.card_last4;
+    const storedCardBrand = currentSubscription?.paymentMethodBrand || currentSubscription?.metadata?.card_brand;
+    const hasStoredBillingMethod = !!storedCardLast4 || !!currentSubscription?.metadata?.dime_card_token;
 
     // Early return if companyData is not available
     if (!companyData) {
@@ -687,13 +801,6 @@ export const Settings: React.FC<SettingsProps> = ({
 
             toast.success('Subscription cancelled. You\'ll retain access until the end of your billing period.');
 
-            // Update local state
-            handleCompanyUpdate({
-                ...companyData,
-                plan: 'Free' as any,
-                subscriptionStatus: 'SUSPENDED'
-            });
-
             setShowCancelModal(false);
 
             // Reload billing data after a delay
@@ -725,41 +832,24 @@ export const Settings: React.FC<SettingsProps> = ({
     return (
         <div className="space-y-6">
             {upgradeTarget && <CheckoutModal plan={upgradeTarget} currentUser={currentUser} onClose={() => setUpgradeTarget(null)} onSuccess={handleUpgradeSuccess} />}
-            {isAddingPaymentMethod && paymentMethodCheckoutPlan && (
-                <CheckoutModal 
-                    plan={paymentMethodCheckoutPlan}
-                    currentUser={currentUser} 
-                    onClose={() => setIsAddingPaymentMethod(false)} 
-                    onSuccess={async (paymentData) => { 
+            {isAddingPaymentMethod && currentSubscription && (
+                <PaymentMethodModal
+                    currentUser={currentUser}
+                    currentSubscription={currentSubscription}
+                    onClose={() => setIsAddingPaymentMethod(false)}
+                    onSuccess={async () => {
                         setIsAddingPaymentMethod(false);
 
                         if (currentUser?.companyId) {
                             setIsLoadingBilling(true);
                             try {
-                                const synced = await waitForBillingSync(currentUser.companyId, 8, 2000);
-                                if (synced) {
-                                    toast.success('Billing details updated successfully.');
-                                } else {
-                                    if (paymentData?.subscription_id) {
-                                        setCurrentSubscription((previous: any) => ({
-                                            ...(previous || {}),
-                                            dimepaySubscriptionId: paymentData.subscription_id,
-                                            status: previous?.status || 'active',
-                                            metadata: previous?.metadata || {}
-                                        }));
-                                    }
-
-                                    toast.success('Payment completed successfully. Billing details may take a minute to update.');
-                                    void refreshBillingDataInBackground(currentUser.companyId);
-                                }
-                            } catch (e) {
-                                console.error('Failed to refresh billing data after payment:', e);
-                                toast.error('Payment completed, but billing details could not be refreshed yet.');
+                                await waitForBillingSync(currentUser.companyId, 10, 1500);
+                                await refreshBillingData(currentUser.companyId);
                             } finally {
                                 setIsLoadingBilling(false);
                             }
                         }
-                    }} 
+                    }}
                 />
             )}
 
@@ -783,7 +873,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                     <ul className="text-xs text-yellow-800 mt-2 space-y-1 list-disc list-inside">
                                         <li>You'll retain access until {currentSubscription?.nextBillingDate ? new Date(currentSubscription.nextBillingDate).toLocaleDateString() : 'the end of your billing period'}</li>
                                         <li>No further charges will be made</li>
-                                        <li>Your account will be downgraded to the Free plan</li>
+                                        <li>Your subscription will stop renewing after the current billing period</li>
                                         <li>You can resubscribe anytime</li>
                                     </ul>
                                 </div>
@@ -992,8 +1082,8 @@ export const Settings: React.FC<SettingsProps> = ({
                             </div>
                             <button
                                 onClick={() => {
-                                    if (!paymentMethodCheckoutPlan) {
-                                        toast.error('Unable to determine the billing plan for this checkout.');
+                                    if (!currentSubscription?.dimepaySubscriptionId) {
+                                        toast.error('No recurring subscription was found for this account.');
                                         return;
                                     }
                                     setIsAddingPaymentMethod(true);

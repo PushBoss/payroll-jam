@@ -331,5 +331,74 @@ export const dimePayService = {
             console.error("Error initializing payment:", e);
             props.onError("Payment initialization failed.");
         }
+    },
+
+    createCardRequest: async (params: {
+        companyId: string;
+        localSubscriptionId?: string;
+        subscriptionId?: string;
+        redirectUrl?: string;
+    }) => {
+        const response = await fetch('/api/create-card-request', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                company_id: params.companyId,
+                local_subscription_id: params.localSubscriptionId,
+                subscription_id: params.subscriptionId,
+                redirect_url: params.redirectUrl
+            })
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data?.error || 'Failed to create card request');
+        }
+
+        return data;
+    },
+
+    getCardDetails: async (cardRequestToken: string) => {
+        const response = await fetch(`/api/get-card-details?token=${encodeURIComponent(cardRequestToken)}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data?.error || 'Failed to get card details');
+        }
+
+        return data;
+    },
+
+    updateSubscriptionPaymentMethod: async (params: {
+        companyId: string;
+        localSubscriptionId?: string;
+        subscriptionId?: string;
+        cardToken: string;
+        cardRequestToken?: string;
+        cardLast4?: string;
+        cardBrand?: string;
+        cardExpiry?: string;
+    }) => {
+        const response = await fetch('/api/update-subscription-payment-method', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                company_id: params.companyId,
+                local_subscription_id: params.localSubscriptionId,
+                subscription_id: params.subscriptionId,
+                card_token: params.cardToken,
+                card_request_token: params.cardRequestToken,
+                card_last4: params.cardLast4,
+                card_brand: params.cardBrand,
+                card_expiry: params.cardExpiry
+            })
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data?.error || 'Failed to update subscription payment method');
+        }
+
+        return data;
     }
 };
