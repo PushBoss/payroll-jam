@@ -6,9 +6,11 @@ import { PricingPlan, ResellerClient, GlobalConfig, User, Role, AuditLogEntry } 
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { storage } from '../services/storage';
 import { auditService } from '../core/auditService';
-import { supabaseService } from '../services/supabaseService';
+import { BillingService } from '../services/BillingService';
 import { checkDbConnection, testManualConnection, saveManualConfig, isUsingLocalOverrides, supabase } from '../services/supabaseClient';
+import { CompanyService } from '../services/CompanyService';
 import { toast } from 'sonner';
+import { UserService } from '../services/UserService';
 
 interface SuperAdminProps {
     plans: PricingPlan[];
@@ -166,7 +168,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     useEffect(() => {
         const loadGlobalConfig = async () => {
             try {
-                const config = await supabaseService.getGlobalConfig();
+                const config = await CompanyService.getGlobalConfig();
                 if (config) {
                     setPaymentConfig(config);
                 }
@@ -181,7 +183,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     useEffect(() => {
         storage.saveGlobalConfig(paymentConfig);
         // Also save to Supabase
-        supabaseService.saveGlobalConfig(paymentConfig).catch(e => {
+        CompanyService.saveGlobalConfig(paymentConfig).catch(e => {
             console.error("Error saving global config to Supabase:", e);
         });
     }, [paymentConfig]);
@@ -307,7 +309,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             setIsLoadingBilling(true);
             try {
                 // Fetch all subscriptions via BillingService (no admin client needed)
-                const subscriptions = await supabaseService.getAllSubscriptions();
+                const subscriptions = await BillingService.getAllSubscriptions();
                 const activeSubs = subscriptions.filter((s: any) => s.status === 'active');
 
                 // Calculate MRR from active subscriptions
@@ -323,7 +325,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 const arr = mrr * 12;
 
                 // Fetch all completed payments
-                let payments = await supabaseService.getAllPayments();
+                let payments = await BillingService.getAllPayments();
                 
                 // Filter payments by selected timeframe
                 const now = new Date();
@@ -456,7 +458,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         const newStatus = tenant.status === 'SUSPENDED' ? 'ACTIVE' : 'SUSPENDED';
 
         try {
-            await supabaseService.updateCompanyStatus(id, newStatus as any);
+            await CompanyService.updateCompanyStatus(id, newStatus as any);
             setTenants(prev => prev.map(t => t.id === id ? { ...t, status: newStatus as any } : t));
             toast.success(`Tenant ${newStatus === 'ACTIVE' ? 'activated' : 'suspended'}`);
             auditService.log(
@@ -477,7 +479,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
 
         if (confirm(`Are you sure you want to delete ${tenant.companyName}? This action is irreversible and will delete all associated data.`)) {
             try {
-                const success = await supabaseService.deleteCompany(id);
+                const success = await CompanyService.deleteCompany(id);
                 if (success) {
                     setTenants(prev => prev.filter(t => t.id !== id));
                     toast.success("Tenant deleted from records");
@@ -589,7 +591,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             toast.success("New admin created successfully");
 
             // Refresh admins list from database
-            const updatedAdmins = await supabaseService.getAllSuperAdmins();
+            const updatedAdmins = await UserService.getAllSuperAdmins();
             if (updatedAdmins && updatedAdmins.length > 0) {
                 setAdmins(updatedAdmins);
                 storage.saveSuperAdmins(updatedAdmins);
@@ -608,7 +610,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         if (confirm("Revoke Super Admin access for this user? This action cannot be undone.")) {
             try {
                 // Delete from Supabase
-                const deleted = await supabaseService.deleteUser(id);
+                const deleted = await UserService.deleteUser(id);
                 if (!deleted) {
                     toast.error("Failed to remove admin from database");
                     return;
@@ -627,7 +629,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 }
 
                 // Refresh admins list from database
-                const updatedAdmins = await supabaseService.getAllSuperAdmins();
+                const updatedAdmins = await UserService.getAllSuperAdmins();
                 if (updatedAdmins && updatedAdmins.length > 0) {
                     setAdmins(updatedAdmins);
                     storage.saveSuperAdmins(updatedAdmins);
@@ -1840,12 +1842,12 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     onClick={async () => {
                         // Save to Supabase (this will also update localStorage via useEffect)
                         try {
-                            await supabaseService.saveGlobalConfig(paymentConfig);
+                            await CompanyService.saveGlobalConfig(paymentConfig);
 
                             // Also save payment gateway settings to each company's settings
-                            const allCompanies = await supabaseService.getAllCompanies();
+                            const allCompanies = await CompanyService.getAllCompanies();
                             for (const company of allCompanies) {
-                                await supabaseService.savePaymentGatewaySettings(company.id, {
+                                await CompanyService.savePaymentGatewaySettings(company.id, {
                                     dimepay: paymentConfig.dimepay,
                                     paypal: paymentConfig.paypal,
                                     emailjs: paymentConfig.emailjs,

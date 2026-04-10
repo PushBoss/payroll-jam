@@ -1,7 +1,7 @@
 import { storage } from '../services/storage';
 import { User, AuditLogEntry } from './types';
 import { generateUUID } from '../utils/uuid';
-import { supabaseService } from '../services/supabaseService';
+import { AuditService } from '../services/AuditService';
 
 
 export const auditService = {
@@ -27,7 +27,7 @@ export const auditService = {
     // Save to Supabase (non-blocking)
     // Save to Supabase if companyId exists OR if user is SUPER_ADMIN (global logs)
     if (user.companyId || user.role === 'SUPER_ADMIN') {
-      supabaseService.saveAuditLog(newLog, user.companyId || null).catch((error: any) => {
+      AuditService.saveAuditLog(newLog, user.companyId || null).catch((error: any) => {
         console.error('Failed to save audit log to Supabase:', error);
 
         // Fallback to localStorage if Supabase fails
@@ -46,7 +46,7 @@ export const auditService = {
   getLogs: async (companyId: string | null, userRole?: string, userId?: string): Promise<AuditLogEntry[]> => {
     // Try to get from Supabase first
     try {
-      const logs = await supabaseService.getAuditLogs(companyId, userRole, userId);
+      const logs = await AuditService.getAuditLogs(companyId, userRole, userId);
       if (logs && logs.length > 0) {
         return logs;
       }

@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { CompanySettings, GlobalConfig } from '../core/types';
+import { CompanySettings, GlobalConfig, ResellerClient } from '../core/types';
 import { normalizePlanToDatabase, normalizePlanToFrontend } from '../utils/planNames';
 
 
@@ -73,6 +73,75 @@ export const CompanyService = {
         plan: normalizePlanToDatabase(settings.plan)
       });
     if (error) throw error;
+  },
+
+  savePaymentGatewaySettings: async (companyId: string, paymentConfig: any) => {
+    if (!supabase) return;
+
+    const { data: company, error: fetchError } = await supabase
+      .from('companies')
+      .select('settings')
+      .eq('id', companyId)
+      .single();
+
+    if (fetchError) {
+      console.error('Error fetching company for payment settings:', fetchError);
+      return;
+    }
+
+    const { error } = await supabase
+      .from('companies')
+      .update({
+        settings: {
+          ...(company?.settings || {}),
+          paymentGateway: paymentConfig,
+        },
+      })
+      .eq('id', companyId);
+
+    if (error) {
+      console.error('Error saving payment gateway settings:', error);
+    }
+  },
+
+  getAllCompanies: async (): Promise<ResellerClient[]> => {
+    if (!supabase) return [];
+
+    const { data, error } = await supabase.from('companies').select('*');
+    if (error || !data) {
+      console.error('Error fetching companies:', error);
+      return [];
+    }
+
+    return data.map((company: any) => ({
+      id: company.id,
+      companyName: company.name,
+      contactName: company.settings?.contactName || 'Admin',
+      email: company.settings?.email || '',
+      employeeCount: company.settings?.employeeCount || 0,
+      plan: normalizePlanToFrontend(company.plan || 'Free') as any,
+      status: company.status || 'ACTIVE',
+      mrr: company.settings?.mrr || 0,
+    }));
+  },
+
+  updateCompanyStatus: async (companyId: string, status: 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'PENDING_PAYMENT') => {
+    if (!supabase) return;
+
+    const { error } = await supabase.from('companies').update({ status }).eq('id', companyId);
+    if (error) throw error;
+  },
+
+  deleteCompany: async (companyId: string) => {
+    if (!supabase) return false;
+
+    const { error } = await supabase.from('companies').delete().eq('id', companyId);
+    if (error) {
+      console.error('Error deleting company:', error);
+      return false;
+    }
+
+    return true;
   },
 
   getGlobalConfig: async (): Promise<GlobalConfig | null> => {

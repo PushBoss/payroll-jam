@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { User } from '../core/types';
 import { Icons } from '../components/Icons';
 import { toast } from 'sonner';
-import { supabaseService } from '../services/supabaseService';
+import { UserService } from '../services/UserService';
 import { supabase } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 
@@ -128,7 +128,7 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
 
       // Update user profile in database
       const updatedUser = { ...user, avatarUrl: publicUrl };
-      await supabaseService.saveUser(updatedUser);
+      await UserService.saveUser(updatedUser);
       onUpdate(updatedUser);
 
       toast.success('Profile photo updated successfully!');
@@ -148,7 +148,7 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
 
       // Update user profile to remove avatar
       const updatedUser = { ...user, avatarUrl: undefined };
-      await supabaseService.saveUser(updatedUser);
+      await UserService.saveUser(updatedUser);
       onUpdate(updatedUser);
 
       setAvatarUrl('');
@@ -187,10 +187,10 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
         phone: formData.phone.trim() || undefined,
       };
 
-      await supabaseService.saveUser(updatedUser);
+      await UserService.saveUser(updatedUser);
 
       // Reload user from Supabase to confirm save
-      const savedUser = await supabaseService.getUserByEmail(updatedUser.email);
+      const savedUser = await UserService.getUserByEmail(updatedUser.email);
       if (savedUser) {
         onUpdate(savedUser);
         toast.success('Profile updated successfully!');
@@ -223,7 +223,7 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
 
     setIsDeleting(true);
     try {
-      const success = await supabaseService.deleteAccount(
+      const success = await UserService.deleteAccount(
         user.id,
         user.role,
         user.companyId

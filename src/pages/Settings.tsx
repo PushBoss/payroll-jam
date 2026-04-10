@@ -7,9 +7,11 @@ import { getPlanPriceDetails } from '../utils/pricing';
 import { storage } from '../services/storage';
 import { auditService } from '../core/auditService';
 import { checkDbConnection } from '../services/supabaseClient';
-import { supabaseService } from '../services/supabaseService';
 import { BillingService } from '../services/BillingService';
 import { supabase } from '../services/supabaseClient';
+import { CompanyService } from '../services/CompanyService';
+import { ResellerService } from '../services/ResellerService';
+import { UserService } from '../services/UserService';
 
 import { dimePayService } from '../services/dimePayService';
 import { emailService } from '../services/emailService';
@@ -463,7 +465,7 @@ export const Settings: React.FC<SettingsProps> = ({
         const loadUsers = async () => {
             if (currentUser?.companyId) {
                 // Try to load from Supabase first
-                const dbUsers = await supabaseService.getCompanyUsers(currentUser.companyId);
+                const dbUsers = await UserService.getCompanyUsers(currentUser.companyId);
                 if (dbUsers && dbUsers.length > 0) {
                     setUsers(dbUsers);
                 } else {
@@ -541,7 +543,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
         setIsSavingCompany(true);
         try {
-            await supabaseService.saveCompany(currentUser.companyId, companyData);
+            await CompanyService.saveCompany(currentUser.companyId, companyData);
             auditService.log(currentUser, 'UPDATE', 'Company', 'Updated company settings');
             toast.success('Company settings saved successfully');
         } catch (error: any) {
@@ -579,14 +581,14 @@ export const Settings: React.FC<SettingsProps> = ({
                 try {
                     // Update user role in Supabase and locally
                     const updatedUser = { ...currentUser, role: Role.RESELLER };
-                    await supabaseService.saveUser(updatedUser);
+                    await UserService.saveUser(updatedUser);
                     updateUser({ role: Role.RESELLER });
 
                     // Add their current company as a company they manage
                     // This allows them to continue managing their own company as a reseller
                     if (currentUser.companyId) {
                         try {
-                            await supabaseService.saveResellerClientWithServiceRole(
+                            await ResellerService.saveResellerClientWithServiceRole(
                                 currentUser.companyId,
                                 currentUser.companyId,
                                 {
@@ -731,7 +733,7 @@ export const Settings: React.FC<SettingsProps> = ({
         // Save to Supabase if available
         if (currentUser?.companyId) {
             try {
-                await supabaseService.saveUser(newUser);
+                await UserService.saveUser(newUser);
             } catch (error) {
                 console.error("Error saving user to Supabase:", error);
                 toast.error("Failed to save user to database.");

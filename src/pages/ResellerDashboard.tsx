@@ -3,10 +3,11 @@ import React, { useState, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { ResellerClient, PricingPlan } from '../core/types';
 import { getPlanPriceDetails } from '../utils/pricing';
-import { supabaseService } from '../services/supabaseService';
 import { supabase } from '../services/supabaseClient';
 import { dimePayService } from '../services/dimePayService';
 import { emailService } from '../services/emailService';
+import { BillingService } from '../services/BillingService';
+import { ResellerService } from '../services/ResellerService';
 import { useAuth } from '../context/AuthContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { toast } from 'sonner';
@@ -43,20 +44,20 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
             try {
                 // If user has companyId, load reseller clients from reseller_clients table
                 if (user?.companyId) {
-                    const resellerClients = await supabaseService.getResellerClients(user.companyId);
+                    const resellerClients = await ResellerService.getResellerClients(user.companyId);
                     setClients(Array.isArray(resellerClients) ? resellerClients : []);
 
                     // Load pending invites
-                    const invites = await supabaseService.getResellerInvites(user.companyId);
+                    const invites = await ResellerService.getResellerInvites(user.companyId);
                     setPendingInvites(Array.isArray(invites) ? invites : []);
 
                     // Get compliance data
-                    const compOverview = await supabaseService.getComplianceOverview(user.companyId);
+                    const compOverview = await ResellerService.getComplianceOverview(user.companyId);
                     setComplianceMap(compOverview);
 
 
                     // Load reseller's own billing history (payments made by reseller)
-                    const paymentsData = await supabaseService.getPaymentHistory(user.companyId, 100);
+                    const paymentsData = await BillingService.getPaymentHistory(user.companyId, 100);
                     // Ensure payments is always an array
                     const payments = Array.isArray(paymentsData) ? paymentsData : [];
                     setBillingHistory(payments);
@@ -210,7 +211,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
         }
 
         try {
-            const success = await supabaseService.removeResellerClient(user.companyId, clientCompanyId);
+            const success = await ResellerService.removeResellerClient(user.companyId, clientCompanyId);
 
             if (success) {
                 setClients(prev => prev.filter(c => c.id !== clientCompanyId));
@@ -270,7 +271,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                 if (data.syncedCount > 0) {
                     toast.success(`Synced ${data.syncedCount} companies to your portfolio!`, { id: 'sync-portfolio' });
                     if (user.companyId) {
-                        const resellerClients = await supabaseService.getResellerClients(user.companyId);
+                        const resellerClients = await ResellerService.getResellerClients(user.companyId);
                         setClients(Array.isArray(resellerClients) ? resellerClients : []);
                     }
                 } else {
@@ -329,7 +330,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
 
                 if (!joinError && joinData?.success) {
                     toast.success(`${formData.companyName || 'Company'} added to your portfolio!`);
-                    const resellerClients = await supabaseService.getResellerClients(user.companyId);
+                    const resellerClients = await ResellerService.getResellerClients(user.companyId);
                     setClients(Array.isArray(resellerClients) ? resellerClients : []);
                 } else {
                     toast.error('Failed to link existing company to your portfolio');
@@ -344,7 +345,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                 const signupLink = `${window.location.origin}/?page=signup&token=${inviteToken}&resellerUserId=${user.id}&resellerEmail=${encodeURIComponent(user.email)}&resellerCompanyId=${user.companyId}&email=${encodeURIComponent(clientEmail)}&reseller=true&plan=${encodeURIComponent(formData.plan || 'Starter')}`;
 
                 // Save the invite to database
-                const inviteSaved = await supabaseService.saveResellerInvite(
+                const inviteSaved = await ResellerService.saveResellerInvite(
                     user.companyId,
                     clientEmail,
                     inviteToken,
@@ -369,7 +370,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                     toast.success(`Invitation sent to ${clientEmail}. They will appear in your portfolio once they sign up and accept.`);
 
                     // Reload pending invites
-                    const invites = await supabaseService.getResellerInvites(user.companyId);
+                    const invites = await ResellerService.getResellerInvites(user.companyId);
                     setPendingInvites(Array.isArray(invites) ? invites : []);
                 } else {
                     toast.error('Failed to send invitation email');
@@ -571,13 +572,13 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
         }
 
         try {
-            const success = await supabaseService.cancelResellerInvite(inviteId);
+            const success = await ResellerService.cancelResellerInvite(inviteId);
 
             if (success) {
                 toast.success('Invitation cancelled successfully');
                 // Reload pending invites
                 if (user?.companyId) {
-                    const invites = await supabaseService.getResellerInvites(user.companyId);
+                    const invites = await ResellerService.getResellerInvites(user.companyId);
                     setPendingInvites(Array.isArray(invites) ? invites : []);
                 }
             } else {
