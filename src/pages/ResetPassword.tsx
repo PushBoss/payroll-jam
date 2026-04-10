@@ -26,6 +26,34 @@ export const ResetPassword: React.FC = () => {
         console.log('🔍 Checking password reset session...');
         console.log('Current URL:', window.location.href);
         console.log('Hash:', window.location.hash);
+
+        const searchParams = new URLSearchParams(window.location.search);
+        const code = searchParams.get('code');
+        const searchError = searchParams.get('error');
+        const searchErrorDescription = searchParams.get('error_description');
+
+        if (searchError) {
+          console.error('❌ Error in URL query:', searchError, searchErrorDescription);
+          toast.error(searchErrorDescription || 'Invalid or expired reset link. Please request a new one.');
+          setTimeout(() => {
+            window.location.href = '/?page=login';
+          }, 3000);
+          setIsCheckingSession(false);
+          return;
+        }
+
+        // Newer Supabase recovery links may use PKCE with `?code=...`
+        if (code) {
+          console.log('✅ Found recovery code, exchanging for session...');
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+          if (exchangeError) {
+            console.error('❌ Error exchanging code for session:', exchangeError);
+            throw exchangeError;
+          }
+
+          // Give session a moment to settle
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
         
         // First, check if there's a hash fragment with tokens (from email link)
         const hashParams = new URLSearchParams(window.location.hash.substring(1));
