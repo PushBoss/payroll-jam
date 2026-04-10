@@ -84,6 +84,12 @@ const isSchemaMismatchError = (error: any) => {
     || message.includes('schema cache');
 };
 
+const getMissingColumnFromError = (error: any) => {
+  const message = `${error?.message || ''}`;
+  const match = message.match(/Could not find the '([^']+)' column/i);
+  return match?.[1] || null;
+};
+
 const mutateEmployeeRow = async (
   client: ReturnType<typeof requireSupabase>,
   payload: Record<string, any>,
@@ -102,6 +108,33 @@ const mutateEmployeeRow = async (
     default:
       return client.from('employees').upsert(payload);
   }
+};
+
+const mutateEmployeeRowWithSchemaFallback = async (
+  client: ReturnType<typeof requireSupabase>,
+  payload: Record<string, any>,
+  companyId: string,
+  mode: EmployeeSaveMode,
+) => {
+  const nextPayload = { ...payload };
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const result = await mutateEmployeeRow(client, nextPayload, companyId, mode);
+    if (!result.error) return result;
+
+    if (!isSchemaMismatchError(result.error)) {
+      return result;
+    }
+
+    const missingColumn = getMissingColumnFromError(result.error);
+    if (!missingColumn || !(missingColumn in nextPayload)) {
+      return result;
+    }
+
+    delete nextPayload[missingColumn];
+  }
+
+  return mutateEmployeeRow(client, nextPayload, companyId, mode);
 };
 
 
@@ -274,7 +307,7 @@ export const EmployeeService = {
       custom_deductions: persistedDeductions
     };
 
-    const { error: legacyError } = await mutateEmployeeRow(client, attemptLegacy, companyId, mode);
+    const { error: legacyError } = await mutateEmployeeRowWithSchemaFallback(client, attemptLegacy, companyId, mode);
     if (!legacyError) return;
 
     if (!isSchemaMismatchError(legacyError)) {
@@ -288,7 +321,7 @@ export const EmployeeService = {
       deductions: persistedDeductions
     };
 
-    const { error: newError } = await mutateEmployeeRow(client, attemptNew, companyId, mode);
+    const { error: newError } = await mutateEmployeeRowWithSchemaFallback(client, attemptNew, companyId, mode);
     if (newError) throw newError;
   },
 
