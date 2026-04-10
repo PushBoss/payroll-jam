@@ -274,13 +274,12 @@ export const EmployeeService = {
       : normalizedSimpleDeductions;
 
     const basePayload: Record<string, any> = {
-        id: emp.id,
-        company_id: companyId,
-        first_name: emp.firstName,
-        last_name: emp.lastName,
-        email: emp.email,
-        trn: emp.trn,
-        nis: emp.nis,
+      ...(mode === 'update' ? {} : { id: emp.id, company_id: companyId }),
+      first_name: emp.firstName,
+      last_name: emp.lastName,
+      email: emp.email,
+      trn: emp.trn,
+      nis: emp.nis,
       phone: emp.phone || null,
       address: emp.address || null,
       role: emp.role,
@@ -295,6 +294,24 @@ export const EmployeeService = {
       allowances: emp.allowances || [],
       termination_details: emp.terminationDetails || null,
       onboarding_token: emp.onboardingToken || null
+    };
+
+    const compatibilityPayload: Record<string, any> = {
+      ...(mode === 'update' ? {} : { id: emp.id, company_id: companyId }),
+      first_name: emp.firstName,
+      last_name: emp.lastName,
+      email: emp.email,
+      trn: emp.trn,
+      nis: emp.nis,
+      role: emp.role,
+      status: emp.status,
+      hire_date: emp.hireDate,
+      job_title: emp.jobTitle || null,
+      department: emp.department || null,
+      gross_salary: emp.grossSalary,
+      hourly_rate: emp.hourlyRate ?? null,
+      pay_type: emp.payType,
+      pay_frequency: emp.payFrequency
     };
 
     const attemptLegacy = {
@@ -320,6 +337,24 @@ export const EmployeeService = {
       pay_data: payData,
       deductions: persistedDeductions
     };
+
+    const compatibilityNew = {
+      ...compatibilityPayload,
+      pay_data: payData
+    };
+
+    if (mode === 'update') {
+      const updateCandidates = [attemptLegacy, compatibilityPayload, attemptNew, compatibilityNew];
+      let lastError: any = null;
+
+      for (const candidate of updateCandidates) {
+        const { error } = await mutateEmployeeRowWithSchemaFallback(client, candidate, companyId, mode);
+        if (!error) return;
+        lastError = error;
+      }
+
+      throw lastError;
+    }
 
     const { error: newError } = await mutateEmployeeRowWithSchemaFallback(client, attemptNew, companyId, mode);
     if (newError) throw newError;
