@@ -48,7 +48,6 @@ export const Layout: React.FC<LayoutProps> = ({
       { id: 'compliance', label: 'Compliance', icon: Icons.Compliance, feature: 'Compliance' },
       { id: 'ai-assistant', label: 'AI Assistant', icon: Icons.AI, feature: 'AI Assistant' },
       { id: 'settings', label: 'Settings', icon: Icons.Settings, feature: null },
-      { id: 'contact-us', label: 'Contact Us', icon: Icons.Mail, feature: null },
     ];
 
     // Add Partner Console item if user is Reseller
@@ -86,7 +85,6 @@ export const Layout: React.FC<LayoutProps> = ({
     { id: 'sa-users', label: 'Administrators', icon: Icons.Shield, feature: null },
     { id: 'sa-logs', label: 'Audit Logs', icon: Icons.Reports, feature: null },
     { id: 'sa-settings', label: 'Platform Settings', icon: Icons.Settings, feature: null },
-    { id: 'contact-us', label: 'Contact Us', icon: Icons.Mail, feature: null },
   ];
 
   const resellerNavItems = [
