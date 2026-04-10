@@ -1775,6 +1775,32 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     </div>
                 </div>
 
+                {/* Support Email Configuration */}
+                <div className="mb-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <div className="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 className="text-sm font-bold text-gray-900">Support Email</h3>
+                            <p className="text-xs text-gray-500">Where Contact Us messages are delivered</p>
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Support Inbox</label>
+                        <input
+                            type="email"
+                            value={paymentConfig.supportEmail || ''}
+                            onChange={(e) => setPaymentConfig({
+                                ...paymentConfig,
+                                supportEmail: e.target.value
+                            })}
+                            placeholder="support@yourdomain.com"
+                            className="w-full border border-gray-300 rounded p-2 text-sm"
+                        />
+                        <p className="text-xs text-gray-500 mt-2">
+                            This email address will receive Contact Support clicks and Contact Us form submissions.
+                        </p>
+                    </div>
+                </div>
+
                 {/* Data Source Toggle */}
                 <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                     <div className="flex justify-between items-center mb-2">

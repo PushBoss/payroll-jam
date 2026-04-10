@@ -7,9 +7,10 @@ interface VerifyEmailProps {
   email?: string;
   onLoginClick: () => void;
   onBack: () => void;
+  onContactSupport: () => void;
 }
 
-export const VerifyEmail: React.FC<VerifyEmailProps> = ({ email, onLoginClick, onBack }) => {
+export const VerifyEmail: React.FC<VerifyEmailProps> = ({ email, onLoginClick, onBack, onContactSupport }) => {
   const [isResending, setIsResending] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [hasExpiredError, setHasExpiredError] = useState(false);
@@ -218,9 +219,13 @@ export const VerifyEmail: React.FC<VerifyEmailProps> = ({ email, onLoginClick, o
         <div className="mt-8 text-center">
           <p className="text-xs text-gray-500">
             Need help?{' '}
-            <a href="mailto:support@payrolljam.com" className="text-jam-orange hover:underline font-medium">
+            <button
+              type="button"
+              onClick={onContactSupport}
+              className="text-jam-orange hover:underline font-medium"
+            >
               Contact Support
-            </a>
+            </button>
           </p>
         </div>
       </div>

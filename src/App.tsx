@@ -1,3 +1,5 @@
+import { ContactUs } from './pages/ContactUs';
+import { sendContactSupportClick } from './services/supportService';
 import { useState, useEffect, Suspense, lazy, useMemo } from 'react';
 import { Toaster, toast } from 'sonner';
 import { Layout } from './components/Layout';
@@ -868,21 +870,34 @@ function AppContent() {
   }
 
   if (!user) {
+    const handleContactSupport = (source: string, visitorEmail?: string) => {
+      // Fire-and-forget: navigate even if email sending fails.
+      sendContactSupportClick({
+        source,
+        visitorEmail,
+        currentUrl: typeof window !== 'undefined' ? window.location.href : undefined,
+        user: null
+      }).catch((e) => console.error('Contact support click email failed:', e));
+
+      navigateTo('contact-us');
+    };
+
     return (
       <Suspense fallback={<LoadingFallback />}>
         <Toaster richColors position="top-right" />
         <CookieConsent />
         {currentPath === 'login' && <Login onLoginSuccess={onLoginSuccess} onBack={() => navigateTo('home')} onRegisterClick={() => navigateTo('signup')} onVerifyEmailClick={(email) => { setVerifyEmail(email); navigateTo('verify-email'); }} />}
         {currentPath === 'signup' && <Signup initialPlan={selectedPlan} initialBillingCycle={selectedCycle} onLoginClick={() => navigateTo('login')} onVerifyEmailClick={(email) => { setVerifyEmail(email); navigateTo('verify-email'); }} onBack={() => navigateTo('home')} onNavigate={navigateTo} plans={plans} />}
-        {currentPath === 'verify-email' && <VerifyEmail email={verifyEmail} onLoginClick={() => navigateTo('login')} onBack={() => navigateTo('home')} />}
+        {currentPath === 'verify-email' && <VerifyEmail email={verifyEmail} onLoginClick={() => navigateTo('login')} onBack={() => navigateTo('home')} onContactSupport={() => handleContactSupport('verify-email', verifyEmail)} />}
         {currentPath === 'download-payslip' && <PublicPayslipDownload onBack={() => navigateTo('home')} />}
         {currentPath === 'pricing' && <Pricing onSignup={(plan, cycle) => { setSelectedPlan(plan); setSelectedCycle(cycle); navigateTo('signup'); }} onLogin={() => navigateTo('login')} onBack={() => navigateTo('home')} onFeaturesClick={() => navigateTo('features')} onFaqClick={() => navigateTo('faq')} onPrivacyClick={() => navigateTo('privacy-policy')} onTermsClick={() => navigateTo('terms-of-service')} plans={plans} />}
         {currentPath === 'features' && <Features onSignup={() => { setSelectedPlan('Starter'); setSelectedCycle('monthly'); navigateTo('signup'); }} onLogin={() => navigateTo('login')} onBack={() => navigateTo('home')} onPricingClick={() => navigateTo('pricing')} onFaqClick={() => navigateTo('faq')} onPrivacyClick={() => navigateTo('privacy-policy')} onTermsClick={() => navigateTo('terms-of-service')} />}
-        {currentPath === 'faq' && <FAQ onSignup={() => { setSelectedPlan('Starter'); setSelectedCycle('monthly'); navigateTo('signup'); }} onLogin={() => navigateTo('login')} onBack={() => navigateTo('home')} onPricingClick={() => navigateTo('pricing')} onFeaturesClick={() => navigateTo('features')} onPrivacyClick={() => navigateTo('privacy-policy')} onTermsClick={() => navigateTo('terms-of-service')} />}
+        {currentPath === 'faq' && <FAQ onSignup={() => { setSelectedPlan('Starter'); setSelectedCycle('monthly'); navigateTo('signup'); }} onLogin={() => navigateTo('login')} onBack={() => navigateTo('home')} onPricingClick={() => navigateTo('pricing')} onFeaturesClick={() => navigateTo('features')} onPrivacyClick={() => navigateTo('privacy-policy')} onTermsClick={() => navigateTo('terms-of-service')} onContactSupport={() => handleContactSupport('faq')} />}
         {currentPath === 'privacy-policy' && <PrivacyPolicy onBack={() => navigateTo('home')} />}
         {currentPath === 'terms-of-service' && <TermsOfService onBack={() => navigateTo('home')} />}
+        {currentPath === 'contact-us' && <ContactUs onBack={() => navigateTo('home')} />}
         {currentPath === 'home' && <LandingPage plans={plans} onLogin={() => navigateTo('login')} onSignup={(plan) => { setSelectedPlan(plan || 'Free'); setSelectedCycle('monthly'); navigateTo('signup'); }} onPricingClick={() => navigateTo('pricing')} onFeaturesClick={() => navigateTo('features')} onFaqClick={() => navigateTo('faq')} onPrivacyClick={() => navigateTo('privacy-policy')} onTermsClick={() => navigateTo('terms-of-service')} />}
-        {!['login', 'signup', 'verify-email', 'pricing', 'features', 'faq', 'home', 'privacy-policy', 'terms-of-service', 'download-payslip'].includes(currentPath) &&
+        {!['login', 'signup', 'verify-email', 'pricing', 'features', 'faq', 'contact-us', 'home', 'privacy-policy', 'terms-of-service', 'download-payslip'].includes(currentPath) &&
           <Login onLoginSuccess={onLoginSuccess} onBack={() => navigateTo('home')} onRegisterClick={() => navigateTo('signup')} onVerifyEmailClick={(email) => { setVerifyEmail(email); navigateTo('verify-email'); }} />
         }
       </Suspense>
@@ -930,6 +945,7 @@ function AppContent() {
         return <AiAssistant />;
       case 'settings': return <Settings companyData={companyData ?? undefined} onUpdateCompany={handleUpdateCompany} taxConfig={taxConfig} onUpdateTaxConfig={handleUpdateTaxConfig} integrationConfig={integrationConfig} onUpdateIntegration={setIntegrationConfig} departments={departments} onUpdateDepartments={handleUpdateDepartments} designations={designations} onUpdateDesignations={handleUpdateDesignations} plans={plans} />;
       case 'profile': return <Profile user={user} onUpdate={updateUser} />;
+      case 'contact-us': return <ContactUs />;
       case 'timesheets': return <TimeSheets timesheets={timesheets} onUpdate={ts => setTimesheets(timesheets.map(t => t.id === ts.id ? ts : t))} />;
       case 'portal-home': return <EmployeePortal user={user} employee={employees.find(e => e.email === user.email)} view="home" leaveRequests={leaveRequests} onRequestLeave={handleSaveLeaveRequest} payRunHistory={payRunHistory} companyData={companyData || undefined} onUpdateEmployee={handleUpdateEmployee} />;
       case 'portal-timesheets': return <EmployeePortal user={user} employee={employees.find(e => e.email === user.email)} view="timesheets" leaveRequests={leaveRequests} onRequestLeave={handleSaveLeaveRequest} onUpdateEmployee={handleUpdateEmployee} />;

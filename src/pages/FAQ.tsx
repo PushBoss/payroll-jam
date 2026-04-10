@@ -11,9 +11,10 @@ interface FAQProps {
   onFeaturesClick: () => void;
   onPrivacyClick?: () => void;
   onTermsClick?: () => void;
+  onContactSupport: () => void;
 }
 
-export const FAQ: React.FC<FAQProps> = ({ onSignup, onLogin, onBack, onPricingClick, onFeaturesClick, onPrivacyClick, onTermsClick }) => {
+export const FAQ: React.FC<FAQProps> = ({ onSignup, onLogin, onBack, onPricingClick, onFeaturesClick, onPrivacyClick, onTermsClick, onContactSupport }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
 
@@ -204,7 +205,11 @@ export const FAQ: React.FC<FAQProps> = ({ onSignup, onLogin, onBack, onPricingCl
           <h2 className="text-3xl font-bold mb-6">Still have questions?</h2>
           <p className="text-gray-400 mb-8">Our support team is based in Kingston and ready to assist you.</p>
           <div className="flex flex-col sm:flex-row justify-center space-y-4 sm:space-y-0 sm:space-x-4">
-            <button className="px-8 py-3 bg-jam-orange text-jam-black font-bold rounded-full hover:bg-yellow-500 transition-colors">
+            <button
+              type="button"
+              onClick={onContactSupport}
+              className="px-8 py-3 bg-jam-orange text-jam-black font-bold rounded-full hover:bg-yellow-500 transition-colors"
+            >
               Contact Support
             </button>
             <button onClick={onSignup} className="px-8 py-3 bg-gray-800 text-white font-bold rounded-full hover:bg-gray-700 transition-colors">

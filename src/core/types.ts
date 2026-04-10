@@ -447,6 +447,7 @@ export interface GlobalConfig {
   dataSource?: 'LOCAL' | 'SUPABASE';
   currency: 'JMD' | 'USD';
   pricingPlans?: PricingPlan[];
+  supportEmail?: string;
   emailjs?: {
     serviceId: string;
     templateId: string;
