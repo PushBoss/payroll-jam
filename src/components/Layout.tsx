@@ -119,7 +119,7 @@ export const Layout: React.FC<LayoutProps> = ({
     e.preventDefault();
     await logout();
     // Clear all storage and redirect
-    window.location.href = '/?page=login';
+    window.location.href = '/login';
   };
 
   return (

@@ -36,7 +36,7 @@ export const ResetPassword: React.FC = () => {
           console.error('❌ Error in URL query:', searchError, searchErrorDescription);
           toast.error(searchErrorDescription || 'Invalid or expired reset link. Please request a new one.');
           setTimeout(() => {
-            window.location.href = '/?page=login';
+            window.location.href = '/login';
           }, 3000);
           setIsCheckingSession(false);
           return;
@@ -76,7 +76,7 @@ export const ResetPassword: React.FC = () => {
           console.error('❌ Error in URL:', error, errorDescription);
           toast.error(errorDescription || 'Invalid or expired reset link. Please request a new one.');
           setTimeout(() => {
-            window.location.href = '/?page=login';
+            window.location.href = '/login';
           }, 3000);
           setIsCheckingSession(false);
           return;
@@ -118,7 +118,7 @@ export const ResetPassword: React.FC = () => {
             duration: 5000
           });
           setTimeout(() => {
-            window.location.href = '/?page=login';
+            window.location.href = '/login';
           }, 3000);
         } else {
           console.log('✅ Valid session found');
@@ -128,7 +128,7 @@ export const ResetPassword: React.FC = () => {
         console.error('❌ Session check error:', err);
         toast.error(err.message || 'Error verifying reset link. Please request a new one.');
         setTimeout(() => {
-          window.location.href = '/?page=login';
+          window.location.href = '/login';
         }, 3000);
       } finally {
         setIsCheckingSession(false);
@@ -173,7 +173,7 @@ export const ResetPassword: React.FC = () => {
       
       // Redirect to login page
       setTimeout(() => {
-        window.location.href = '/?page=login';
+        window.location.href = '/login';
       }, 1500);
       
       // Note: Keep isLoading true to prevent double submission
@@ -308,7 +308,7 @@ export const ResetPassword: React.FC = () => {
 
           <div className="mt-6 text-center">
             <a
-              href="/?page=login"
+              href="/login"
               className="text-sm font-medium text-jam-orange hover:text-yellow-600"
             >
               Back to Login

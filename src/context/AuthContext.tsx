@@ -9,6 +9,7 @@ import { getAuthRedirectUrl } from '../utils/domainConfig';
 import { getPendingInvitationsByEmail, acceptMultipleInvitations, AccountMember } from '../features/employees/inviteService';
 import { normalizePlanToDatabase } from '../utils/planNames';
 import { toast } from 'sonner';
+import { AppRoute, getPathForRoute } from '../app/routes';
 
 interface AuthContextType {
   user: User | null;
@@ -185,7 +186,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               toast.success('Email confirmed! Welcome to PayrollJam.');
 
               // Determine redirect path based on user role
-              let redirectPath = 'dashboard';
+              let redirectPath: AppRoute = 'dashboard';
               if (appUser.role === Role.EMPLOYEE) {
                 redirectPath = 'portal-home';
               } else if (appUser.role === Role.RESELLER) {
@@ -195,7 +196,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               }
 
               setTimeout(() => {
-                if (isMounted) window.location.href = `/?page=${redirectPath}`;
+                if (isMounted) window.location.href = getPathForRoute(redirectPath);
               }, 1500);
             }
           } else if (!appUser && isMounted) {
@@ -347,7 +348,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           email: userData.email,
           password: userData.password,
           options: {
-            emailRedirectTo: getAuthRedirectUrl('?page=verify-email'),
+            emailRedirectTo: getAuthRedirectUrl('/verify-email'),
           },
         });
         authData = response.data;

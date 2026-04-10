@@ -2,6 +2,7 @@
 import emailjs from '@emailjs/browser';
 import { storage } from './storage';
 import { smtpEmailService } from './smtpEmailService';
+import { buildAppUrl } from '../app/routes';
 
 export const emailService = {
   /**
@@ -243,7 +244,7 @@ export const emailService = {
     const apiUrl = import.meta.env.VITE_API_URL;
     if (apiUrl) {
       console.log('📧 Sending reseller upgrade notification via SMTP...');
-      const dashboardUrl = typeof window !== 'undefined' ? `${window.location.origin}/?page=reseller-dashboard` : 'https://payroll-jam.com/?page=reseller-dashboard';
+      const dashboardUrl = buildAppUrl('reseller-dashboard');
       const result = await smtpEmailService.sendResellerUpgradeNotification(email, companyName, userName, dashboardUrl);
       if (result.success) {
         return result;
@@ -267,7 +268,7 @@ export const emailService = {
         to_email: email,
         to_name: userName,
         message: `Congratulations! ${companyName} has successfully upgraded to the Reseller Plan. You now have access to white label capabilities, client management, and wholesale pricing.`,
-        link: window.location.origin + '/?page=reseller-dashboard',
+        link: buildAppUrl('reseller-dashboard'),
         company_name: companyName,
         action_type: 'RESELLER_UPGRADE'
       };
@@ -315,7 +316,7 @@ export const emailService = {
     }
 
     try {
-      const downloadLink = downloadToken ? `${window.location.origin}/?page=download-payslip&token=${downloadToken}` : window.location.origin;
+      const downloadLink = downloadToken ? buildAppUrl('download-payslip', { token: downloadToken }) : buildAppUrl('home');
       
       const templateParams = {
         to_email: email,

@@ -33,6 +33,7 @@ export interface EmailPayload {
 }
 
 import { supabase } from './supabaseClient';
+import { buildAppUrl } from '../app/routes';
 
 /**
  * Send email via backend API endpoint
@@ -415,7 +416,7 @@ If you did not expect this invitation, you can safely ignore this email.
     userName: string,
     dashboardUrl?: string
   ): Promise<{ success: boolean; message?: string }> => {
-    const dashboardLink = dashboardUrl || (typeof window !== 'undefined' ? `${window.location.origin}/?page=reseller-dashboard` : 'https://payroll-jam.com/?page=reseller-dashboard');
+    const dashboardLink = dashboardUrl || buildAppUrl('reseller-dashboard');
     const htmlContent = `
       <!DOCTYPE html>
       <html>
@@ -512,8 +513,8 @@ Thank you for choosing Payroll-Jam as your payroll solution!
   ): Promise<{ success: boolean; message?: string }> => {
     const buttonText = hasPortalAccess ? 'View Payslip in Portal' : 'Download PDF';
     const buttonUrl = hasPortalAccess 
-      ? `${loginLink}/?page=portal-home` 
-      : `${loginLink}/?page=download-payslip&token=${downloadToken}`;
+      ? buildAppUrl('portal-home', undefined, loginLink)
+      : buildAppUrl('download-payslip', { token: downloadToken }, loginLink);
     const instructionText = hasPortalAccess 
       ? 'Log in to your employee portal to view your full payslip and access all your pay history.'
       : 'Click the button below to view and download your payslip PDF. No login required.';

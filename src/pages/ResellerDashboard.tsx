@@ -11,6 +11,7 @@ import { ResellerService } from '../services/ResellerService';
 import { useAuth } from '../context/AuthContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { toast } from 'sonner';
+import { buildAppUrl } from '../app/routes';
 
 interface ResellerDashboardProps {
     onManageClient?: (client: ResellerClient) => void;
@@ -342,7 +343,15 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                 // Include Reseller's own user ID, email, and company ID in the signup link 
                 // This allows the client to link to the reseller and add them as a team member 
                 // during signup without needing to perform complex database lookups that RLS might block.
-                const signupLink = `${window.location.origin}/?page=signup&token=${inviteToken}&resellerUserId=${user.id}&resellerEmail=${encodeURIComponent(user.email)}&resellerCompanyId=${user.companyId}&email=${encodeURIComponent(clientEmail)}&reseller=true&plan=${encodeURIComponent(formData.plan || 'Starter')}`;
+                const signupLink = buildAppUrl('signup', {
+                    token: inviteToken,
+                    resellerUserId: user.id,
+                    resellerEmail: user.email,
+                    resellerCompanyId: user.companyId,
+                    email: clientEmail,
+                    reseller: 'true',
+                    plan: formData.plan || 'Starter'
+                });
 
                 // Save the invite to database
                 const inviteSaved = await ResellerService.saveResellerInvite(

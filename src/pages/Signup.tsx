@@ -699,7 +699,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                                 {onNavigate ? (
                                                     <>
                                                         <a
-                                                            href="/?page=terms-of-service"
+                                                            href="/terms-of-service"
                                                             target="_blank"
                                                             rel="noopener noreferrer"
                                                             className="underline hover:text-jam-orange text-jam-orange"
@@ -708,7 +708,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                                         </a>
                                                         {' '}and{' '}
                                                         <a
-                                                            href="/?page=privacy-policy"
+                                                            href="/privacy-policy"
                                                             target="_blank"
                                                             rel="noopener noreferrer"
                                                             className="underline hover:text-jam-orange text-jam-orange"
@@ -718,7 +718,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                                     </>
                                                 ) : (
                                                     <>
-                                                        <a href="/?page=terms-of-service" target="_blank" rel="noopener noreferrer" className="underline hover:text-jam-orange">Terms of Service</a> and <a href="/?page=privacy-policy" target="_blank" rel="noopener noreferrer" className="underline hover:text-jam-orange">Privacy Policy</a>
+                                                        <a href="/terms-of-service" target="_blank" rel="noopener noreferrer" className="underline hover:text-jam-orange">Terms of Service</a> and <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="underline hover:text-jam-orange">Privacy Policy</a>
                                                     </>
                                                 )}
                                                 .

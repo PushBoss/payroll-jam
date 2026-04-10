@@ -139,7 +139,7 @@ export const useWorkforceData = ({ user, isSupabaseMode }: UseWorkforceDataArgs)
         email: employee.email,
         password,
         options: {
-          emailRedirectTo: getAuthRedirectUrl('?page=verify-email'),
+          emailRedirectTo: getAuthRedirectUrl('/verify-email'),
         },
       });
 
@@ -176,7 +176,7 @@ export const useWorkforceData = ({ user, isSupabaseMode }: UseWorkforceDataArgs)
       toast.success('Account created successfully! Welcome aboard!');
       setEmployeeAccountSetup(null);
       await new Promise((resolve) => setTimeout(resolve, 500));
-      window.location.href = '/?page=portal-home';
+      window.location.href = '/portal';
     } catch (error: any) {
       console.error('Error setting up employee account:', error);
       toast.error(error?.message || 'Failed to create account. Please try again or contact your employer.');

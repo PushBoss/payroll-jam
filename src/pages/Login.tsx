@@ -119,7 +119,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBack, onRegister
       console.log('🔄 Requesting password reset for:', resetEmail);
       
       // Use getAuthRedirectUrl to ensure www.payrolljam.com is used for email verification
-      const redirectUrl = getAuthRedirectUrl('?page=reset-password');
+      const redirectUrl = getAuthRedirectUrl('/reset-password');
       console.log('Redirect URL:', redirectUrl);
       
       const { data, error } = await supabase.auth.resetPasswordForEmail(resetEmail, {

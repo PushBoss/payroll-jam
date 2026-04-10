@@ -1,6 +1,14 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { User } from '../core/types';
-import { AppRoute, getRouteFromLocation, TRANSIENT_QUERY_KEYS } from './routes';
+import {
+  AppRoute,
+  getPathForRoute,
+  getRouteFromLocation,
+  normalizePathname,
+  parseRoute,
+  TRANSIENT_QUERY_KEYS,
+} from './routes';
 
 export interface NavigateOptions {
   editRunId?: string;
@@ -12,52 +20,92 @@ export interface NavigateOptions {
 export type NavigateFunction = (path: AppRoute, options?: NavigateOptions) => void;
 
 export const useAppNavigation = (user: User | null) => {
-  const [currentPath, setCurrentPath] = useState<AppRoute>(() => getRouteFromLocation(user));
+  const location = useLocation();
+  const navigate = useNavigate();
   const [editRunId, setEditRunId] = useState<string | undefined>(undefined);
 
-  const navigateTo = useCallback<NavigateFunction>((path, options = {}) => {
-    setCurrentPath(path);
+  const currentPath = useMemo(
+    () => getRouteFromLocation(user, { pathname: location.pathname, search: location.search }),
+    [location.pathname, location.search, user]
+  );
 
+  const navigateTo = useCallback<NavigateFunction>((path, options = {}) => {
     if (options.editRunId) {
       setEditRunId(options.editRunId);
     } else if (path !== 'payrun') {
       setEditRunId(undefined);
     }
 
-    if (typeof window === 'undefined') return;
+    const nextParams = new URLSearchParams(location.search);
 
-    try {
-      const newUrl = new URL(window.location.href);
-
-      if (!options.preserveCurrentQuery) {
-        TRANSIENT_QUERY_KEYS.forEach((key) => newUrl.searchParams.delete(key));
-      }
-
-      newUrl.searchParams.set('page', path);
-      Object.entries(options.query || {}).forEach(([key, value]) => {
-        if (value === undefined || value === null || value === '') {
-          newUrl.searchParams.delete(key);
-        } else {
-          newUrl.searchParams.set(key, value);
-        }
-      });
-
-      const method = options.replace ? 'replaceState' : 'pushState';
-      window.history[method]({ path }, '', newUrl.toString());
-    } catch (error) {
-      console.warn('Navigation failed to update URL history:', error);
+    if (!options.preserveCurrentQuery) {
+      TRANSIENT_QUERY_KEYS.forEach((key) => nextParams.delete(key));
     }
-  }, []);
+
+    nextParams.delete('page');
+
+    Object.entries(options.query || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === '') {
+        nextParams.delete(key);
+      } else {
+        nextParams.set(key, value);
+      }
+    });
+
+    const search = nextParams.toString();
+
+    navigate(
+      {
+        pathname: getPathForRoute(path),
+        search: search ? `?${search}` : '',
+        hash: location.hash,
+      },
+      { replace: options.replace }
+    );
+  }, [location.hash, location.search, navigate]);
 
   useEffect(() => {
-    const handlePopState = () => {
-      setCurrentPath(getRouteFromLocation(user));
-      setEditRunId(undefined);
-    };
+    const params = new URLSearchParams(location.search);
+    const legacyRoute = parseRoute(params.get('page'));
 
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, [user]);
+    if (legacyRoute) {
+      params.delete('page');
+      const search = params.toString();
+      const canonicalPath = getPathForRoute(legacyRoute);
+
+      if (
+        normalizePathname(location.pathname) !== normalizePathname(canonicalPath) ||
+        location.search.includes('page=')
+      ) {
+        navigate(
+          {
+            pathname: canonicalPath,
+            search: search ? `?${search}` : '',
+            hash: location.hash,
+          },
+          { replace: true }
+        );
+      }
+      return;
+    }
+
+    if (normalizePathname(location.pathname) === '/' && currentPath !== 'home') {
+      navigate(
+        {
+          pathname: getPathForRoute(currentPath),
+          search: location.search,
+          hash: location.hash,
+        },
+        { replace: true }
+      );
+    }
+  }, [currentPath, location.hash, location.pathname, location.search, navigate]);
+
+  useEffect(() => {
+    if (currentPath !== 'payrun') {
+      setEditRunId(undefined);
+    }
+  }, [currentPath]);
 
   return {
     currentPath,

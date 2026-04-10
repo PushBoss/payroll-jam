@@ -24,6 +24,7 @@ import { getUserRoleInAccount, MemberRole } from '../features/employees/inviteSe
 import { InviteUserCard } from '../components/InviteUserCard';
 import { AccountMembersCard } from '../components/AccountMembersCard';
 import { TaxConfigCard } from '../features/employees/TaxConfigCard';
+import { buildAppUrl } from '../app/routes';
 
 
 interface SettingsProps {
@@ -631,7 +632,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
                 // Reload page to ensure reseller dashboard loads properly
                 setTimeout(() => {
-                    window.location.href = '/?page=reseller-dashboard';
+                    window.location.href = '/partner';
                 }, 1500);
             } else {
                 toast.success(`Successfully switched to ${upgradeTarget.name}!`);
@@ -705,7 +706,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
         // Generate invite token and link
         const onboardingToken = generateUUID();
-        const inviteLink = `${window.location.origin}/?page=signup&token=${onboardingToken}&email=${encodeURIComponent(inviteForm.email)}`;
+        const inviteLink = buildAppUrl('signup', { token: onboardingToken, email: inviteForm.email });
 
         const newUser: User = {
             id: `u-${Date.now()}`,

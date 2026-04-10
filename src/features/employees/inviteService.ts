@@ -1,5 +1,6 @@
 import { supabase } from '../../services/supabaseClient';
 import { emailService } from '../../services/emailService';
+import { buildAppUrl } from '../../app/routes';
 
 
 export type MemberRole = 'OWNER' | 'ADMIN' | 'MANAGER' | 'EMPLOYEE' | 'RESELLER' | 'owner' | 'admin' | 'manager' | 'employee' | 'reseller';
@@ -245,8 +246,8 @@ export async function inviteUserToAccount(payload: {
       // If user doesn't exist, we should direct them to signup.
       // If they do exist, we can direct them to the dashboard where they will see the acceptance prompt.
       const inviteLink = exists
-        ? `${window.location.origin}/?page=dashboard`
-        : `${window.location.origin}/?page=signup&email=${encodeURIComponent(normalizedEmail)}&invitation=true`;
+        ? buildAppUrl('dashboard')
+        : buildAppUrl('signup', { email: normalizedEmail, invitation: 'true' });
 
       // Send manager invite email (for team member invitations)
       await emailService.sendManagerInvite(
@@ -612,14 +613,14 @@ export async function resendInvitation(memberId: string): Promise<{ success: boo
         email,
         email.split('@')[0],
         companyName,
-        `${window.location.origin}/?page=dashboard`,
+        buildAppUrl('dashboard'),
         role
       );
     } else {
       await emailService.sendInvite(
         email,
         email.split('@')[0],
-        `${window.location.origin}/?page=settings&section=team`
+        buildAppUrl('settings', { section: 'team' })
       );
     }
 
