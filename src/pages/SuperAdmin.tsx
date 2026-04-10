@@ -500,7 +500,21 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     const handleAddAdmin = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (!newAdminForm.password || newAdminForm.password.length < 6) {
+        const email = newAdminForm.email.trim().toLowerCase();
+        const name = newAdminForm.name.trim();
+        const password = newAdminForm.password;
+
+        if (!name) {
+            toast.error('Name is required');
+            return;
+        }
+
+        if (!email) {
+            toast.error('Email is required');
+            return;
+        }
+
+        if (!password || password.length < 6) {
             toast.error("Password must be at least 6 characters");
             return;
         }
@@ -512,12 +526,23 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
 
             // 1. Create auth user in Supabase Auth using edge function
             const { data: adminRes, error: invokeError } = await supabase.functions.invoke('admin-handler', {
-                body: { action: 'onboard-confirmed-user', payload: { email: newAdminForm.email, password: newAdminForm.password, name: newAdminForm.name } }
+                body: { action: 'onboard-confirmed-user', payload: { email, password, name } }
             });
 
             if (invokeError || !adminRes?.user) {
-                console.error('❌ Auth signup error:', invokeError || adminRes);
-                toast.error('Failed to create admin user');
+                const rawBody = (invokeError as any)?.context?.body;
+                let edgeMessage: string | undefined;
+                if (typeof rawBody === 'string' && rawBody.length > 0) {
+                    try {
+                        const parsed = JSON.parse(rawBody);
+                        edgeMessage = parsed?.error;
+                    } catch {
+                        edgeMessage = rawBody;
+                    }
+                }
+
+                console.error('❌ Auth signup error:', { invokeError, adminRes, edgeMessage });
+                toast.error(edgeMessage || invokeError?.message || 'Failed to create admin user');
                 return;
             }
             
@@ -535,8 +560,8 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 .insert({
                     id: authData.user.id,
                     auth_user_id: authData.user.id,
-                    email: newAdminForm.email,
-                    name: newAdminForm.name,
+                    email,
+                    name,
                     role: 'SUPER_ADMIN',
                     is_onboarded: true
                 });
@@ -560,7 +585,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             // 3. Update local state and refresh from DB
             setIsAddAdminOpen(false);
             setNewAdminForm({ name: '', email: '', password: '' });
-            auditService.log({ id: 'sys', name: 'Super Admin', email: 'sys', role: Role.SUPER_ADMIN }, 'CREATE', 'User', `Created new super admin: ${newAdminForm.email}`);
+            auditService.log({ id: 'sys', name: 'Super Admin', email: 'sys', role: Role.SUPER_ADMIN }, 'CREATE', 'User', `Created new super admin: ${email}`);
             toast.success("New admin created successfully");
 
             // Refresh admins list from database
@@ -1020,6 +1045,8 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                     required
                                     type="password"
                                     minLength={6}
+                                    name="new-password"
+                                    autoComplete="new-password"
                                     className="w-full border border-gray-300 rounded px-3 py-2"
                                     value={newAdminForm.password}
                                     onChange={e => setNewAdminForm({ ...newAdminForm, password: e.target.value })}

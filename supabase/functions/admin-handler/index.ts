@@ -44,6 +44,14 @@ serve(async (req: Request) => {
         const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
         const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 
+        if (!supabaseUrl) {
+            throw new Error('Missing SUPABASE_URL in function environment');
+        }
+
+        if (!supabaseServiceKey) {
+            throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY secret for admin operations');
+        }
+
         // Create the admin client to bypass RLS
         const adminClient = createClient(supabaseUrl, supabaseServiceKey, {
             auth: {
@@ -96,14 +104,31 @@ serve(async (req: Request) => {
             }
             
             case 'onboard-confirmed-user': {
+                if (!payload || typeof payload !== 'object') {
+                    throw new Error('Missing payload for onboard-confirmed-user');
+                }
+
                 const { email, password, name } = payload;
+                if (!email || typeof email !== 'string') throw new Error('Email is required');
+                if (!password || typeof password !== 'string') throw new Error('Password is required');
+
+                const normalizedEmail = email.trim().toLowerCase();
+                const normalizedName = typeof name === 'string' ? name.trim() : '';
+
+                if (!normalizedEmail.includes('@')) {
+                    throw new Error('Invalid email address');
+                }
+
+                if (password.length < 6) {
+                    throw new Error('Password must be at least 6 characters');
+                }
                 // Only allow this if perhaps we don't have strict authUser constraints, or specifically reseller/owner
                 const { data, error } = await adminClient.auth.admin.createUser({
-                    email,
+                    email: normalizedEmail,
                     password,
                     email_confirm: true,
                     user_metadata: {
-                        full_name: name
+                        full_name: normalizedName
                     }
                 });
                 
