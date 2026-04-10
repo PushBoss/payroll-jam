@@ -1,29 +1,20 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
   CompanySettings,
-  Department,
-  Designation,
-  DocumentTemplate,
   Employee,
-  GlobalConfig,
-  IntegrationConfig,
-  PricingPlan,
   Role,
-  TaxConfig,
   User,
 } from '../core/types';
 import { storage } from '../services/storage';
-import { updateGlobalConfig } from '../services/updateGlobalConfig';
 import { EmployeeService } from '../services/EmployeeService';
 import { PayrollService } from '../services/PayrollService';
 import { CompanyService } from '../services/CompanyService';
-import { INITIAL_PLANS } from '../services/planService';
 import { initializeCacheValidation } from '../utils/cacheUtils';
 import { AdminService } from '../services/AdminService';
-import { DEFAULT_TAX_CONFIG } from '../features/payroll/payrollConfig';
 import { useWorkforceData } from '../features/employees/useWorkforceData';
 import { usePayrollData } from '../features/payroll/usePayrollData';
+import { useCompanyConfigData } from '../features/company/useCompanyConfigData';
 import { useSubscription } from '../hooks/useSubscription';
 import { NavigateFunction } from './useAppNavigation';
 
@@ -35,38 +26,36 @@ interface UseAppDataArgs {
 }
 
 export const useAppData = ({ user, updateUser, impersonate, navigateTo }: UseAppDataArgs) => {
-  const [globalConfig, setGlobalConfig] = useState<GlobalConfig | null>(() => storage.getGlobalConfig());
   const [dataLoading, setDataLoading] = useState(false);
   const [verifyEmail, setVerifyEmail] = useState('');
   const [selectedPlan, setSelectedPlan] = useState('Starter');
   const [selectedCycle, setSelectedCycle] = useState<'monthly' | 'annual'>('monthly');
-  const [companyData, setCompanyData] = useState<CompanySettings | null>(storage.getCompanyData());
-  const [taxConfig, setTaxConfig] = useState<TaxConfig>(storage.getTaxConfig() || DEFAULT_TAX_CONFIG);
-  const [integrationConfig, setIntegrationConfig] = useState<IntegrationConfig>(
-    storage.getIntegrationConfig() || { provider: 'CSV', mappings: [] }
-  );
-  const [templates, setTemplates] = useState<DocumentTemplate[]>(storage.getTemplates() || []);
-  const [plans, setPlans] = useState<PricingPlan[]>(() => storage.getPricingPlans() || INITIAL_PLANS);
-  const [departments, setDepartments] = useState<Department[]>(storage.getDepartments() || []);
-  const [designations, setDesignations] = useState<Designation[]>(storage.getDesignations() || []);
 
   useEffect(() => {
     initializeCacheValidation();
   }, []);
 
-  const hasSupabaseEnv = Boolean(import.meta.env?.VITE_SUPABASE_URL && import.meta.env?.VITE_SUPABASE_ANON_KEY);
-
-  useEffect(() => {
-    if (!hasSupabaseEnv || globalConfig?.dataSource === 'SUPABASE') return;
-    const updatedConfig = { ...(globalConfig || {}), dataSource: 'SUPABASE' } as GlobalConfig;
-    storage.saveGlobalConfig(updatedConfig);
-    setGlobalConfig(updatedConfig);
-  }, [globalConfig, hasSupabaseEnv]);
-
-  const isSupabaseMode = useMemo(() => {
-    if (hasSupabaseEnv) return true;
-    return globalConfig?.dataSource === 'SUPABASE';
-  }, [globalConfig?.dataSource, hasSupabaseEnv]);
+  const companyConfig = useCompanyConfigData();
+  const {
+    globalConfig,
+    companyData,
+    setCompanyData,
+    taxConfig,
+    integrationConfig,
+    setIntegrationConfig,
+    templates,
+    setTemplates,
+    plans,
+    departments,
+    designations,
+    isSupabaseMode,
+    applyLoadedCompany,
+    handleUpdatePlans,
+    handleUpdateCompany: updateCompany,
+    handleUpdateDepartments: updateDepartments,
+    handleUpdateDesignations: updateDesignations,
+    handleUpdateTaxConfig: updateTaxConfig,
+  } = companyConfig;
 
   const workforce = useWorkforceData({
     user,
@@ -146,11 +135,7 @@ export const useAppData = ({ user, updateUser, impersonate, navigateTo }: UseApp
         }
 
         if (dbCompany) {
-          setCompanyData(dbCompany);
-          if (dbCompany.taxConfig) setTaxConfig(dbCompany.taxConfig);
-          if ((dbCompany as any).departments) setDepartments((dbCompany as any).departments);
-          if ((dbCompany as any).designations) setDesignations((dbCompany as any).designations);
-          storage.saveCompanyData(dbCompany);
+          applyLoadedCompany(dbCompany);
         } else {
           toast.error("Couldn't load company settings. Please try refreshing.");
         }
@@ -168,122 +153,22 @@ export const useAppData = ({ user, updateUser, impersonate, navigateTo }: UseApp
     }
 
     void loadData();
-  }, [isSupabaseMode, user?.companyId, user?.originalRole]);
-
-  useEffect(() => {
-    storage.saveTaxConfig(taxConfig);
-  }, [taxConfig]);
-
-  useEffect(() => {
-    storage.saveIntegrationConfig(integrationConfig);
-  }, [integrationConfig]);
-
-  useEffect(() => {
-    storage.saveTemplates(templates);
-  }, [templates]);
-
-  useEffect(() => {
-    storage.saveDepartments(departments);
-  }, [departments]);
-
-  useEffect(() => {
-    storage.saveDesignations(designations);
-  }, [designations]);
-
-  useEffect(() => {
-    async function loadPlansFromBackend() {
-      if (!isSupabaseMode) {
-        setPlans(INITIAL_PLANS);
-        return;
-      }
-
-      try {
-        const config = await CompanyService.getGlobalConfig();
-        if (config) {
-          setGlobalConfig(config);
-          storage.saveGlobalConfig(config);
-        }
-
-        if (config?.pricingPlans && Array.isArray(config.pricingPlans) && config.pricingPlans.length > 0) {
-          setPlans(config.pricingPlans);
-          storage.savePricingPlans(config.pricingPlans);
-          return;
-        }
-
-        setPlans(INITIAL_PLANS);
-        storage.savePricingPlans(INITIAL_PLANS);
-        await updateGlobalConfig({ pricingPlans: INITIAL_PLANS });
-      } catch (error) {
-        console.error('Failed to load plans from backend, using cache or defaults:', error);
-        const cached = storage.getPricingPlans();
-        setPlans(cached || INITIAL_PLANS);
-      }
-    }
-
-    void loadPlansFromBackend();
-  }, [isSupabaseMode]);
-
-  const handleUpdatePlans = async (updatedPlans: PricingPlan[]) => {
-    setPlans(updatedPlans);
-    storage.savePricingPlans(updatedPlans);
-
-    if (isSupabaseMode) {
-      try {
-        await updateGlobalConfig({ pricingPlans: updatedPlans });
-      } catch (error) {
-        console.error('Failed to update plans in backend:', error);
-        toast.error('Failed to save pricing plans');
-      }
-    }
-  };
+  }, [applyLoadedCompany, isSupabaseMode, user?.companyId, user?.originalRole]);
 
   const handleUpdateCompany = async (data: CompanySettings) => {
-    const updatedData = {
-      ...data,
-      departments: (data as any).departments || departments,
-      designations: (data as any).designations || designations,
-    };
-
-    setCompanyData(updatedData);
-    storage.saveCompanyData(updatedData);
-    if (isSupabaseMode && user?.companyId) {
-      await CompanyService.saveCompany(user.companyId, updatedData);
-    }
+    await updateCompany(data, user?.companyId);
   };
 
-  const handleUpdateDepartments = async (newDepartments: Department[]) => {
-    setDepartments(newDepartments);
-    if (companyData) {
-      const updated = { ...companyData, departments: newDepartments } as any;
-      setCompanyData(updated);
-      if (isSupabaseMode && user?.companyId) {
-        await CompanyService.saveCompany(user.companyId, updated);
-      }
-    }
+  const handleUpdateDepartments = async (newDepartments: any[]) => {
+    await updateDepartments(newDepartments, user?.companyId);
   };
 
-  const handleUpdateDesignations = async (newDesignations: Designation[]) => {
-    setDesignations(newDesignations);
-    if (companyData) {
-      const updated = { ...companyData, designations: newDesignations } as any;
-      setCompanyData(updated);
-      if (isSupabaseMode && user?.companyId) {
-        await CompanyService.saveCompany(user.companyId, updated);
-      }
-    }
+  const handleUpdateDesignations = async (newDesignations: any[]) => {
+    await updateDesignations(newDesignations, user?.companyId);
   };
 
-  const handleUpdateTaxConfig = async (newConfig: TaxConfig) => {
-    setTaxConfig(newConfig);
-    if (companyData) {
-      const updated = { ...companyData, taxConfig: newConfig };
-      setCompanyData(updated);
-      storage.saveCompanyData(updated);
-      if (isSupabaseMode && user?.companyId) {
-        await CompanyService.saveCompany(user.companyId, updated);
-        toast.success('Tax configuration updated');
-      }
-    }
+  const handleUpdateTaxConfig = async (newConfig: any) => {
+    await updateTaxConfig(newConfig, user?.companyId);
   };
 
   const onLoginSuccess = (signedInUser: User) => {
