@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
   CompanySettings,
@@ -95,7 +95,7 @@ export const useCompanyConfigData = () => {
     void loadPlansFromBackend();
   }, [isSupabaseMode]);
 
-  const applyLoadedCompany = (loadedCompany: CompanySettings | null) => {
+  const applyLoadedCompany = useCallback((loadedCompany: CompanySettings | null) => {
     if (!loadedCompany) return;
 
     setCompanyData(loadedCompany);
@@ -103,9 +103,9 @@ export const useCompanyConfigData = () => {
     if ((loadedCompany as any).departments) setDepartments((loadedCompany as any).departments);
     if ((loadedCompany as any).designations) setDesignations((loadedCompany as any).designations);
     storage.saveCompanyData(loadedCompany);
-  };
+  }, []);
 
-  const handleUpdatePlans = async (updatedPlans: PricingPlan[]) => {
+  const handleUpdatePlans = useCallback(async (updatedPlans: PricingPlan[]) => {
     setPlans(updatedPlans);
     storage.savePricingPlans(updatedPlans);
 
@@ -117,9 +117,9 @@ export const useCompanyConfigData = () => {
         toast.error('Failed to save pricing plans');
       }
     }
-  };
+  }, [isSupabaseMode]);
 
-  const handleUpdateCompany = async (data: CompanySettings, companyId?: string) => {
+  const handleUpdateCompany = useCallback(async (data: CompanySettings, companyId?: string) => {
     const updatedData = {
       ...data,
       departments: (data as any).departments || departments,
@@ -131,9 +131,9 @@ export const useCompanyConfigData = () => {
     if (isSupabaseMode && companyId) {
       await CompanyService.saveCompany(companyId, updatedData);
     }
-  };
+  }, [departments, designations, isSupabaseMode]);
 
-  const handleUpdateDepartments = async (newDepartments: Department[], companyId?: string) => {
+  const handleUpdateDepartments = useCallback(async (newDepartments: Department[], companyId?: string) => {
     setDepartments(newDepartments);
     if (companyData) {
       const updated = { ...companyData, departments: newDepartments } as any;
@@ -142,9 +142,9 @@ export const useCompanyConfigData = () => {
         await CompanyService.saveCompany(companyId, updated);
       }
     }
-  };
+  }, [companyData, isSupabaseMode]);
 
-  const handleUpdateDesignations = async (newDesignations: Designation[], companyId?: string) => {
+  const handleUpdateDesignations = useCallback(async (newDesignations: Designation[], companyId?: string) => {
     setDesignations(newDesignations);
     if (companyData) {
       const updated = { ...companyData, designations: newDesignations } as any;
@@ -153,9 +153,9 @@ export const useCompanyConfigData = () => {
         await CompanyService.saveCompany(companyId, updated);
       }
     }
-  };
+  }, [companyData, isSupabaseMode]);
 
-  const handleUpdateTaxConfig = async (newConfig: TaxConfig, companyId?: string) => {
+  const handleUpdateTaxConfig = useCallback(async (newConfig: TaxConfig, companyId?: string) => {
     setTaxConfig(newConfig);
     if (companyData) {
       const updated = { ...companyData, taxConfig: newConfig };
@@ -166,7 +166,7 @@ export const useCompanyConfigData = () => {
         toast.success('Tax configuration updated');
       }
     }
-  };
+  }, [companyData, isSupabaseMode]);
 
   return {
     globalConfig,

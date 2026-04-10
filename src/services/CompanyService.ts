@@ -157,16 +157,6 @@ export const CompanyService = {
         return data.config as GlobalConfig;
       }
 
-      const { data: publicData, error: publicError } = await supabase
-        .from('public_settings')
-        .select('config')
-        .eq('id', 'platform')
-        .maybeSingle();
-
-      if (!publicError && publicData) {
-        return publicData.config as GlobalConfig;
-      }
-
       const { data: companyData, error: companyError } = await supabase
         .from('companies')
         .select('settings')
