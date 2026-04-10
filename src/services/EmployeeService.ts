@@ -79,10 +79,11 @@ export const EmployeeService = {
   
   getUserByEmail: async (email: string): Promise<User | null> => {
     if (!supabase) return null;
+    const normalizedEmail = email.trim().toLowerCase();
     const { data, error } = await supabase
       .from('app_users')
       .select('*')
-      .eq('email', email)
+      .eq('email', normalizedEmail)
       .maybeSingle();
     
     if (error || !data) return null;
@@ -101,6 +102,8 @@ export const EmployeeService = {
 
   saveUser: async (user: User) => {
     if (!supabase) throw new Error("Supabase client not initialized");
+
+    const normalizedEmail = user.email.trim().toLowerCase();
     
     const preferences: any = {};
     if (user.onboardingToken) preferences.onboardingToken = user.onboardingToken;
@@ -110,7 +113,7 @@ export const EmployeeService = {
       .upsert({
         id: user.id,
         auth_user_id: user.id,
-        email: user.email,
+        email: normalizedEmail,
         name: user.name,
         role: user.role,
         company_id: user.companyId,

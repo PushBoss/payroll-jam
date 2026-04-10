@@ -39,6 +39,30 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  const ensureSelfProfile = async (sessionEmail: string) => {
+    if (!supabase) return null;
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-handler', {
+        body: { action: 'ensure-self-profile', payload: {} }
+      });
+
+      if (error) {
+        console.warn('ensure-self-profile invoke error:', error);
+        return null;
+      }
+
+      if (data?.user?.email) {
+        return await EmployeeService.getUserByEmail(data.user.email);
+      }
+
+      // Fallback: try by the session email
+      return await EmployeeService.getUserByEmail(sessionEmail);
+    } catch (e) {
+      console.warn('ensure-self-profile failed:', e);
+      return null;
+    }
+  };
+
   useEffect(() => {
     let isMounted = true;
 
@@ -91,19 +115,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
 
           } else if (!appUser && isMounted) {
-            // User authenticated but no profile - sign out
-            console.warn('User authenticated but no profile found');
-            try {
-              await supabase.auth.signOut();
-            } catch (error) {
-              console.warn('Sign out failed during profile check:', error);
+            // User authenticated but no profile - attempt self-heal via Edge Function
+            console.warn('User authenticated but no profile found; attempting recovery');
+            const recovered = await ensureSelfProfile(session.user.email!);
+            if (recovered && isMounted) {
+              setUser(recovered);
+              storage.saveUser(recovered);
+            } else if (isMounted) {
+              // Recovery failed - sign out
+              try {
+                await supabase.auth.signOut();
+              } catch (error) {
+                console.warn('Sign out failed during profile recovery:', error);
+              }
+              // Force clear Supabase session from localStorage
+              if (typeof window !== 'undefined') {
+                localStorage.removeItem('sb-arqbxlaudfbmiqvwwmnt-auth-token');
+              }
+              setUser(null);
+              storage.saveUser(null);
             }
-            // Force clear Supabase session from localStorage
-            if (typeof window !== 'undefined') {
-              localStorage.removeItem('sb-arqbxlaudfbmiqvwwmnt-auth-token');
-            }
-            setUser(null);
-            storage.saveUser(null);
           }
         } else {
           // Fallback to localStorage
@@ -167,6 +198,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 if (isMounted) window.location.href = `/?page=${redirectPath}`;
               }, 1500);
             }
+          } else if (!appUser && isMounted) {
+            const recovered = await ensureSelfProfile(session.user.email!);
+            if (recovered && isMounted) {
+              setUser(recovered);
+              storage.saveUser(recovered);
+            }
           }
         } else if (event === 'SIGNED_OUT') {
           if (isMounted) {
@@ -222,7 +259,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const appUser = await EmployeeService.getUserByEmail(data.user.email!);
 
       if (!appUser) {
-        throw new Error('User profile not found in database');
+        const recovered = await ensureSelfProfile(data.user.email!);
+        if (!recovered) {
+          throw new Error('User profile not found in database');
+        }
+        console.log('✅ User profile recovered:', recovered.email);
+        setUser(recovered);
+        storage.saveUser(recovered);
+        return;
       }
 
       console.log('✅ User profile loaded:', appUser.email);

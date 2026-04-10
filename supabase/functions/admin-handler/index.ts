@@ -30,6 +30,14 @@ const normalizePlanToFrontend = (plan?: string | null): string => {
 const isResellerEquivalentPlan = (plan?: string | null): boolean =>
     normalizePlanToFrontend(plan) === 'Reseller';
 
+const normalizeMemberRole = (role?: string | null): string => {
+    if (!role) return 'EMPLOYEE';
+    const upper = role.trim().toUpperCase();
+    const allowed = new Set(['OWNER', 'ADMIN', 'MANAGER', 'EMPLOYEE', 'RESELLER', 'SUPER_ADMIN']);
+    if (allowed.has(upper)) return upper;
+    return 'EMPLOYEE';
+};
+
 serve(async (req: Request) => {
     // 1. CORS Preflight
     if (req.method === 'OPTIONS') {
@@ -76,6 +84,81 @@ serve(async (req: Request) => {
         // --- Handle Actions ---
         
         switch (action) {
+            case 'ensure-self-profile': {
+                if (!authUser) throw new Error('Unauthorized');
+
+                const email = (authUser.email || '').toString().trim().toLowerCase();
+                if (!email) throw new Error('Authenticated user missing email');
+
+                // If profile already exists by id, return it
+                const { data: existingById } = await adminClient
+                    .from('app_users')
+                    .select('*')
+                    .eq('id', authUser.id)
+                    .maybeSingle();
+
+                if (existingById) {
+                    return new Response(JSON.stringify({ user: existingById, created: false }), {
+                        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                    });
+                }
+
+                // Infer company + role from accepted memberships
+                let companyId: string | null = null;
+                let role: string = 'EMPLOYEE';
+
+                const { data: membership } = await adminClient
+                    .from('account_members')
+                    .select('account_id, role, status, accepted_at')
+                    .eq('email', email)
+                    .eq('status', 'accepted')
+                    .order('accepted_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (membership?.account_id) {
+                    companyId = membership.account_id;
+                    role = normalizeMemberRole(membership.role);
+                } else {
+                    // Fallback: if they own a company, treat as OWNER
+                    const { data: ownedCompany } = await adminClient
+                        .from('companies')
+                        .select('id')
+                        .eq('owner_id', authUser.id)
+                        .maybeSingle();
+                    if (ownedCompany?.id) {
+                        companyId = ownedCompany.id;
+                        role = 'OWNER';
+                    }
+                }
+
+                const name =
+                    (authUser.user_metadata?.full_name || authUser.user_metadata?.name || '').toString().trim() ||
+                    email.split('@')[0];
+
+                const record = {
+                    id: authUser.id,
+                    auth_user_id: authUser.id,
+                    email,
+                    name,
+                    role,
+                    company_id: companyId,
+                    is_onboarded: false,
+                };
+
+                const { data: upserted, error: upsertError } = await adminClient
+                    .from('app_users')
+                    .upsert(record)
+                    .select('*')
+                    .maybeSingle();
+
+                if (upsertError) throw upsertError;
+
+                return new Response(JSON.stringify({ user: upserted, created: true }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
             case 'search-user': {
                 const { email } = payload;
                 if (!email) throw new Error("Email required for search");
