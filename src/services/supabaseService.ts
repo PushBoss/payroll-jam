@@ -1,19 +1,480 @@
+import { supabase } from './supabaseClient';
+import { EmployeeService } from './EmployeeService';
+import { CompanyService } from './CompanyService';
+import { BillingService } from './BillingService';
+import { ResellerService } from './ResellerService';
+import { AuditLogEntry, ResellerClient, User } from '../core/types';
+import { normalizePlanToFrontend } from '../utils/planNames';
+
+const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
+const getServiceRoleClient = async () => {
+	const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY;
+	const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
+
+	if (!serviceRoleKey || !supabaseUrl) return null;
+
+	const { createClient } = await import('@supabase/supabase-js');
+	return createClient(supabaseUrl, serviceRoleKey, {
+		auth: {
+			autoRefreshToken: false,
+			persistSession: false,
+		},
+	});
+};
+
+const mapResellerClient = (row: any): ResellerClient => {
+	const company = row.client_company || row.client_company_id || row.companies || row.company || {};
+	return {
+		id: company?.id || row.client_company_id,
+		companyName: company?.name || company?.companyName || 'Unknown Company',
+		contactName: company?.email || row.contact_name || '',
+		email: company?.email || row.email || '',
+		plan: normalizePlanToFrontend(company?.plan || row.plan || 'Free') as any,
+		employeeCount: company?.employees?.[0]?.count || company?.settings?.employeeCount || row.employeeCount || 0,
+		status: row.status || company?.status || 'ACTIVE',
+		mrr: (row.monthly_base_fee || 0) + ((row.per_employee_fee || 0) * (company?.settings?.employeeCount || row.employeeCount || 0)),
+		createdAt: row.created_at,
+	} as ResellerClient;
+};
+
 /**
- * Re-export shim for backward compatibility.
+ * Backward-compatible façade composed from focused services.
  *
- * The monolith (supabaseService_monolith_DO_NOT_USE.ts) is being progressively
- * split into focused, single-responsibility service modules:
- *
- *   EmployeeService  — employees, leave, timesheets, documents
- *   CompanyService   — company CRUD, config, global config
- *   PayrollService   — pay runs, timesheets
- *   BillingService   — subscriptions, payments
- *   ResellerService  — reseller portfolio, invites, client linking
- *
- * New code should import directly from the specific service, NOT from here.
- * Do NOT add new methods to the monolith.
+ * Legacy callers may continue importing `supabaseService`, but the underlying
+ * 3k-line monolith has been retired. New code should still prefer direct,
+ * single-purpose service imports.
  */
-export { supabaseService } from './supabaseService_monolith_DO_NOT_USE';
+export const supabaseService = {
+	getUserByEmail: EmployeeService.getUserByEmail,
+	saveUser: EmployeeService.saveUser,
+	getCompanyUsers: EmployeeService.getCompanyUsers,
+	saveCompany: CompanyService.saveCompany,
+	getCompanyById: CompanyService.getCompanyById,
+	getGlobalConfig: CompanyService.getGlobalConfig,
+	saveGlobalConfig: CompanyService.saveGlobalConfig,
+	getPaymentGatewaySettings: CompanyService.getPaymentGatewaySettings,
+	getPaymentHistory: BillingService.getPaymentHistory,
+	getAllSubscriptions: BillingService.getAllSubscriptions,
+	getAllPayments: BillingService.getAllPayments,
+
+	savePaymentGatewaySettings: async (companyId: string, paymentConfig: any) => {
+		if (!supabase) return;
+		const { data: company, error: fetchError } = await supabase
+			.from('companies')
+			.select('settings')
+			.eq('id', companyId)
+			.single();
+
+		if (fetchError) {
+			console.error('Error fetching company for payment settings:', fetchError);
+			return;
+		}
+
+		const { error } = await supabase
+			.from('companies')
+			.update({
+				settings: {
+					...(company?.settings || {}),
+					paymentGateway: paymentConfig,
+				},
+			})
+			.eq('id', companyId);
+
+		if (error) {
+			console.error('Error saving payment gateway settings:', error);
+		}
+	},
+
+	getAllCompanies: async (): Promise<ResellerClient[]> => {
+		if (!supabase) return [];
+		const { data, error } = await supabase.from('companies').select('*');
+		if (error || !data) {
+			console.error('Error fetching companies:', error);
+			return [];
+		}
+
+		return data.map((company: any) => ({
+			id: company.id,
+			companyName: company.name,
+			contactName: company.settings?.contactName || 'Admin',
+			email: company.settings?.email || '',
+			employeeCount: company.settings?.employeeCount || 0,
+			plan: normalizePlanToFrontend(company.plan || 'Free') as any,
+			status: company.status || 'ACTIVE',
+			mrr: company.settings?.mrr || 0,
+		}));
+	},
+
+	updateCompanyStatus: async (companyId: string, status: 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'PENDING_PAYMENT') => {
+		if (!supabase) return;
+		const { error } = await supabase.from('companies').update({ status }).eq('id', companyId);
+		if (error) throw error;
+	},
+
+	deleteCompany: async (companyId: string) => {
+		if (!supabase) return false;
+		const { error } = await supabase.from('companies').delete().eq('id', companyId);
+		if (error) {
+			console.error('Error deleting company:', error);
+			return false;
+		}
+		return true;
+	},
+
+	getAllSuperAdmins: async (): Promise<User[]> => {
+		if (!supabase) return [];
+		const { data, error } = await supabase
+			.from('app_users')
+			.select('*')
+			.eq('role', 'SUPER_ADMIN')
+			.order('created_at', { ascending: false });
+
+		if (error || !data) {
+			console.error('Error fetching super admins:', error);
+			return [];
+		}
+
+		return data.map((row: any) => ({
+			id: row.id,
+			name: row.name,
+			email: row.email,
+			role: row.role as any,
+			companyId: row.company_id,
+			isOnboarded: row.is_onboarded,
+			avatarUrl: row.avatar_url || undefined,
+			phone: row.phone || undefined,
+		}));
+	},
+
+	deleteUser: async (userId: string) => {
+		if (!supabase) return false;
+		const { error } = await supabase.from('app_users').delete().eq('id', userId);
+		if (error) {
+			console.error('Error deleting user:', error);
+			return false;
+		}
+		return true;
+	},
+
+	deleteAccount: async (userId: string, userRole: string, companyId?: string) => {
+		if (!supabase) return false;
+
+		try {
+			const { data: userData, error: fetchError } = await supabase
+				.from('app_users')
+				.select('auth_user_id, company_id')
+				.eq('id', userId)
+				.maybeSingle();
+
+			if (fetchError) {
+				console.error('Error fetching user for deletion:', fetchError);
+				return false;
+			}
+
+			const authUserId = userData?.auth_user_id;
+			const userCompanyId = companyId || userData?.company_id;
+
+			if (userRole === 'OWNER' && userCompanyId) {
+				await supabase.from('companies').delete().eq('id', userCompanyId);
+			}
+
+			const { error: userError } = await supabase.from('app_users').delete().eq('id', userId);
+			if (userError) {
+				console.error('Error deleting app_users record:', userError);
+				return false;
+			}
+
+			if (authUserId) {
+				try {
+					const adminClient = await getServiceRoleClient();
+					if (adminClient) {
+						await adminClient.auth.admin.deleteUser(authUserId);
+					}
+				} catch (error) {
+					console.warn('Error deleting auth user:', error);
+				}
+			}
+
+			return true;
+		} catch (error) {
+			console.error('Error deleting account:', error);
+			return false;
+		}
+	},
+
+	saveAuditLog: async (log: AuditLogEntry, companyId: string | null) => {
+		if (!supabase) return;
+
+		const payload: any = {
+			id: log.id,
+			actor_name: log.actorName,
+			action: log.action,
+			entity: log.entity,
+			description: log.description,
+			timestamp: log.timestamp,
+			ip_address: log.ipAddress,
+		};
+
+		if (companyId && isUuid(companyId)) payload.company_id = companyId;
+		if (log.actorId && isUuid(log.actorId)) payload.actor_id = log.actorId;
+
+		const { error } = await supabase.from('audit_logs').insert(payload);
+		if (error) {
+			console.error('Failed to save audit log:', error);
+		}
+	},
+
+	getAuditLogs: async (companyId: string | null, userRole?: string, userId?: string): Promise<AuditLogEntry[]> => {
+		if (!supabase) return [];
+
+		let query = supabase.from('audit_logs').select('*').order('timestamp', { ascending: false }).limit(500);
+		const isCompanyAdmin = ['OWNER', 'ADMIN', 'RESELLER'].includes(userRole || '');
+
+		if (userRole === 'SUPER_ADMIN') {
+			if (companyId) query = query.eq('company_id', companyId);
+		} else {
+			if (!companyId) return [];
+			query = query.eq('company_id', companyId);
+			if (!isCompanyAdmin) {
+				if (!userId) return [];
+				query = query.eq('actor_id', userId);
+			}
+		}
+
+		const { data, error } = await query;
+		if (error || !data) {
+			console.error('Error fetching audit logs:', error);
+			return [];
+		}
+
+		return data.map((log: any) => ({
+			id: log.id,
+			timestamp: log.timestamp,
+			actorId: log.actor_id,
+			actorName: log.actor_name,
+			action: log.action,
+			entity: log.entity,
+			description: log.description,
+			ipAddress: log.ip_address,
+		}));
+	},
+
+	saveResellerInvite: async (
+		resellerId: string,
+		clientEmail: string,
+		inviteToken?: string,
+		contactName?: string,
+		companyName?: string,
+	) => {
+		if (!supabase) return false;
+
+		const payload: Record<string, any> = {
+			reseller_id: resellerId,
+			invite_email: clientEmail.toLowerCase(),
+			client_email: clientEmail.toLowerCase(),
+			invite_token: inviteToken || null,
+			contact_name: contactName || null,
+			company_name: companyName || null,
+			status: 'PENDING',
+		};
+
+		const { error } = await supabase
+			.from('reseller_invites')
+			.upsert(payload, { onConflict: 'reseller_id,invite_email' });
+
+		if (!error) return true;
+
+		console.warn('Primary reseller invite upsert failed, retrying with fallback columns:', error);
+		return ResellerService.saveResellerInvite(resellerId, clientEmail, companyName);
+	},
+
+	cancelResellerInvite: async (inviteId: string) => {
+		if (!supabase) return false;
+		try {
+			const { data: rpcResult, error: rpcError } = await supabase.rpc('cancel_reseller_invite_secure', {
+				p_invite_id: inviteId,
+			});
+
+			if (!rpcError && rpcResult === true) {
+				return true;
+			}
+
+			const { error } = await supabase.from('reseller_invites').delete().eq('id', inviteId);
+			if (error) {
+				console.error('Error canceling reseller invite:', error);
+				return false;
+			}
+
+			return true;
+		} catch (error) {
+			console.error('Exception in cancelResellerInvite:', error);
+			return false;
+		}
+	},
+
+	saveResellerClientWithServiceRole: async (resellerId: string, clientCompanyId: string, data?: {
+		status?: 'ACTIVE' | 'SUSPENDED' | 'TERMINATED';
+		accessLevel?: 'VIEW_ONLY' | 'MANAGE' | 'FULL';
+		monthlyBaseFee?: number;
+		perEmployeeFee?: number;
+		discountRate?: number;
+	}) => {
+		try {
+			const adminClient = await getServiceRoleClient();
+			if (adminClient) {
+				const { error } = await adminClient
+					.from('reseller_clients')
+					.upsert({
+						reseller_id: resellerId,
+						client_company_id: clientCompanyId,
+						status: data?.status || 'ACTIVE',
+						access_level: data?.accessLevel || 'FULL',
+						monthly_base_fee: data?.monthlyBaseFee || 3000,
+						per_employee_fee: data?.perEmployeeFee || 100,
+						discount_rate: data?.discountRate || 0,
+						relationship_start_date: new Date().toISOString().split('T')[0],
+						updated_at: new Date().toISOString(),
+					}, { onConflict: 'reseller_id,client_company_id' });
+
+				if (!error) {
+					await adminClient.from('companies').update({ reseller_id: resellerId }).eq('id', clientCompanyId);
+					return true;
+				}
+			}
+		} catch (error) {
+			console.warn('Service-role reseller client save failed, falling back:', error);
+		}
+
+		return ResellerService.saveResellerClient(resellerId, clientCompanyId, data);
+	},
+
+	removeResellerClient: async (resellerId: string, clientCompanyId: string) => {
+		if (!supabase) return false;
+		try {
+			const { data: rpcResult, error: rpcError } = await supabase.rpc('remove_reseller_client_secure', {
+				p_reseller_id: resellerId,
+				p_client_company_id: clientCompanyId,
+			});
+
+			if (!rpcError && rpcResult === true) {
+				return true;
+			}
+
+			const { error } = await supabase
+				.from('reseller_clients')
+				.delete()
+				.eq('reseller_id', resellerId)
+				.eq('client_company_id', clientCompanyId);
+
+			if (error) {
+				console.error('Error deleting reseller client relationship:', error);
+				return false;
+			}
+
+			await supabase.from('companies').update({ reseller_id: null }).eq('id', clientCompanyId).eq('reseller_id', resellerId);
+			return true;
+		} catch (error) {
+			console.error('Exception in removeResellerClient:', error);
+			return false;
+		}
+	},
+
+	getResellerInvites: async (resellerId: string) => {
+		if (!supabase) return [];
+		const { data, error } = await supabase
+			.from('reseller_invites')
+			.select('*')
+			.eq('reseller_id', resellerId)
+			.order('created_at', { ascending: false });
+
+		if (error) {
+			console.error('Error fetching reseller invites:', error);
+			return [];
+		}
+
+		return data || [];
+	},
+
+	getResellerClients: async (resellerId: string): Promise<ResellerClient[]> => {
+		if (!supabase) return [];
+		try {
+			const { data, error } = await supabase
+				.from('reseller_clients')
+				.select(`
+					*,
+					client_company:companies!reseller_clients_client_company_id_fkey (
+						id,
+						name,
+						email,
+						plan,
+						status,
+						settings,
+						employees(count)
+					)
+				`)
+				.eq('reseller_id', resellerId)
+				.order('created_at', { ascending: false });
+
+			if (error || !data) {
+				console.error('Error fetching reseller clients:', error);
+				return [];
+			}
+
+			return data.map(mapResellerClient);
+		} catch (error) {
+			console.error('Error fetching reseller clients:', error);
+			return [];
+		}
+	},
+
+	getComplianceOverview: async (resellerId: string): Promise<Record<string, any>> => {
+		if (!supabase) return {};
+
+		try {
+			const { data: clients } = await supabase
+				.from('reseller_clients')
+				.select('client_company_id')
+				.eq('reseller_id', resellerId);
+
+			if (!clients?.length) return {};
+
+			const clientIds = clients.map((client: any) => client.client_company_id);
+			const threeMonthsAgo = new Date();
+			threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+
+			const { data: runs, error } = await supabase
+				.from('pay_runs')
+				.select('company_id, period_end, status, pay_date')
+				.in('company_id', clientIds)
+				.eq('status', 'FINALIZED')
+				.gte('period_end', threeMonthsAgo.toISOString().split('T')[0])
+				.order('period_end', { ascending: false });
+
+			if (error) {
+				console.error('Error fetching compliance runs:', error);
+				return {};
+			}
+
+			const overview: Record<string, any> = {};
+			(runs || []).forEach((run: any) => {
+				if (!overview[run.company_id]) {
+					overview[run.company_id] = {
+						lastPayRunDate: run.pay_date || run.period_end,
+						periodEnd: run.period_end,
+						status: 'FILED',
+					};
+				}
+			});
+
+			return overview;
+		} catch (error) {
+			console.error('Error fetching compliance overview:', error);
+			return {};
+		}
+	},
+};
+
 export { EmployeeService } from './EmployeeService';
 export { CompanyService } from './CompanyService';
 export { PayrollService } from './PayrollService';
