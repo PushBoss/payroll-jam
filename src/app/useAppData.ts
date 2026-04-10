@@ -101,10 +101,10 @@ export const useAppData = ({ user, updateUser, impersonate, navigateTo }: UseApp
   const handleAddEmployee = async (employee: Employee) => {
     if (!subscription.canAddEmployee) {
       toast.error('Plan Limit Reached. Please upgrade.');
-      return;
+      return false;
     }
 
-    await addEmployee(employee);
+    return addEmployee(employee);
   };
 
   const { dataLoading } = useAppBootstrap({

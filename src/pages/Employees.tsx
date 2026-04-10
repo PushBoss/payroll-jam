@@ -17,7 +17,7 @@ interface EmployeesProps {
     employees: Employee[];
     payRunHistory: PayRun[];
     companyData: CompanySettings;
-    onAddEmployee: (emp: Employee) => void;
+    onAddEmployee: (emp: Employee) => void | boolean | Promise<boolean>;
     onUpdateEmployee: (emp: Employee) => void | boolean | Promise<boolean>;
     onDeleteEmployee?: (id: string) => void;
     onSimulateOnboarding?: (emp: Employee) => void;
@@ -245,7 +245,11 @@ export const Employees: React.FC<EmployeesProps> = ({
         );
 
         if (emailResult.success) {
-            onAddEmployee(newEmp);
+            const addResult = await Promise.resolve(onAddEmployee(newEmp) as any);
+            if (addResult === false) {
+                setIsSendingInvite(false);
+                return;
+            }
             auditService.log(currentUser, 'CREATE', 'Employee', `Invited ${newEmp.email}`);
             setIsInviteModalOpen(false);
             setInviteData({ firstName: '', lastName: '', email: '', role: Role.EMPLOYEE });
@@ -270,7 +274,10 @@ export const Employees: React.FC<EmployeesProps> = ({
                 payFrequency: employee.payFrequency || PayFrequency.MONTHLY,
                 role: employee.role || Role.EMPLOYEE
             };
-            onAddEmployee(newEmp);
+            const addResult = await Promise.resolve(onAddEmployee(newEmp) as any);
+            if (addResult === false) {
+                return;
+            }
             auditService.log(currentUser, 'CREATE', 'Employee', `Added new employee: ${newEmp.firstName} ${newEmp.lastName}`);
             toast.success("Employee added successfully");
             setIsEmployeeManagerOpen(false);

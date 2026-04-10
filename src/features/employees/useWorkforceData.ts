@@ -45,10 +45,25 @@ export const useWorkforceData = ({ user, isSupabaseMode }: UseWorkforceDataArgs)
     storage.saveCompanyUsers(users);
   }, [users]);
 
-  const handleAddEmployee = async (employee: Employee) => {
-    setEmployees((prev) => [...prev, employee]);
-    if (isSupabaseMode && user?.companyId) {
-      await EmployeeService.saveEmployee(employee, user.companyId);
+  const handleAddEmployee = async (employee: Employee): Promise<boolean> => {
+    let previousEmployees: Employee[] | null = null;
+    setEmployees((prev) => {
+      previousEmployees = prev;
+      return [...prev, employee];
+    });
+
+    if (!isSupabaseMode || !user?.companyId) return true;
+
+    try {
+      await EmployeeService.saveEmployee(employee, user.companyId, 'insert');
+      const freshEmployees = await EmployeeService.getEmployees(user.companyId);
+      setEmployees(freshEmployees);
+      return true;
+    } catch (error: any) {
+      console.error('Failed to save employee to Supabase:', error);
+      toast.error(error?.message || 'Failed to save employee to database.');
+      if (previousEmployees) setEmployees(previousEmployees);
+      return false;
     }
   };
 
@@ -62,7 +77,7 @@ export const useWorkforceData = ({ user, isSupabaseMode }: UseWorkforceDataArgs)
     if (!isSupabaseMode || !user?.companyId) return true;
 
     try {
-      await EmployeeService.saveEmployee(employee, user.companyId);
+      await EmployeeService.saveEmployee(employee, user.companyId, 'update');
       const freshEmployees = await EmployeeService.getEmployees(user.companyId);
       setEmployees(freshEmployees);
       return true;
@@ -157,7 +172,7 @@ export const useWorkforceData = ({ user, isSupabaseMode }: UseWorkforceDataArgs)
 
       await EmployeeService.saveUser(newUser);
       const updatedEmployee = { ...employee, userId: newUser.id, isOnboarded: true } as Employee;
-      await EmployeeService.saveEmployee(updatedEmployee, finalCompanyId);
+      await EmployeeService.saveEmployee(updatedEmployee, finalCompanyId, 'update');
 
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email: employee.email,

@@ -30,8 +30,10 @@ export const CompanyService = {
       resellerId: data.reseller_id,
       policies: settings.policies,
       reseller_defaults: settings.reseller_defaults,
-      taxConfig: settings.taxConfig
-    } as any;
+      taxConfig: settings.taxConfig,
+      departments: settings.departments || data.departments || [],
+      designations: settings.designations || data.designations || []
+    };
   },
 
   getCompanyById: async (companyId: string): Promise<CompanySettings | null> => {
@@ -67,7 +69,9 @@ export const CompanyService = {
           defaultPayDate: settings.defaultPayDate ?? existingSettings.defaultPayDate,
           policies: settings.policies ?? existingSettings.policies,
           reseller_defaults: settings.reseller_defaults ?? existingSettings.reseller_defaults,
-          taxConfig: settings.taxConfig ?? existingSettings.taxConfig
+          taxConfig: settings.taxConfig ?? existingSettings.taxConfig,
+          departments: settings.departments ?? existingSettings.departments ?? [],
+          designations: settings.designations ?? existingSettings.designations ?? []
         },
         status: settings.subscriptionStatus || 'ACTIVE',
         plan: normalizePlanToDatabase(settings.plan)

@@ -422,6 +422,8 @@ export interface CompanySettings {
   policies?: Record<string, any>;
   reseller_defaults?: Record<string, any>;
   taxConfig?: TaxConfig;
+  departments?: Department[];
+  designations?: Designation[];
 }
 
 

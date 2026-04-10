@@ -1,6 +1,7 @@
 import { supabase } from './supabaseClient';
 import { Employee, User, LeaveRequest } from '../core/types';
 
+type EmployeeSaveMode = 'insert' | 'update' | 'upsert';
 
 const requireSupabase = () => {
   if (!supabase) throw new Error('Supabase client not initialized');
@@ -71,6 +72,36 @@ const getPayDataFromRow = (row: any) => {
     payType: row.pay_type,
     payFrequency: row.pay_frequency
   };
+};
+
+const isSchemaMismatchError = (error: any) => {
+  const message = `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`.toLowerCase();
+  const code = String(error?.code || '').toUpperCase();
+
+  return code === 'PGRST204'
+    || message.includes('column') && message.includes('does not exist')
+    || message.includes('could not find the')
+    || message.includes('schema cache');
+};
+
+const mutateEmployeeRow = async (
+  client: ReturnType<typeof requireSupabase>,
+  payload: Record<string, any>,
+  companyId: string,
+  mode: EmployeeSaveMode,
+) => {
+  switch (mode) {
+    case 'insert':
+      return client.from('employees').insert(payload);
+    case 'update':
+      return client
+        .from('employees')
+        .update(payload)
+        .eq('id', payload.id)
+        .eq('company_id', companyId);
+    default:
+      return client.from('employees').upsert(payload);
+  }
 };
 
 
@@ -193,7 +224,7 @@ export const EmployeeService = {
     });
   },
 
-  saveEmployee: async (emp: Employee, companyId: string) => {
+  saveEmployee: async (emp: Employee, companyId: string, mode: EmployeeSaveMode = 'upsert') => {
     const client = requireSupabase();
 
     const payData = {
@@ -222,8 +253,10 @@ export const EmployeeService = {
       role: emp.role,
       status: emp.status,
       hire_date: emp.hireDate,
+      joining_date: emp.joiningDate || emp.hireDate,
       job_title: emp.jobTitle || null,
       department: emp.department || null,
+      emergency_contact: emp.emergencyContact || null,
       bank_details: emp.bankDetails || null,
       leave_balance: emp.leaveBalance || null,
       allowances: emp.allowances || [],
@@ -231,11 +264,23 @@ export const EmployeeService = {
       onboarding_token: emp.onboardingToken || null
     };
 
-    const tryUpsert = async (payload: Record<string, any>) => {
-      return client.from('employees').upsert(payload);
+    const attemptLegacy = {
+      ...basePayload,
+      employee_id: emp.employeeId || null,
+      gross_salary: emp.grossSalary,
+      hourly_rate: emp.hourlyRate ?? null,
+      pay_type: emp.payType,
+      pay_frequency: emp.payFrequency,
+      custom_deductions: persistedDeductions
     };
 
-    // Attempt newer schema first (pay_data + deductions + employee_number)
+    const { error: legacyError } = await mutateEmployeeRow(client, attemptLegacy, companyId, mode);
+    if (!legacyError) return;
+
+    if (!isSchemaMismatchError(legacyError)) {
+      throw legacyError;
+    }
+
     const attemptNew = {
       ...basePayload,
       employee_number: emp.employeeId || null,
@@ -243,21 +288,8 @@ export const EmployeeService = {
       deductions: persistedDeductions
     };
 
-    let { error } = await tryUpsert(attemptNew);
-    if (!error) return;
-
-    // Fallback: legacy schema (gross_salary/pay_type/pay_frequency + custom_deductions + employee_id)
-    const attemptLegacy = {
-      ...basePayload,
-      employee_id: emp.employeeId || null,
-      gross_salary: emp.grossSalary,
-      pay_type: emp.payType,
-      pay_frequency: emp.payFrequency,
-      custom_deductions: persistedDeductions
-    };
-
-    const { error: legacyError } = await tryUpsert(attemptLegacy);
-    if (legacyError) throw legacyError;
+    const { error: newError } = await mutateEmployeeRow(client, attemptNew, companyId, mode);
+    if (newError) throw newError;
   },
 
   deleteEmployee: async (employeeId: string, companyId: string) => {
