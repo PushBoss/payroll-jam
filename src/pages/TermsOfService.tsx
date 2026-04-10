@@ -1,23 +1,35 @@
 import React from 'react';
-import { Icons } from '../components/Icons';
+import { Footer } from '../components/Footer';
+import { PublicHeader } from '../components/PublicHeader';
 
 interface TermsOfServiceProps {
   onBack: () => void;
+  onFeaturesClick?: () => void;
+  onPricingClick?: () => void;
+  onFaqClick?: () => void;
+  onContactClick?: () => void;
+  onLogin?: () => void;
+  onSignup?: () => void;
+  onPrivacyClick?: () => void;
+  onTermsClick?: () => void;
 }
 
-export const TermsOfService: React.FC<TermsOfServiceProps> = ({ onBack }) => {
+export const TermsOfService: React.FC<TermsOfServiceProps> = ({ onBack, onFeaturesClick, onPricingClick, onFaqClick, onContactClick, onLogin, onSignup, onPrivacyClick, onTermsClick }) => {
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-jam-black text-white">
-        <div className="max-w-4xl mx-auto px-4 py-6">
-          <button 
-            onClick={onBack}
-            className="flex items-center text-white hover:text-jam-orange transition-colors mb-4"
-          >
-            <Icons.ArrowLeft className="w-5 h-5 mr-2" />
-            Back
-          </button>
+      <PublicHeader
+        currentPage="terms-of-service"
+        onHomeClick={onBack}
+        onFeaturesClick={onFeaturesClick}
+        onPricingClick={onPricingClick}
+        onFaqClick={onFaqClick}
+        onContactClick={onContactClick}
+        onLogin={onLogin}
+        onSignup={onSignup}
+      />
+
+      <div className="pt-32 pb-8 bg-jam-black text-white">
+        <div className="max-w-4xl mx-auto px-4">
           <h1 className="text-3xl font-bold">Terms of Service</h1>
           <p className="text-gray-300 mt-2">Last updated: December 9, 2025</p>
         </div>
@@ -154,6 +166,14 @@ export const TermsOfService: React.FC<TermsOfServiceProps> = ({ onBack }) => {
 
         </div>
       </div>
+
+      <Footer
+        onFeaturesClick={onFeaturesClick}
+        onPricingClick={onPricingClick}
+        onFaqClick={onFaqClick}
+        onPrivacyClick={onPrivacyClick}
+        onTermsClick={onTermsClick}
+      />
     </div>
   );
 };

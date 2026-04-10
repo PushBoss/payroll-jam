@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { Icons } from '../components/Icons';
 import { Footer } from '../components/Footer';
+import { PublicHeader } from '../components/PublicHeader';
 import { PricingPlan } from '../core/types';
 import { getPlanPriceDetails } from '../utils/pricing';
 
@@ -11,12 +12,13 @@ interface PricingProps {
   onBack: () => void;
   onFeaturesClick?: () => void;
   onFaqClick?: () => void;
+  onContactClick?: () => void;
   onPrivacyClick?: () => void;
   onTermsClick?: () => void;
   plans: PricingPlan[];
 }
 
-export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onFeaturesClick, onFaqClick, onPrivacyClick, onTermsClick, plans = [] }) => {
+export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onFeaturesClick, onFaqClick, onContactClick, onPrivacyClick, onTermsClick, plans = [] }) => {
   const [cycle, setCycle] = useState<'monthly' | 'annual'>('monthly');
 
   // Filter only active plans
@@ -62,35 +64,16 @@ export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onF
 
   return (
     <div className="min-h-screen bg-white font-sans text-slate-900">
-      {/* Navigation */}
-      <nav className="fixed w-full z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-20">
-            <button onClick={onBack} className="flex items-center text-2xl font-extrabold text-jam-black tracking-tight hover:opacity-80 transition-opacity">
-              Payroll<span className="text-jam-orange">-Jam</span>
-            </button>
-            <div className="hidden md:flex items-center space-x-8">
-              {onFeaturesClick && <button onClick={onFeaturesClick} className="text-gray-600 hover:text-gray-900 font-medium">Features</button>}
-              <button className="text-jam-orange font-bold">Pricing</button>
-              {onFaqClick && <button onClick={onFaqClick} className="text-gray-600 hover:text-gray-900 font-medium">FAQ</button>}
-            </div>
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={onLogin}
-                className="text-gray-900 font-medium hover:text-jam-orange transition-colors"
-              >
-                Log In
-              </button>
-              <button
-                onClick={() => onSignup('Free', cycle)}
-                className="bg-jam-black text-white px-6 py-2.5 rounded-full font-semibold hover:bg-gray-800 transition-all shadow-lg"
-              >
-                Sign Up Free
-              </button>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <PublicHeader
+        currentPage="pricing"
+        onHomeClick={onBack}
+        onFeaturesClick={onFeaturesClick}
+        onPricingClick={() => {}}
+        onFaqClick={onFaqClick}
+        onContactClick={onContactClick}
+        onLogin={onLogin}
+        onSignup={() => onSignup('Free', cycle)}
+      />
 
       <div className="pt-32 pb-20">
         <div className="text-center max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 mb-12">

@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { Icons } from '../components/Icons';
 import { Footer } from '../components/Footer';
+import { PublicHeader } from '../components/PublicHeader';
 import { sendContactUsSubmission } from '../services/supportService';
 
 interface ContactUsProps {
@@ -12,6 +13,7 @@ interface ContactUsProps {
   onPricingClick: () => void;
   onFeaturesClick: () => void;
   onFaqClick: () => void;
+  onContactClick?: () => void;
   onPrivacyClick?: () => void;
   onTermsClick?: () => void;
 }
@@ -23,6 +25,7 @@ export const ContactUs: React.FC<ContactUsProps> = ({
   onPricingClick,
   onFeaturesClick,
   onFaqClick,
+  onContactClick,
   onPrivacyClick,
   onTermsClick
 }) => {
@@ -103,52 +106,17 @@ export const ContactUs: React.FC<ContactUsProps> = ({
 
   return (
     <div className="min-h-screen bg-white font-sans text-slate-900">
-      {/* Navigation (match Features page) */}
-      <nav className="fixed w-full z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-20">
-            <button
-              onClick={onBack}
-              className="flex items-center text-2xl font-extrabold text-jam-black tracking-tight hover:opacity-80 transition-opacity"
-            >
-              Payroll<span className="text-jam-orange">-Jam</span>
-            </button>
-
-            <div className="hidden md:flex items-center space-x-8">
-              <button onClick={onFeaturesClick} className="text-gray-600 hover:text-gray-900 font-medium">Features</button>
-              <button onClick={onPricingClick} className="text-gray-600 hover:text-gray-900 font-medium">Pricing</button>
-              <button onClick={onFaqClick} className="text-gray-600 hover:text-gray-900 font-medium">FAQ</button>
-              <span className="text-jam-orange font-bold">Contact</span>
-            </div>
-
-            <div className="flex items-center space-x-4">
-              {!user ? (
-                <>
-                  <button
-                    onClick={onLogin}
-                    className="text-gray-900 font-medium hover:text-jam-orange transition-colors"
-                  >
-                    Log In
-                  </button>
-                  <button
-                    onClick={onSignup}
-                    className="bg-jam-black text-white px-6 py-2.5 rounded-full font-semibold hover:bg-gray-800 transition-all shadow-lg"
-                  >
-                    Sign Up Free
-                  </button>
-                </>
-              ) : (
-                <button
-                  onClick={onBack}
-                  className="bg-jam-black text-white px-6 py-2.5 rounded-full font-semibold hover:bg-gray-800 transition-all shadow-lg"
-                >
-                  Back to App
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      </nav>
+      <PublicHeader
+        currentPage="contact-us"
+        onHomeClick={onBack}
+        onFeaturesClick={onFeaturesClick}
+        onPricingClick={onPricingClick}
+        onFaqClick={onFaqClick}
+        onContactClick={onContactClick || (() => {})}
+        onLogin={user ? undefined : onLogin}
+        onSignup={user ? undefined : onSignup}
+        onAppBack={user ? onBack : undefined}
+      />
 
       {/* Hero (match Features page) */}
       <div className="pt-32 pb-16 bg-gray-50">
