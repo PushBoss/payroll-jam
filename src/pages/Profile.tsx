@@ -20,7 +20,9 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl || '');
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -30,8 +32,16 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleUpdatePassword = async () => {
-    if (newPassword.trim().length < 6) {
+    const nextPassword = newPassword.trim();
+    const confirmPassword = confirmNewPassword.trim();
+
+    if (nextPassword.length < 6) {
       toast.error('Password must be at least 6 characters');
+      return;
+    }
+
+    if (nextPassword !== confirmPassword) {
+      toast.error('Passwords do not match');
       return;
     }
 
@@ -42,13 +52,14 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
       }
 
       const { error } = await supabase.auth.updateUser({
-        password: newPassword.trim()
+        password: nextPassword
       });
 
       if (error) throw error;
 
       toast.success('Password updated successfully');
       setNewPassword('');
+      setConfirmNewPassword('');
     } catch (error: any) {
       console.error('Password update failed:', error);
       toast.error(error.message || 'Failed to update password');
@@ -420,13 +431,49 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
                 )}
               </button>
             </div>
+
+            <label className="block text-sm font-medium text-gray-700 mb-2 mt-4">
+              Confirm New Password
+            </label>
+            <div className="relative">
+              <input
+                type={showConfirmNewPassword ? 'text' : 'password'}
+                value={confirmNewPassword}
+                onChange={(e) => setConfirmNewPassword(e.target.value)}
+                autoComplete="new-password"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-jam-orange focus:border-jam-orange pr-12"
+                placeholder="••••••••"
+                minLength={6}
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmNewPassword(!showConfirmNewPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                aria-label={showConfirmNewPassword ? 'Hide password' : 'Show password'}
+              >
+                {showConfirmNewPassword ? (
+                  <Icons.EyeOff className="w-5 h-5" />
+                ) : (
+                  <Icons.Eye className="w-5 h-5" />
+                )}
+              </button>
+            </div>
+
             <p className="text-xs text-gray-500 mt-2">Minimum 6 characters.</p>
 
             <div className="mt-4">
+              {confirmNewPassword.trim().length > 0 && newPassword.trim() !== confirmNewPassword.trim() ? (
+                <p className="text-sm text-red-600 mb-3">Passwords do not match.</p>
+              ) : null}
               <button
                 type="button"
                 onClick={handleUpdatePassword}
-                disabled={isUpdatingPassword || newPassword.trim().length < 6}
+                disabled={
+                  isUpdatingPassword ||
+                  newPassword.trim().length < 6 ||
+                  confirmNewPassword.trim().length < 6 ||
+                  newPassword.trim() !== confirmNewPassword.trim()
+                }
                 className="px-6 py-2 bg-jam-black text-white rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
               >
                 {isUpdatingPassword ? (
