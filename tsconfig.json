@@ -11,13 +11,19 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "types": ["vitest/globals"],
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
   "include": ["."],
-  "exclude": ["vite.config.ts", "node_modules", "api", "supabase"],
+  "exclude": [
+    "vite.config.ts",
+    "node_modules",
+    "api",
+    "supabase",
+    "**/*.test.ts",
+    "**/*.test.tsx"
+  ],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
