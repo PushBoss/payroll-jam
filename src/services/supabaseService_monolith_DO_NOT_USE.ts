@@ -678,11 +678,58 @@ export const supabaseService = {
       activeClient = adminClient;
     }
 
-    const { data, error } = await activeClient.from('companies').select('*');
+    const { data, error } = await activeClient
+      .from('companies')
+      .select('id, name, plan, status, settings, created_at, employees(count)')
+      .order('created_at', { ascending: false });
 
     if (error || !data) {
       console.error("Error fetching companies:", error);
       return [];
+    }
+
+    const companyIds = data.map((company: any) => company.id).filter(Boolean);
+    let contactLookup = new Map<string, { name: string; email: string }>();
+
+    if (companyIds.length > 0) {
+      const { data: userRows, error: usersError } = await activeClient
+        .from('app_users')
+        .select('company_id, name, email, role')
+        .in('company_id', companyIds);
+
+      if (usersError) {
+        console.error('Error fetching company contacts:', usersError);
+      } else {
+        const rolePriority: Record<string, number> = {
+          OWNER: 1,
+          ADMIN: 2,
+          RESELLER: 3,
+          MANAGER: 4,
+          EMPLOYEE: 5,
+          SUPER_ADMIN: 6,
+        };
+
+        const groupedContacts = new Map<string, any[]>();
+        for (const row of userRows || []) {
+          if (!row?.company_id) continue;
+          const existing = groupedContacts.get(row.company_id) || [];
+          existing.push(row);
+          groupedContacts.set(row.company_id, existing);
+        }
+
+        groupedContacts.forEach((rows, companyId) => {
+          const [primary] = rows.sort((a, b) => {
+            const aRank = rolePriority[a.role as string] || 99;
+            const bRank = rolePriority[b.role as string] || 99;
+            return aRank - bRank;
+          });
+
+          contactLookup.set(companyId, {
+            name: primary?.name || 'Admin',
+            email: primary?.email || '',
+          });
+        });
+      }
     }
 
     // Map database plan format back to app format
@@ -697,16 +744,21 @@ export const supabaseService = {
       return planMap[dbPlan] || 'Free';
     };
 
-    return data.map((c: any) => ({
-      id: c.id,
-      companyName: c.name,
-      contactName: c.settings?.contactName || 'Admin',
-      email: c.settings?.email || '',
-      employeeCount: c.settings?.employeeCount || 0,
-      plan: (mapPlanFromDbFormat(c.plan) || 'Free') as 'Free' | 'Starter' | 'Pro' | 'Enterprise' | 'Reseller',
-      status: c.status || 'ACTIVE',
-      mrr: c.settings?.mrr || 0
-    }));
+    return data.map((c: any) => {
+      const contact = contactLookup.get(c.id);
+
+      return {
+        id: c.id,
+        companyName: c.name,
+        contactName: c.settings?.contactName || contact?.name || 'Admin',
+        email: c.settings?.email || contact?.email || '',
+        employeeCount: c.employees?.[0]?.count || c.settings?.employeeCount || 0,
+        plan: (mapPlanFromDbFormat(c.plan) || 'Free') as 'Free' | 'Starter' | 'Pro' | 'Enterprise' | 'Reseller',
+        status: c.status || 'ACTIVE',
+        mrr: c.settings?.mrr || 0,
+        createdAt: c.created_at,
+      };
+    });
   },
 
   getCompanyById: async (companyId: string): Promise<CompanySettings | null> => {
