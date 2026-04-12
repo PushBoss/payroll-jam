@@ -2,6 +2,8 @@
 import React, { useState } from 'react';
 import { Icons } from '../components/Icons';
 import { Footer } from '../components/Footer';
+import { BetaBanner } from '../components/BetaBanner';
+import { SUPPORT_MAILTO } from '../constants/support';
 
 interface FAQProps {
   onSignup: () => void;
@@ -90,8 +92,12 @@ export const FAQ: React.FC<FAQProps> = ({ onSignup, onLogin, onBack, onPricingCl
 
   return (
     <div className="min-h-screen bg-white font-sans text-slate-900">
+      <div className="fixed inset-x-0 top-0 z-50">
+        <BetaBanner />
+      </div>
+
       {/* Navigation */}
-      <nav className="fixed w-full z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
+      <nav className="fixed top-10 w-full z-40 bg-white/80 backdrop-blur-md border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-20">
             <button onClick={onBack} className="flex items-center text-2xl font-extrabold text-jam-black tracking-tight hover:opacity-80 transition-opacity">
@@ -121,7 +127,7 @@ export const FAQ: React.FC<FAQProps> = ({ onSignup, onLogin, onBack, onPricingCl
       </nav>
 
       {/* Hero */}
-      <div className="pt-32 pb-16 bg-gray-50">
+      <div className="pt-40 pb-16 bg-gray-50">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900 mb-6">
             How can we help?
@@ -144,7 +150,7 @@ export const FAQ: React.FC<FAQProps> = ({ onSignup, onLogin, onBack, onPricingCl
       </div>
 
       {/* Categories */}
-      <div className="border-b border-gray-200 sticky top-20 bg-white/95 backdrop-blur-sm z-40">
+      <div className="border-b border-gray-200 sticky top-[7.5rem] bg-white/95 backdrop-blur-sm z-30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex space-x-8 overflow-x-auto no-scrollbar py-4">
             {categories.map(cat => (
@@ -204,9 +210,9 @@ export const FAQ: React.FC<FAQProps> = ({ onSignup, onLogin, onBack, onPricingCl
           <h2 className="text-3xl font-bold mb-6">Still have questions?</h2>
           <p className="text-gray-400 mb-8">Our support team is based in Kingston and ready to assist you.</p>
           <div className="flex flex-col sm:flex-row justify-center space-y-4 sm:space-y-0 sm:space-x-4">
-            <button className="px-8 py-3 bg-jam-orange text-jam-black font-bold rounded-full hover:bg-yellow-500 transition-colors">
+            <a href={SUPPORT_MAILTO} className="px-8 py-3 bg-jam-orange text-jam-black font-bold rounded-full hover:bg-yellow-500 transition-colors inline-flex items-center justify-center">
               Contact Support
-            </button>
+            </a>
             <button onClick={onSignup} className="px-8 py-3 bg-gray-800 text-white font-bold rounded-full hover:bg-gray-700 transition-colors">
               Start Free Trial
             </button>

@@ -2,6 +2,7 @@
 import React, { useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { Footer } from '../components/Footer';
+import { BetaBanner } from '../components/BetaBanner';
 import { PricingPlan } from '../core/types';
 import { getPlanPriceDetails } from '../utils/pricing';
 interface LandingPageProps {
@@ -126,8 +127,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({ plans = [], onLogin, o
   // Optionally show plans/pricing on the landing page if provided
   return (
     <div className="min-h-screen bg-white font-sans text-slate-900 scroll-smooth">
+      <div className="fixed inset-x-0 top-0 z-50">
+        <BetaBanner />
+      </div>
+
       {/* Navigation */}
-      <nav className="fixed w-full z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
+      <nav className="fixed top-10 w-full z-40 bg-white/80 backdrop-blur-md border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-20">
             <div className="flex items-center">
@@ -159,7 +164,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ plans = [], onLogin, o
       </nav>
 
       {/* Hero Section */}
-      <section className="pt-32 pb-20 lg:pt-40 lg:pb-28 overflow-hidden">
+      <section className="pt-40 pb-20 lg:pt-44 lg:pb-28 overflow-hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
           <div className="lg:grid lg:grid-cols-12 lg:gap-16 items-center">
             <div className="lg:col-span-6 text-center lg:text-left z-10">

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { supabase } from '../services/supabaseClient';
 import { toast } from 'sonner';
+import { SUPPORT_MAILTO } from '../constants/support';
 
 interface VerifyEmailProps {
   email?: string;
@@ -218,7 +219,7 @@ export const VerifyEmail: React.FC<VerifyEmailProps> = ({ email, onLoginClick, o
         <div className="mt-8 text-center">
           <p className="text-xs text-gray-500">
             Need help?{' '}
-            <a href="mailto:support@payrolljam.com" className="text-jam-orange hover:underline font-medium">
+            <a href={SUPPORT_MAILTO} className="text-jam-orange hover:underline font-medium">
               Contact Support
             </a>
           </p>

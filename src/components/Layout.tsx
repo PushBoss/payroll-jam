@@ -3,6 +3,7 @@ import { Icons } from './Icons';
 import { Role, CompanySettings } from '../core/types';
 import { useAuth } from '../context/AuthContext';
 import { hasFeatureAccess } from '../utils/featureAccess';
+import { BetaBanner } from './BetaBanner';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -121,6 +122,8 @@ export const Layout: React.FC<LayoutProps> = ({
 
   return (
     <div className="flex flex-col h-screen bg-gray-100 font-sans text-slate-900 overflow-hidden print:h-auto print:overflow-visible">
+      <BetaBanner />
+
       {/* Reseller Managing Self Banner */}
       {isResellerManagingSelf && (
         <div className="bg-gray-900 text-white px-4 py-3 text-sm font-bold flex justify-between items-center shadow-md z-[70] relative border-b border-gray-800">

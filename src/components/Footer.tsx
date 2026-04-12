@@ -1,4 +1,5 @@
 import React from 'react';
+import { SUPPORT_EMAIL, SUPPORT_MAILTO } from '../constants/support';
 
 interface FooterProps {
   onFeaturesClick?: () => void;
@@ -84,6 +85,15 @@ export const Footer: React.FC<FooterProps> = ({
               )}
             </ul>
           </div>
+        </div>
+
+        <div className="mt-10 border-t border-gray-800 pt-6">
+          <p className="text-sm text-gray-400 text-center">
+            Support:{' '}
+            <a href={SUPPORT_MAILTO} className="font-medium text-white hover:text-jam-orange transition-colors">
+              {SUPPORT_EMAIL}
+            </a>
+          </p>
         </div>
         
         {/* Copyright */}

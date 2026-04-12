@@ -2,6 +2,7 @@
 import React, { useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { Footer } from '../components/Footer';
+import { BetaBanner } from '../components/BetaBanner';
 
 interface FeaturesProps {
   onSignup: () => void;
@@ -74,8 +75,12 @@ export const Features: React.FC<FeaturesProps> = ({ onSignup, onLogin, onBack, o
   
   return (
     <div className="min-h-screen bg-white font-sans text-slate-900">
+      <div className="fixed inset-x-0 top-0 z-50">
+        <BetaBanner />
+      </div>
+
       {/* Navigation */}
-      <nav className="fixed w-full z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
+      <nav className="fixed top-10 w-full z-40 bg-white/80 backdrop-blur-md border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-20">
             <button onClick={onBack} className="flex items-center text-2xl font-extrabold text-jam-black tracking-tight hover:opacity-80 transition-opacity">
@@ -105,7 +110,7 @@ export const Features: React.FC<FeaturesProps> = ({ onSignup, onLogin, onBack, o
       </nav>
 
       {/* Hero */}
-      <div className="pt-32 pb-16 bg-gray-50">
+      <div className="pt-40 pb-16 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900 mb-6">
             Built for Jamaica's <br/>

@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { Icons } from '../components/Icons';
 import { Footer } from '../components/Footer';
+import { BetaBanner } from '../components/BetaBanner';
 import { PricingPlan } from '../core/types';
 import { getPlanPriceDetails } from '../utils/pricing';
 
@@ -62,8 +63,12 @@ export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onF
 
   return (
     <div className="min-h-screen bg-white font-sans text-slate-900">
+      <div className="fixed inset-x-0 top-0 z-50">
+        <BetaBanner />
+      </div>
+
       {/* Navigation */}
-      <nav className="fixed w-full z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
+      <nav className="fixed top-10 w-full z-40 bg-white/80 backdrop-blur-md border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-20">
             <button onClick={onBack} className="flex items-center text-2xl font-extrabold text-jam-black tracking-tight hover:opacity-80 transition-opacity">
@@ -92,7 +97,7 @@ export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onF
         </div>
       </nav>
 
-      <div className="pt-32 pb-20">
+      <div className="pt-40 pb-20">
         <div className="text-center max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 mb-12">
           <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-6">Pricing for every stage</h1>
           <p className="text-xl text-gray-500 mb-8">
