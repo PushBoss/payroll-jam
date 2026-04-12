@@ -695,7 +695,8 @@ export const supabaseService = {
       const { data: userRows, error: usersError } = await activeClient
         .from('app_users')
         .select('company_id, name, email, role')
-        .in('company_id', companyIds);
+        .in('company_id', companyIds)
+        .neq('role', 'SUPER_ADMIN');
 
       if (usersError) {
         console.error('Error fetching company contacts:', usersError);
@@ -703,10 +704,9 @@ export const supabaseService = {
         const rolePriority: Record<string, number> = {
           OWNER: 1,
           ADMIN: 2,
-          RESELLER: 3,
-          MANAGER: 4,
+          MANAGER: 3,
+          RESELLER: 4,
           EMPLOYEE: 5,
-          SUPER_ADMIN: 6,
         };
 
         const groupedContacts = new Map<string, any[]>();
@@ -749,9 +749,9 @@ export const supabaseService = {
 
       return {
         id: c.id,
-        companyName: c.name,
-        contactName: c.settings?.contactName || contact?.name || 'Admin',
-        email: c.settings?.email || contact?.email || '',
+        companyName: c.name || c.settings?.companyName || 'Unnamed Company',
+        contactName: c.settings?.contactName || contact?.name || 'No company contact',
+        email: c.settings?.email || contact?.email || 'No company email',
         employeeCount: c.employees?.[0]?.count || c.settings?.employeeCount || 0,
         plan: (mapPlanFromDbFormat(c.plan) || 'Free') as 'Free' | 'Starter' | 'Pro' | 'Enterprise' | 'Reseller',
         status: c.status || 'ACTIVE',
