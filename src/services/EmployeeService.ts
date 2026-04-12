@@ -7,10 +7,11 @@ export const EmployeeService = {
   
   getUserByEmail: async (email: string): Promise<User | null> => {
     if (!supabase) return null;
+    const normalizedEmail = email.trim().toLowerCase();
     const { data, error } = await supabase
-      .from('users')
+      .from('app_users')
       .select('*')
-      .eq('email', email)
+      .eq('email', normalizedEmail)
       .maybeSingle();
     
     if (error || !data) return null;
@@ -19,6 +20,10 @@ export const EmployeeService = {
       name: data.name,
       email: data.email,
       role: data.role as any,
+      companyId: data.company_id,
+      isOnboarded: data.is_onboarded,
+      avatarUrl: data.avatar_url,
+      phone: data.phone,
       onboardingToken: data.onboarding_token
     } as any;
   },
