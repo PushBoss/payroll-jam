@@ -18,16 +18,16 @@ export const usePayroll = (
     // Resolve Effective Policies for this company context
     const policies = useMemo(() => {
         const global = {
-            nis_cap_annual: TAX_CONSTANTS.NIS_CAP_ANNUAL,
-            paye_threshold: TAX_CONSTANTS.PAYE_THRESHOLD
+            nisCap: TAX_CONSTANTS.NIS_CAP_ANNUAL,
+            payeThreshold: TAX_CONSTANTS.PAYE_THRESHOLD
         };
 
         if (!companyData) return global;
 
         // "Most-Specific-Wins" resolution: Local > Reseller > Global
         return {
-            nis_cap_annual: companyData.policies?.nis_cap_annual ?? companyData.reseller_defaults?.nis_cap_annual ?? global.nis_cap_annual,
-            paye_threshold: companyData.policies?.paye_threshold ?? companyData.reseller_defaults?.paye_threshold ?? global.paye_threshold
+            nisCap: companyData.policies?.nis_cap_annual ?? companyData.reseller_defaults?.nis_cap_annual ?? global.nisCap,
+            payeThreshold: companyData.policies?.paye_threshold ?? companyData.reseller_defaults?.paye_threshold ?? global.payeThreshold
         };
     }, [companyData]);
 
@@ -172,11 +172,16 @@ export const usePayroll = (
         const currentGross = Math.max(0, grossPay + taxableAdditions);
 
         // 1. Calculate Standard Period Taxes (NIS, NHT, Ed)
-        const policiesWithPension = {
+        const taxOverrides = {
             ...policies,
             pension: emp.pensionContributionRate || 0
         };
-        const standardTaxes = calculateTaxes(currentGross, emp.payFrequency, policiesWithPension);
+        const cumulativeTaxOverrides = {
+            nis_cap_annual: policies.nisCap,
+            paye_threshold: policies.payeThreshold,
+            pension: emp.pensionContributionRate || 0
+        };
+        const standardTaxes = calculateTaxes(currentGross, emp.payFrequency, taxOverrides);
 
         // 2. Apply Cumulative Logic for PAYE if Salaried
         // (Cumulative mostly applies to regular employees. Hourly/Casual often taxed flatly in simpler systems, 
@@ -202,7 +207,7 @@ export const usePayroll = (
             ytdData.ytdTaxPaid,
             periodNumber,
             emp.payFrequency,
-            policiesWithPension
+            cumulativeTaxOverrides
         );
 
         // Override the standard period PAYE with the Cumulative one

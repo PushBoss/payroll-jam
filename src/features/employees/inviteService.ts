@@ -1,5 +1,5 @@
-import { supabase } from './supabaseClient';
-import { emailService } from './emailService';
+import { supabase } from '../../services/supabaseClient';
+import { emailService } from '../../services/emailService';
 
 export type MemberRole = 'OWNER' | 'ADMIN' | 'MANAGER' | 'EMPLOYEE' | 'RESELLER' | 'owner' | 'admin' | 'manager' | 'employee' | 'reseller';
 
@@ -341,9 +341,10 @@ export async function getPendingInvitationsByEmail(
   email: string
 ): Promise<(AccountMember & { company_name?: string; inviter_name?: string; company_plan?: string })[]> {
   if (!supabase) return [];
+  const client = supabase;
 
   try {
-    const { data: invokeData, error: invokeError } = await supabase.functions.invoke('admin-handler', {
+    const { data: invokeData, error: invokeError } = await client.functions.invoke('admin-handler', {
       body: { action: 'get-pending-invitations', payload: { email } }
     });
 
@@ -363,7 +364,7 @@ export async function getPendingInvitationsByEmail(
         if (invite.inviter && Array.isArray(invite.inviter) && invite.inviter.length > 0) {
           const ownerId = invite.inviter[0].owner_id;
           if (ownerId) {
-            const { data: inviterUser } = await supabase
+            const { data: inviterUser } = await client
               .from('app_users')
               .select('name')
               .eq('id', ownerId)
@@ -377,7 +378,7 @@ export async function getPendingInvitationsByEmail(
 
         if (!companyName && invite.account_id) {
           try {
-            const { data: summary, error: summaryError } = await supabase.rpc('get_company_invite_summary', {
+            const { data: summary, error: summaryError } = await client.rpc('get_company_invite_summary', {
               p_company_id: invite.account_id
             });
 

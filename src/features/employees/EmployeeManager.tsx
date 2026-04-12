@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Employee, EmployeeType, PayType, PayFrequency, Role, CustomDeduction, BankAccount, Department } from '../../core/types';
-import { Icons } from './Icons';
-import { isValidTRN, isValidNIS, isValidEmail, formatTRN } from '../utils/validators';
+import { Icons } from '../../components/Icons';
+import { isValidTRN, isValidNIS, isValidEmail, formatTRN } from '../../utils/validators';
 
 interface EmployeeManagerProps {
   employee?: Employee | null;
