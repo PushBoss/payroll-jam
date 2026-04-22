@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { CompanySettings, Employee, PayRun, LeaveRequest, User, toPlanLabel, toRole, toPayType, toPayFrequency, toEmployeeStatus } from '../core/types';
+import { CompanySettings, Employee, PayRun, LeaveRequest, User, toPlanLabel, toRole, toPayType, toPayFrequency } from '../core/types';
 
 const normalizeDbPeriodToApp = (start: string, end: string): { periodStart: string; periodEnd: string } => {
   const isDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);

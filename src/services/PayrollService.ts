@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { PayRun, WeeklyTimesheet, DbPayRunRow } from '../core/types';
+import { PayRun, WeeklyTimesheet, DbPayRunRow, toPayFrequency } from '../core/types';
 
 const isYearMonth = (value: string) => /^\d{4}-\d{2}$/.test(value);
 const isDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
@@ -64,7 +64,7 @@ export const PayrollService = {
       id: r.id,
       ...normalizeDbPeriodToApp(r.period_start, r.period_end),
       payDate: r.pay_date,
-      payFrequency: r.pay_frequency,
+      payFrequency: toPayFrequency(r.pay_frequency),
       status: r.status as PayRun['status'],
       totalGross: r.total_gross,
       totalNet: r.total_net,
