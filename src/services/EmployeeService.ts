@@ -84,10 +84,16 @@ const isSchemaMismatchError = (error: { message?: string; details?: string; hint
     || message.includes('schema cache');
 };
 
-const getMissingColumnFromError = (error: { message?: string }) => {
-  const message = `${error?.message || ''}`;
-  const match = message.match(/Could not find the '([^']+)' column/i);
-  return match?.[1] || null;
+const getMissingColumnFromError = (error: { message?: string; details?: string; hint?: string }) => {
+  const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
+  
+  const matchPostgrest = message.match(/could not find the '([^']+)' column/i);
+  if (matchPostgrest?.[1]) return matchPostgrest[1];
+
+  const matchPostgres = message.match(/column "([^"]+)" of relation/i);
+  if (matchPostgres?.[1]) return matchPostgres[1];
+
+  return null;
 };
 
 const mutateEmployeeRow = async (
@@ -360,7 +366,10 @@ export const EmployeeService = {
     }
 
     const { error: newError } = await mutateEmployeeRowWithSchemaFallback(client, attemptNew, companyId, emp.id, mode);
-    if (newError) throw newError;
+    if (newError) {
+      console.error('Final Supabase Employee Save Error:', newError);
+      throw newError;
+    }
   },
 
   deleteEmployee: async (employeeId: string, companyId: string) => {

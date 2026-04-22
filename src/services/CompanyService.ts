@@ -53,8 +53,7 @@ export const CompanyService = {
 
     const { error } = await supabase
       .from('companies')
-      .upsert({
-        id: companyId,
+      .update({
         name: settings.name,
         trn: settings.trn,
         address: settings.address,
@@ -75,7 +74,8 @@ export const CompanyService = {
         },
         status: settings.subscriptionStatus || 'ACTIVE',
         plan: normalizePlanToDatabase(settings.plan)
-      });
+      })
+      .eq('id', companyId);
     if (error) throw error;
   },
 
