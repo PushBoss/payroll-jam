@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { AuditLogEntry } from '../core/types';
+import { AuditLogEntry, DbAuditLogRow } from '../core/types';
 
 const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
@@ -7,7 +7,7 @@ export const AuditService = {
   saveAuditLog: async (log: AuditLogEntry, companyId: string | null) => {
     if (!supabase) return;
 
-    const payload: any = {
+    const payload: Record<string, string | undefined> = {
       id: log.id,
       actor_name: log.actorName,
       action: log.action,
@@ -50,12 +50,12 @@ export const AuditService = {
       return [];
     }
 
-    return data.map((log: any) => ({
+    return data.map((log: DbAuditLogRow) => ({
       id: log.id,
       timestamp: log.timestamp,
-      actorId: log.actor_id,
+      actorId: log.actor_id || '',
       actorName: log.actor_name,
-      action: log.action,
+      action: log.action as AuditLogEntry['action'],
       entity: log.entity,
       description: log.description,
       ipAddress: log.ip_address,

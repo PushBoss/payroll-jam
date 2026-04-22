@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { PayRun, WeeklyTimesheet } from '../core/types';
+import { PayRun, WeeklyTimesheet, DbPayRunRow } from '../core/types';
 
 const isYearMonth = (value: string) => /^\d{4}-\d{2}$/.test(value);
 const isDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
@@ -18,7 +18,7 @@ const toDbPeriodEnd = (value: string) => {
   return `${value}-${String(lastDay).padStart(2, '0')}`;
 };
 
-const normalizeDbPeriodToApp = (start: any, end: any): { periodStart: string; periodEnd: string } => {
+const normalizeDbPeriodToApp = (start: string, end: string): { periodStart: string; periodEnd: string } => {
   const startStr = typeof start === 'string' ? start : '';
   const endStr = typeof end === 'string' ? end : '';
 
@@ -60,12 +60,12 @@ export const PayrollService = {
       .order('period_start', { ascending: false });
 
     if (error) return [];
-    return data.map((r: any) => ({
+    return data.map((r: DbPayRunRow) => ({
       id: r.id,
       ...normalizeDbPeriodToApp(r.period_start, r.period_end),
       payDate: r.pay_date,
       payFrequency: r.pay_frequency,
-      status: r.status,
+      status: r.status as PayRun['status'],
       totalGross: r.total_gross,
       totalNet: r.total_net,
       lineItems: r.line_items || []
@@ -117,6 +117,6 @@ export const PayrollService = {
       .select('*')
       .eq('company_id', companyId);
     if (error) return [];
-    return data as any[];
+    return (data || []) as WeeklyTimesheet[];
   }
 };

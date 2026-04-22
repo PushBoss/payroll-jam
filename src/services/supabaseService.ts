@@ -3,24 +3,26 @@ import { EmployeeService } from './EmployeeService';
 import { CompanyService } from './CompanyService';
 import { BillingService } from './BillingService';
 import { ResellerService } from './ResellerService';
-import { AuditLogEntry, ResellerClient, User } from '../core/types';
+import { AuditLogEntry, ResellerClient, User, DbAppUserRow, DbCompanyRow, DbAuditLogRow, toRole, toPlanLabel } from '../core/types';
 import { normalizePlanToFrontend } from '../utils/planNames';
 
 const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
-const mapResellerClient = (row: any): ResellerClient => {
-	const company = row.client_company || row.client_company_id || row.companies || row.company || {};
+const mapResellerClient = (row: Record<string, unknown>): ResellerClient => {
+	const company = (row.client_company || row.client_company_id || row.companies || row.company || {}) as Record<string, unknown>;
+	const companySettings = (company?.settings || {}) as Record<string, unknown>;
+	const employees = company?.employees as Array<{ count?: number }> | undefined;
 	return {
-		id: company?.id || row.client_company_id,
-		companyName: company?.name || company?.companyName || 'Unknown Company',
-		contactName: company?.email || row.contact_name || '',
-		email: company?.email || row.email || '',
-		plan: normalizePlanToFrontend(company?.plan || row.plan || 'Free') as any,
-		employeeCount: company?.employees?.[0]?.count || company?.settings?.employeeCount || row.employeeCount || 0,
-		status: row.status || company?.status || 'ACTIVE',
-		mrr: (row.monthly_base_fee || 0) + ((row.per_employee_fee || 0) * (company?.settings?.employeeCount || row.employeeCount || 0)),
-		createdAt: row.created_at,
-	} as ResellerClient;
+		id: (company?.id as string) || (row.client_company_id as string),
+		companyName: (company?.name as string) || (company?.companyName as string) || 'Unknown Company',
+		contactName: (company?.email as string) || (row.contact_name as string) || '',
+		email: (company?.email as string) || (row.email as string) || '',
+		plan: toPlanLabel(normalizePlanToFrontend((company?.plan as string) || (row.plan as string) || 'Free')),
+		employeeCount: employees?.[0]?.count || (companySettings?.employeeCount as number) || (row.employeeCount as number) || 0,
+		status: (row.status as ResellerClient['status']) || (company?.status as ResellerClient['status']) || 'ACTIVE',
+		mrr: ((row.monthly_base_fee as number) || 0) + (((row.per_employee_fee as number) || 0) * ((companySettings?.employeeCount as number) || (row.employeeCount as number) || 0)),
+		createdAt: row.created_at as string,
+	};
 };
 
 /**
@@ -79,16 +81,19 @@ export const supabaseService = {
 			return [];
 		}
 
-		return data.map((company: any) => ({
-			id: company.id,
-			companyName: company.name,
-			contactName: company.settings?.contactName || 'Admin',
-			email: company.settings?.email || '',
-			employeeCount: company.settings?.employeeCount || 0,
-			plan: normalizePlanToFrontend(company.plan || 'Free') as any,
-			status: company.status || 'ACTIVE',
-			mrr: company.settings?.mrr || 0,
-		}));
+		return data.map((company: DbCompanyRow) => {
+		const settings = (company.settings || {}) as Record<string, unknown>;
+		return {
+		id: company.id,
+		companyName: company.name,
+		contactName: (settings.contactName as string) || 'Admin',
+		email: (settings.email as string) || '',
+		employeeCount: (settings.employeeCount as number) || 0,
+		plan: toPlanLabel(normalizePlanToFrontend(company.plan || 'Free')),
+		status: (company.status || 'ACTIVE') as ResellerClient['status'],
+		mrr: (settings.mrr as number) || 0,
+	};
+	});
 	},
 
 	updateCompanyStatus: async (companyId: string, status: 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'PENDING_PAYMENT') => {
@@ -120,16 +125,16 @@ export const supabaseService = {
 			return [];
 		}
 
-		return data.map((row: any) => ({
-			id: row.id,
-			name: row.name,
-			email: row.email,
-			role: row.role as any,
-			companyId: row.company_id,
-			isOnboarded: row.is_onboarded,
-			avatarUrl: row.avatar_url || undefined,
-			phone: row.phone || undefined,
-		}));
+		return data.map((row: DbAppUserRow) => ({
+		id: row.id,
+		name: row.name,
+		email: row.email,
+		role: toRole(row.role),
+		companyId: row.company_id ?? undefined,
+		isOnboarded: row.is_onboarded,
+		avatarUrl: row.avatar_url ?? undefined,
+		phone: row.phone ?? undefined,
+	}));
 	},
 
 	deleteUser: async (userId: string) => {
@@ -168,15 +173,15 @@ export const supabaseService = {
 	saveAuditLog: async (log: AuditLogEntry, companyId: string | null) => {
 		if (!supabase) return;
 
-		const payload: any = {
-			id: log.id,
-			actor_name: log.actorName,
-			action: log.action,
-			entity: log.entity,
-			description: log.description,
-			timestamp: log.timestamp,
-			ip_address: log.ipAddress,
-		};
+		const payload: Record<string, string | undefined> = {
+		id: log.id,
+		actor_name: log.actorName,
+		action: log.action,
+		entity: log.entity,
+		description: log.description,
+		timestamp: log.timestamp,
+		ip_address: log.ipAddress,
+	};
 
 		if (companyId && isUuid(companyId)) payload.company_id = companyId;
 		if (log.actorId && isUuid(log.actorId)) payload.actor_id = log.actorId;
@@ -210,16 +215,16 @@ export const supabaseService = {
 			return [];
 		}
 
-		return data.map((log: any) => ({
-			id: log.id,
-			timestamp: log.timestamp,
-			actorId: log.actor_id,
-			actorName: log.actor_name,
-			action: log.action,
-			entity: log.entity,
-			description: log.description,
-			ipAddress: log.ip_address,
-		}));
+		return data.map((log: DbAuditLogRow) => ({
+		id: log.id,
+		timestamp: log.timestamp,
+		actorId: log.actor_id || '',
+		actorName: log.actor_name,
+		action: log.action as AuditLogEntry['action'],
+		entity: log.entity,
+		description: log.description,
+		ipAddress: log.ip_address,
+	}));
 	},
 
 	saveResellerInvite: async (
@@ -356,7 +361,7 @@ export const supabaseService = {
 		}
 	},
 
-	getComplianceOverview: async (resellerId: string): Promise<Record<string, any>> => {
+	getComplianceOverview: async (resellerId: string): Promise<Record<string, { lastPayRunDate: string; periodEnd: string; status: string }>> => {
 		if (!supabase) return {};
 
 		try {
@@ -367,7 +372,7 @@ export const supabaseService = {
 
 			if (!clients?.length) return {};
 
-			const clientIds = clients.map((client: any) => client.client_company_id);
+			const clientIds = clients.map((client: { client_company_id: string }) => client.client_company_id);
 			const threeMonthsAgo = new Date();
 			threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
 
@@ -384,8 +389,8 @@ export const supabaseService = {
 				return {};
 			}
 
-			const overview: Record<string, any> = {};
-			(runs || []).forEach((run: any) => {
+			const overview: Record<string, { lastPayRunDate: string; periodEnd: string; status: string }> = {};
+			(runs || []).forEach((run: { company_id: string; pay_date?: string; period_end: string }) => {
 				if (!overview[run.company_id]) {
 					overview[run.company_id] = {
 						lastPayRunDate: run.pay_date || run.period_end,

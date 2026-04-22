@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { CompanySettings, GlobalConfig, ResellerClient } from '../core/types';
+import { CompanySettings, GlobalConfig, ResellerClient, DbCompanyRow, toPlanLabel, toCompanyStatus } from '../core/types';
 import { normalizePlanToDatabase, normalizePlanToFrontend } from '../utils/planNames';
 
 
@@ -24,7 +24,7 @@ export const CompanyService = {
       bankName: settings.bankName || 'NCB',
       accountNumber: settings.accountNumber || '',
       branchCode: settings.branchCode || '',
-      plan: normalizePlanToFrontend(data.plan) as any,
+      plan: toPlanLabel(normalizePlanToFrontend(data.plan)),
       subscriptionStatus: data.status || 'ACTIVE',
       paymentMethod: settings.paymentMethod,
       resellerId: data.reseller_id,
@@ -79,7 +79,7 @@ export const CompanyService = {
     if (error) throw error;
   },
 
-  savePaymentGatewaySettings: async (companyId: string, paymentConfig: any) => {
+  savePaymentGatewaySettings: async (companyId: string, paymentConfig: Record<string, unknown>) => {
     if (!supabase) return;
 
     const { data: company, error: fetchError } = await supabase
@@ -117,16 +117,19 @@ export const CompanyService = {
       return [];
     }
 
-    return data.map((company: any) => ({
+    return data.map((company: DbCompanyRow) => {
+      const settings = (company.settings || {}) as Record<string, unknown>;
+      return {
       id: company.id,
       companyName: company.name,
-      contactName: company.settings?.contactName || 'Admin',
-      email: company.settings?.email || '',
-      employeeCount: company.settings?.employeeCount || 0,
-      plan: normalizePlanToFrontend(company.plan || 'Free') as any,
-      status: company.status || 'ACTIVE',
-      mrr: company.settings?.mrr || 0,
-    }));
+      contactName: (settings.contactName as string) || 'Admin',
+      email: (settings.email as string) || '',
+      employeeCount: (settings.employeeCount as number) || 0,
+      plan: toPlanLabel(normalizePlanToFrontend(company.plan || 'Free')),
+      status: toCompanyStatus(company.status) as ResellerClient['status'],
+      mrr: (settings.mrr as number) || 0,
+    };
+    });
   },
 
   updateCompanyStatus: async (companyId: string, status: 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'PENDING_PAYMENT') => {
@@ -200,7 +203,7 @@ export const CompanyService = {
         return false;
       }
 
-      await Promise.all((companies || []).map((company: any) => {
+      await Promise.all((companies || []).map((company: { id: string; settings?: Record<string, unknown> }) => {
         const currentSettings = company.settings || {};
         return client
           .from('companies')

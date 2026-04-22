@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { User } from '../core/types';
+import { User, DbAppUserRow, toRole } from '../core/types';
 import { EmployeeService } from './EmployeeService';
 
 export const UserService = {
@@ -21,15 +21,15 @@ export const UserService = {
       return [];
     }
 
-    return data.map((row: any) => ({
+    return data.map((row: DbAppUserRow) => ({
       id: row.id,
       name: row.name,
       email: row.email,
-      role: row.role as any,
-      companyId: row.company_id,
+      role: toRole(row.role),
+      companyId: row.company_id ?? undefined,
       isOnboarded: row.is_onboarded,
-      avatarUrl: row.avatar_url || undefined,
-      phone: row.phone || undefined,
+      avatarUrl: row.avatar_url ?? undefined,
+      phone: row.phone ?? undefined,
     }));
   },
 

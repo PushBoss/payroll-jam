@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { Employee, User, LeaveRequest } from '../core/types';
+import { Employee, User, LeaveRequest, DbAppUserRow, DbEmployeeRow, toRole, toPayType, toPayFrequency, toEmployeeStatus, CustomDeduction, Deduction } from '../core/types';
 
 type EmployeeSaveMode = 'insert' | 'update' | 'upsert';
 
@@ -8,12 +8,12 @@ const requireSupabase = () => {
   return supabase;
 };
 
-const coerceFiniteNumber = (value: any, fallback = 0) => {
+const coerceFiniteNumber = (value: unknown, fallback = 0) => {
   const num = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(num) ? num : fallback;
 };
 
-const parseJsonArrayIfNeeded = (value: any): any[] | null => {
+const parseJsonArrayIfNeeded = (value: unknown): unknown[] | null => {
   if (Array.isArray(value)) return value;
   if (typeof value !== 'string') return null;
   try {
@@ -24,46 +24,46 @@ const parseJsonArrayIfNeeded = (value: any): any[] | null => {
   }
 };
 
-const normalizeCustomDeductions = (value: any) => {
+const normalizeCustomDeductions = (value: unknown): CustomDeduction[] => {
   const arr = parseJsonArrayIfNeeded(value) ?? (Array.isArray(value) ? value : []);
   return arr
     .filter(Boolean)
-    .map((raw: any) => {
-      const periodType = raw?.periodType === 'TARGET_BALANCE' ? 'TARGET_BALANCE' : 'FIXED_TERM';
+    .map((raw: Record<string, unknown>) => {
+      const periodType = raw?.periodType === 'TARGET_BALANCE' ? 'TARGET_BALANCE' as const : 'FIXED_TERM' as const;
       return {
         id: String(raw?.id ?? `deduction_${Date.now()}`),
         name: String(raw?.name ?? ''),
         amount: coerceFiniteNumber(raw?.amount, 0),
         periodType,
         remainingTerm: raw?.remainingTerm === undefined ? undefined : coerceFiniteNumber(raw?.remainingTerm, 0),
-        periodFrequency: raw?.periodFrequency,
+        periodFrequency: raw?.periodFrequency as CustomDeduction['periodFrequency'],
         currentBalance: raw?.currentBalance === undefined ? undefined : coerceFiniteNumber(raw?.currentBalance, 0),
         targetBalance: raw?.targetBalance === undefined ? undefined : coerceFiniteNumber(raw?.targetBalance, 0)
       };
     })
-    .filter((d: any) => d.name && coerceFiniteNumber(d.amount, 0) > 0);
+    .filter((d) => d.name && coerceFiniteNumber(d.amount, 0) > 0);
 };
 
-const normalizeSimpleDeductions = (value: any) => {
+const normalizeSimpleDeductions = (value: unknown): Deduction[] => {
   const arr = parseJsonArrayIfNeeded(value) ?? (Array.isArray(value) ? value : []);
   return arr
     .filter(Boolean)
-    .map((raw: any) => ({
+    .map((raw: Record<string, unknown>) => ({
       id: String(raw?.id ?? `other_${Date.now()}`),
       name: String(raw?.name ?? ''),
       amount: coerceFiniteNumber(raw?.amount, 0)
     }))
-    .filter((d: any) => d.name && coerceFiniteNumber(d.amount, 0) > 0);
+    .filter((d) => d.name && coerceFiniteNumber(d.amount, 0) > 0);
 };
 
-const getCustomDeductionsFromRow = (row: any) => {
+const getCustomDeductionsFromRow = (row: DbEmployeeRow | null): CustomDeduction[] => {
   if (!row) return [];
   if (row.deductions !== undefined && row.deductions !== null) return normalizeCustomDeductions(row.deductions);
   if (row.custom_deductions !== undefined && row.custom_deductions !== null) return normalizeCustomDeductions(row.custom_deductions);
   return [];
 };
 
-const getPayDataFromRow = (row: any) => {
+const getPayDataFromRow = (row: DbEmployeeRow | null) => {
   if (!row) return {};
   if (row.pay_data && typeof row.pay_data === 'object') return row.pay_data;
   return {
@@ -74,7 +74,7 @@ const getPayDataFromRow = (row: any) => {
   };
 };
 
-const isSchemaMismatchError = (error: any) => {
+const isSchemaMismatchError = (error: { message?: string; details?: string; hint?: string; code?: string }) => {
   const message = `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`.toLowerCase();
   const code = String(error?.code || '').toUpperCase();
 
@@ -84,7 +84,7 @@ const isSchemaMismatchError = (error: any) => {
     || message.includes('schema cache');
 };
 
-const getMissingColumnFromError = (error: any) => {
+const getMissingColumnFromError = (error: { message?: string }) => {
   const message = `${error?.message || ''}`;
   const match = message.match(/Could not find the '([^']+)' column/i);
   return match?.[1] || null;
@@ -151,17 +151,18 @@ export const EmployeeService = {
       .maybeSingle();
     
     if (error || !data) return null;
+    const row = data as DbAppUserRow;
     return {
-      id: data.id,
-      name: data.name,
-      email: data.email,
-      role: data.role as any,
-      companyId: data.company_id,
-      isOnboarded: data.is_onboarded,
-      avatarUrl: data.avatar_url,
-      phone: data.phone,
-      onboardingToken: data.onboarding_token
-    } as any;
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      role: toRole(row.role),
+      companyId: row.company_id ?? undefined,
+      isOnboarded: row.is_onboarded,
+      avatarUrl: row.avatar_url ?? undefined,
+      phone: row.phone ?? undefined,
+      onboardingToken: row.onboarding_token ?? undefined
+    };
   },
 
   saveUser: async (user: User) => {
@@ -198,12 +199,12 @@ export const EmployeeService = {
       .eq('company_id', companyId);
 
     if (error) return [];
-    return (data || []).map((u: any) => ({
+    return (data || []).map((u: DbAppUserRow) => ({
       id: u.id,
       name: u.name,
       email: u.email,
-      role: u.role as any,
-      companyId: u.company_id,
+      role: toRole(u.role),
+      companyId: u.company_id ?? undefined,
       isOnboarded: u.is_onboarded,
     }));
   },
@@ -218,9 +219,9 @@ export const EmployeeService = {
       .eq('company_id', companyId);
 
     if (error) throw error;
-    return (data || []).map((e: any) => {
+    return (data || []).map((e: DbEmployeeRow) => {
       const payData = getPayDataFromRow(e);
-      return ({
+      return {
       id: e.id,
       firstName: e.first_name,
       lastName: e.last_name,
@@ -228,8 +229,8 @@ export const EmployeeService = {
       trn: e.trn,
       nis: e.nis,
       employeeId: e.employee_number || e.employee_id || undefined,
-      status: e.status,
-      role: e.role,
+      status: toEmployeeStatus(e.status),
+      role: toRole(e.role),
       hireDate: e.hire_date,
       joiningDate: e.joining_date || undefined,
       jobTitle: e.job_title || undefined,
@@ -240,8 +241,8 @@ export const EmployeeService = {
 
       grossSalary: payData?.grossSalary || 0,
       hourlyRate: payData?.hourlyRate,
-      payType: payData?.payType || 'SALARIED',
-      payFrequency: payData?.payFrequency || 'MONTHLY',
+      payType: toPayType(payData?.payType),
+      payFrequency: toPayFrequency(payData?.payFrequency),
 
       bankDetails: e.bank_details || undefined,
       leaveBalance: e.leave_balance || undefined,
@@ -253,7 +254,7 @@ export const EmployeeService = {
 
       terminationDetails: e.termination_details || undefined,
       onboardingToken: e.onboarding_token || undefined
-    } as any);
+    } as Employee;
     });
   },
 
@@ -382,38 +383,39 @@ export const EmployeeService = {
     const { data, error } = await query.maybeSingle();
     if (error || !data) return null;
 
-    const payData = getPayDataFromRow(data);
+    const row = data as DbEmployeeRow;
+    const payData = getPayDataFromRow(row);
 
     return {
       employee: {
-        id: data.id,
-        firstName: data.first_name,
-        lastName: data.last_name,
-        email: data.email,
-        trn: data.trn || '',
-        nis: data.nis || '',
-        employeeId: data.employee_number || data.employee_id || undefined,
-        status: data.status,
-        role: data.role,
-        hireDate: data.hire_date,
-        jobTitle: data.job_title || undefined,
-        department: data.department || undefined,
-        phone: data.phone || undefined,
-        address: data.address || undefined,
-        emergencyContact: data.emergency_contact || undefined,
+        id: row.id,
+        firstName: row.first_name,
+        lastName: row.last_name,
+        email: row.email,
+        trn: row.trn || '',
+        nis: row.nis || '',
+        employeeId: row.employee_number || row.employee_id || undefined,
+        status: toEmployeeStatus(row.status),
+        role: toRole(row.role),
+        hireDate: row.hire_date,
+        jobTitle: row.job_title || undefined,
+        department: row.department || undefined,
+        phone: row.phone || undefined,
+        address: row.address || undefined,
+        emergencyContact: row.emergency_contact || undefined,
         grossSalary: payData?.grossSalary || 0,
         hourlyRate: payData?.hourlyRate,
-        payType: payData?.payType || 'SALARIED',
-        payFrequency: payData?.payFrequency || 'MONTHLY',
-        bankDetails: data.bank_details || undefined,
-        leaveBalance: data.leave_balance || undefined,
-        allowances: data.allowances || [],
-        customDeductions: getCustomDeductionsFromRow(data),
-        terminationDetails: data.termination_details || undefined,
-        onboardingToken: data.onboarding_token || undefined
-      } as any,
-      companyName: (data.companies as any)?.name || 'Unknown',
-      companyId: data.company_id
+        payType: toPayType(payData?.payType),
+        payFrequency: toPayFrequency(payData?.payFrequency),
+        bankDetails: row.bank_details || undefined,
+        leaveBalance: row.leave_balance || undefined,
+        allowances: row.allowances || [],
+        customDeductions: getCustomDeductionsFromRow(row),
+        terminationDetails: row.termination_details || undefined,
+        onboardingToken: row.onboarding_token || undefined
+      } as Employee,
+      companyName: row.companies?.name || 'Unknown',
+      companyId: row.company_id
     };
   },
 
@@ -426,7 +428,7 @@ export const EmployeeService = {
       .select('*')
       .eq('company_id', companyId);
     if (error) return [];
-    return data as any[];
+    return (data || []) as LeaveRequest[];
   },
 
   saveLeaveRequest: async (req: LeaveRequest, companyId: string) => {

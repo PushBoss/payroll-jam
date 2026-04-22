@@ -1,7 +1,7 @@
 import { supabase } from './supabaseClient';
-import { CompanySettings, Employee, PayRun, LeaveRequest, User } from '../core/types';
+import { CompanySettings, Employee, PayRun, LeaveRequest, User, toPlanLabel, toRole, toPayType, toPayFrequency, toEmployeeStatus } from '../core/types';
 
-const normalizeDbPeriodToApp = (start: any, end: any): { periodStart: string; periodEnd: string } => {
+const normalizeDbPeriodToApp = (start: string, end: string): { periodStart: string; periodEnd: string } => {
   const isDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
   const startStr = typeof start === 'string' ? start : '';
   const endStr = typeof end === 'string' ? end : '';
@@ -53,49 +53,49 @@ export const AdminService = {
         bankName: settings.bankName || 'NCB',
         accountNumber: settings.accountNumber || '',
         branchCode: settings.branchCode || '',
-        plan: dbCompany.plan as any,
+        plan: toPlanLabel(dbCompany.plan),
         subscriptionStatus: dbCompany.status || 'ACTIVE',
         policies: settings.policies,
         taxConfig: settings.taxConfig,
         departments: dbCompany.departments || [],
         designations: dbCompany.designations || []
-      } as any : null;
+      } as CompanySettings : null;
 
       // Map Employees
-      const employees = (data.employees || []).map((e: any) => ({
+      const employees: Employee[] = (data.employees || []).map((e: Record<string, unknown>) => ({
         ...e,
         firstName: e.first_name,
         lastName: e.last_name,
-        grossSalary: e.pay_data?.grossSalary ?? e.gross_salary,
-        hourlyRate: e.pay_data?.hourlyRate ?? e.hourly_rate,
-        payFrequency: (e.pay_data?.payFrequency ?? e.pay_frequency) as any,
-        payType: (e.pay_data?.payType ?? e.pay_type) as any,
+        grossSalary: (e.pay_data as Record<string, unknown>)?.grossSalary ?? e.gross_salary,
+        hourlyRate: (e.pay_data as Record<string, unknown>)?.hourlyRate ?? e.hourly_rate,
+        payFrequency: toPayFrequency(((e.pay_data as Record<string, unknown>)?.payFrequency ?? e.pay_frequency) as string),
+        payType: toPayType(((e.pay_data as Record<string, unknown>)?.payType ?? e.pay_type) as string),
         employeeId: e.employee_number || e.employee_id,
         hireDate: e.hire_date,
         bankDetails: e.bank_details,
-        allowances: e.allowances || [],
-        customDeductions: e.deductions || e.custom_deductions || []
-      }));
+        allowances: (e.allowances as unknown[]) || [],
+        customDeductions: (e.deductions as unknown[]) || (e.custom_deductions as unknown[]) || []
+      } as Employee));
 
       // Map Pay Runs
-      const payRuns = (data.payRuns || []).map((r: any) => ({
-        id: r.id,
-        ...normalizeDbPeriodToApp(r.period_start, r.period_end),
-        payDate: r.pay_date,
-        status: r.status,
-        totalGross: r.total_gross,
-        totalNet: r.total_net,
-        lineItems: r.line_items || []
-      }));
+      const payRuns: PayRun[] = (data.payRuns || []).map((r: Record<string, unknown>) => ({
+        id: r.id as string,
+        ...normalizeDbPeriodToApp(r.period_start as string, r.period_end as string),
+        payDate: r.pay_date as string,
+        status: r.status as PayRun['status'],
+        totalGross: r.total_gross as number,
+        totalNet: r.total_net as number,
+        lineItems: (r.line_items as unknown[]) || []
+      } as PayRun));
 
       // Map Users
-      const users = (data.users || []).map((u: any) => ({
-        id: u.id,
-        name: u.name,
-        email: u.email,
-        role: u.role as any,
-        companyId: u.company_id,
-        isOnboarded: u.is_onboarded,
+      const users: User[] = (data.users || []).map((u: Record<string, unknown>) => ({
+        id: u.id as string,
+        name: u.name as string,
+        email: u.email as string,
+        role: toRole(u.role as string),
+        companyId: u.company_id as string | undefined,
+        isOnboarded: u.is_onboarded as boolean,
       }));
 
       return {
