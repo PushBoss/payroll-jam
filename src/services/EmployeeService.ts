@@ -94,6 +94,7 @@ const mutateEmployeeRow = async (
   client: ReturnType<typeof requireSupabase>,
   payload: Record<string, any>,
   companyId: string,
+  employeeId: string,
   mode: EmployeeSaveMode,
 ) => {
   switch (mode) {
@@ -103,7 +104,7 @@ const mutateEmployeeRow = async (
       return client
         .from('employees')
         .update(payload)
-        .eq('id', payload.id)
+        .eq('id', employeeId)
         .eq('company_id', companyId);
     default:
       return client.from('employees').upsert(payload);
@@ -114,12 +115,13 @@ const mutateEmployeeRowWithSchemaFallback = async (
   client: ReturnType<typeof requireSupabase>,
   payload: Record<string, any>,
   companyId: string,
+  employeeId: string,
   mode: EmployeeSaveMode,
 ) => {
   const nextPayload = { ...payload };
 
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    const result = await mutateEmployeeRow(client, nextPayload, companyId, mode);
+    const result = await mutateEmployeeRow(client, nextPayload, companyId, employeeId, mode);
     if (!result.error) return result;
 
     if (!isSchemaMismatchError(result.error)) {
@@ -134,7 +136,7 @@ const mutateEmployeeRowWithSchemaFallback = async (
     delete nextPayload[missingColumn];
   }
 
-  return mutateEmployeeRow(client, nextPayload, companyId, mode);
+  return mutateEmployeeRow(client, nextPayload, companyId, employeeId, mode);
 };
 
 
@@ -325,7 +327,7 @@ export const EmployeeService = {
       custom_deductions: persistedDeductions
     };
 
-    const { error: legacyError } = await mutateEmployeeRowWithSchemaFallback(client, attemptLegacy, companyId, mode);
+    const { error: legacyError } = await mutateEmployeeRowWithSchemaFallback(client, attemptLegacy, companyId, emp.id, mode);
     if (!legacyError) return;
 
     if (!isSchemaMismatchError(legacyError)) {
@@ -349,7 +351,7 @@ export const EmployeeService = {
       let lastError: any = null;
 
       for (const candidate of updateCandidates) {
-        const { error } = await mutateEmployeeRowWithSchemaFallback(client, candidate, companyId, mode);
+        const { error } = await mutateEmployeeRowWithSchemaFallback(client, candidate, companyId, emp.id, mode);
         if (!error) return;
         lastError = error;
       }
@@ -357,7 +359,7 @@ export const EmployeeService = {
       throw lastError;
     }
 
-    const { error: newError } = await mutateEmployeeRowWithSchemaFallback(client, attemptNew, companyId, mode);
+    const { error: newError } = await mutateEmployeeRowWithSchemaFallback(client, attemptNew, companyId, emp.id, mode);
     if (newError) throw newError;
   },
 

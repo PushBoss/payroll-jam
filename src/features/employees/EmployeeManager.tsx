@@ -768,13 +768,13 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                     className={`w-full border rounded-lg p-3 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange transition-all ${
                       errors.nis ? 'border-red-500 bg-red-50' : 'border-gray-300 bg-white'
                     }`}
-                    placeholder="123-456-789"
+                    placeholder="A-123-456"
                     maxLength={11}
                   />
                   {errors.nis && (
                     <p className="text-red-600 text-xs mt-1">{errors.nis}</p>
                   )}
-                  <p className="text-xs text-gray-500 mt-2">Format: XXX-XXX-XXX or PENDING</p>
+                  <p className="text-xs text-gray-500 mt-2">Format: A-123-456 or PENDING</p>
                 </div>
 
                 <div>
