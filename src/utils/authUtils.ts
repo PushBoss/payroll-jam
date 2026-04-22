@@ -11,7 +11,7 @@ export const get_current_company_id = (user: User | null): string | null => {
     if (!user) return null;
 
     // If impersonating (Reseller view), prioritize the target company
-    if ((user as any).isResellerView || (user as any).originalRole) {
+    if (user.isResellerView || user.originalRole) {
         return user.companyId || null;
     }
 

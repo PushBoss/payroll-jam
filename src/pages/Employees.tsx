@@ -245,7 +245,7 @@ export const Employees: React.FC<EmployeesProps> = ({
         );
 
         if (emailResult.success) {
-            const addResult = await Promise.resolve(onAddEmployee(newEmp) as any);
+            const addResult = await Promise.resolve(onAddEmployee(newEmp));
             if (addResult === false) {
                 setIsSendingInvite(false);
                 return;
@@ -274,7 +274,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                 payFrequency: employee.payFrequency || PayFrequency.MONTHLY,
                 role: employee.role || Role.EMPLOYEE
             };
-            const addResult = await Promise.resolve(onAddEmployee(newEmp) as any);
+            const addResult = await Promise.resolve(onAddEmployee(newEmp));
             if (addResult === false) {
                 return;
             }
@@ -286,7 +286,7 @@ export const Employees: React.FC<EmployeesProps> = ({
         }
 
         // Edit mode
-        const updateResult = await Promise.resolve(onUpdateEmployee(employee) as any);
+        const updateResult = await Promise.resolve(onUpdateEmployee(employee));
         if (updateResult === false) {
             // App-level handler should already toast an error.
             return;
@@ -321,7 +321,7 @@ export const Employees: React.FC<EmployeesProps> = ({
             terminationDetails: details
         };
 
-        const updateResult = await Promise.resolve(onUpdateEmployee(updatedEmp) as any);
+        const updateResult = await Promise.resolve(onUpdateEmployee(updatedEmp));
         if (updateResult === false) return;
         auditService.log(currentUser, 'UPDATE', 'Employee', `Terminated ${emp.firstName} ${emp.lastName}. Reason: ${details.reason}`);
         generateP45CSV(companyData, payRunHistory, updatedEmp);
@@ -387,7 +387,7 @@ export const Employees: React.FC<EmployeesProps> = ({
         Papa.parse(file, {
             header: true,
             skipEmptyLines: true,
-            complete: (results: Papa.ParseResult<any>) => {
+            complete: (results: Papa.ParseResult<Record<string, string>>) => {
                 if (results.errors.length > 0) {
                     console.error("CSV Errors:", results.errors);
                     toast.error("Error parsing CSV file.");
@@ -406,7 +406,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                 }
 
                 let count = 0;
-                rows.forEach((row: any) => {
+                rows.forEach((row: Record<string, string>) => {
                     const email = row['Email']?.trim();
                     if (!email) return;
 
@@ -449,7 +449,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                 toast.success(`Successfully imported ${count} employees.`);
                 e.target.value = '';
             },
-            error: (err: any) => {
+            error: (err: Error) => {
                 console.error(err);
                 toast.error("Failed to read file.");
             }
@@ -631,7 +631,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                                 <select
                                     className="w-full border border-gray-300 rounded-lg p-2"
                                     value={terminationData.reason}
-                                    onChange={e => setTerminationData({ ...terminationData, reason: e.target.value as any })}
+                                    onChange={e => setTerminationData({ ...terminationData, reason: e.target.value as TerminationDetails['reason'] })}
                                 >
                                     <option value="RESIGNATION">Resignation</option>
                                     <option value="REDUNDANCY">Redundancy</option>

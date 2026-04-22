@@ -21,14 +21,14 @@ const escapeHtml = (value: string): string =>
 export async function getSupportEmail(): Promise<string | null> {
   try {
     const config = await CompanyService.getGlobalConfig();
-    const fromConfig = (config as any)?.supportEmail;
-    const fromStorage = (storage.getGlobalConfig() as any)?.supportEmail;
+    const fromConfig = config?.supportEmail;
+    const fromStorage = (storage.getGlobalConfig() as { supportEmail?: string } | null)?.supportEmail;
 
     const raw = typeof fromConfig === 'string' ? fromConfig : typeof fromStorage === 'string' ? fromStorage : '';
     const trimmed = String(raw || '').trim();
     return trimmed || null;
   } catch {
-    const fromStorage = (storage.getGlobalConfig() as any)?.supportEmail;
+    const fromStorage = (storage.getGlobalConfig() as { supportEmail?: string } | null)?.supportEmail;
     const trimmed = typeof fromStorage === 'string' ? fromStorage.trim() : '';
     return trimmed || null;
   }

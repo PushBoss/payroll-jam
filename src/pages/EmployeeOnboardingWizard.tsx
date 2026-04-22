@@ -33,11 +33,11 @@ export const EmployeeOnboardingWizard: React.FC<OnboardingWizardProps> = ({
     }
   });
 
-  const updateField = (field: keyof Employee, value: any) => {
+  const updateField = (field: keyof Employee, value: Employee[keyof Employee]) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const updateBank = (field: keyof BankAccount, value: any) => {
+  const updateBank = (field: keyof BankAccount, value: BankAccount[keyof BankAccount]) => {
     setFormData(prev => ({
       ...prev,
       bankDetails: {

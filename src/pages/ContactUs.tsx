@@ -84,7 +84,7 @@ export const ContactUs: React.FC<ContactUsProps> = ({
               email: user.email,
               name: user.name,
               role: String(user.role),
-              companyId: (user as any).companyId
+              companyId: user.companyId
             }
           : null
       });
@@ -96,9 +96,9 @@ export const ContactUs: React.FC<ContactUsProps> = ({
       toast.success('Message sent. Support will reach out soon.');
       setSubject('');
       setMessage('');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Contact Us submission failed:', err);
-      toast.error(err?.message || 'Failed to send message');
+      toast.error(err instanceof Error ? err.message : 'Failed to send message');
     } finally {
       setIsSending(false);
     }
