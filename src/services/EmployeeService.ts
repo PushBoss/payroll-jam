@@ -87,12 +87,13 @@ const isSchemaMismatchError = (error: { message?: string; details?: string; hint
 const getMissingColumnFromError = (error: { message?: string; details?: string; hint?: string }) => {
   const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
   
-  const matchPostgrest = message.match(/could not find the '([^']+)' column/i);
+  const matchPostgrest = message.match(/could not find the ['"]?([^'"]+)['"]? column/i);
   if (matchPostgrest?.[1]) return matchPostgrest[1];
 
-  const matchPostgres = message.match(/column "([^"]+)" of relation/i);
+  const matchPostgres = message.match(/column ['"]?([^'"]+)['"]? of relation/i);
   if (matchPostgres?.[1]) return matchPostgres[1];
 
+  console.warn('getMissingColumnFromError: Failed to parse missing column from:', message);
   return null;
 };
 
@@ -136,13 +137,18 @@ const mutateEmployeeRowWithSchemaFallback = async (
 
     const missingColumn = getMissingColumnFromError(result.error);
     if (!missingColumn || !(missingColumn in nextPayload)) {
+      console.warn('Fallback loop aborting on matching schema error:', { missingColumn, error: result.error });
       return result;
     }
 
     delete nextPayload[missingColumn];
   }
 
-  return mutateEmployeeRow(client, nextPayload, companyId, employeeId, mode);
+  const finalResult = await mutateEmployeeRow(client, nextPayload, companyId, employeeId, mode);
+  if (finalResult.error) {
+    console.error('Final attempt failed:', finalResult.error);
+  }
+  return finalResult;
 };
 
 
@@ -362,6 +368,9 @@ export const EmployeeService = {
         lastError = error;
       }
 
+      if (lastError) {
+        console.error('Final Supabase Employee Save Error (Update mode exhausted):', lastError);
+      }
       throw lastError;
     }
 
