@@ -87,13 +87,13 @@ const isSchemaMismatchError = (error: { message?: string; details?: string; hint
 const getMissingColumnFromError = (error: { message?: string; details?: string; hint?: string }) => {
   const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
   
-  const matchPostgrest = message.match(/could not find the ['"]?([^'"]+)['"]? column/i);
+  const matchPostgrest = message.match(/could not find the ['"]?([^'"]+)['"]?/i);
   if (matchPostgrest?.[1]) return matchPostgrest[1];
 
-  const matchPostgres = message.match(/column ['"]?([^'"]+)['"]? of relation/i);
+  const matchPostgres = message.match(/column ['"]?([^'"]+)['"]? (?:of relation|does not exist|in)/i);
   if (matchPostgres?.[1]) return matchPostgres[1];
 
-  console.warn('getMissingColumnFromError: Failed to parse missing column from:', message);
+  console.error('getMissingColumnFromError: Failed to parse missing column from:', message, error);
   return null;
 };
 
@@ -137,7 +137,7 @@ const mutateEmployeeRowWithSchemaFallback = async (
 
     const missingColumn = getMissingColumnFromError(result.error);
     if (!missingColumn || !(missingColumn in nextPayload)) {
-      console.warn('Fallback loop aborting on matching schema error:', { missingColumn, error: result.error });
+      console.error('Fallback loop aborting on matching schema error:', { missingColumn, error: result.error, payloadKeys: Object.keys(nextPayload) });
       return result;
     }
 
