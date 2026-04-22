@@ -914,6 +914,97 @@ serve(async (req: Request) => {
                 });
             }
 
+            case 'delete-account': {
+                if (!authUser) throw new Error('Unauthorized');
+
+                const { userId, userRole, companyId } = payload;
+                if (!userId) throw new Error('userId required');
+
+                // Verify the caller is deleting their own account, or is a Super Admin
+                const { data: callerProfile } = await adminClient
+                    .from('app_users')
+                    .select('role')
+                    .eq('id', authUser.id)
+                    .maybeSingle();
+
+                const callerIsSuper = callerProfile?.role?.toUpperCase() === 'SUPER_ADMIN';
+                if (authUser.id !== userId && !callerIsSuper) {
+                    throw new Error('Unauthorized: Can only delete your own account');
+                }
+
+                // Fetch user data to get auth_user_id
+                const { data: targetUser, error: fetchErr } = await adminClient
+                    .from('app_users')
+                    .select('auth_user_id, company_id')
+                    .eq('id', userId)
+                    .maybeSingle();
+
+                if (fetchErr) throw fetchErr;
+
+                const authUserId = targetUser?.auth_user_id;
+                const userCompanyId = companyId || targetUser?.company_id;
+
+                // If OWNER, delete their company too
+                if (userRole === 'OWNER' && userCompanyId) {
+                    await adminClient.from('companies').delete().eq('id', userCompanyId);
+                }
+
+                // Delete app_users record
+                const { error: deleteUserErr } = await adminClient
+                    .from('app_users')
+                    .delete()
+                    .eq('id', userId);
+
+                if (deleteUserErr) throw deleteUserErr;
+
+                // Delete auth user (admin-only operation)
+                if (authUserId) {
+                    try {
+                        await adminClient.auth.admin.deleteUser(authUserId);
+                    } catch (authDeleteErr: any) {
+                        console.warn('Warning: Could not delete auth user:', authDeleteErr.message);
+                        // Non-fatal: app_users row is already gone
+                    }
+                }
+
+                return new Response(JSON.stringify({ success: true }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'save-reseller-client': {
+                if (!authUser) throw new Error('Unauthorized');
+
+                const { resellerId, clientCompanyId, data: clientData } = payload;
+                if (!resellerId || !clientCompanyId) throw new Error('resellerId and clientCompanyId required');
+
+                const { error: upsertErr } = await adminClient
+                    .from('reseller_clients')
+                    .upsert({
+                        reseller_id: resellerId,
+                        client_company_id: clientCompanyId,
+                        status: clientData?.status || 'ACTIVE',
+                        access_level: clientData?.accessLevel || 'FULL',
+                        monthly_base_fee: clientData?.monthlyBaseFee ?? 3000,
+                        per_employee_fee: clientData?.perEmployeeFee ?? 100,
+                        discount_rate: clientData?.discountRate ?? 0,
+                        relationship_start_date: new Date().toISOString().split('T')[0],
+                        updated_at: new Date().toISOString(),
+                    }, { onConflict: 'reseller_id,client_company_id' });
+
+                if (upsertErr) throw upsertErr;
+
+                // Also link company to reseller
+                await adminClient
+                    .from('companies')
+                    .update({ reseller_id: resellerId })
+                    .eq('id', clientCompanyId);
+
+                return new Response(JSON.stringify({ success: true }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
             default:
                 throw new Error(`Unknown action: ${action}`);
         }

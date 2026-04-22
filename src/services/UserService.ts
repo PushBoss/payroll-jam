@@ -2,21 +2,6 @@ import { supabase } from './supabaseClient';
 import { User } from '../core/types';
 import { EmployeeService } from './EmployeeService';
 
-const getServiceRoleClient = async () => {
-	const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY;
-	const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
-
-	if (!serviceRoleKey || !supabaseUrl) return null;
-
-	const { createClient } = await import('@supabase/supabase-js');
-	return createClient(supabaseUrl, serviceRoleKey, {
-		auth: {
-			autoRefreshToken: false,
-			persistSession: false,
-		},
-	});
-};
-
 export const UserService = {
   getUserByEmail: EmployeeService.getUserByEmail,
   saveUser: EmployeeService.saveUser,
@@ -64,42 +49,19 @@ export const UserService = {
     if (!supabase) return false;
 
     try {
-      const { data: userData, error: fetchError } = await supabase
-        .from('app_users')
-        .select('auth_user_id, company_id')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (fetchError) {
-        console.error('Error fetching user for deletion:', fetchError);
-        return false;
-      }
-
-      const authUserId = userData?.auth_user_id;
-      const userCompanyId = companyId || userData?.company_id;
-
-      if (userRole === 'OWNER' && userCompanyId) {
-        await supabase.from('companies').delete().eq('id', userCompanyId);
-      }
-
-      const { error: userError } = await supabase.from('app_users').delete().eq('id', userId);
-      if (userError) {
-        console.error('Error deleting app_users record:', userError);
-        return false;
-      }
-
-      if (authUserId) {
-        try {
-          const adminClient = await getServiceRoleClient();
-          if (adminClient) {
-            await adminClient.auth.admin.deleteUser(authUserId);
-          }
-        } catch (error) {
-          console.warn('Error deleting auth user:', error);
+      const { data, error } = await supabase.functions.invoke('admin-handler', {
+        body: {
+          action: 'delete-account',
+          payload: { userId, userRole, companyId }
         }
+      });
+
+      if (error) {
+        console.error('Error deleting account via Edge Function:', error);
+        return false;
       }
 
-      return true;
+      return data?.success === true;
     } catch (error) {
       console.error('Error deleting account:', error);
       return false;

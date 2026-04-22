@@ -1,17 +1,17 @@
 # Code Review Checklist: Payroll-Jam
 
 ## 1. Security (Critical)
-- [ ] No leaking of `SUPABASE_SERVICE_ROLE_KEY` in client-side code.
-- [ ] No sensitive keys in `localStorage` or hardcoded.
+- [x] No leaking of `SUPABASE_SERVICE_ROLE_KEY` in client-side code. *(Verified 2026-04-22: 0 references in `/src`)*
+- [x] No sensitive keys in `localStorage` or hardcoded. *(`.env` gitignored, no SERVICE_ROLE in client)*
 - [ ] RLS policies are applied for new tables.
-- [ ] Role checks are performed for sensitive operations (`user.role === Role.OWNER` etc.).
+- [x] Role checks are performed for sensitive operations (`user.role === Role.OWNER` etc.). *(admin-handler verifies caller role)*
 - [ ] User input is sanitized/validated before DB insertion.
 
 ## 2. Architecture & Patterns
-- [ ] Business logic is in `utils/` or `hooks/`, not directly in the View (JSX).
-- [ ] Large components are broken down into smaller, functional components.
-- [ ] New services are modular (avoiding making `supabaseService.ts` larger).
-- [ ] TypeScript types are used accurately (avoid using `any`).
+- [x] Business logic is in `utils/` or `hooks/`, not directly in the View (JSX).
+- [x] Large components are broken down into smaller, functional components.
+- [x] New services are modular (avoiding making `supabaseService.ts` larger). *(Façade delegates to focused services)*
+- [ ] TypeScript types are used accurately (avoid using `any`). *(~70 `as any` casts remain — priority reduction target)*
 
 ## 3. Payroll Consistency
 - [ ] Calculations utilize centralized `taxUtils.ts` constants.

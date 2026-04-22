@@ -55,7 +55,7 @@ graph TD
         - `src/services/UserService.ts`
         - `src/services/AuditService.ts`
     - `src/services/supabaseService.ts` is now a compatibility façade, not the intended entry point for new code.
-    - **Security Check**: Service-role access must remain isolated to narrowly scoped helpers and server-side flows.
+    - **Security Boundary** ✅: All `getServiceRoleClient()` calls have been removed from frontend code. Operations requiring `SUPABASE_SERVICE_ROLE_KEY` (e.g., `auth.admin.deleteUser`, RLS-bypassing upserts) are now exclusively handled by the `admin-handler` Edge Function. Zero references to `SERVICE_ROLE` remain in `/src`.
 
     ### 2.3 Business Logic (The "Payroll Engine")
     - **`utils/taxUtils.ts`**: The source of truth for all math related to NIS, NHT, ED TAX, and PAYE.
@@ -101,4 +101,6 @@ graph TD
     - Public and authenticated shells are separated.
     - Company, workforce, and payroll state are owned closer to their domains.
     - Route parsing, app navigation, auth redirects, and app-flow handlers have direct automated coverage.
+    - **Security**: All service-role operations migrated to Edge Functions (completed 2026-04-22).
+    - **Type Safety**: ~70 `as any` casts remain across services and pages — reduction is an active priority.
     - Remaining architectural debt is primarily the custom `?page=` router, which is functional and typed but still not a framework router.

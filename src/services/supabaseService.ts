@@ -8,21 +8,6 @@ import { normalizePlanToFrontend } from '../utils/planNames';
 
 const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
-const getServiceRoleClient = async () => {
-	const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY;
-	const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
-
-	if (!serviceRoleKey || !supabaseUrl) return null;
-
-	const { createClient } = await import('@supabase/supabase-js');
-	return createClient(supabaseUrl, serviceRoleKey, {
-		auth: {
-			autoRefreshToken: false,
-			persistSession: false,
-		},
-	});
-};
-
 const mapResellerClient = (row: any): ResellerClient => {
 	const company = row.client_company || row.client_company_id || row.companies || row.company || {};
 	return {
@@ -161,42 +146,19 @@ export const supabaseService = {
 		if (!supabase) return false;
 
 		try {
-			const { data: userData, error: fetchError } = await supabase
-				.from('app_users')
-				.select('auth_user_id, company_id')
-				.eq('id', userId)
-				.maybeSingle();
-
-			if (fetchError) {
-				console.error('Error fetching user for deletion:', fetchError);
-				return false;
-			}
-
-			const authUserId = userData?.auth_user_id;
-			const userCompanyId = companyId || userData?.company_id;
-
-			if (userRole === 'OWNER' && userCompanyId) {
-				await supabase.from('companies').delete().eq('id', userCompanyId);
-			}
-
-			const { error: userError } = await supabase.from('app_users').delete().eq('id', userId);
-			if (userError) {
-				console.error('Error deleting app_users record:', userError);
-				return false;
-			}
-
-			if (authUserId) {
-				try {
-					const adminClient = await getServiceRoleClient();
-					if (adminClient) {
-						await adminClient.auth.admin.deleteUser(authUserId);
-					}
-				} catch (error) {
-					console.warn('Error deleting auth user:', error);
+			const { data, error } = await supabase.functions.invoke('admin-handler', {
+				body: {
+					action: 'delete-account',
+					payload: { userId, userRole, companyId }
 				}
+			});
+
+			if (error) {
+				console.error('Error deleting account via Edge Function:', error);
+				return false;
 			}
 
-			return true;
+			return data?.success === true;
 		} catch (error) {
 			console.error('Error deleting account:', error);
 			return false;
@@ -313,41 +275,7 @@ export const supabaseService = {
 		}
 	},
 
-	saveResellerClientWithServiceRole: async (resellerId: string, clientCompanyId: string, data?: {
-		status?: 'ACTIVE' | 'SUSPENDED' | 'TERMINATED';
-		accessLevel?: 'VIEW_ONLY' | 'MANAGE' | 'FULL';
-		monthlyBaseFee?: number;
-		perEmployeeFee?: number;
-		discountRate?: number;
-	}) => {
-		try {
-			const adminClient = await getServiceRoleClient();
-			if (adminClient) {
-				const { error } = await adminClient
-					.from('reseller_clients')
-					.upsert({
-						reseller_id: resellerId,
-						client_company_id: clientCompanyId,
-						status: data?.status || 'ACTIVE',
-						access_level: data?.accessLevel || 'FULL',
-						monthly_base_fee: data?.monthlyBaseFee || 3000,
-						per_employee_fee: data?.perEmployeeFee || 100,
-						discount_rate: data?.discountRate || 0,
-						relationship_start_date: new Date().toISOString().split('T')[0],
-						updated_at: new Date().toISOString(),
-					}, { onConflict: 'reseller_id,client_company_id' });
-
-				if (!error) {
-					await adminClient.from('companies').update({ reseller_id: resellerId }).eq('id', clientCompanyId);
-					return true;
-				}
-			}
-		} catch (error) {
-			console.warn('Service-role reseller client save failed, falling back:', error);
-		}
-
-		return ResellerService.saveResellerClient(resellerId, clientCompanyId, data);
-	},
+	saveResellerClientWithServiceRole: ResellerService.saveResellerClientWithServiceRole,
 
 	removeResellerClient: async (resellerId: string, clientCompanyId: string) => {
 		if (!supabase) return false;

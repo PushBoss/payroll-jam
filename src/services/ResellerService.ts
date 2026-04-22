@@ -2,20 +2,6 @@ import { supabase } from './supabaseClient';
 import { ResellerClient } from '../core/types';
 import { normalizePlanToFrontend } from '../utils/planNames';
 
-const getServiceRoleClient = async () => {
-  const serviceRoleKey = import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY;
-  const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || localStorage.getItem('VITE_SUPABASE_URL');
-
-  if (!serviceRoleKey || !supabaseUrl) return null;
-
-  const { createClient } = await import('@supabase/supabase-js');
-  return createClient(supabaseUrl, serviceRoleKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
-};
 
 const mapResellerClient = (row: any): ResellerClient => {
   const company = row.client_company || row.client_company_id || row.companies || row.company || {};
@@ -203,33 +189,26 @@ export const ResellerService = {
       discountRate?: number;
     }
   ): Promise<boolean> => {
+    if (!supabase) return false;
+
     try {
-      const adminClient = await getServiceRoleClient();
-      if (adminClient) {
-        const { error } = await adminClient
-          .from('reseller_clients')
-          .upsert({
-            reseller_id: resellerId,
-            client_company_id: clientCompanyId,
-            status: data?.status || 'ACTIVE',
-            access_level: data?.accessLevel || 'FULL',
-            monthly_base_fee: data?.monthlyBaseFee || 3000,
-            per_employee_fee: data?.perEmployeeFee || 100,
-            discount_rate: data?.discountRate || 0,
-            relationship_start_date: new Date().toISOString().split('T')[0],
-            updated_at: new Date().toISOString(),
-          }, { onConflict: 'reseller_id,client_company_id' });
-
-        if (!error) {
-          await adminClient.from('companies').update({ reseller_id: resellerId }).eq('id', clientCompanyId);
-          return true;
+      const { data: result, error } = await supabase.functions.invoke('admin-handler', {
+        body: {
+          action: 'save-reseller-client',
+          payload: { resellerId, clientCompanyId, data }
         }
-      }
-    } catch (error) {
-      console.warn('Service-role reseller client save failed, falling back:', error);
-    }
+      });
 
-    return ResellerService.saveResellerClient(resellerId, clientCompanyId, data);
+      if (error) {
+        console.warn('Edge Function reseller client save failed, falling back:', error);
+        return ResellerService.saveResellerClient(resellerId, clientCompanyId, data);
+      }
+
+      return result?.success === true;
+    } catch (error) {
+      console.warn('Edge Function reseller client save failed, falling back:', error);
+      return ResellerService.saveResellerClient(resellerId, clientCompanyId, data);
+    }
   },
 
   getComplianceOverview: async (resellerId: string): Promise<Record<string, any>> => {
