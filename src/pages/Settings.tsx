@@ -511,27 +511,7 @@ export const Settings: React.FC<SettingsProps> = ({
         setIsCheckingDb(false);
     };
 
-    const handleRestore = () => {
-        if (confirm("Are you sure you want to restore default 2026 tax rates?")) {
-            onUpdateTaxConfig({
-                nisRateEmployee: 0.03,
-                nisRateEmployer: 0.025,
-                nisCap: 5000000,
-                nhtRateEmployee: 0.02,
-                nhtRateEmployer: 0.03,
-                nhtCap: 5000000,
-                edTaxRateEmployee: 0.0225,
-                edTaxRateEmployer: 0.0225,
-                heartRateEmployer: 0.03,
-                payeThreshold: 1700096,
-                payeRateStd: 0.25,
-                payeRateHigh: 0.30,
-                payeThresholdHigh: 6000000
-            } as any);
-            auditService.log(currentUser, 'UPDATE', 'Settings', 'Restored default 2026 statutory tax rates');
-            toast.success("Default tax rates restored");
-        }
-    };
+
 
 
     const handleCompanyUpdate = (newData: CompanySettings) => { onUpdateCompany(newData); };
@@ -555,12 +535,7 @@ export const Settings: React.FC<SettingsProps> = ({
         }
     };
 
-    const handleTaxChange = (field: keyof TaxConfig, value: string) => {
-        const num = parseFloat(value);
-        if (!isNaN(num)) {
-            onUpdateTaxConfig({ ...taxConfig, [field]: num });
-        }
-    };
+
 
     const handleUpgradeClick = (planName: string) => {
         const targetPlan = plans.find(p => p.name === planName);
@@ -1179,51 +1154,12 @@ export const Settings: React.FC<SettingsProps> = ({
 
             {activeTab === 'taxes' && (
                 <div className="space-y-6 animate-fade-in">
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                        <div className="flex justify-between items-center mb-6">
-                            <div>
-                                <h3 className="text-lg font-bold">Statutory Rates (2026)</h3>
-                                <p className="text-xs text-gray-500">Core global policies are applied by default. Edit rates below to set local company overrides.</p>
-                            </div>
-                            <button onClick={handleRestore} className="text-sm text-jam-orange hover:underline flex items-center">
-                                <Icons.Refresh className="w-3 h-3 mr-1" /> Restore Defaults
-                            </button>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
-                                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">NIS Rate (e.g. 0.03)</label>
-                                <input type="number" step="0.001" value={taxConfig.nisRateEmployee} onChange={(e) => handleTaxChange('nisRateEmployee', e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-jam-orange" />
-                            </div>
-                            <div>
-                                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">NHT Rate (e.g. 0.02)</label>
-                                <input type="number" step="0.001" value={taxConfig.nhtRateEmployee} onChange={(e) => handleTaxChange('nhtRateEmployee', e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-jam-orange" />
-                            </div>
-                            <div>
-                                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Ed Tax Rate (e.g. 0.0225)</label>
-                                <input type="number" step="0.0001" value={taxConfig.edTaxRateEmployee} onChange={(e) => handleTaxChange('edTaxRateEmployee', e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-jam-orange" />
-                            </div>
-
-                            <div>
-                                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">NIS Annual Cap</label>
-                                <input type="number" value={taxConfig.nisCap} onChange={(e) => handleTaxChange('nisCap', e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-jam-orange" />
-                            </div>
-                            <div>
-                                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">PAYE Threshold</label>
-                                <input type="number" value={taxConfig.payeThreshold} onChange={(e) => handleTaxChange('payeThreshold', e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-jam-orange" />
-                                <p className="text-[10px] text-gray-400 mt-1">Default: JMD 1,700,096 (2026)</p>
-                            </div>
-                            <div>
-                                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Standard PAYE Rate</label>
-                                <input type="number" step="0.01" value={taxConfig.payeRateStd} onChange={(e) => handleTaxChange('payeRateStd', e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-jam-orange" />
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Company-Level Tax Rate Overrides */}
+                    {/* Tax Calculation Configuration — powered by TaxConfigCard */}
                     <TaxConfigCard
                         config={taxConfig}
                         onSave={async (newConfig) => {
                             onUpdateTaxConfig(newConfig);
+                            auditService.log(currentUser, 'UPDATE', 'Settings', 'Updated statutory tax configuration');
                             toast.success('Tax configuration saved');
                         }}
                         isSaving={false}

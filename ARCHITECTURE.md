@@ -102,5 +102,5 @@ graph TD
     - Company, workforce, and payroll state are owned closer to their domains.
     - Route parsing, app navigation, auth redirects, and app-flow handlers have direct automated coverage.
     - **Security**: All service-role operations migrated to Edge Functions (completed 2026-04-22).
-    - **Type Safety**: ~70 `as any` casts remain across services and pages — reduction is an active priority.
+    - **Type Safety**: Reduced from 223 → 151 `any` usages (32% reduction, 2026-04-22). DB row types (`DbAppUserRow`, `DbEmployeeRow`, etc.) and coercion helpers (`toRole`, `toPayType`, `toPlanLabel`) added to `core/types.ts`. Services layer at 28 remaining (70% reduction). Residual instances are external SDKs, catch blocks, and test fixtures.
     - Remaining architectural debt is primarily the custom `?page=` router, which is functional and typed but still not a framework router.

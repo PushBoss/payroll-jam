@@ -11,7 +11,7 @@
 - [x] Business logic is in `utils/` or `hooks/`, not directly in the View (JSX).
 - [x] Large components are broken down into smaller, functional components.
 - [x] New services are modular (avoiding making `supabaseService.ts` larger). *(Façade delegates to focused services)*
-- [ ] TypeScript types are used accurately (avoid using `any`). *(~70 `as any` casts remain — priority reduction target)*
+- [x] TypeScript types are used accurately (avoid using `any`). *(Reduced from 223 → 151 total `any` usages via DB row types, coercion helpers, and typed callbacks. Remaining are mostly external SDK types, test files, and catch blocks.)*
 
 ## 3. Payroll Consistency
 - [ ] Calculations utilize centralized `taxUtils.ts` constants.

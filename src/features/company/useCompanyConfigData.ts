@@ -99,9 +99,12 @@ export const useCompanyConfigData = () => {
     if (!loadedCompany) return;
 
     setCompanyData(loadedCompany);
-    if (loadedCompany.taxConfig) setTaxConfig(loadedCompany.taxConfig);
-    if ((loadedCompany as any).departments) setDepartments((loadedCompany as any).departments);
-    if ((loadedCompany as any).designations) setDesignations((loadedCompany as any).designations);
+    // Merge DB config with defaults so every TaxConfig field has a valid number
+    setTaxConfig({ ...DEFAULT_TAX_CONFIG, ...Object.fromEntries(
+      Object.entries(loadedCompany.taxConfig || {}).filter(([, v]) => typeof v === 'number' && Number.isFinite(v))
+    ) });
+    if (loadedCompany.departments) setDepartments(loadedCompany.departments);
+    if (loadedCompany.designations) setDesignations(loadedCompany.designations);
     storage.saveCompanyData(loadedCompany);
   }, []);
 
@@ -122,8 +125,8 @@ export const useCompanyConfigData = () => {
   const handleUpdateCompany = useCallback(async (data: CompanySettings, companyId?: string) => {
     const updatedData = {
       ...data,
-      departments: (data as any).departments || departments,
-      designations: (data as any).designations || designations,
+      departments: data.departments || departments,
+      designations: data.designations || designations,
     };
 
     setCompanyData(updatedData);
@@ -136,7 +139,7 @@ export const useCompanyConfigData = () => {
   const handleUpdateDepartments = useCallback(async (newDepartments: Department[], companyId?: string) => {
     setDepartments(newDepartments);
     if (companyData) {
-      const updated = { ...companyData, departments: newDepartments } as any;
+      const updated: CompanySettings = { ...companyData, departments: newDepartments };
       setCompanyData(updated);
       if (isSupabaseMode && companyId) {
         await CompanyService.saveCompany(companyId, updated);
@@ -147,7 +150,7 @@ export const useCompanyConfigData = () => {
   const handleUpdateDesignations = useCallback(async (newDesignations: Designation[], companyId?: string) => {
     setDesignations(newDesignations);
     if (companyData) {
-      const updated = { ...companyData, designations: newDesignations } as any;
+      const updated: CompanySettings = { ...companyData, designations: newDesignations };
       setCompanyData(updated);
       if (isSupabaseMode && companyId) {
         await CompanyService.saveCompany(companyId, updated);

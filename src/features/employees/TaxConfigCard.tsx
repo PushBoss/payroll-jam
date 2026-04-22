@@ -64,7 +64,13 @@ const RateField: React.FC<RateFieldProps> = ({ id, label, hint, value, isPercent
 };
 
 export const TaxConfigCard: React.FC<TaxConfigCardProps> = ({ config, onSave, isSaving }) => {
-  const [draft, setDraft] = useState<TaxConfig>(config ?? DEFAULT_ORG_TAX_CONFIG);
+  const mergedConfig: TaxConfig = {
+    ...DEFAULT_ORG_TAX_CONFIG,
+    ...(config ? Object.fromEntries(
+      Object.entries(config).filter(([, v]) => typeof v === 'number' && Number.isFinite(v))
+    ) : {}),
+  };
+  const [draft, setDraft] = useState<TaxConfig>(mergedConfig);
   const [saved, setSaved] = useState(false);
 
   const update = (key: keyof TaxConfig) => (val: number) =>
