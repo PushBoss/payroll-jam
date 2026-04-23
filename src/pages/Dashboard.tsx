@@ -7,6 +7,8 @@ import { useAuth } from '../context/AuthContext';
 import { getPendingInvitationsByEmail, acceptMultipleInvitations } from '../features/employees/inviteService';
 import { PendingInvitationsUI } from '../components/PendingInvitationsUI';
 
+const checkedInvitationEmails = new Set<string>();
+
 interface DashboardProps {
   employees: Employee[];
   leaveRequests: LeaveRequest[];
@@ -29,10 +31,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ employees, leaveRequests, 
       const emailToCheck = urlEmail || user?.email;
 
       if (emailToCheck) {
+        const normalizedEmail = emailToCheck.trim().toLowerCase();
+        if (checkedInvitationEmails.has(normalizedEmail)) {
+          return;
+        }
+
+        checkedInvitationEmails.add(normalizedEmail);
         console.log('🔍 Checking dashboard invitations for:', emailToCheck);
-        const invites = await getPendingInvitationsByEmail(emailToCheck);
-        if (invites && invites.length > 0) {
-          setPendingInvites(invites);
+        try {
+          const invites = await getPendingInvitationsByEmail(normalizedEmail);
+          if (invites && invites.length > 0) {
+            setPendingInvites(invites);
+          }
+        } catch (error) {
+          checkedInvitationEmails.delete(normalizedEmail);
+          console.error('Failed to load pending invitations:', error);
         }
       }
     };

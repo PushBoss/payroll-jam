@@ -2,7 +2,11 @@
 import React, { useState } from 'react';
 import { Icons } from '../components/Icons';
 import { Footer } from '../components/Footer';
+<<<<<<< HEAD
 import { BetaBanner } from '../components/BetaBanner';
+=======
+import { PublicHeader } from '../components/PublicHeader';
+>>>>>>> 0a6b81cb09aa2a5587c7387200103601a1de60b4
 import { PricingPlan } from '../core/types';
 import { getPlanPriceDetails } from '../utils/pricing';
 
@@ -12,12 +16,13 @@ interface PricingProps {
   onBack: () => void;
   onFeaturesClick?: () => void;
   onFaqClick?: () => void;
+  onContactClick?: () => void;
   onPrivacyClick?: () => void;
   onTermsClick?: () => void;
   plans: PricingPlan[];
 }
 
-export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onFeaturesClick, onFaqClick, onPrivacyClick, onTermsClick, plans = [] }) => {
+export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onFeaturesClick, onFaqClick, onContactClick, onPrivacyClick, onTermsClick, plans = [] }) => {
   const [cycle, setCycle] = useState<'monthly' | 'annual'>('monthly');
 
   // Filter only active plans
@@ -63,6 +68,7 @@ export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onF
 
   return (
     <div className="min-h-screen bg-white font-sans text-slate-900">
+<<<<<<< HEAD
       <div className="fixed inset-x-0 top-0 z-50">
         <BetaBanner />
       </div>
@@ -96,6 +102,18 @@ export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onF
           </div>
         </div>
       </nav>
+=======
+      <PublicHeader
+        currentPage="pricing"
+        onHomeClick={onBack}
+        onFeaturesClick={onFeaturesClick}
+        onPricingClick={() => {}}
+        onFaqClick={onFaqClick}
+        onContactClick={onContactClick}
+        onLogin={onLogin}
+        onSignup={() => onSignup('Free', cycle)}
+      />
+>>>>>>> 0a6b81cb09aa2a5587c7387200103601a1de60b4
 
       <div className="pt-40 pb-20">
         <div className="text-center max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 mb-12">

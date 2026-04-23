@@ -1,8 +1,16 @@
+<<<<<<< HEAD
 
 import { storage } from '../services/storage';
 import { User, AuditLogEntry } from './types';
 import { generateUUID } from '../utils/uuid';
 import { supabaseService } from '../services/supabaseService';
+=======
+import { storage } from '../services/storage';
+import { User, AuditLogEntry } from './types';
+import { generateUUID } from '../utils/uuid';
+import { AuditService } from '../services/AuditService';
+
+>>>>>>> 0a6b81cb09aa2a5587c7387200103601a1de60b4
 
 export const auditService = {
   log: (
@@ -27,8 +35,13 @@ export const auditService = {
     // Save to Supabase (non-blocking)
     // Save to Supabase if companyId exists OR if user is SUPER_ADMIN (global logs)
     if (user.companyId || user.role === 'SUPER_ADMIN') {
+<<<<<<< HEAD
       supabaseService.saveAuditLog(newLog, user.companyId || null).catch((error: unknown) => {
+=======
+      AuditService.saveAuditLog(newLog, user.companyId || null).catch((error: any) => {
+>>>>>>> 0a6b81cb09aa2a5587c7387200103601a1de60b4
         console.error('Failed to save audit log to Supabase:', error);
+
         // Fallback to localStorage if Supabase fails
         const logs = storage.getAuditLogs() || [];
         const updatedLogs = [newLog, ...logs].slice(0, 500);
@@ -45,7 +58,7 @@ export const auditService = {
   getLogs: async (companyId: string | null, userRole?: string, userId?: string): Promise<AuditLogEntry[]> => {
     // Try to get from Supabase first
     try {
-      const logs = await supabaseService.getAuditLogs(companyId, userRole, userId);
+      const logs = await AuditService.getAuditLogs(companyId, userRole, userId);
       if (logs && logs.length > 0) {
         return logs;
       }

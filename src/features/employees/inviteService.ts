@@ -1,5 +1,10 @@
 import { supabase } from '../../services/supabaseClient';
 import { emailService } from '../../services/emailService';
+<<<<<<< HEAD
+=======
+import { buildAppUrl } from '../../app/routes';
+
+>>>>>>> 0a6b81cb09aa2a5587c7387200103601a1de60b4
 
 export type MemberRole = 'OWNER' | 'ADMIN' | 'MANAGER' | 'EMPLOYEE' | 'RESELLER' | 'owner' | 'admin' | 'manager' | 'employee' | 'reseller';
 
@@ -244,8 +249,8 @@ export async function inviteUserToAccount(payload: {
       // If user doesn't exist, we should direct them to signup.
       // If they do exist, we can direct them to the dashboard where they will see the acceptance prompt.
       const inviteLink = exists
-        ? `${window.location.origin}/?page=dashboard`
-        : `${window.location.origin}/?page=signup&email=${encodeURIComponent(normalizedEmail)}&invitation=true`;
+        ? buildAppUrl('dashboard')
+        : buildAppUrl('signup', { email: normalizedEmail, invitation: 'true' });
 
       // Send manager invite email (for team member invitations)
       await emailService.sendManagerInvite(
@@ -363,24 +368,31 @@ export async function getPendingInvitationsByEmail(
 
         if (invite.inviter && Array.isArray(invite.inviter) && invite.inviter.length > 0) {
           const ownerId = invite.inviter[0].owner_id;
+<<<<<<< HEAD
           if (ownerId) {
             const { data: inviterUser } = await client
+=======
+          if (ownerId && supabase) {
+            const { data: inviterUser } = await supabase
+>>>>>>> 0a6b81cb09aa2a5587c7387200103601a1de60b4
               .from('app_users')
               .select('name')
               .eq('id', ownerId)
               .single();
             inviterName = inviterUser?.name || 'Team';
           }
+
         }
 
         let companyName = invite.companies?.[0]?.name as string | undefined;
         let companyPlan = invite.companies?.[0]?.plan as string | undefined;
 
-        if (!companyName && invite.account_id) {
+        if (!companyName && invite.account_id && supabase) {
           try {
             const { data: summary, error: summaryError } = await client.rpc('get_company_invite_summary', {
               p_company_id: invite.account_id
             });
+
 
             if (!summaryError && summary) {
               const summaryRow = Array.isArray(summary) ? summary[0] : summary;
@@ -610,14 +622,14 @@ export async function resendInvitation(memberId: string): Promise<{ success: boo
         email,
         email.split('@')[0],
         companyName,
-        `${window.location.origin}/?page=dashboard`,
+        buildAppUrl('dashboard'),
         role
       );
     } else {
       await emailService.sendInvite(
         email,
         email.split('@')[0],
-        `${window.location.origin}/?page=settings&section=team`
+        buildAppUrl('settings', { section: 'team' })
       );
     }
 

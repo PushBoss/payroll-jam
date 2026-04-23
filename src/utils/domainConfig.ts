@@ -1,31 +1,42 @@
 /**
  * Domain Configuration Utility
- * Ensures all redirect URLs use payrolljam.com (no www) for email verification and auth
+ * Ensures redirect URLs are generated correctly for the current environment.
  */
 
-export const PRODUCTION_DOMAIN = 'payrolljam.com';
+export const PRODUCTION_DOMAIN = 'www.payrolljam.com';
+
+const getEnvBaseUrl = (): string | null => {
+  // Prefer explicit config so staging/preview deployments can generate correct auth links.
+  const raw = (
+    (import.meta as any)?.env?.VITE_PUBLIC_SITE_URL ||
+    (import.meta as any)?.env?.VITE_SITE_URL ||
+    (import.meta as any)?.env?.VITE_APP_URL ||
+    ''
+  ) as string;
+
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return null;
+
+  // Strip trailing slash for consistent joins
+  return trimmed.replace(/\/$/, '');
+};
 
 /**
  * Get the proper base URL for redirects
  * Always uses payrolljam.com (no www) in production, localhost in development
  */
 export const getBaseUrl = (): string => {
+  const envBaseUrl = getEnvBaseUrl();
+  if (envBaseUrl) return envBaseUrl;
+
   if (typeof window === 'undefined') {
     return `https://${PRODUCTION_DOMAIN}`;
   }
 
   const origin = window.location.origin;
-  
-  // In production: ensure www is NOT included
-  if (origin.includes('payrolljam.com')) {
-    // If it's www.payrolljam.com, fallback to non-www
-    if (origin.includes('www.')) {
-      return `https://${PRODUCTION_DOMAIN}`;
-    }
-    return origin;
-  }
-  
-  // In development: use localhost or whatever is current
+
+  // Use the current origin for deployed environments (staging, preview, production).
+  // If you need a canonical domain (e.g. for preview deployments), set VITE_PUBLIC_SITE_URL.
   return origin;
 };
 

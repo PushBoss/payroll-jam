@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 interface ReportsProps {
   history?: PayRun[];
   companyData?: CompanySettings;
-  onUpdatePayRun?: (run: PayRun) => void | Promise<void>;
+  onUpdatePayRun?: (run: PayRun) => void | Promise<void> | Promise<boolean>;
   onDeletePayRun?: (runId: string) => void | Promise<void>;
   onNavigate?: (path: string, params?: { editRunId?: string }) => void;
   employees?: Employee[];

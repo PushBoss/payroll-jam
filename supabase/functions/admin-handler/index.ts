@@ -11,6 +11,33 @@ const corsHeaders = {
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const normalizePlanToFrontend = (plan?: string | null): string => {
+    if (!plan) return 'Free';
+
+    const normalized = plan.trim().toLowerCase();
+    const planMap: Record<string, string> = {
+        free: 'Free',
+        starter: 'Starter',
+        professional: 'Pro',
+        pro: 'Pro',
+        enterprise: 'Reseller',
+        reseller: 'Reseller'
+    };
+
+    return planMap[normalized] || plan;
+};
+
+const isResellerEquivalentPlan = (plan?: string | null): boolean =>
+    normalizePlanToFrontend(plan) === 'Reseller';
+
+const normalizeMemberRole = (role?: string | null): string => {
+    if (!role) return 'EMPLOYEE';
+    const upper = role.trim().toUpperCase();
+    const allowed = new Set(['OWNER', 'ADMIN', 'MANAGER', 'EMPLOYEE', 'RESELLER', 'SUPER_ADMIN']);
+    if (allowed.has(upper)) return upper;
+    return 'EMPLOYEE';
+};
+
 serve(async (req: Request) => {
     // 1. CORS Preflight
     if (req.method === 'OPTIONS') {
@@ -24,6 +51,14 @@ serve(async (req: Request) => {
 
         const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
         const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+
+        if (!supabaseUrl) {
+            throw new Error('Missing SUPABASE_URL in function environment');
+        }
+
+        if (!supabaseServiceKey) {
+            throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY secret for admin operations');
+        }
 
         // Create the admin client to bypass RLS
         const adminClient = createClient(supabaseUrl, supabaseServiceKey, {
@@ -49,6 +84,81 @@ serve(async (req: Request) => {
         // --- Handle Actions ---
         
         switch (action) {
+            case 'ensure-self-profile': {
+                if (!authUser) throw new Error('Unauthorized');
+
+                const email = (authUser.email || '').toString().trim().toLowerCase();
+                if (!email) throw new Error('Authenticated user missing email');
+
+                // If profile already exists by id, return it
+                const { data: existingById } = await adminClient
+                    .from('app_users')
+                    .select('*')
+                    .eq('id', authUser.id)
+                    .maybeSingle();
+
+                if (existingById) {
+                    return new Response(JSON.stringify({ user: existingById, created: false }), {
+                        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                    });
+                }
+
+                // Infer company + role from accepted memberships
+                let companyId: string | null = null;
+                let role: string = 'EMPLOYEE';
+
+                const { data: membership } = await adminClient
+                    .from('account_members')
+                    .select('account_id, role, status, accepted_at')
+                    .eq('email', email)
+                    .eq('status', 'accepted')
+                    .order('accepted_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (membership?.account_id) {
+                    companyId = membership.account_id;
+                    role = normalizeMemberRole(membership.role);
+                } else {
+                    // Fallback: if they own a company, treat as OWNER
+                    const { data: ownedCompany } = await adminClient
+                        .from('companies')
+                        .select('id')
+                        .eq('owner_id', authUser.id)
+                        .maybeSingle();
+                    if (ownedCompany?.id) {
+                        companyId = ownedCompany.id;
+                        role = 'OWNER';
+                    }
+                }
+
+                const name =
+                    (authUser.user_metadata?.full_name || authUser.user_metadata?.name || '').toString().trim() ||
+                    email.split('@')[0];
+
+                const record = {
+                    id: authUser.id,
+                    auth_user_id: authUser.id,
+                    email,
+                    name,
+                    role,
+                    company_id: companyId,
+                    is_onboarded: false,
+                };
+
+                const { data: upserted, error: upsertError } = await adminClient
+                    .from('app_users')
+                    .upsert(record)
+                    .select('*')
+                    .maybeSingle();
+
+                if (upsertError) throw upsertError;
+
+                return new Response(JSON.stringify({ user: upserted, created: true }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
             case 'search-user': {
                 const { email } = payload;
                 if (!email) throw new Error("Email required for search");
@@ -77,14 +187,31 @@ serve(async (req: Request) => {
             }
             
             case 'onboard-confirmed-user': {
+                if (!payload || typeof payload !== 'object') {
+                    throw new Error('Missing payload for onboard-confirmed-user');
+                }
+
                 const { email, password, name } = payload;
+                if (!email || typeof email !== 'string') throw new Error('Email is required');
+                if (!password || typeof password !== 'string') throw new Error('Password is required');
+
+                const normalizedEmail = email.trim().toLowerCase();
+                const normalizedName = typeof name === 'string' ? name.trim() : '';
+
+                if (!normalizedEmail.includes('@')) {
+                    throw new Error('Invalid email address');
+                }
+
+                if (password.length < 6) {
+                    throw new Error('Password must be at least 6 characters');
+                }
                 // Only allow this if perhaps we don't have strict authUser constraints, or specifically reseller/owner
                 const { data, error } = await adminClient.auth.admin.createUser({
-                    email,
+                    email: normalizedEmail,
                     password,
                     email_confirm: true,
                     user_metadata: {
-                        full_name: name
+                        full_name: normalizedName
                     }
                 });
                 
@@ -267,7 +394,7 @@ serve(async (req: Request) => {
                     const allCompanies = [...(ownedCompanies || []), ...memberCompanies];
 
                     if (allCompanies.length > 0) {
-                        const hasResellerPlan = allCompanies.some((c: any) => c.plan === 'Enterprise' || c.plan === 'Reseller');
+                        const hasResellerPlan = allCompanies.some((c: any) => isResellerEquivalentPlan(c.plan));
                         if (!hasResellerPlan) requiresUpgrade = true;
                     } else if (userProfile?.company_id) {
                         const { data: primaryComp } = await adminClient
@@ -276,10 +403,59 @@ serve(async (req: Request) => {
                           .eq('id', userProfile.company_id)
                           .maybeSingle();
 
-                        if (primaryComp && primaryComp.plan !== 'Enterprise') requiresUpgrade = true;
+                        if (primaryComp && !isResellerEquivalentPlan(primaryComp.plan)) requiresUpgrade = true;
                     }
                 }
                 return new Response(JSON.stringify({ requiresUpgrade }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+            }
+
+            case 'get-all-companies': {
+                const page = payload?.page ?? 0;
+                const pageSize = payload?.pageSize ?? 20;
+                const from = page * pageSize;
+                const to = from + pageSize - 1;
+
+                const { data: companies, error: compError, count } = await adminClient
+                    .from('companies')
+                    .select('id, name, email, plan, status, settings, created_at', { count: 'exact' })
+                    .order('created_at', { ascending: false })
+                    .range(from, to);
+
+                if (compError) throw compError;
+
+                // Enrich with owner name from app_users
+                const enriched = await Promise.all((companies || []).map(async (c: any) => {
+                    const { data: ownerData } = await adminClient
+                        .from('app_users')
+                        .select('name, email')
+                        .eq('company_id', c.id)
+                        .in('role', ['OWNER', 'ADMIN'])
+                        .order('role', { ascending: true }) // ADMIN < OWNER alphabetically, but OWNER preferred
+                        .limit(1)
+                        .maybeSingle();
+
+                    // Accurate employee count instead of settings cache
+                    const { count: empCount } = await adminClient
+                        .from('employees')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('company_id', c.id);
+
+                    return {
+                        id: c.id,
+                        companyName: c.name,
+                        email: c.email || ownerData?.email || '',
+                        contactName: ownerData?.name || c.settings?.contactName || 'N/A',
+                        plan: normalizePlanToFrontend(c.plan),
+                        status: c.status || 'ACTIVE',
+                        employeeCount: empCount || 0,
+                        mrr: c.settings?.mrr || 0,
+                        createdAt: c.created_at
+                    };
+                }));
+
+                return new Response(JSON.stringify({ companies: enriched, total: count }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
             }
 
             case 'delete-super-admin': {
@@ -287,6 +463,546 @@ serve(async (req: Request) => {
                 const { error } = await adminClient.auth.admin.deleteUser(userId);
                 if (error) throw error;
                 return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+            }
+
+            // Legacy action - see get-pending-approvals instead
+            case 'get-pending-companies': {
+                throw new Error('Action get-pending-companies is deprecated. Use get-pending-approvals.');
+            }
+
+            case 'approve-company': {
+                const { companyId } = payload;
+                if (!companyId) throw new Error('companyId required');
+
+                const { error } = await adminClient
+                    .from('companies')
+                    .update({ status: 'ACTIVE' })
+                    .eq('id', companyId);
+
+                if (error) throw error;
+                return new Response(JSON.stringify({ success: true }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'sync-reseller-portfolio': {
+                const { resellerUserId } = payload;
+                if (!resellerUserId) throw new Error('resellerUserId required');
+
+                const { data: userData } = await adminClient
+                    .from('app_users')
+                    .select('role, company_id')
+                    .eq('id', resellerUserId)
+                    .maybeSingle();
+
+                if (!userData || (userData.role !== 'RESELLER' && userData.role !== 'Reseller')) {
+                    return new Response(JSON.stringify({ success: false, syncedCount: 0, error: 'User is not a Reseller' }), {
+                        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                    });
+                }
+
+                const resellerCompanyId = userData.company_id;
+                if (!resellerCompanyId) {
+                    return new Response(JSON.stringify({ success: false, syncedCount: 0, error: 'User has no Reseller Company ID' }), {
+                        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                    });
+                }
+
+                const { data: memberships } = await adminClient
+                    .from('account_members')
+                    .select('account_id')
+                    .eq('user_id', resellerUserId)
+                    .eq('status', 'accepted');
+
+                let syncedCount = 0;
+                for (const mem of (memberships || [])) {
+                    if (mem.account_id === resellerCompanyId) continue;
+                    const { error: linkError } = await adminClient.from('reseller_clients').upsert({
+                        reseller_id: resellerCompanyId,
+                        client_company_id: mem.account_id,
+                        status: 'ACTIVE',
+                        access_level: 'FULL'
+                    }, { onConflict: 'reseller_id,client_company_id' });
+
+                    if (!linkError) {
+                        await adminClient.from('companies').update({ reseller_id: resellerCompanyId }).eq('id', mem.account_id);
+                        syncedCount++;
+                    }
+                }
+
+                return new Response(JSON.stringify({ success: true, syncedCount }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'save-company': {
+                const { companyId, settings, userId } = payload;
+                if (!companyId || !settings) throw new Error('companyId and settings are required');
+
+                // 1. Authorization check: Either Super Admin or the User is the Owner
+                const isSuperAdmin = authUser?.app_metadata?.role === 'SUPER_ADMIN' || 
+                                     authUser?.user_metadata?.role === 'SUPER_ADMIN';
+                
+                if (!isSuperAdmin && userId) {
+                    // Check if the user has OWNER role for this company
+                    const { data: membership } = await adminClient
+                        .from('account_members')
+                        .select('role')
+                        .eq('account_id', companyId)
+                        .eq('user_id', userId)
+                        .maybeSingle();
+                    
+                    if (membership?.role !== 'OWNER') {
+                        throw new Error('Unauthorized: Only Owners or Super Admins can save company settings via this secure channel.');
+                    }
+                }
+
+                // 2. Prepare the update data (mimicking the monolith mapping)
+                const {
+                    name, email, phone, trn, address, status, plan, 
+                    billing_cycle, employee_limit, settings: settingsJson
+                } = settings;
+
+                const { data: updated, error: updateError } = await adminClient
+                    .from('companies')
+                    .upsert({
+                        id: companyId,
+                        name: name,
+                        email: email,
+                        phone: phone,
+                        trn: trn,
+                        address: address,
+                        settings: settingsJson,
+                        status: status || 'ACTIVE',
+                        plan: plan,
+                        billing_cycle: billing_cycle || 'MONTHLY',
+                        employee_limit: employee_limit
+                    }, { onConflict: 'id' })
+                    .select()
+                    .single();
+
+                if (updateError) throw updateError;
+
+                // 3. Ensure owner is in account_members (critical for sync)
+                if (userId) {
+                     await adminClient.from('account_members').upsert({
+                        account_id: companyId,
+                        user_id: userId,
+                        email: email || '',
+                        role: 'OWNER',
+                        status: 'accepted',
+                        accepted_at: new Date().toISOString(),
+                        invited_at: new Date().toISOString()
+                    }, { onConflict: 'account_id,email' });
+                }
+
+                return new Response(JSON.stringify({ success: true, company: updated }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'join-client-team': {
+                const { clientCompanyId, resellerUserId, resellerEmail } = payload;
+                if (!clientCompanyId || !resellerUserId) throw new Error('clientCompanyId and resellerUserId required');
+
+                const { error: memberError } = await adminClient.from('account_members').upsert({
+                    account_id: clientCompanyId,
+                    user_id: resellerUserId,
+                    email: resellerEmail?.toLowerCase() || '',
+                    role: 'MANAGER',
+                    status: 'accepted',
+                    accepted_at: new Date().toISOString(),
+                    invited_at: new Date().toISOString(),
+                }, { onConflict: 'account_id,email', ignoreDuplicates: false });
+
+                if (memberError) {
+                    // Fallback to user_id constraint
+                    await adminClient.from('account_members').upsert({
+                        account_id: clientCompanyId,
+                        user_id: resellerUserId,
+                        role: 'MANAGER',
+                        status: 'accepted',
+                        accepted_at: new Date().toISOString(),
+                        invited_at: new Date().toISOString(),
+                    }, { onConflict: 'account_id,user_id', ignoreDuplicates: false });
+                }
+
+                const { data: userData } = await adminClient.from('app_users').select('company_id').eq('id', resellerUserId).maybeSingle();
+                if (userData?.company_id) {
+                    await adminClient.from('companies').update({ reseller_id: userData.company_id }).eq('id', clientCompanyId);
+                    await adminClient.from('reseller_clients').upsert({
+                        reseller_id: userData.company_id,
+                        client_company_id: clientCompanyId,
+                        status: 'ACTIVE',
+                        access_level: 'FULL'
+                    }, { onConflict: 'reseller_id,client_company_id' });
+                }
+
+                return new Response(JSON.stringify({ success: true }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'get-user-by-email-admin': {
+                const { email } = payload;
+                if (!email) throw new Error('email required');
+
+                const { data: user, error: userError } = await adminClient
+                    .from('app_users')
+                    .select('id, name, email, role, company_id, is_onboarded')
+                    .eq('email', email.toLowerCase())
+                    .maybeSingle();
+
+                if (userError) throw userError;
+                return new Response(JSON.stringify({ user: user || null }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'get-audit-logs': {
+                const { companyId: filterCompanyId, limit: logLimit = 500 } = payload || {};
+
+                let query = adminClient
+                    .from('audit_logs')
+                    .select('*')
+                    .order('timestamp', { ascending: false })
+                    .limit(logLimit);
+
+                if (filterCompanyId) {
+                    query = query.eq('company_id', filterCompanyId);
+                }
+
+                const { data: logs, error: logsError } = await query;
+                if (logsError) throw logsError;
+
+                const mapped = (logs || []).map((log: any) => ({
+                    id: log.id,
+                    timestamp: log.timestamp,
+                    actorId: log.actor_id,
+                    actorName: log.actor_name,
+                    action: log.action,
+                    entity: log.entity,
+                    description: log.description,
+                    ipAddress: log.ip_address
+                }));
+
+                return new Response(JSON.stringify({ logs: mapped }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'get-company-context': {
+                const { companyId } = payload;
+                if (!companyId) throw new Error('companyId required');
+
+                // 1. Validate Caller role
+                if (!authUser) throw new Error('Unauthorized');
+                const { data: callerProfile } = await adminClient
+                    .from('app_users')
+                    .select('role, company_id')
+                    .eq('id', authUser.id)
+                    .maybeSingle();
+
+                const callerRole = callerProfile?.role?.toUpperCase();
+                const isSuperAdmin = callerRole === 'SUPER_ADMIN';
+                const isReseller = callerRole === 'RESELLER';
+
+                if (!isSuperAdmin && !isReseller) {
+                    throw new Error('Unauthorized: Admin or Reseller role required');
+                }
+
+                // 2. If Reseller, validate relationship
+                if (isReseller) {
+                    const { data: relationship } = await adminClient
+                        .from('reseller_clients')
+                        .select('*')
+                        .eq('reseller_id', callerProfile.company_id)
+                        .eq('client_company_id', companyId)
+                        .eq('status', 'ACTIVE')
+                        .maybeSingle();
+
+                    if (!relationship) {
+                        // Also check if they are a member of the team
+                        const { data: membership } = await adminClient
+                            .from('account_members')
+                            .select('*')
+                            .eq('account_id', companyId)
+                            .eq('user_id', authUser.id)
+                            .eq('status', 'accepted')
+                            .maybeSingle();
+
+                        if (!membership) {
+                            throw new Error('Unauthorized: No relationship with this company');
+                        }
+                    }
+                }
+
+                // 3. Fetch all data in parallel
+                const [
+                    { data: company },
+                    { data: employees },
+                    { data: payRuns },
+                    { data: leaveRequests },
+                    { data: users }
+                ] = await Promise.all([
+                    adminClient.from('companies').select('*').eq('id', companyId).maybeSingle(),
+                    adminClient.from('employees').select('*').eq('company_id', companyId),
+                    adminClient.from('pay_runs').select('*').eq('company_id', companyId).order('period_start', { ascending: false }),
+                    adminClient.from('leave_requests').select('*').eq('company_id', companyId),
+                    adminClient.from('app_users').select('*').eq('company_id', companyId)
+                ]);
+
+                return new Response(JSON.stringify({
+                    company,
+                    employees,
+                    payRuns,
+                    leaveRequests,
+                    users
+                }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'get-platform-stats': {
+                if (!authUser) throw new Error('Unauthorized');
+                const { data: profile } = await adminClient.from('app_users').select('role').eq('id', authUser.id).maybeSingle();
+                if (profile?.role?.toUpperCase() !== 'SUPER_ADMIN') {
+                    throw new Error('Unauthorized: Super Admin required');
+                }
+
+                const [
+                    { count: totalTenants },
+                    { count: activeTenants },
+                    { count: pendingApprovals },
+                    { count: totalEmployees },
+                    { data: activeCompanies }
+                ] = await Promise.all([
+                    adminClient.from('companies').select('*', { count: 'exact', head: true }),
+                    adminClient.from('companies').select('*', { count: 'exact', head: true }).eq('status', 'ACTIVE'),
+                    adminClient.from('companies').select('*', { count: 'exact', head: true }).in('status', ['PENDING_PAYMENT', 'PENDING_APPROVAL']),
+                    adminClient.from('employees').select('*', { count: 'exact', head: true }),
+                    adminClient.from('companies').select('settings').eq('status', 'ACTIVE')
+                ]);
+
+                // Sum up MRR from settings
+                const totalMRR = (activeCompanies || []).reduce((sum: number, c: any) => sum + (c.settings?.mrr || 0), 0);
+
+                return new Response(JSON.stringify({
+                    totalTenants: totalTenants || 0,
+                    activeTenants: activeTenants || 0,
+                    pendingApprovals: pendingApprovals || 0,
+                    totalEmployees: totalEmployees || 0,
+                    totalMRR
+                }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'get-all-subscriptions': {
+                if (!authUser) throw new Error('Unauthorized');
+                
+                // Simple role check for Super Admin
+                const { data: profile } = await adminClient.from('app_users').select('role').eq('id', authUser.id).maybeSingle();
+                if (profile?.role?.toUpperCase() !== 'SUPER_ADMIN') {
+                    throw new Error('Unauthorized: Super Admin required');
+                }
+
+                const { data, error } = await adminClient
+                    .from('subscriptions')
+                    .select('*, companies(name)')
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+                return new Response(JSON.stringify({ subscriptions: data }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'get-all-payments': {
+                if (!authUser) throw new Error('Unauthorized');
+                
+                // Simple role check for Super Admin
+                const { data: profile } = await adminClient.from('app_users').select('role').eq('id', authUser.id).maybeSingle();
+                if (profile?.role?.toUpperCase() !== 'SUPER_ADMIN') {
+                    throw new Error('Unauthorized: Super Admin required');
+                }
+
+                const { data, error } = await adminClient
+                    .from('payment_history')
+                    .select('*, companies(name)')
+                    .eq('status', 'completed')
+                    .order('payment_date', { ascending: false });
+
+                if (error) throw error;
+                return new Response(JSON.stringify({ payments: data }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'get-all-super-admins': {
+                if (!authUser) throw new Error('Unauthorized');
+                
+                const { data: profile } = await adminClient.from('app_users').select('role').eq('id', authUser.id).maybeSingle();
+                if (profile?.role?.toUpperCase() !== 'SUPER_ADMIN') {
+                    throw new Error('Unauthorized: Super Admin required');
+                }
+
+                // Fetch all Super Admins using the server role (RLS bypass)
+                const { data, error } = await adminClient
+                    .from('app_users')
+                    .select('*')
+                    .eq('role', 'SUPER_ADMIN')
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+                return new Response(JSON.stringify({ admins: data }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'get-pending-approvals': {
+                if (!authUser) throw new Error('Unauthorized');
+                
+                const { data: profile } = await adminClient.from('app_users').select('role').eq('id', authUser.id).maybeSingle();
+                if (profile?.role?.toUpperCase() !== 'SUPER_ADMIN') {
+                    throw new Error('Unauthorized: Super Admin required');
+                }
+
+                const { data, error } = await adminClient
+                    .from('companies')
+                    .select(`
+                        id,
+                        name,
+                        email,
+                        plan,
+                        status,
+                        created_at,
+                        owner:app_users!companies_owner_id_fkey (
+                            name,
+                            email
+                        )
+                    `)
+                    .in('status', ['PENDING_PAYMENT', 'PENDING_APPROVAL'])
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+                return new Response(JSON.stringify({ pending: data }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'approve-payment': {
+                if (!authUser) throw new Error('Unauthorized');
+                
+                const { data: profile } = await adminClient.from('app_users').select('role').eq('id', authUser.id).maybeSingle();
+                if (profile?.role?.toUpperCase() !== 'SUPER_ADMIN') {
+                    throw new Error('Unauthorized: Super Admin required');
+                }
+
+                const { companyId } = payload;
+                if (!companyId) throw new Error('Company ID is required for approval');
+
+                const { data, error } = await adminClient
+                    .from('companies')
+                    .update({ status: 'ACTIVE' })
+                    .eq('id', companyId)
+                    .select();
+
+                if (error) throw error;
+                return new Response(JSON.stringify({ success: true, company: data }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'delete-account': {
+                if (!authUser) throw new Error('Unauthorized');
+
+                const { userId, userRole, companyId } = payload;
+                if (!userId) throw new Error('userId required');
+
+                // Verify the caller is deleting their own account, or is a Super Admin
+                const { data: callerProfile } = await adminClient
+                    .from('app_users')
+                    .select('role')
+                    .eq('id', authUser.id)
+                    .maybeSingle();
+
+                const callerIsSuper = callerProfile?.role?.toUpperCase() === 'SUPER_ADMIN';
+                if (authUser.id !== userId && !callerIsSuper) {
+                    throw new Error('Unauthorized: Can only delete your own account');
+                }
+
+                // Fetch user data to get auth_user_id
+                const { data: targetUser, error: fetchErr } = await adminClient
+                    .from('app_users')
+                    .select('auth_user_id, company_id')
+                    .eq('id', userId)
+                    .maybeSingle();
+
+                if (fetchErr) throw fetchErr;
+
+                const authUserId = targetUser?.auth_user_id;
+                const userCompanyId = companyId || targetUser?.company_id;
+
+                // If OWNER, delete their company too
+                if (userRole === 'OWNER' && userCompanyId) {
+                    await adminClient.from('companies').delete().eq('id', userCompanyId);
+                }
+
+                // Delete app_users record
+                const { error: deleteUserErr } = await adminClient
+                    .from('app_users')
+                    .delete()
+                    .eq('id', userId);
+
+                if (deleteUserErr) throw deleteUserErr;
+
+                // Delete auth user (admin-only operation)
+                if (authUserId) {
+                    try {
+                        await adminClient.auth.admin.deleteUser(authUserId);
+                    } catch (authDeleteErr: any) {
+                        console.warn('Warning: Could not delete auth user:', authDeleteErr.message);
+                        // Non-fatal: app_users row is already gone
+                    }
+                }
+
+                return new Response(JSON.stringify({ success: true }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'save-reseller-client': {
+                if (!authUser) throw new Error('Unauthorized');
+
+                const { resellerId, clientCompanyId, data: clientData } = payload;
+                if (!resellerId || !clientCompanyId) throw new Error('resellerId and clientCompanyId required');
+
+                const { error: upsertErr } = await adminClient
+                    .from('reseller_clients')
+                    .upsert({
+                        reseller_id: resellerId,
+                        client_company_id: clientCompanyId,
+                        status: clientData?.status || 'ACTIVE',
+                        access_level: clientData?.accessLevel || 'FULL',
+                        monthly_base_fee: clientData?.monthlyBaseFee ?? 3000,
+                        per_employee_fee: clientData?.perEmployeeFee ?? 100,
+                        discount_rate: clientData?.discountRate ?? 0,
+                        relationship_start_date: new Date().toISOString().split('T')[0],
+                        updated_at: new Date().toISOString(),
+                    }, { onConflict: 'reseller_id,client_company_id' });
+
+                if (upsertErr) throw upsertErr;
+
+                // Also link company to reseller
+                await adminClient
+                    .from('companies')
+                    .update({ reseller_id: resellerId })
+                    .eq('id', clientCompanyId);
+
+                return new Response(JSON.stringify({ success: true }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
             }
 
             default:

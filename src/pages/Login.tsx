@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { User } from '../core/types';
 import { Icons } from '../components/Icons';
-import { supabaseService } from '../services/supabaseService';
+import { CompanyService } from '../services/CompanyService';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 import { supabase } from '../services/supabaseClient';
@@ -39,7 +39,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBack, onRegister
       
       // Check if user's company has pending payment
       if (user?.companyId) {
-        const company = await supabaseService.getCompanyById(user.companyId);
+        const company = await CompanyService.getCompanyById(user.companyId);
         if (company?.subscriptionStatus === 'PENDING_PAYMENT') {
           toast.error('Your account is pending payment verification. You will be able to login once your payment is confirmed.', {
             duration: 8000,
@@ -119,7 +119,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onBack, onRegister
       console.log('🔄 Requesting password reset for:', resetEmail);
       
       // Use getAuthRedirectUrl to ensure www.payrolljam.com is used for email verification
-      const redirectUrl = getAuthRedirectUrl('?page=reset-password');
+      const redirectUrl = getAuthRedirectUrl('/reset-password');
       console.log('Redirect URL:', redirectUrl);
       
       const { data, error } = await supabase.auth.resetPasswordForEmail(resetEmail, {

@@ -421,15 +421,20 @@ export interface CompanySettings {
   resellerId?: string;
   policies?: Record<string, any>;
   reseller_defaults?: Record<string, any>;
+  taxConfig?: TaxConfig;
+  departments?: Department[];
+  designations?: Designation[];
 }
 
+
 export interface TaxConfig {
-  nisRate: number;
+  nisRateEmployee: number;
   nisRateEmployer: number;
   nisCap: number;
-  nhtRate: number;
+  nhtRateEmployee: number;
   nhtRateEmployer: number;
-  edTaxRate: number;
+  nhtCap: number;
+  edTaxRateEmployee: number;
   edTaxRateEmployer: number;
   heartRateEmployer: number;
   payeThreshold: number;
@@ -438,10 +443,13 @@ export interface TaxConfig {
   payeRateHigh: number;
 }
 
+
+
 export interface GlobalConfig {
   dataSource?: 'LOCAL' | 'SUPABASE';
   currency: 'JMD' | 'USD';
   pricingPlans?: PricingPlan[];
+  supportEmail?: string;
   emailjs?: {
     serviceId: string;
     templateId: string;
@@ -571,3 +579,149 @@ export const DOCUMENT_PLACEHOLDERS = [
   { key: '{{companyName}}', label: 'Company Name' },
   { key: '{{currentDate}}', label: 'Current Date' },
 ];
+
+// ─── DB Row Types ────────────────────────────────────────────────
+// These represent the raw shapes returned by Supabase queries.
+// Use these as the type parameter for `.map()` callbacks instead of `any`.
+
+export interface DbAppUserRow {
+  id: string;
+  auth_user_id?: string;
+  name: string;
+  email: string;
+  role: string;
+  company_id?: string | null;
+  is_onboarded?: boolean;
+  avatar_url?: string | null;
+  phone?: string | null;
+  onboarding_token?: string | null;
+  preferences?: Record<string, unknown>;
+  created_at?: string;
+}
+
+export interface DbEmployeeRow {
+  id: string;
+  company_id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  trn: string;
+  nis: string;
+  role: string;
+  status: string;
+  hire_date: string;
+  joining_date?: string | null;
+  job_title?: string | null;
+  department?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  emergency_contact?: string | null;
+  employee_number?: string | null;
+  employee_id?: string | null;
+  gross_salary?: number;
+  hourly_rate?: number | null;
+  pay_type?: string;
+  pay_frequency?: string;
+  pay_data?: {
+    grossSalary?: number;
+    hourlyRate?: number;
+    payType?: string;
+    payFrequency?: string;
+  } | null;
+  bank_details?: BankAccount | null;
+  leave_balance?: { vacation: number; sick: number; personal: number } | null;
+  allowances?: Allowance[] | null;
+  deductions?: unknown;
+  custom_deductions?: unknown;
+  pension_contribution_rate?: number | null;
+  pension_provider?: string | null;
+  termination_details?: TerminationDetails | null;
+  onboarding_token?: string | null;
+  companies?: { name: string } | null;
+}
+
+export interface DbPayRunRow {
+  id: string;
+  company_id: string;
+  period_start: string;
+  period_end: string;
+  pay_date: string;
+  pay_frequency?: string;
+  status: string;
+  total_gross: number;
+  total_net: number;
+  employee_count?: number;
+  line_items?: PayRunLineItem[] | null;
+}
+
+export interface DbCompanyRow {
+  id: string;
+  name: string;
+  email?: string | null;
+  trn?: string;
+  address?: string;
+  plan?: string | null;
+  status?: string;
+  owner_id?: string | null;
+  reseller_id?: string | null;
+  settings?: Record<string, unknown>;
+  departments?: Department[];
+  designations?: Designation[];
+  created_at?: string;
+}
+
+export interface DbResellerClientRow {
+  id?: string;
+  reseller_id: string;
+  client_company_id: string;
+  status?: string;
+  access_level?: string;
+  monthly_base_fee?: number;
+  per_employee_fee?: number;
+  discount_rate?: number;
+  created_at?: string;
+  client_company?: DbCompanyRow | null;
+  companies?: DbCompanyRow | null;
+}
+
+export interface DbAuditLogRow {
+  id: string;
+  timestamp: string;
+  actor_id?: string;
+  actor_name: string;
+  action: string;
+  entity: string;
+  description: string;
+  ip_address?: string;
+  company_id?: string;
+}
+
+// ─── Safe Coercion Helpers ───────────────────────────────────────
+// These convert raw DB strings to typed enums/unions without 'as any'.
+
+const ROLE_VALUES = new Set<string>(Object.values(Role));
+export const toRole = (value: string | null | undefined): Role =>
+  ROLE_VALUES.has(value?.toUpperCase() ?? '') ? (value!.toUpperCase() as Role) : Role.EMPLOYEE;
+
+const PAY_TYPE_VALUES = new Set<string>(Object.values(PayType));
+export const toPayType = (value: string | null | undefined): PayType =>
+  PAY_TYPE_VALUES.has(value ?? '') ? (value as PayType) : PayType.SALARIED;
+
+const PAY_FREQ_VALUES = new Set<string>(Object.values(PayFrequency));
+export const toPayFrequency = (value: string | null | undefined): PayFrequency =>
+  PAY_FREQ_VALUES.has(value ?? '') ? (value as PayFrequency) : PayFrequency.MONTHLY;
+
+export type PlanLabel = 'Free' | 'Starter' | 'Pro' | 'Enterprise' | 'Reseller';
+const PLAN_LABELS = new Set<string>(['Free', 'Starter', 'Pro', 'Enterprise', 'Reseller']);
+export const toPlanLabel = (value: string | null | undefined): PlanLabel =>
+  PLAN_LABELS.has(value ?? '') ? (value as PlanLabel) : 'Free';
+
+export type CompanyStatus = 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'PENDING_PAYMENT' | 'PENDING_APPROVAL';
+export const toCompanyStatus = (value: string | null | undefined): CompanyStatus =>
+  (['ACTIVE', 'PAST_DUE', 'SUSPENDED', 'PENDING_PAYMENT', 'PENDING_APPROVAL'] as const)
+    .includes(value as CompanyStatus) ? (value as CompanyStatus) : 'ACTIVE';
+
+export type EmployeeStatus = 'ACTIVE' | 'ARCHIVED' | 'PENDING_ONBOARDING' | 'PENDING_VERIFICATION' | 'TERMINATED';
+export const toEmployeeStatus = (value: string | null | undefined): EmployeeStatus =>
+  (['ACTIVE', 'ARCHIVED', 'PENDING_ONBOARDING', 'PENDING_VERIFICATION', 'TERMINATED'] as const)
+    .includes(value as EmployeeStatus) ? (value as EmployeeStatus) : 'ACTIVE';

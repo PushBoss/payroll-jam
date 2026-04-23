@@ -1,15 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { calculateTaxes, calculateEmployerContributions } from './taxUtils';
+import { calculateTaxes, calculateEmployerContributions, calculateCumulativePAYE } from './taxUtils';
 import { PayFrequency } from './types';
 
 describe('taxUtils', () => {
   const defaultTaxConfig = {
-    nisRate: 0.03,
+    nisRateEmployee: 0.03,
     nisRateEmployer: 0.025,
     nisCap: 5000000,
-    nhtRate: 0.02,
+    nhtRateEmployee: 0.02,
     nhtRateEmployer: 0.03,
-    edTaxRate: 0.0225,
+    nhtCap: 5000000,
+    edTaxRateEmployee: 0.0225,
     edTaxRateEmployer: 0.0225,
     heartRateEmployer: 0.03,
     payeThreshold: 1700096,
@@ -17,6 +18,7 @@ describe('taxUtils', () => {
     payeRateStd: 0.25,
     payeRateHigh: 0.30
   };
+
 
   it('calculates monthly taxes correctly for standard salary', () => {
     // Gross: 200,000 Monthly (2.4M Annual)
@@ -52,13 +54,14 @@ describe('taxUtils', () => {
     // Gross: 600,000 Monthly (7.2M Annual)
     // Stat Income: Gross - NIS (12,500 Cap) = 587,500
     // Annual Stat Income: 587,500 * 12 = 7,050,000
-    // Standard Taxable (1.7M to 6M): 6M - 1.7M = 4.3M
+    // Standard Taxable (1.7M to 6M): 6M - 1.700,096 = 4,299,904
     // High Taxable (> 6M): 7.05M - 6M = 1.05M
-    // Annual PAYE: (4.3M * 0.25) + (1.05M * 0.30) = 1,075,000 + 315,000 = 1,390,000
-    // Monthly PAYE: 1,390,000 / 12 = 115,833.33
+    // Annual PAYE: (4,299,904 * 0.25) + (1.05M * 0.30) = 1,074,976 + 315,000 = 1,389,976
+    // Monthly PAYE: 1,389,976 / 12 = 115,831.33
     
     const res = calculateTaxes(600000, PayFrequency.MONTHLY, defaultTaxConfig);
-    expect(res.paye).toBe(115833.33);
+    expect(res.paye).toBe(115831.33);
+
   });
 
   it('calculates employer contributions correctly', () => {
@@ -75,5 +78,57 @@ describe('taxUtils', () => {
     
     // Employer Ed Tax (2.25% on stat income): (200k - 6k employee NIS) * 0.0225 = 194k * 0.0225 = 4365
     expect(res.employerEdTax).toBe(4365);
+  });
+
+  it('treats pension as a real deduction (reduces net pay)', () => {
+    const res = calculateTaxes(100000, PayFrequency.MONTHLY, {
+      ...defaultTaxConfig,
+      pension: 10
+    });
+
+    // Pension: 10% of 100,000
+    expect(res.pension).toBe(10000);
+
+    // NIS: 3% of 100,000
+    expect(res.nis).toBe(3000);
+
+    // NHT: 2% of 100,000
+    expect(res.nht).toBe(2000);
+
+    // Ed Tax base: (100,000 - 10,000 pension - 3,000 NIS) = 87,000
+    // Ed Tax: 87,000 * 2.25% = 1,957.5
+    expect(res.edTax).toBe(1957.5);
+
+    // Annual statutory income: 87,000 * 12 = 1,044,000 < threshold => PAYE 0
+    expect(res.paye).toBe(0);
+
+    // Total deductions include pension
+    expect(res.totalDeductions).toBe(16957.5);
+    expect(res.netPay).toBe(83042.5);
+  });
+
+  it('cumulative PAYE respects overridden rates and thresholds', () => {
+    // Period 1 of a monthly pay cycle with a custom company policy.
+    // Make threshold zero and standard rate 50% to ensure we are not using defaults.
+    const currentGross = 200000;
+    const currentNis = 6000; // 3% of 200,000
+
+    const paye = calculateCumulativePAYE(
+      currentGross,
+      currentNis,
+      0,
+      0,
+      1,
+      PayFrequency.MONTHLY,
+      {
+        payeThreshold: 0,
+        payeRateStd: 0.5
+      }
+    );
+
+    // Statutory income for PAYE purposes in this helper is (gross - nis) when pension=0.
+    // Annualized statutory income: (200,000 - 6,000) * 12 = 2,328,000
+    // Annual tax at 50%: 1,164,000 => Month 1 cumulative: 97,000
+    expect(paye).toBe(97000);
   });
 });

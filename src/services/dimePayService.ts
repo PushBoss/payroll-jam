@@ -48,8 +48,8 @@ export const dimePayService = {
 
         // Try Supabase if available - get global config from backend
         try {
-            const { supabaseService } = await import('./supabaseService');
-            globalConfig = await supabaseService.getGlobalConfig();
+            const { CompanyService } = await import('./CompanyService');
+            globalConfig = await CompanyService.getGlobalConfig();
 
             // Only try to get company-specific settings if companyId is provided AND we're not in signup mode
             // During signup, the company doesn't exist yet, so skip this to avoid errors
@@ -57,7 +57,7 @@ export const dimePayService = {
             const isSignupFlow = props.metadata?.plan || props.metadata?.company;
             if (props.companyId && !isSignupFlow) {
                 // Only fetch company settings for existing companies (e.g., upgrade flow)
-                companyConfig = await supabaseService.getPaymentGatewaySettings(props.companyId);
+                companyConfig = await CompanyService.getPaymentGatewaySettings(props.companyId);
             }
         } catch (e) {
             console.log('Supabase not available, using localStorage');
@@ -129,14 +129,13 @@ export const dimePayService = {
         }
 
         // Validate credentials exist
-        // Note: Production environment only REQUIRES apiKey (client_id) on the frontend.
-        // Secret key is handled by the backend /api/sign-payment endpoint.
-        const hasSecretKey = activeCredentials?.secretKey ? !!activeCredentials.secretKey : false;
+        // Note: Both environments only REQUIRE apiKey (client_id) on the frontend.
+        // Secret key is handled ONLY by the backend /api/sign-payment endpoint.
         const hasApiKey = activeCredentials?.apiKey ? !!activeCredentials.apiKey : false;
 
-        if (!hasApiKey || (activeEnv === 'sandbox' && !hasSecretKey)) {
-            console.error(`❌ Missing ${activeEnv} credentials`);
-            props.onError(`Payment gateway ${activeEnv} credentials not configured accurately.`);
+        if (!hasApiKey) {
+            console.error(`❌ Missing ${activeEnv} API Key credentials`);
+            props.onError(`Payment gateway ${activeEnv} API Key not configured accurately.`);
             return;
         }
 
@@ -158,8 +157,12 @@ export const dimePayService = {
         // Prepare Payload to send to backend for signing
         const orderId = `ORD-${Date.now()}`;
 
-        // DimePay One-Time Payment Payload
-        const payloadData = {
+        const planName = props.metadata?.planName || props.metadata?.plan || props.description;
+        const planType = props.metadata?.planType || props.metadata?.plan_type || 'subscription';
+        const companyId = props.companyId || props.metadata?.companyId || props.metadata?.company_id;
+
+        // DimePay Payment Payload
+        const payloadData: any = {
             // Standard order fields
             id: orderId,
             currency: props.currency,
@@ -176,16 +179,31 @@ export const dimePayService = {
             // Items array (required by DimePay)
             items: [
                 {
-                    id: `PLAN-${props.metadata?.plan || 'payment'}`.replace(/\s+/g, '-').toUpperCase(),
+                    id: `PLAN-${planName || 'payment'}`.replace(/\s+/g, '-').toUpperCase(),
                     name: props.description,
                     price: props.amount,
                     quantity: 1
                 }
             ],
 
+            // Metadata used by the webhook to attach billing activity to a company
+            metadata: {
+                ...props.metadata,
+                ...(companyId ? { company_id: companyId } : {}),
+                plan_name: planName,
+                plan_type: planType
+            },
+
             // Fee routing
             pass_fees_to: passFeesTo === 'CUSTOMER' ? 'CUSTOMER' : 'MERCHANT'
         };
+
+        // Add Recurring properties if appropriate
+        if (props.frequency) {
+            payloadData.recurring = true;
+            payloadData.frequency = props.frequency; // usually 'monthly' or 'annual'
+            payloadData.billing_cycles = props.billingCycles || 9999;
+        }
 
         try {
             // Try to use backend signing API (production-ready)
@@ -213,21 +231,9 @@ export const dimePayService = {
                     throw new Error('Backend signing failed');
                 }
             } catch (backendError: any) {
-                // In local development, API endpoints aren't available - this is expected
-                const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-
-                // Fallback to client-side signing for sandbox only
-                if (activeEnv === 'sandbox') {
-                    if (isLocalDev) {
-                        console.log("ℹ️ Local dev mode: Using client-side signing (sandbox)");
-                    } else {
-                        console.warn("⚠️ Backend unavailable, using client-side signing (sandbox only)");
-                    }
-                    jwt = await signPayloadWithHMAC(payloadData, activeCredentials.secretKey);
-                } else {
-                    console.error("❌ Backend signing required for production");
-                    throw new Error('Secure payment signing unavailable');
-                }
+                // Backend signing is the ONLY allowed method for security.
+                console.error("❌ Backend signing failed or unavailable:", backendError);
+                throw new Error('Secure payment signing unavailable. Ensure backend is running.');
             }
 
             // Wait for mount element to exist in DOM
@@ -325,45 +331,74 @@ export const dimePayService = {
             console.error("Error initializing payment:", e);
             props.onError("Payment initialization failed.");
         }
+    },
+
+    createCardRequest: async (params: {
+        companyId: string;
+        localSubscriptionId?: string;
+        subscriptionId?: string;
+        redirectUrl?: string;
+    }) => {
+        const response = await fetch('/api/create-card-request', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                company_id: params.companyId,
+                local_subscription_id: params.localSubscriptionId,
+                subscription_id: params.subscriptionId,
+                redirect_url: params.redirectUrl
+            })
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data?.error || 'Failed to create card request');
+        }
+
+        return data;
+    },
+
+    getCardDetails: async (cardRequestToken: string) => {
+        const response = await fetch(`/api/get-card-details?token=${encodeURIComponent(cardRequestToken)}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data?.error || 'Failed to get card details');
+        }
+
+        return data;
+    },
+
+    updateSubscriptionPaymentMethod: async (params: {
+        companyId: string;
+        localSubscriptionId?: string;
+        subscriptionId?: string;
+        cardToken: string;
+        cardRequestToken?: string;
+        cardLast4?: string;
+        cardBrand?: string;
+        cardExpiry?: string;
+    }) => {
+        const response = await fetch('/api/update-subscription-payment-method', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                company_id: params.companyId,
+                local_subscription_id: params.localSubscriptionId,
+                subscription_id: params.subscriptionId,
+                card_token: params.cardToken,
+                card_request_token: params.cardRequestToken,
+                card_last4: params.cardLast4,
+                card_brand: params.cardBrand,
+                card_expiry: params.cardExpiry
+            })
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data?.error || 'Failed to update subscription payment method');
+        }
+
+        return data;
     }
-};
-
-// Sign JWT with HMAC-SHA256 using Web Crypto API
-const signPayloadWithHMAC = async (payload: any, secretKey: string): Promise<string> => {
-    const header = { alg: "HS256", typ: "JWT" };
-
-    const base64url = (source: string) => {
-        return btoa(source)
-            .replace(/=/g, '')
-            .replace(/\+/g, '-')
-            .replace(/\//g, '_');
-    };
-
-    const encodedHeader = base64url(JSON.stringify(header));
-    const encodedPayload = base64url(JSON.stringify(payload));
-    const signatureInput = `${encodedHeader}.${encodedPayload}`;
-
-    // Use Web Crypto API to sign with HMAC-SHA256
-    const encoder = new TextEncoder();
-    const keyData = encoder.encode(secretKey);
-    const dataToSign = encoder.encode(signatureInput);
-
-    const cryptoKey = await crypto.subtle.importKey(
-        'raw',
-        keyData,
-        { name: 'HMAC', hash: 'SHA-256' },
-        false,
-        ['sign']
-    );
-
-    const signature = await crypto.subtle.sign('HMAC', cryptoKey, dataToSign);
-
-    // Convert signature to base64url
-    const signatureArray = Array.from(new Uint8Array(signature));
-    const signatureBase64 = btoa(String.fromCharCode(...signatureArray))
-        .replace(/=/g, '')
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_');
-
-    return `${encodedHeader}.${encodedPayload}.${signatureBase64}`;
 };

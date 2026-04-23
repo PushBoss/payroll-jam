@@ -73,6 +73,7 @@ export const Layout: React.FC<LayoutProps> = ({
     { id: 'portal-leave', label: 'Time Off', icon: Icons.Plane, feature: null },
     { id: 'portal-docs', label: 'Documents', icon: Icons.Compliance, feature: null },
     { id: 'portal-profile', label: 'My Profile', icon: Icons.Users, feature: null },
+    { id: 'contact-us', label: 'Contact Us', icon: Icons.Mail, feature: null },
   ];
 
   const superAdminNavItems = [
@@ -117,7 +118,7 @@ export const Layout: React.FC<LayoutProps> = ({
     e.preventDefault();
     await logout();
     // Clear all storage and redirect
-    window.location.href = '/?page=login';
+    window.location.href = '/login';
   };
 
   return (
@@ -146,6 +147,12 @@ export const Layout: React.FC<LayoutProps> = ({
         </div>
       )}
 
+
+      {/* 0. Beta Banner */}
+      <div className="bg-blue-600 text-white px-4 py-1.5 text-xs font-semibold flex justify-center items-center gap-2 z-[65]">
+        <span>🚀</span>
+        <span>You&apos;re on the <strong>Payroll-Jam Beta</strong> — features are actively being developed. Thank you for testing!</span>
+      </div>
 
       {/* 1. Global System Banner (Super Admin) */}
       {systemBanner?.active && (

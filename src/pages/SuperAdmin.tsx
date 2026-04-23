@@ -6,9 +6,11 @@ import { PricingPlan, ResellerClient, GlobalConfig, User, Role, AuditLogEntry } 
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { storage } from '../services/storage';
 import { auditService } from '../core/auditService';
-import { supabaseService } from '../services/supabaseService';
+import { BillingService } from '../services/BillingService';
 import { checkDbConnection, testManualConnection, saveManualConfig, isUsingLocalOverrides, supabase } from '../services/supabaseClient';
+import { CompanyService } from '../services/CompanyService';
 import { toast } from 'sonner';
+import { UserService } from '../services/UserService';
 
 interface SuperAdminProps {
     plans: PricingPlan[];
@@ -87,8 +89,11 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         }
     }, [initialTab]);
 
-    // Tenant State - Always fetch from Supabase
+    // Tenant State - Always fetch from Supabase via Edge Function
     const [tenants, setTenants] = useState<ResellerClient[]>([]);
+    const [tenantPage, setTenantPage] = useState(0);
+    const [tenantTotal, setTenantTotal] = useState(0);
+    const TENANTS_PER_PAGE = 20;
 
     const [isLoadingTenants, setIsLoadingTenants] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -108,9 +113,12 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     // Billing State
     const [revenueData, setRevenueData] = useState<{ name: string; revenue: number }[]>([]);
     const [isLoadingBilling, setIsLoadingBilling] = useState(false);
+    const [revenueFilter, setRevenueFilter] = useState<'month' | 'quarter' | 'year' | 'all'>('6M' as any); // Default 6M to maintain current chart shape, but we'll add the new filters
+    
     const [billingStats, setBillingStats] = useState({
         totalRevenue: 0,
         monthlyRecurringRevenue: 0,
+        annualRecurringRevenue: 0,
         totalSubscriptions: 0,
         activeSubscriptions: 0,
         totalPayments: 0
@@ -131,11 +139,22 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     const [manualCreds, setManualCreds] = useState({ url: '', key: '' });
     const [manualTestResult, setManualTestResult] = useState<{ success?: boolean, msg?: string } | null>(null);
 
-    // Stats
-    const totalMRR = tenants.reduce((acc, t) => t.status === 'ACTIVE' ? acc + t.mrr : acc, 0);
-    const totalTenants = tenants.length;
-    const activeTenants = tenants.filter(t => t.status === 'ACTIVE').length;
-    const totalEmployees = tenants.reduce((acc, t) => acc + t.employeeCount, 0);
+    // Platform-wide Stats (cached from edge function)
+    const [platformStats, setPlatformStats] = useState({
+        totalTenants: 0,
+        activeTenants: 0,
+        pendingApprovals: 0,
+        totalEmployees: 0,
+        totalMRR: 0
+    });
+
+    // Stats - These are now primarily fetched via Edge Function for accuracy across pages
+    // We fall back to local count if edge function isn't used
+    const totalMRR = (platformStats.totalMRR > 0) ? platformStats.totalMRR : tenants.reduce((acc, t) => t.status === 'ACTIVE' ? acc + t.mrr : acc, 0);
+    const totalTenants = (platformStats.totalTenants > 0) ? platformStats.totalTenants : tenants.length;
+    const activeTenants = (platformStats.activeTenants > 0) ? platformStats.activeTenants : tenants.filter(t => t.status === 'ACTIVE').length;
+    const totalEmployees = (platformStats.totalEmployees > 0) ? platformStats.totalEmployees : tenants.reduce((acc, t) => acc + (t.employeeCount || 0), 0);
+    const pendingApprovals = platformStats.pendingApprovals;
 
     // --- Persistence Effects ---
     useEffect(() => {
@@ -149,7 +168,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     useEffect(() => {
         const loadGlobalConfig = async () => {
             try {
-                const config = await supabaseService.getGlobalConfig();
+                const config = await CompanyService.getGlobalConfig();
                 if (config) {
                     setPaymentConfig(config);
                 }
@@ -164,7 +183,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     useEffect(() => {
         storage.saveGlobalConfig(paymentConfig);
         // Also save to Supabase
-        supabaseService.saveGlobalConfig(paymentConfig).catch(e => {
+        CompanyService.saveGlobalConfig(paymentConfig).catch(e => {
             console.error("Error saving global config to Supabase:", e);
         });
     }, [paymentConfig]);
@@ -172,9 +191,21 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     useEffect(() => {
         const loadLogs = async () => {
             if (activeTab === 'overview' || activeTab === 'logs') {
-                // Super admins can see all audit logs (pass null for companyId)
-                const allLogs = await auditService.getLogs(null, 'SUPER_ADMIN');
-                setLogs(allLogs);
+                try {
+                    // Use Edge Function to bypass RLS for super admin audit log access
+                    const { data, error } = await supabase!.functions.invoke('admin-handler', {
+                        body: { action: 'get-audit-logs', payload: { limit: 500 } }
+                    });
+                    if (!error && data?.logs) {
+                        setLogs(data.logs);
+                    } else {
+                        // Fallback to regular auditService (reads own company only)
+                        const fallbackLogs = await auditService.getLogs(null, 'SUPER_ADMIN');
+                        setLogs(fallbackLogs);
+                    }
+                } catch (e) {
+                    console.error('Error loading audit logs:', e);
+                }
             }
         };
         loadLogs();
@@ -186,8 +217,12 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             if (activeTab !== 'pending-payments') return;
             setIsLoadingPending(true);
             try {
-                const pending = await supabaseService.getPendingPaymentCompanies();
-                setPendingPayments(pending || []);
+                const { data, error } = await supabase!.functions.invoke('admin-handler', {
+                    body: { action: 'get-pending-approvals', payload: {} }
+                });
+                if (error) throw error;
+                // Our new action returns { pending: [...] }
+                setPendingPayments(data?.pending || []);
             } catch (error) {
                 console.error('Error loading pending payments:', error);
                 toast.error('Failed to load pending payments');
@@ -204,7 +239,14 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             if (activeTab !== 'users') return;
 
             try {
-                const dbAdmins = await supabaseService.getAllSuperAdmins();
+                // Use admin-handler to bypass RLS and see ALL admins
+                const { data, error } = await supabase!.functions.invoke('admin-handler', {
+                    body: { action: 'get-all-super-admins', payload: {} }
+                });
+                
+                if (error) throw error;
+                
+                const dbAdmins = data?.admins || [];
                 if (dbAdmins && dbAdmins.length > 0) {
                     setAdmins(dbAdmins);
                     // Also save to localStorage as backup
@@ -229,6 +271,36 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         loadSuperAdmins();
     }, [activeTab]);
 
+    // Load platform stats when overview or tenants tab is active
+    useEffect(() => {
+        const loadPlatformStats = async () => {
+            if (activeTab !== 'overview' && activeTab !== 'tenants') return;
+            
+            try {
+                const { data, error } = await supabase!.functions.invoke('admin-handler', {
+                    body: { action: 'get-platform-stats', payload: {} }
+                });
+                
+                if (error) throw error;
+                if (data) {
+                    setPlatformStats({
+                        totalTenants: data.totalTenants || 0,
+                        activeTenants: data.activeTenants || 0,
+                        pendingApprovals: data.pendingApprovals || 0,
+                        totalEmployees: data.totalEmployees || 0,
+                        totalMRR: data.totalMRR || 0
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading platform stats:', error);
+            }
+        };
+
+        if (paymentConfig.dataSource === 'SUPABASE') {
+            loadPlatformStats();
+        }
+    }, [activeTab, paymentConfig.dataSource]);
+
     // Load billing data when billing tab is active
     useEffect(() => {
         const loadBillingData = async () => {
@@ -236,12 +308,12 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
 
             setIsLoadingBilling(true);
             try {
-                // Fetch all subscriptions
-                const subscriptions = await supabaseService.getAllSubscriptions();
-                const activeSubs = subscriptions.filter(s => s.status === 'active');
+                // Fetch all subscriptions via BillingService (no admin client needed)
+                const subscriptions = await BillingService.getAllSubscriptions();
+                const activeSubs = subscriptions.filter((s: any) => s.status === 'active');
 
                 // Calculate MRR from active subscriptions
-                const mrr = activeSubs.reduce((sum, sub) => {
+                const mrr = activeSubs.reduce((sum: number, sub: any) => {
                     if (sub.billing_frequency === 'monthly') {
                         return sum + Number(sub.amount || 0);
                     } else if (sub.billing_frequency === 'yearly') {
@@ -249,16 +321,32 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     }
                     return sum;
                 }, 0);
+                
+                const arr = mrr * 12;
 
                 // Fetch all completed payments
-                const payments = await supabaseService.getAllPayments();
+                let payments = await BillingService.getAllPayments();
+                
+                // Filter payments by selected timeframe
+                const now = new Date();
+                const filteredPayments = (payments || []).filter((p: any) => {
+                    if (revenueFilter === 'all') return true;
+                    const pDate = new Date(p.payment_date);
+                    const diffTime = Math.abs(now.getTime() - pDate.getTime());
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    
+                    if (revenueFilter === 'month') return diffDays <= 30;
+                    if (revenueFilter === 'quarter') return diffDays <= 90;
+                    if (revenueFilter === 'year') return diffDays <= 365;
+                    return true;
+                });
 
-                // Calculate total revenue
-                const totalRevenue = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+                // Calculate total revenue from filtered timeframe
+                const totalRevenue = filteredPayments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
 
-                // Group payments by month for chart
+                // Group payments by month for chart (Always group by month for visual trend, but only within filter)
                 const monthlyRevenue: Record<string, number> = {};
-                payments.forEach(payment => {
+                filteredPayments.forEach((payment: any) => {
                     const date = new Date(payment.payment_date);
                     const monthKey = date.toLocaleDateString('en-US', { month: 'short' });
                     if (!monthlyRevenue[monthKey]) {
@@ -267,12 +355,14 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     monthlyRevenue[monthKey] += Number(payment.amount || 0);
                 });
 
-                // Convert to chart data format (last 6 months)
+                // Convert to chart data format
                 const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
                 const currentMonth = new Date().getMonth();
-                // Get last 6 months including current month
                 const chartData = [];
-                for (let i = 5; i >= 0; i--) {
+                // standard 6 months look back if month/quarter, or 12 months if year/all
+                const lookBackMonths = (revenueFilter === 'year' || revenueFilter === 'all') ? 12 : 6;
+                
+                for (let i = lookBackMonths - 1; i >= 0; i--) {
                     const monthIndex = (currentMonth - i + 12) % 12;
                     const monthName = months[monthIndex];
                     chartData.push({
@@ -284,9 +374,10 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 setBillingStats({
                     totalRevenue,
                     monthlyRecurringRevenue: mrr,
+                    annualRecurringRevenue: arr,
                     totalSubscriptions: subscriptions.length,
                     activeSubscriptions: activeSubs.length,
-                    totalPayments: payments.length
+                    totalPayments: filteredPayments.length
                 });
 
                 setRevenueData(chartData.length > 0 ? chartData : MOCK_REVENUE_DATA);
@@ -299,7 +390,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         };
 
         loadBillingData();
-    }, [activeTab]);
+    }, [activeTab, revenueFilter]);
 
     // Check DB Connection when Settings tab is active
     useEffect(() => {
@@ -334,26 +425,30 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         }
     };
 
-    // --- Fetch Tenants from Supabase ---
+    // --- Fetch Tenants from Supabase via Edge Function (bypasses RLS) ---
     useEffect(() => {
         async function fetchDBTenants() {
             setIsLoadingTenants(true);
             try {
-                const dbTenants = await supabaseService.getAllCompanies();
-                setTenants(dbTenants || []);
-                if (!dbTenants || dbTenants.length === 0) {
-                    console.log('No companies found in database');
-                }
+                const { data, error } = await supabase!.functions.invoke('admin-handler', {
+                    body: {
+                        action: 'get-all-companies',
+                        payload: { page: tenantPage, pageSize: TENANTS_PER_PAGE }
+                    }
+                });
+                if (error) throw error;
+                setTenants(data?.companies || []);
+                setTenantTotal(data?.total || 0);
             } catch (e) {
                 console.error('Error fetching tenants:', e);
-                toast.error("Failed to fetch companies from Supabase");
+                toast.error('Failed to fetch companies');
                 setTenants([]);
             } finally {
                 setIsLoadingTenants(false);
             }
         }
         fetchDBTenants();
-    }, [activeTab]); // Re-fetch on tab change
+    }, [activeTab, tenantPage]); // Re-fetch whenever tab or page changes
 
     // --- Handlers ---
     const handleSuspend = async (id: string) => {
@@ -363,7 +458,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         const newStatus = tenant.status === 'SUSPENDED' ? 'ACTIVE' : 'SUSPENDED';
 
         try {
-            await supabaseService.updateCompanyStatus(id, newStatus as any);
+            await CompanyService.updateCompanyStatus(id, newStatus as any);
             setTenants(prev => prev.map(t => t.id === id ? { ...t, status: newStatus as any } : t));
             toast.success(`Tenant ${newStatus === 'ACTIVE' ? 'activated' : 'suspended'}`);
             auditService.log(
@@ -384,7 +479,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
 
         if (confirm(`Are you sure you want to delete ${tenant.companyName}? This action is irreversible and will delete all associated data.`)) {
             try {
-                const success = await supabaseService.deleteCompany(id);
+                const success = await CompanyService.deleteCompany(id);
                 if (success) {
                     setTenants(prev => prev.filter(t => t.id !== id));
                     toast.success("Tenant deleted from records");
@@ -407,7 +502,21 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     const handleAddAdmin = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (!newAdminForm.password || newAdminForm.password.length < 6) {
+        const email = newAdminForm.email.trim().toLowerCase();
+        const name = newAdminForm.name.trim();
+        const password = newAdminForm.password;
+
+        if (!name) {
+            toast.error('Name is required');
+            return;
+        }
+
+        if (!email) {
+            toast.error('Email is required');
+            return;
+        }
+
+        if (!password || password.length < 6) {
             toast.error("Password must be at least 6 characters");
             return;
         }
@@ -419,12 +528,23 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
 
             // 1. Create auth user in Supabase Auth using edge function
             const { data: adminRes, error: invokeError } = await supabase.functions.invoke('admin-handler', {
-                body: { action: 'onboard-confirmed-user', payload: { email: newAdminForm.email, password: newAdminForm.password, name: newAdminForm.name } }
+                body: { action: 'onboard-confirmed-user', payload: { email, password, name } }
             });
 
             if (invokeError || !adminRes?.user) {
-                console.error('❌ Auth signup error:', invokeError || adminRes);
-                toast.error('Failed to create admin user');
+                const rawBody = (invokeError as any)?.context?.body;
+                let edgeMessage: string | undefined;
+                if (typeof rawBody === 'string' && rawBody.length > 0) {
+                    try {
+                        const parsed = JSON.parse(rawBody);
+                        edgeMessage = parsed?.error;
+                    } catch {
+                        edgeMessage = rawBody;
+                    }
+                }
+
+                console.error('❌ Auth signup error:', { invokeError, adminRes, edgeMessage });
+                toast.error(edgeMessage || invokeError?.message || 'Failed to create admin user');
                 return;
             }
             
@@ -442,8 +562,8 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 .insert({
                     id: authData.user.id,
                     auth_user_id: authData.user.id,
-                    email: newAdminForm.email,
-                    name: newAdminForm.name,
+                    email,
+                    name,
                     role: 'SUPER_ADMIN',
                     is_onboarded: true
                 });
@@ -467,11 +587,11 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             // 3. Update local state and refresh from DB
             setIsAddAdminOpen(false);
             setNewAdminForm({ name: '', email: '', password: '' });
-            auditService.log({ id: 'sys', name: 'Super Admin', email: 'sys', role: Role.SUPER_ADMIN }, 'CREATE', 'User', `Created new super admin: ${newAdminForm.email}`);
+            auditService.log({ id: 'sys', name: 'Super Admin', email: 'sys', role: Role.SUPER_ADMIN }, 'CREATE', 'User', `Created new super admin: ${email}`);
             toast.success("New admin created successfully");
 
             // Refresh admins list from database
-            const updatedAdmins = await supabaseService.getAllSuperAdmins();
+            const updatedAdmins = await UserService.getAllSuperAdmins();
             if (updatedAdmins && updatedAdmins.length > 0) {
                 setAdmins(updatedAdmins);
                 storage.saveSuperAdmins(updatedAdmins);
@@ -490,7 +610,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         if (confirm("Revoke Super Admin access for this user? This action cannot be undone.")) {
             try {
                 // Delete from Supabase
-                const deleted = await supabaseService.deleteUser(id);
+                const deleted = await UserService.deleteUser(id);
                 if (!deleted) {
                     toast.error("Failed to remove admin from database");
                     return;
@@ -509,7 +629,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 }
 
                 // Refresh admins list from database
-                const updatedAdmins = await supabaseService.getAllSuperAdmins();
+                const updatedAdmins = await UserService.getAllSuperAdmins();
                 if (updatedAdmins && updatedAdmins.length > 0) {
                     setAdmins(updatedAdmins);
                     storage.saveSuperAdmins(updatedAdmins);
@@ -531,8 +651,12 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         if (!confirm(`Approve payment for ${companyName}? This will activate their account.`)) return;
 
         try {
-            const success = await supabaseService.approveCompanyPayment(companyId);
-            if (success) {
+            const { data, error } = await supabase!.functions.invoke('admin-handler', {
+                body: { action: 'approve-payment', payload: { companyId } }
+            });
+            if (error) throw error;
+
+            if (data?.success) {
                 toast.success(`Payment approved for ${companyName}`);
                 auditService.log(
                     { id: 'sys', name: 'Super Admin', email: 'sys', role: Role.SUPER_ADMIN },
@@ -540,9 +664,12 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     'Payment',
                     `Approved payment for company: ${companyName}`
                 );
-                // Reload pending payments
-                const pending = await supabaseService.getPendingPaymentCompanies();
-                setPendingPayments(pending || []);
+                
+                // Reload pending payments using the new action
+                const { data: refreshed } = await supabase!.functions.invoke('admin-handler', {
+                    body: { action: 'get-pending-approvals', payload: {} }
+                });
+                setPendingPayments(refreshed?.pending || []);
             } else {
                 toast.error('Failed to approve payment');
             }
@@ -701,14 +828,30 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                     <div className="flex items-center justify-between">
                         <div>
-                            <p className="text-sm text-gray-500 uppercase font-bold">System Health</p>
-                            <h3 className="text-3xl font-bold text-green-600 mt-2">99.9%</h3>
+                            <p className="text-sm text-gray-500 uppercase font-bold">Pending Approvals</p>
+                            <h3 className={`text-3xl font-bold mt-2 ${pendingApprovals > 0 ? 'text-jam-orange' : 'text-gray-900'}`}>{pendingApprovals}</h3>
                         </div>
-                        <div className="p-3 bg-green-50 text-green-600 rounded-lg">
-                            <Icons.Zap className="w-6 h-6" />
+                        <div className={`p-3 rounded-lg ${pendingApprovals > 0 ? 'bg-orange-50 text-jam-orange' : 'bg-gray-50 text-gray-400'}`}>
+                            <Icons.Alert className="w-6 h-6" />
                         </div>
                     </div>
-                    <p className="text-xs text-gray-400 mt-2">All systems operational</p>
+                    <p className="text-xs text-gray-400 mt-2">Requires admin review</p>
+                </div>
+            </div>
+            
+            {/* System Status Banner */}
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                 <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                        <div className="p-3 bg-green-50 text-green-600 rounded-lg mr-4">
+                            <Icons.Zap className="w-6 h-6" />
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-bold text-gray-900">System Status</h3>
+                            <p className="text-sm text-gray-500">All systems operational</p>
+                        </div>
+                    </div>
+                    <span className="px-3 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full uppercase">Healthy</span>
                 </div>
             </div>
         </div>
@@ -716,10 +859,12 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
 
     const renderTenants = () => {
         const filteredTenants = tenants.filter(t => {
-            const matchesSearch = t.companyName.toLowerCase().includes(searchTerm.toLowerCase()) || t.email.toLowerCase().includes(searchTerm.toLowerCase());
+            const matchesSearch = t.companyName.toLowerCase().includes(searchTerm.toLowerCase()) || (t.email || '').toLowerCase().includes(searchTerm.toLowerCase());
             const matchesFilter = filterStatus === 'ALL' || t.status === filterStatus;
             return matchesSearch && matchesFilter;
         });
+
+        const totalPages = Math.ceil(tenantTotal / TENANTS_PER_PAGE);
 
         return (
             <div className="space-y-6 animate-fade-in">
@@ -731,20 +876,23 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                             placeholder="Search tenants..."
                             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-jam-orange"
                             value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
+                            onChange={(e) => { setSearchTerm(e.target.value); setTenantPage(0); }}
                         />
                     </div>
-                    <div className="flex space-x-2">
-                        {(['ALL', 'ACTIVE', 'SUSPENDED'] as const).map(status => (
-                            <button
-                                key={status}
-                                onClick={() => setFilterStatus(status)}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterStatus === status ? 'bg-jam-black text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                    }`}
-                            >
-                                {status}
-                            </button>
-                        ))}
+                    <div className="flex items-center space-x-4">
+                        <span className="text-xs text-gray-500">{tenantTotal} total tenants</span>
+                        <div className="flex space-x-2">
+                            {(['ALL', 'ACTIVE', 'SUSPENDED'] as const).map(status => (
+                                <button
+                                    key={status}
+                                    onClick={() => setFilterStatus(status)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterStatus === status ? 'bg-jam-black text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                        }`}
+                                >
+                                    {status}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </div>
 
@@ -779,7 +927,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                     </tr>
                                 ) : (
                                     filteredTenants.map(tenant => (
-                                        <tr key={tenant.id} className="hover:bg-gray-50">
+                                        <tr key={tenant.id} className="hover:bg-gray-50 border-b border-gray-100 last:border-0">
                                             <td className="px-6 py-4 font-medium text-gray-900">{tenant.companyName}</td>
                                             <td className="px-6 py-4 text-sm text-gray-500">
                                                 {tenant.contactName}
@@ -814,6 +962,44 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                             </tbody>
                         </table>
                     </div>
+
+                    {/* Pagination Controls */}
+                    {totalPages > 1 && (
+                        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
+                            <p className="text-sm text-gray-500">
+                                Showing {tenantPage * TENANTS_PER_PAGE + 1}–{Math.min((tenantPage + 1) * TENANTS_PER_PAGE, tenantTotal)} of {tenantTotal} tenants
+                            </p>
+                            <div className="flex items-center space-x-2">
+                                <button
+                                    onClick={() => setTenantPage(p => Math.max(0, p - 1))}
+                                    disabled={tenantPage === 0}
+                                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                    ← Prev
+                                </button>
+                                {Array.from({ length: totalPages }, (_, i) => i).map(pg => (
+                                    <button
+                                        key={pg}
+                                        onClick={() => setTenantPage(pg)}
+                                        className={`w-8 h-8 rounded-lg text-xs font-bold transition-colors ${
+                                            pg === tenantPage
+                                                ? 'bg-jam-orange text-jam-black'
+                                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                        }`}
+                                    >
+                                        {pg + 1}
+                                    </button>
+                                ))}
+                                <button
+                                    onClick={() => setTenantPage(p => Math.min(totalPages - 1, p + 1))}
+                                    disabled={tenantPage >= totalPages - 1}
+                                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                    Next →
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         );
@@ -861,6 +1047,8 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                     required
                                     type="password"
                                     minLength={6}
+                                    name="new-password"
+                                    autoComplete="new-password"
                                     className="w-full border border-gray-300 rounded px-3 py-2"
                                     value={newAdminForm.password}
                                     onChange={e => setNewAdminForm({ ...newAdminForm, password: e.target.value })}
@@ -1091,7 +1279,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     const renderBilling = () => (
         <div className="space-y-6 animate-fade-in">
             {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
                     <p className="text-xs text-gray-500 uppercase font-bold mb-1">Total Revenue</p>
                     <p className="text-2xl font-bold text-gray-900">${billingStats.totalRevenue.toLocaleString()}</p>
@@ -1101,11 +1289,15 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     <p className="text-2xl font-bold text-jam-orange">${billingStats.monthlyRecurringRevenue.toLocaleString()}</p>
                 </div>
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-                    <p className="text-xs text-gray-500 uppercase font-bold mb-1">Total Subscriptions</p>
+                    <p className="text-xs text-gray-500 uppercase font-bold mb-1">ARR</p>
+                    <p className="text-2xl font-bold text-jam-orange">${billingStats.annualRecurringRevenue.toLocaleString()}</p>
+                </div>
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                    <p className="text-xs text-gray-500 uppercase font-bold mb-1">Total Subs</p>
                     <p className="text-2xl font-bold text-gray-900">{billingStats.totalSubscriptions}</p>
                 </div>
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-                    <p className="text-xs text-gray-500 uppercase font-bold mb-1">Active Subscriptions</p>
+                    <p className="text-xs text-gray-500 uppercase font-bold mb-1">Active Subs</p>
                     <p className="text-2xl font-bold text-green-600">{billingStats.activeSubscriptions}</p>
                 </div>
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
@@ -1117,13 +1309,26 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             {/* Revenue Chart */}
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                 <div className="flex justify-between items-center mb-6">
-                    <h3 className="font-bold text-gray-900">Platform Revenue (Last 6 Months)</h3>
-                    {isLoadingBilling && (
-                        <div className="flex items-center text-sm text-gray-500">
-                            <Icons.Refresh className="w-4 h-4 mr-2 animate-spin" />
-                            Loading...
-                        </div>
-                    )}
+                    <h3 className="font-bold text-gray-900">Platform Revenue</h3>
+                    <div className="flex items-center space-x-4">
+                        {isLoadingBilling && (
+                            <div className="flex items-center text-sm text-gray-500">
+                                <Icons.Refresh className="w-4 h-4 mr-2 animate-spin" />
+                                Loading...
+                            </div>
+                        )}
+                        <select
+                            value={revenueFilter}
+                            onChange={(e) => setRevenueFilter(e.target.value as any)}
+                            className="text-sm font-medium bg-gray-50 border border-gray-300 text-gray-700 rounded-lg focus:ring-jam-orange focus:border-jam-orange block p-2"
+                        >
+                            <option value="month">Last 30 Days</option>
+                            <option value="quarter">This Quarter</option>
+                            <option value="6M">Last 6 Months</option>
+                            <option value="year">Last 12 Months</option>
+                            <option value="all">All Time</option>
+                        </select>
+                    </div>
                 </div>
                 <div className="h-72">
                     {isLoadingBilling ? (
@@ -1572,6 +1777,32 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     </div>
                 </div>
 
+                {/* Support Email Configuration */}
+                <div className="mb-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <div className="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 className="text-sm font-bold text-gray-900">Support Email</h3>
+                            <p className="text-xs text-gray-500">Where Contact Us messages are delivered</p>
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Support Inbox</label>
+                        <input
+                            type="email"
+                            value={paymentConfig.supportEmail || ''}
+                            onChange={(e) => setPaymentConfig({
+                                ...paymentConfig,
+                                supportEmail: e.target.value
+                            })}
+                            placeholder="support@yourdomain.com"
+                            className="w-full border border-gray-300 rounded p-2 text-sm"
+                        />
+                        <p className="text-xs text-gray-500 mt-2">
+                            This email address will receive Contact Support clicks and Contact Us form submissions.
+                        </p>
+                    </div>
+                </div>
+
                 {/* Data Source Toggle */}
                 <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                     <div className="flex justify-between items-center mb-2">
@@ -1611,12 +1842,12 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     onClick={async () => {
                         // Save to Supabase (this will also update localStorage via useEffect)
                         try {
-                            await supabaseService.saveGlobalConfig(paymentConfig);
+                            await CompanyService.saveGlobalConfig(paymentConfig);
 
                             // Also save payment gateway settings to each company's settings
-                            const allCompanies = await supabaseService.getAllCompanies();
+                            const allCompanies = await CompanyService.getAllCompanies();
                             for (const company of allCompanies) {
-                                await supabaseService.savePaymentGatewaySettings(company.id, {
+                                await CompanyService.savePaymentGatewaySettings(company.id, {
                                     dimepay: paymentConfig.dimepay,
                                     paypal: paymentConfig.paypal,
                                     emailjs: paymentConfig.emailjs,

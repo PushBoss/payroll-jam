@@ -1,12 +1,40 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
+import { supabaseAdmin as supabase } from './_supabaseAdmin';
 
-// Initialize Supabase with service role key for admin access
-const supabase = createClient(
-  process.env.VITE_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY! // Admin key to bypass RLS
-);
+const updateCompanyBillingState = async (
+  companyId: string,
+  status: 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED',
+  paymentMethod?: string
+) => {
+  const { data: company, error: fetchError } = await supabase
+    .from('companies')
+    .select('settings')
+    .eq('id', companyId)
+    .single();
+
+  if (fetchError) {
+    console.error('❌ Error loading company billing settings:', fetchError);
+    return;
+  }
+
+  const nextSettings = {
+    ...(company?.settings || {}),
+    ...(paymentMethod ? { paymentMethod } : {})
+  };
+
+  const { error: updateError } = await supabase
+    .from('companies')
+    .update({
+      status,
+      settings: nextSettings
+    })
+    .eq('id', companyId);
+
+  if (updateError) {
+    console.error('❌ Error updating company billing state:', updateError);
+  }
+};
 
 /**
  * DimePay Webhook Handler for Recurring Subscriptions
@@ -27,27 +55,58 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // 1. VERIFY WEBHOOK SIGNATURE (Critical for security!)
-    const signature = req.headers['dimepay-signature'] || req.headers['x-dimepay-signature'];
+    // 1. VERIFY WEBHOOK SIGNATURE (Critical in production; relaxed in staging/sandbox)
+    const signatureHeader = req.headers['dimepay-signature'] || req.headers['x-dimepay-signature'];
+    const signature = Array.isArray(signatureHeader) ? signatureHeader[0] : (signatureHeader as string | undefined);
 
-    // Determine environment
-    const isProduction =
-      process.env.VERCEL_ENV === 'production' ||
-      process.env.APP_ENV === 'production';
+    const forwardedHost = req.headers['x-forwarded-host'];
+    const hostHeader = (Array.isArray(forwardedHost) ? forwardedHost[0] : (forwardedHost as string | undefined)) || req.headers.host;
+    const host = (hostHeader || '').split(':')[0].toLowerCase();
+    const isProductionHost = host === 'payrolljam.com' || host === 'www.payrolljam.com';
 
-    const webhookSecret = isProduction
-      ? (process.env.DIMEPAY_WEBHOOK_SECRET_PROD || process.env.DIMEPAY_WEBHOOK_SECRET)
-      : (process.env.DIMEPAY_WEBHOOK_SECRET_SANDBOX || process.env.DIMEPAY_WEBHOOK_SECRET);
+    // Vercel can mark custom domains as "production" even when used for staging.
+    // We enforce signature ONLY on the real production host(s).
+    const enforceSignature = isProductionHost;
 
-    if (!webhookSecret) {
-      console.error('❌ DIMEPAY_WEBHOOK_SECRET not configured for environment');
-      return res.status(500).json({ error: 'Webhook secret not configured' });
+    const prodSecret = process.env.DIMEPAY_WEBHOOK_SECRET_PROD || process.env.DIMEPAY_WEBHOOK_SECRET;
+    const sandboxSecret = process.env.DIMEPAY_WEBHOOK_SECRET_SANDBOX || process.env.DIMEPAY_WEBHOOK_SECRET;
+
+    let isValidSignature = false;
+    let actualEnvironment = 'unknown';
+
+    if (signature && prodSecret && verifyWebhookSignature(req.body, signature, prodSecret)) {
+      isValidSignature = true;
+      actualEnvironment = 'production';
+    } else if (signature && sandboxSecret && verifyWebhookSignature(req.body, signature, sandboxSecret)) {
+      isValidSignature = true;
+      actualEnvironment = 'sandbox';
     }
 
-    if (!verifyWebhookSignature(req.body, signature as string, webhookSecret)) {
-      console.error('❌ Invalid webhook signature');
-      return res.status(401).json({ error: 'Invalid signature' });
+    if (enforceSignature) {
+      if (!prodSecret && !sandboxSecret) {
+        console.error('❌ DIMEPAY_WEBHOOK_SECRET not configured (production host enforcement enabled)');
+        return res.status(500).json({ error: 'Webhook secret not configured' });
+      }
+
+      if (!signature) {
+        console.error('❌ Missing webhook signature header (production host enforcement enabled)');
+        return res.status(401).json({ error: 'Missing signature' });
+      }
+
+      if (!isValidSignature) {
+        console.error('❌ Invalid webhook signature (production host enforcement enabled)');
+        return res.status(401).json({ error: 'Invalid signature' });
+      }
+    } else {
+      if (!signature) {
+        console.warn('⚠️ Webhook received without signature (non-production host). Processing anyway.');
+      } else if (!isValidSignature) {
+        console.warn('⚠️ Webhook signature did not validate (non-production host). Processing anyway for sandbox/staging.');
+      }
     }
+
+    console.log(`🔐 Webhook signature status: enforce=${enforceSignature} valid=${isValidSignature} host=${host} env=${actualEnvironment}`);
+
 
     const event = req.body;
     console.log('🔔 DimePay Webhook received:', event.type);
@@ -67,8 +126,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return res.status(400).json({ error: 'Missing company_id in metadata' });
         }
 
-        // Create subscription record in database
-        const { error: subError } = await supabase.from('subscriptions').insert({
+        const subscriptionPayload = {
           company_id: companyId,
           dimepay_subscription_id: data.subscription_id,
           dimepay_customer_id: data.customer_id,
@@ -81,40 +139,87 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           next_billing_date: data.next_billing_date || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
           start_date: new Date().toISOString(),
           auto_renew: true,
+          payment_method_last4: data.card_last4 || null,
+          payment_method_brand: data.card_brand || null,
           metadata: {
             order_id: data.order_id,
+            dime_card_token: data.card_token,
+            card_request_token: data.card_request_token,
             card_last4: data.card_last4,
             card_brand: data.card_brand,
+            card_expiry: data.card_expiry,
             billing_cycles: data.billing_cycles
-          }
-        });
+          },
+          updated_at: new Date().toISOString()
+        };
 
-        if (subError) {
-          console.error('❌ Error creating subscription:', subError);
-          // Don't fail the webhook - log and continue
+        const { data: existingSubscription } = await supabase
+          .from('subscriptions')
+          .select('id')
+          .eq('company_id', companyId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        let storedSubscriptionId: string | null = existingSubscription?.id || null;
+
+        if (existingSubscription?.id) {
+          const { error: subError } = await supabase
+            .from('subscriptions')
+            .update(subscriptionPayload)
+            .eq('id', existingSubscription.id);
+
+          if (subError) {
+            console.error('❌ Error updating subscription:', subError);
+          } else {
+            console.log('✅ Subscription updated in database');
+          }
         } else {
-          console.log('✅ Subscription created in database');
+          const { data: createdSubscription, error: subError } = await supabase
+            .from('subscriptions')
+            .insert(subscriptionPayload)
+            .select('id')
+            .single();
+
+          if (subError) {
+            console.error('❌ Error creating subscription:', subError);
+          } else {
+            storedSubscriptionId = createdSubscription.id;
+            console.log('✅ Subscription created in database');
+          }
         }
 
-        // Record initial payment
-        const { error: payError } = await supabase.from('payment_history').insert({
-          company_id: companyId,
-          amount: data.amount || 0,
-          currency: data.currency || 'JMD',
-          status: 'completed',
-          payment_method: 'card',
-          transaction_id: data.transaction_id || data.order_id,
-          invoice_number: data.invoice_number || `INV-${Date.now()}`,
-          description: `${data.metadata?.plan_name || 'Subscription'} - Initial Payment`,
-          payment_date: new Date().toISOString(),
-          metadata: {
-            subscription_id: data.subscription_id,
-            card_last4: data.card_last4
-          }
-        });
+        await updateCompanyBillingState(companyId, 'ACTIVE', 'card');
 
-        if (payError) {
-          console.error('❌ Error recording initial payment:', payError);
+        const transactionId = data.transaction_id || data.order_id;
+        const { data: existingPayment } = await supabase
+          .from('payment_history')
+          .select('id')
+          .eq('transaction_id', transactionId)
+          .maybeSingle();
+
+        // Record initial payment
+        if (!existingPayment) {
+          const { error: payError } = await supabase.from('payment_history').insert({
+            company_id: companyId,
+            subscription_id: storedSubscriptionId,
+            amount: data.amount || 0,
+            currency: data.currency || 'JMD',
+            status: 'completed',
+            payment_method: 'card',
+            transaction_id: transactionId,
+            invoice_number: data.invoice_number || `INV-${Date.now()}`,
+            description: `${data.metadata?.plan_name || 'Subscription'} - Initial Payment`,
+            payment_date: new Date().toISOString(),
+            metadata: {
+              subscription_id: data.subscription_id,
+              card_last4: data.card_last4
+            }
+          });
+
+          if (payError) {
+            console.error('❌ Error recording initial payment:', payError);
+          }
         }
 
         break;
@@ -177,8 +282,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const { error: updateError } = await supabase.from('subscriptions').update({
           next_billing_date: nextBillingDate,
           status: 'active',
+          payment_method_last4: data.card_last4 || subscription.payment_method_last4 || null,
+          payment_method_brand: data.card_brand || subscription.payment_method_brand || null,
           metadata: {
             ...subscription.metadata,
+            dime_card_token: data.card_token || subscription.metadata?.dime_card_token,
+            card_request_token: data.card_request_token || subscription.metadata?.card_request_token,
+            card_last4: data.card_last4 || subscription.metadata?.card_last4,
+            card_brand: data.card_brand || subscription.metadata?.card_brand,
+            card_expiry: data.card_expiry || subscription.metadata?.card_expiry,
             last_payment_date: new Date().toISOString(),
             total_payments: (subscription.metadata?.total_payments || 0) + 1
           },
@@ -189,16 +301,53 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           console.error('❌ Error updating subscription:', updateError);
         }
 
-        // Ensure company subscription status is ACTIVE
-        const { error: companyError } = await supabase.from('companies').update({
-          subscription_status: 'ACTIVE'
-        }).eq('id', subscription.company_id);
-
-        if (companyError) {
-          console.error('❌ Error updating company status:', companyError);
-        }
+        await updateCompanyBillingState(subscription.company_id, 'ACTIVE', 'card');
 
         console.log('✅ Recurring payment recorded successfully');
+        break;
+      }
+
+      case 'subscription.updated': {
+        const data = event.data;
+        console.log('🔁 Processing subscription update:', data.subscription_id);
+
+        const { data: subscription, error: findError } = await supabase
+          .from('subscriptions')
+          .select('*')
+          .eq('dimepay_subscription_id', data.subscription_id)
+          .single();
+
+        if (findError || !subscription) {
+          console.error('❌ Subscription not found for update:', data.subscription_id, findError);
+          return res.status(200).json({ received: true });
+        }
+
+        const { error: updateError } = await supabase
+          .from('subscriptions')
+          .update({
+            status: 'active',
+            next_billing_date: data.next_billing_date || subscription.next_billing_date,
+            payment_method_last4: data.card_last4 || subscription.payment_method_last4 || null,
+            payment_method_brand: data.card_brand || subscription.payment_method_brand || null,
+            metadata: {
+              ...subscription.metadata,
+              dime_card_token: data.card_token || subscription.metadata?.dime_card_token,
+              card_request_token: data.card_request_token || subscription.metadata?.card_request_token,
+              card_last4: data.card_last4 || subscription.metadata?.card_last4,
+              card_brand: data.card_brand || subscription.metadata?.card_brand,
+              card_expiry: data.card_expiry || subscription.metadata?.card_expiry,
+              retry_count: 0,
+              subscription_updated_at: new Date().toISOString()
+            },
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', subscription.id);
+
+        if (updateError) {
+          console.error('❌ Error processing subscription update:', updateError);
+        }
+
+        await updateCompanyBillingState(subscription.company_id, 'ACTIVE', 'card');
         break;
       }
 
@@ -257,9 +406,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
           }).eq('id', subscription.id);
 
-          await supabase.from('companies').update({
-            subscription_status: 'SUSPENDED'
-          }).eq('id', subscription.company_id);
+          await updateCompanyBillingState(subscription.company_id, 'SUSPENDED');
 
           // TODO: Send suspension email notification
         } else {
@@ -275,9 +422,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
           }).eq('id', subscription.id);
 
-          await supabase.from('companies').update({
-            subscription_status: 'PAST_DUE'
-          }).eq('id', subscription.company_id);
+          await updateCompanyBillingState(subscription.company_id, 'PAST_DUE');
 
           // TODO: Send payment failed email with retry info
         }
@@ -300,19 +445,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         if (subError) {
           console.error('❌ Error cancelling subscription:', subError);
-        }
-
-        // Get company_id to update status
-        const { data: subscription } = await supabase
-          .from('subscriptions')
-          .select('company_id')
-          .eq('dimepay_subscription_id', data.subscription_id)
-          .single();
-
-        if (subscription) {
-          await supabase.from('companies').update({
-            subscription_status: 'SUSPENDED'
-          }).eq('id', subscription.company_id);
         }
 
         console.log('✅ Subscription cancelled successfully');
@@ -366,17 +498,46 @@ function verifyWebhookSignature(payload: any, signature: string, secret: string)
   }
 
   try {
-    const payloadString = JSON.stringify(payload);
-    const expectedSignature = crypto
-      .createHmac('sha256', secret)
-      .update(payloadString)
-      .digest('hex');
+    // Some gateways send signatures as hex, others as base64, and some prefix with "sha256=".
+    const normalized = signature.trim().replace(/^sha256=/i, '');
 
-    // Use timing-safe comparison to prevent timing attacks
-    return crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(expectedSignature)
-    );
+    const stableStringify = (value: any): string => {
+      if (value === null || typeof value !== 'object') return JSON.stringify(value);
+      if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+      const keys = Object.keys(value).sort();
+      return `{${keys.map(k => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(',')}}`;
+    };
+
+    // We try both normal JSON.stringify and a stable key-sorted stringify.
+    const payloadStrings = [JSON.stringify(payload), stableStringify(payload)];
+
+    const candidateSignatures = payloadStrings.map(payloadString => {
+      return crypto
+        .createHmac('sha256', secret)
+        .update(payloadString)
+        .digest('hex');
+    });
+
+    const isHex = /^[0-9a-f]{64}$/i.test(normalized);
+
+    for (const expectedHex of candidateSignatures) {
+      if (isHex) {
+        const receivedBuf = Buffer.from(normalized, 'hex');
+        const expectedBuf = Buffer.from(expectedHex, 'hex');
+        if (receivedBuf.length === expectedBuf.length && crypto.timingSafeEqual(receivedBuf, expectedBuf)) {
+          return true;
+        }
+      } else {
+        // If the provider sends base64, compare base64 of our expected hex.
+        const expectedBuf = Buffer.from(expectedHex, 'hex');
+        const expectedBase64 = expectedBuf.toString('base64');
+        if (normalized === expectedBase64) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   } catch (error) {
     console.error('Error verifying signature:', error);
     return false;

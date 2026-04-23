@@ -1,5 +1,5 @@
 import { TAX_CONSTANTS } from '../core/taxUtils';
-import { supabaseService } from './supabaseService';
+import { CompanyService } from './CompanyService';
 import { supabase } from './supabaseClient';
 
 
@@ -33,7 +33,7 @@ export const policyService = {
      */
     resolvePolicy: async (companyId: string, policyKey: string): Promise<any> => {
         // 1. Check Local (Company) Overrides
-        const company = await supabaseService.getCompanyById(companyId);
+        const company = await CompanyService.getCompanyById(companyId);
         if (company && company.policies && company.policies[policyKey] !== undefined) {
             console.log(`🎯 Policy [${policyKey}] resolved from Local: ${company.policies[policyKey]}`);
             return company.policies[policyKey];
@@ -57,7 +57,7 @@ export const policyService = {
         }
 
         if (resellerId) {
-            const reseller = await supabaseService.getCompanyById(resellerId);
+            const reseller = await CompanyService.getCompanyById(resellerId);
             if (reseller && reseller.reseller_defaults && reseller.reseller_defaults[policyKey] !== undefined) {
                 console.log(`🎯 Policy [${policyKey}] resolved from Reseller: ${reseller.reseller_defaults[policyKey]}`);
                 return reseller.reseller_defaults[policyKey];
@@ -75,7 +75,7 @@ export const policyService = {
     getEffectivePolicies: async (companyId: string): Promise<PolicySet> => {
         const effective: PolicySet = { ...CORE_GLOBAL_POLICIES };
 
-        const company = await supabaseService.getCompanyById(companyId);
+        const company = await CompanyService.getCompanyById(companyId);
         if (!company) return effective;
 
         // Merge Reseller Defaults
@@ -92,7 +92,7 @@ export const policyService = {
         }
 
         if (resellerId) {
-            const reseller = await supabaseService.getCompanyById(resellerId);
+            const reseller = await CompanyService.getCompanyById(resellerId);
             if (reseller && reseller.reseller_defaults) {
                 Object.assign(effective, reseller.reseller_defaults);
             }

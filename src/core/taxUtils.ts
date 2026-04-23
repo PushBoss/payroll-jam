@@ -1,4 +1,6 @@
 import { PayFrequency, StatutoryDeductions, TaxConfig } from './types';
+import { roundJMD } from '../utils/moneyUtils';
+
 
 // --- Constants for Jamaican Tax Year 2026 ---
 // Based on official Tax Administration Jamaica (TAJ) rates
@@ -47,11 +49,12 @@ export const calculateTaxes = (
   const nisCap = overrides?.nisCap ?? TAX_CONSTANTS.NIS_CAP_ANNUAL;
   const payeThreshold = overrides?.payeThreshold ?? TAX_CONSTANTS.PAYE_THRESHOLD;
   const payeThresholdHigh = overrides?.payeThresholdHigh ?? TAX_CONSTANTS.PAYE_THRESHOLD_HIGH;
-  const nisRate = overrides?.nisRate ?? TAX_CONSTANTS.NIS_RATE_EMPLOYEE;
-  const nhtRate = overrides?.nhtRate ?? TAX_CONSTANTS.NHT_RATE_EMPLOYEE;
-  const edTaxRate = overrides?.edTaxRate ?? TAX_CONSTANTS.ED_TAX_RATE;
+  const nisRate = overrides?.nisRateEmployee ?? TAX_CONSTANTS.NIS_RATE_EMPLOYEE;
+  const nhtRate = overrides?.nhtRateEmployee ?? TAX_CONSTANTS.NHT_RATE_EMPLOYEE;
+  const edTaxRate = overrides?.edTaxRateEmployee ?? TAX_CONSTANTS.ED_TAX_RATE;
   const payeRateStd = overrides?.payeRateStd ?? TAX_CONSTANTS.PAYE_RATE_STD;
   const payeRateHigh = overrides?.payeRateHigh ?? TAX_CONSTANTS.PAYE_RATE_HIGH;
+
   const pensionRate = overrides?.pension ?? 0;
 
   // 0. Pension Contribution (deducted before statutory income)
@@ -90,19 +93,20 @@ export const calculateTaxes = (
 
   const paye = payeAnnual / periods;
 
-  const totalDeductions = nis + nht + edTax + paye;
+  const totalDeductions = nis + nht + edTax + paye + pensionAmount;
   const netPay = gross - totalDeductions;
 
   return {
-    nis: parseFloat(nis.toFixed(2)),
-    nht: parseFloat(nht.toFixed(2)),
-    edTax: parseFloat(edTax.toFixed(2)),
-    paye: parseFloat(paye.toFixed(2)),
-    pension: 0,
-    totalDeductions: parseFloat(totalDeductions.toFixed(2)),
-    netPay: parseFloat(netPay.toFixed(2))
+    nis: roundJMD(nis),
+    nht: roundJMD(nht),
+    edTax: roundJMD(edTax),
+    paye: roundJMD(paye),
+    pension: roundJMD(pensionAmount),
+    totalDeductions: roundJMD(totalDeductions),
+    netPay: roundJMD(netPay)
   };
 };
+
 
 /**
  * Calculates employer statutory contributions
@@ -125,7 +129,7 @@ export const calculateEmployerContributions = (
   const nhtRateEmployer = overrides?.nhtRateEmployer ?? TAX_CONSTANTS.NHT_RATE_EMPLOYER;
   const edTaxRateEmployer = overrides?.edTaxRateEmployer ?? TAX_CONSTANTS.ED_TAX_RATE_EMPLOYER;
   const heartRateEmployer = overrides?.heartRateEmployer ?? TAX_CONSTANTS.HEART_RATE_EMPLOYER;
-  const nisRateEmployee = overrides?.nisRate ?? TAX_CONSTANTS.NIS_RATE_EMPLOYEE;
+  const nisRateEmployee = overrides?.nisRateEmployee ?? TAX_CONSTANTS.NIS_RATE_EMPLOYEE;
 
   // 1. Employer NIS (2.5%) - Capped at same threshold as employee
   const nisPeriodCap = nisCap / periods;
@@ -146,13 +150,14 @@ export const calculateEmployerContributions = (
   const totalEmployerCost = employerNIS + employerNHT + employerEdTax + employerHEART;
 
   return {
-    employerNIS: parseFloat(employerNIS.toFixed(2)),
-    employerNHT: parseFloat(employerNHT.toFixed(2)),
-    employerEdTax: parseFloat(employerEdTax.toFixed(2)),
-    employerHEART: parseFloat(employerHEART.toFixed(2)),
-    totalEmployerCost: parseFloat(totalEmployerCost.toFixed(2))
+    employerNIS: roundJMD(employerNIS),
+    employerNHT: roundJMD(employerNHT),
+    employerEdTax: roundJMD(employerEdTax),
+    employerHEART: roundJMD(employerHEART),
+    totalEmployerCost: roundJMD(totalEmployerCost)
   };
 };
+
 
 /**
  * Calculates Cumulative PAYE based on YTD Earnings
@@ -165,10 +170,21 @@ export const calculateCumulativePAYE = (
   ytdTaxPaid: number,
   periodNumber: number, // e.g., Month 3
   frequency: PayFrequency = PayFrequency.MONTHLY,
-  overrides?: { nis_cap_annual?: number; paye_threshold?: number; pension?: number; }
+  overrides?: (Partial<TaxConfig> & {
+    pension?: number;
+    paye_threshold?: number;
+    paye_threshold_high?: number;
+    paye_rate_std?: number;
+    paye_rate_high?: number;
+  })
 ): number => {
   const periodsPerYear = getPeriodsPerYear(frequency);
-  const payeThreshold = overrides?.paye_threshold ?? TAX_CONSTANTS.PAYE_THRESHOLD;
+  const safePeriodNumber = Math.max(1, Math.floor(Number.isFinite(periodNumber) ? periodNumber : 1));
+
+  const payeThreshold = overrides?.payeThreshold ?? overrides?.paye_threshold ?? TAX_CONSTANTS.PAYE_THRESHOLD;
+  const payeThresholdHigh = overrides?.payeThresholdHigh ?? overrides?.paye_threshold_high ?? TAX_CONSTANTS.PAYE_THRESHOLD_HIGH;
+  const payeRateStd = overrides?.payeRateStd ?? overrides?.paye_rate_std ?? TAX_CONSTANTS.PAYE_RATE_STD;
+  const payeRateHigh = overrides?.payeRateHigh ?? overrides?.paye_rate_high ?? TAX_CONSTANTS.PAYE_RATE_HIGH;
   const pensionRate = overrides?.pension ?? 0;
 
   // Calculate pension for current period
@@ -180,7 +196,7 @@ export const calculateCumulativePAYE = (
 
   // 2. Calculate Cumulative Tax Free Threshold to Date
   const annualThreshold = payeThreshold;
-  const cumulativeThreshold = (annualThreshold / periodsPerYear) * periodNumber;
+  const cumulativeThreshold = (annualThreshold / periodsPerYear) * safePeriodNumber;
 
   // 3. Determine Cumulative Taxable Income
   const cumulativeTaxableIncome = Math.max(0, totalCumulativeStatutoryIncome - cumulativeThreshold);
@@ -191,19 +207,19 @@ export const calculateCumulativePAYE = (
   let totalTaxDueToDate = 0;
 
   // Calculate cumulative annual statutory income
-  const annualizedStatutoryIncome = (totalCumulativeStatutoryIncome / periodNumber) * periodsPerYear;
+  const annualizedStatutoryIncome = (totalCumulativeStatutoryIncome / safePeriodNumber) * periodsPerYear;
 
-  if (annualizedStatutoryIncome > TAX_CONSTANTS.PAYE_THRESHOLD_HIGH) {
+  if (annualizedStatutoryIncome > payeThresholdHigh) {
     // High bracket: Split between 25% and 30%
-    const standardBand = TAX_CONSTANTS.PAYE_THRESHOLD_HIGH - payeThreshold;
-    const highBand = annualizedStatutoryIncome - TAX_CONSTANTS.PAYE_THRESHOLD_HIGH;
-    const annualTax = (standardBand * TAX_CONSTANTS.PAYE_RATE_STD) + (highBand * TAX_CONSTANTS.PAYE_RATE_HIGH);
-    totalTaxDueToDate = (annualTax / periodsPerYear) * periodNumber;
+    const standardBand = Math.max(0, payeThresholdHigh - payeThreshold);
+    const highBand = Math.max(0, annualizedStatutoryIncome - payeThresholdHigh);
+    const annualTax = (standardBand * payeRateStd) + (highBand * payeRateHigh);
+    totalTaxDueToDate = (annualTax / periodsPerYear) * safePeriodNumber;
   } else if (annualizedStatutoryIncome > payeThreshold) {
     // Standard bracket: 25%
     const taxableAmount = annualizedStatutoryIncome - payeThreshold;
-    const annualTax = taxableAmount * TAX_CONSTANTS.PAYE_RATE_STD;
-    totalTaxDueToDate = (annualTax / periodsPerYear) * periodNumber;
+    const annualTax = taxableAmount * payeRateStd;
+    totalTaxDueToDate = (annualTax / periodsPerYear) * safePeriodNumber;
   }
 
   // 5. Tax for this specific period

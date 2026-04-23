@@ -1,10 +1,11 @@
 import { useState, useMemo, useCallback } from 'react';
-import { Employee, PayRunLineItem, PayFrequency, PayType, WeeklyTimesheet, LeaveRequest, LeaveType, PayrollItemDetail, StatutoryDeductions, PayRun, CompanySettings } from '../../core/types';
-import { calculateTaxes, calculateProration, calculateCumulativePAYE, calculateEmployerContributions, TAX_CONSTANTS } from '../../core/taxUtils';
-
-const isTimesheetInPeriod = (ts: WeeklyTimesheet, period: string) => {
-    return ts.weekEndDate.startsWith(period);
-};
+import { Employee, PayRunLineItem, PayFrequency, WeeklyTimesheet, LeaveRequest, PayrollItemDetail, StatutoryDeductions, PayRun, CompanySettings } from '../../core/types';
+import {
+    calculatePayrollTotals,
+    calculatePayRunLineItem,
+    initializePayRunLineItems,
+    recalculateDraftLineItem
+} from './payrollEngine';
 
 export const usePayroll = (
     employees: Employee[],
@@ -15,6 +16,7 @@ export const usePayroll = (
 ) => {
     const [draftItems, setDraftItems] = useState<PayRunLineItem[]>([]);
 
+<<<<<<< HEAD
     // Resolve Effective Policies for this company context
     const policies = useMemo(() => {
         const global = {
@@ -30,15 +32,21 @@ export const usePayroll = (
             payeThreshold: companyData.policies?.paye_threshold ?? companyData.reseller_defaults?.paye_threshold ?? global.payeThreshold
         };
     }, [companyData]);
+=======
+    const payrollContext = useMemo(() => ({
+        timesheets,
+        leaveRequests,
+        payRunHistory,
+        companyData
+    }), [timesheets, leaveRequests, payRunHistory, companyData]);
+
+>>>>>>> 0a6b81cb09aa2a5587c7387200103601a1de60b4
 
     const totals = useMemo(() => {
-        return {
-            gross: draftItems.reduce((sum, line) => sum + line.grossPay + line.additions, 0),
-            deductions: draftItems.reduce((sum, line) => sum + line.totalDeductions, 0),
-            net: draftItems.reduce((sum, line) => sum + line.netPay, 0)
-        };
+        return calculatePayrollTotals(draftItems);
     }, [draftItems]);
 
+<<<<<<< HEAD
     // Calculate YTD Stats for an employee for a specific year
     const getEmployeeYTD = (employeeId: string, year: number) => {
         let ytdGross = 0;
@@ -247,23 +255,17 @@ export const usePayroll = (
         };
     };
 
+=======
+>>>>>>> 0a6b81cb09aa2a5587c7387200103601a1de60b4
     const initializeRun = (payCycle: PayFrequency | 'ALL', period: string, customStartDate?: string, customEndDate?: string) => {
-        const eligibleEmployees = employees.filter(e =>
-            e.status === 'ACTIVE' &&
-            (payCycle === 'ALL' || e.payFrequency === payCycle)
-        );
-
-        // Use custom dates if provided, otherwise use period-based dates
-        const periodStart = customStartDate || `${period}-01`;
-        const periodEnd = customEndDate || (() => {
-            const [yearStr, monthStr] = period.split('-');
-            const year = parseInt(yearStr);
-            const month = parseInt(monthStr);
-            const lastDay = new Date(year, month, 0).getDate();
-            return `${period}-${lastDay}`;
-        })();
-
-        const lines = eligibleEmployees.map(emp => calculateLineItem(emp, period, periodStart, periodEnd));
+        const lines = initializePayRunLineItems({
+            employees,
+            payCycle,
+            period,
+            customStartDate,
+            customEndDate,
+            context: payrollContext
+        });
         setDraftItems(lines);
         return lines.length > 0;
     };
@@ -272,7 +274,7 @@ export const usePayroll = (
     const addEmployeeToRun = (employeeId: string, period: string) => {
         const emp = employees.find(e => e.id === employeeId);
         if (emp) {
-            const newLine = calculateLineItem(emp, period);
+            const newLine = calculatePayRunLineItem({ employee: emp, period, context: payrollContext });
             setDraftItems(prev => [...prev, newLine]);
         }
     };
@@ -298,27 +300,19 @@ export const usePayroll = (
 
     const updateLineItemGross = (employeeId: string, newGrossStr: string) => {
         const numValue = parseFloat(newGrossStr) || 0;
-        // For simplicity in this hook update, we won't re-trigger full cumulative logic on manual edit
-        // without passing the Period and Year context into this specific function.
-        // Ideally, this uses calculateLineItem again with the override.
-        // Standard simplified calc for manual overrides:
         setDraftItems(prev => prev.map(item => {
             if (item.employeeId !== employeeId) return item;
-            const emp = employees.find(e => e.id === employeeId);
-            const taxes = calculateTaxes(numValue, emp?.payFrequency || PayFrequency.MONTHLY, policies); // Revert to standard for manual gross edit to avoid loop complexity
-            const totalDeds = taxes.totalDeductions + item.deductions;
-            return {
+            return recalculateDraftLineItem({
+                item: {
                 ...item,
-                grossPay: numValue,
-                ...taxes,
-                totalDeductions: totalDeds,
-                netPay: (numValue + item.additions) - totalDeds,
-                isTaxOverridden: false
-            };
+                    grossPay: numValue
+                },
+                employee: employees.find(e => e.id === employeeId),
+                companyData
+            });
         }));
     };
 
-    // ... (AdHoc add/remove similar simplifications for stability) ...
     const addAdHocItem = (employeeId: string, type: 'ADDITIONS' | 'DEDUCTIONS', detail: PayrollItemDetail) => {
         setDraftItems(prev => prev.map(item => {
             if (item.employeeId !== employeeId) return item;
@@ -329,27 +323,15 @@ export const usePayroll = (
             if (type === 'ADDITIONS') adds = [...adds, detail];
             else deds = [...deds, detail];
 
-            const taxableAdditions = adds.filter(i => i.isTaxable !== false).reduce((a, b) => a + b.amount, 0);
-            const nonTaxableAdditions = adds.filter(i => i.isTaxable === false).reduce((a, b) => a + b.amount, 0);
-            const dedTotal = deds.reduce((a, b) => a + b.amount, 0);
-
-            const emp = employees.find(e => e.id === employeeId);
-            const taxes = calculateTaxes(item.grossPay + taxableAdditions, emp?.payFrequency || PayFrequency.MONTHLY, policies);
-
-            const totalDeductions = taxes.totalDeductions + dedTotal;
-            const allAdditions = taxableAdditions + nonTaxableAdditions;
-
-            return {
+            return recalculateDraftLineItem({
+                item: {
                 ...item,
-                additions: allAdditions,
-                deductions: dedTotal,
-                additionsBreakdown: adds,
-                deductionsBreakdown: deds,
-                ...taxes,
-                totalDeductions: totalDeductions,
-                netPay: (item.grossPay + allAdditions) - totalDeductions,
-                isTaxOverridden: false
-            };
+                    additionsBreakdown: adds,
+                    deductionsBreakdown: deds
+                },
+                employee: employees.find(e => e.id === employeeId),
+                companyData
+            });
         }));
     };
 
@@ -360,27 +342,15 @@ export const usePayroll = (
             let adds = item.additionsBreakdown?.filter(i => i.id !== itemId) || [];
             let deds = item.deductionsBreakdown?.filter(i => i.id !== itemId) || [];
 
-            const taxableAdditions = adds.filter(i => i.isTaxable !== false).reduce((a, b) => a + b.amount, 0);
-            const nonTaxableAdditions = adds.filter(i => i.isTaxable === false).reduce((a, b) => a + b.amount, 0);
-            const dedTotal = deds.reduce((a, b) => a + b.amount, 0);
-
-            const emp = employees.find(e => e.id === employeeId);
-            const taxes = calculateTaxes(item.grossPay + taxableAdditions, emp?.payFrequency || PayFrequency.MONTHLY, policies);
-
-            const totalDeductions = taxes.totalDeductions + dedTotal;
-            const allAdditions = taxableAdditions + nonTaxableAdditions;
-
-            return {
+            return recalculateDraftLineItem({
+                item: {
                 ...item,
-                additions: allAdditions,
-                deductions: dedTotal,
-                additionsBreakdown: adds,
-                deductionsBreakdown: deds,
-                ...taxes,
-                totalDeductions: totalDeductions,
-                netPay: (item.grossPay + allAdditions) - totalDeductions,
-                isTaxOverridden: false
-            };
+                    additionsBreakdown: adds,
+                    deductionsBreakdown: deds
+                },
+                employee: employees.find(e => e.id === employeeId),
+                companyData
+            });
         }));
     };
 

@@ -4,8 +4,12 @@
  * with Pre-April 1st and Post-April 1st thresholds
  */
 
-import type { Jamaica2026TaxConfig as Jamaica2026TaxConfigType } from '../../core/types';
+import type { Jamaica2026TaxConfig as Jamaica2026TaxConfigType, TaxConfig } from '../../core/types';
 import { PayRunLineItem, Employee, EmployeeType } from '../../core/types';
+import { roundJMD } from '../../utils/moneyUtils';
+import { resolveTaxConfig } from './payrollConfig';
+
+
 
 // 2026 Jamaica Official Tax Configuration
 export const Jamaica2026TaxConfig: Jamaica2026TaxConfigType = {
@@ -128,7 +132,7 @@ export function calculateStatutoryDeductions(
   employeeType: EmployeeType | undefined,
   periodEndDate: string,
   pensionContributionRate: number = 0,
-  customConfig?: Partial<Jamaica2026TaxConfigType>
+  customConfig?: Partial<TaxConfig>
 ): {
   nis: number;
   nht: number;
@@ -139,19 +143,12 @@ export function calculateStatutoryDeductions(
 } {
   
   // Merge custom config with defaults
-  const config = {
-    nisRate: customConfig?.nisRate ?? Jamaica2026TaxConfig.nisRate,
-    nisCap: customConfig?.nisCap ?? Jamaica2026TaxConfig.nisCap,
-    nhtEmployeeRate: customConfig?.nhtEmployeeRate ?? Jamaica2026TaxConfig.nhtEmployeeRate,
-    nhtCap: customConfig?.nhtCap ?? Jamaica2026TaxConfig.nhtCap,
-    edTaxRate: customConfig?.edTaxRate ?? Jamaica2026TaxConfig.edTaxRate,
-    payeRateStd: customConfig?.payeRateStd ?? Jamaica2026TaxConfig.payeRateStd,
-    payeThresholdPre: customConfig?.payeThresholdPre ?? Jamaica2026TaxConfig.payeThresholdPre,
-    payeThresholdPost: customConfig?.payeThresholdPost ?? Jamaica2026TaxConfig.payeThresholdPost,
-  };
+  const config = resolveTaxConfig(customConfig);
+
   
   // Calculate Pension contribution first
-  const pension = Math.round(grossSalary * pensionContributionRate * 100) / 100;
+  const pension = roundJMD(grossSalary * pensionContributionRate);
+
 
   // Contractors don't have statutory deductions (except estate levy applied separately)
   if (employeeType === EmployeeType.CONTRACTOR) {
@@ -170,24 +167,26 @@ export function calculateStatutoryDeductions(
 
   // Calculate NIS on statutory income (National Insurance Scheme)
   const nisableEarnings = Math.min(statutoryIncome, config.nisCap);
-  const nis = Math.round(nisableEarnings * config.nisRate * 100) / 100;
+  const nis = roundJMD(nisableEarnings * config.nisRateEmployee);
 
   // Calculate NHT on statutory income (National Health Trust)
   const nhtableEarnings = Math.min(statutoryIncome, config.nhtCap);
-  const nht = Math.round(nhtableEarnings * config.nhtEmployeeRate * 100) / 100;
+  const nht = roundJMD(nhtableEarnings * config.nhtRateEmployee);
+
 
   // Calculate Education Tax (on statutory income: gross - pension - nis)
   const edTaxBase = statutoryIncome - nis;
-  const edTax = edTaxBase > 0 ? Math.round(edTaxBase * config.edTaxRate * 100) / 100 : 0;
+  const edTax = edTaxBase > 0 ? roundJMD(edTaxBase * config.edTaxRateEmployee) : 0;
 
   // Calculate PAYE on statutory income (gross - pension)
   const date = new Date(periodEndDate);
   const isPostApril = date.getMonth() >= 3; // April = month 3
-  const payeThreshold = isPostApril ? config.payeThresholdPost : config.payeThresholdPre;
+  const payeThreshold = isPostApril ? config.payeThreshold : config.payeThreshold;
   let paye = 0;
   if (statutoryIncome > payeThreshold) {
-    paye = Math.round((statutoryIncome - payeThreshold) * config.payeRateStd * 100) / 100;
+    paye = roundJMD((statutoryIncome - payeThreshold) * config.payeRateStd);
   }
+
 
   const totalDeductions = nis + nht + edTax + paye + pension;
 
@@ -210,8 +209,9 @@ export function getProratedThreshold(
   totalDays: number
 ): number {
   if (totalDays === 0) return 0;
-  return Math.round((threshold * daysWorked / totalDays) * 100) / 100;
+  return roundJMD(threshold * daysWorked / totalDays);
 }
+
 
 /**
  * Comprehensive payroll calculation for an employee in a pay period
@@ -230,8 +230,9 @@ export function calculateEmployeePayroll(
   periodEnd: string,
   additions: number = 0,
   deductions: number = 0,
-  customConfig?: Partial<Jamaica2026TaxConfigType>
+  customConfig?: Partial<TaxConfig>
 ): Partial<PayRunLineItem> {
+
   
   // 1. Pro-rating based on joining date
   const proRatingResult = calculateProRatedGross(
@@ -261,8 +262,9 @@ export function calculateEmployeePayroll(
     edTax: statutoryDeductions.edTax,
     paye: statutoryDeductions.paye,
     pension: statutoryDeductions.pension,
-    totalDeductions: Math.round(statutoryDeductions.totalDeductions * 100) / 100,
-    netPay: Math.round(netPay * 100) / 100,
+    totalDeductions: roundJMD(statutoryDeductions.totalDeductions),
+    netPay: roundJMD(netPay),
+
     prorationDetails: {
       isProrated: proRatingResult.daysWorked < proRatingResult.totalDays,
       daysWorked: proRatingResult.daysWorked,
@@ -321,14 +323,9 @@ export function processCustomDeductions(
  * @param employeeType Employee classification
  * @param customConfig Optional tax configuration (overrides defaults)
  */
-export function calculateEmployerContributions(grossSalary: number, employeeType: EmployeeType | undefined, customConfig?: Partial<Jamaica2026TaxConfigType>) {
-  // Merge custom config with defaults
-  const config = {
-    nisEmployerRate: customConfig?.nisEmployerRate ?? Jamaica2026TaxConfig.nisEmployerRate,
-    nisCap: customConfig?.nisCap ?? Jamaica2026TaxConfig.nisCap,
-    nhtEmployerRate: customConfig?.nhtEmployerRate ?? Jamaica2026TaxConfig.nhtEmployerRate,
-    nhtCap: customConfig?.nhtCap ?? Jamaica2026TaxConfig.nhtCap,
-  };
+export function calculateEmployerContributions(grossSalary: number, employeeType: EmployeeType | undefined, customConfig?: Partial<TaxConfig>) {
+  const config = resolveTaxConfig(customConfig);
+
   
   if (employeeType === EmployeeType.CONTRACTOR) {
     return {
@@ -341,16 +338,15 @@ export function calculateEmployerContributions(grossSalary: number, employeeType
   }
 
   const nisableEarnings = Math.min(grossSalary, config.nisCap);
-  const employerNIS = Math.round(nisableEarnings * config.nisEmployerRate * 100) / 100;
+  const employerNIS = roundJMD(nisableEarnings * config.nisRateEmployer);
 
   const nhtableEarnings = Math.min(grossSalary, config.nhtCap);
-  const employerNHT = Math.round(nhtableEarnings * config.nhtEmployerRate * 100) / 100;
+  const employerNHT = roundJMD(nhtableEarnings * config.nhtRateEmployer);
 
-  // Employer doesn't typically pay Education Tax (employee pays)
-  const employerEdTax = 0;
 
-  // HEART Trust contribution (if applicable)
-  const employerHEART = 0; // Configure as needed
+  const employerEdTax = roundJMD(Math.max(0, grossSalary - employerNIS) * config.edTaxRateEmployer);
+
+  const employerHEART = roundJMD(grossSalary * config.heartRateEmployer);
 
   const totalEmployerCost = employerNIS + employerNHT + employerEdTax + employerHEART;
 

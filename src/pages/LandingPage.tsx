@@ -1,8 +1,13 @@
 
 import React, { useEffect } from 'react';
+
 import { Icons } from '../components/Icons';
 import { Footer } from '../components/Footer';
+<<<<<<< HEAD
 import { BetaBanner } from '../components/BetaBanner';
+=======
+import { PublicHeader } from '../components/PublicHeader';
+>>>>>>> 0a6b81cb09aa2a5587c7387200103601a1de60b4
 import { PricingPlan } from '../core/types';
 import { getPlanPriceDetails } from '../utils/pricing';
 interface LandingPageProps {
@@ -12,11 +17,12 @@ interface LandingPageProps {
   onPricingClick: () => void;
   onFeaturesClick: () => void;
   onFaqClick: () => void;
+  onContactClick?: () => void;
   onPrivacyClick?: () => void;
   onTermsClick?: () => void;
 }
 
-export const LandingPage: React.FC<LandingPageProps> = ({ plans = [], onLogin, onSignup, onPricingClick, onFeaturesClick, onFaqClick, onPrivacyClick, onTermsClick }) => {
+export const LandingPage: React.FC<LandingPageProps> = ({ plans = [], onLogin, onSignup, onPricingClick, onFeaturesClick, onFaqClick, onContactClick, onPrivacyClick, onTermsClick }) => {
   // SEO: Update page title and meta tags
   useEffect(() => {
     document.title = 'Payroll-Jam | Jamaican Payroll Software - NIS, NHT & PAYE Compliance';
@@ -127,6 +133,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ plans = [], onLogin, o
   // Optionally show plans/pricing on the landing page if provided
   return (
     <div className="min-h-screen bg-white font-sans text-slate-900 scroll-smooth">
+<<<<<<< HEAD
       <div className="fixed inset-x-0 top-0 z-50">
         <BetaBanner />
       </div>
@@ -162,6 +169,19 @@ export const LandingPage: React.FC<LandingPageProps> = ({ plans = [], onLogin, o
           </div>
         </div>
       </nav>
+=======
+      <PublicHeader
+        currentPage="home"
+        onHomeClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+        onFeaturesClick={onFeaturesClick}
+        onPricingClick={onPricingClick}
+        onFaqClick={onFaqClick}
+        onContactClick={onContactClick}
+        onLogin={onLogin}
+        onSignup={() => onSignup()}
+      />
+
+>>>>>>> 0a6b81cb09aa2a5587c7387200103601a1de60b4
 
       {/* Hero Section */}
       <section className="pt-40 pb-20 lg:pt-44 lg:pb-28 overflow-hidden">

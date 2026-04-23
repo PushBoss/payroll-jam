@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { Employee, CompanySettings, PricingPlan, User } from '../core/types';
+import { isResellerEquivalentPlan, normalizePlanToFrontend } from '../utils/planNames';
 
 export const useSubscription = (
     employees: Employee[],
@@ -8,9 +9,8 @@ export const useSubscription = (
     users: User[] = []
 ) => {
     const limits = useMemo(() => {
-        // Normalize plan name
-        const normalizedPlanName = companyData.plan === 'Professional' ? 'Pro' : companyData.plan;
-        const isResellerPlan = normalizedPlanName === 'Enterprise' || normalizedPlanName === 'Reseller';
+        const normalizedPlanName = normalizePlanToFrontend(companyData.plan);
+        const isResellerPlan = isResellerEquivalentPlan(companyData.plan);
 
         const activePlan = plans.find(p => p.name === normalizedPlanName) || plans[0];
 

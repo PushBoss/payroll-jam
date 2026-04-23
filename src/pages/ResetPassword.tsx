@@ -26,6 +26,34 @@ export const ResetPassword: React.FC = () => {
         console.log('🔍 Checking password reset session...');
         console.log('Current URL:', window.location.href);
         console.log('Hash:', window.location.hash);
+
+        const searchParams = new URLSearchParams(window.location.search);
+        const code = searchParams.get('code');
+        const searchError = searchParams.get('error');
+        const searchErrorDescription = searchParams.get('error_description');
+
+        if (searchError) {
+          console.error('❌ Error in URL query:', searchError, searchErrorDescription);
+          toast.error(searchErrorDescription || 'Invalid or expired reset link. Please request a new one.');
+          setTimeout(() => {
+            window.location.href = '/login';
+          }, 3000);
+          setIsCheckingSession(false);
+          return;
+        }
+
+        // Newer Supabase recovery links may use PKCE with `?code=...`
+        if (code) {
+          console.log('✅ Found recovery code, exchanging for session...');
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+          if (exchangeError) {
+            console.error('❌ Error exchanging code for session:', exchangeError);
+            throw exchangeError;
+          }
+
+          // Give session a moment to settle
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
         
         // First, check if there's a hash fragment with tokens (from email link)
         const hashParams = new URLSearchParams(window.location.hash.substring(1));
@@ -48,7 +76,7 @@ export const ResetPassword: React.FC = () => {
           console.error('❌ Error in URL:', error, errorDescription);
           toast.error(errorDescription || 'Invalid or expired reset link. Please request a new one.');
           setTimeout(() => {
-            window.location.href = '/?page=login';
+            window.location.href = '/login';
           }, 3000);
           setIsCheckingSession(false);
           return;
@@ -90,7 +118,7 @@ export const ResetPassword: React.FC = () => {
             duration: 5000
           });
           setTimeout(() => {
-            window.location.href = '/?page=login';
+            window.location.href = '/login';
           }, 3000);
         } else {
           console.log('✅ Valid session found');
@@ -100,7 +128,7 @@ export const ResetPassword: React.FC = () => {
         console.error('❌ Session check error:', err);
         toast.error(err.message || 'Error verifying reset link. Please request a new one.');
         setTimeout(() => {
-          window.location.href = '/?page=login';
+          window.location.href = '/login';
         }, 3000);
       } finally {
         setIsCheckingSession(false);
@@ -145,7 +173,7 @@ export const ResetPassword: React.FC = () => {
       
       // Redirect to login page
       setTimeout(() => {
-        window.location.href = '/?page=login';
+        window.location.href = '/login';
       }, 1500);
       
       // Note: Keep isLoading true to prevent double submission
@@ -280,7 +308,7 @@ export const ResetPassword: React.FC = () => {
 
           <div className="mt-6 text-center">
             <a
-              href="/?page=login"
+              href="/login"
               className="text-sm font-medium text-jam-orange hover:text-yellow-600"
             >
               Back to Login

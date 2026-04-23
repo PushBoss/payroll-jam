@@ -4,7 +4,7 @@ This **`TASK_HANDOFF.md`** acts as the definitive roadmap for your IDE to execut
 
 # 📝 TASK_HANDOFF: Payroll-Jam Architectural Overhaul
 
-## **Status**: 🔴 NOT STARTED
+## **Status**: 🟡 IN PROGRESS
 **Objective**: Transform **Payroll-Jam** into a modular "Delivery OS" by refactoring the codebase into a `/src` root, de-monolithing core services, and implementing a user-configurable **Dynamic Tax Logic** card within the Statutory Tab.
 
 ---
@@ -19,10 +19,10 @@ This **`TASK_HANDOFF.md`** acts as the definitive roadmap for your IDE to execut
 
 ---
 
-## **Phase 2: Security Hardening & Edge Proxying**
-* **Service Role Sanitization**: Identify and remove every instance of `getAdminClient()` or `supabaseServiceRole` from the frontend client code.
-* **Edge Function Implementation**: Rewrite sensitive "Admin-only" actions, such as modifying organizational tax constants, to live exclusively in **Supabase Edge Functions**.
-* **Environment Audit**: Ensure `VITE_SUPABASE_SERVICE_ROLE_KEY` is completely removed from all `.env` files and client-facing Vercel environment variables.
+## **Phase 2: Security Hardening & Edge Proxying** ✅ COMPLETE
+* **Service Role Sanitization**: ✅ All `getServiceRoleClient()` removed from `UserService.ts`, `ResellerService.ts`, and `supabaseService.ts`. Zero references to `SERVICE_ROLE` remain in `/src`.
+* **Edge Function Implementation**: ✅ `delete-account` and `save-reseller-client` actions added to `admin-handler` Edge Function. All `auth.admin.*` operations now execute server-side only.
+* **Environment Audit**: ✅ `VITE_SUPABASE_SERVICE_ROLE_KEY` is absent from `.env` files and not referenced in any client code.
 
 ---
 
@@ -54,7 +54,7 @@ This **`TASK_HANDOFF.md`** acts as the definitive roadmap for your IDE to execut
 
 ---
 
-## **Phase 6: Final Handoff & Documentation**
-* **Handoff Completion**: Ensure the `/docs` folder contains the completed `MODULE_SPEC.md` for Payroll and Employee APIs.
-* **Review**: Execute the `CODE_REVIEW_CHECKLIST.md` for all refactored code, focusing on security boundaries and architectural integrity.
+## **Phase 6: Final Handoff & Documentation** 🟡 IN PROGRESS
+* **Handoff Completion**: ✅ `/docs` folder contains `PAYROLL_MODULE_SPEC.md` and `EMPLOYEE_MODULE_SPEC.md`.
+* **Review**: 🟡 `CODE_REVIEW_CHECKLIST.md` being executed. Security section ✅. Type safety pass completed: `as any` reduced from 223 → 151 instances (32%) via DB row types and coercion helpers.
 

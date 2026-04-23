@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { User } from '../core/types';
 import { Icons } from '../components/Icons';
 import { toast } from 'sonner';
-import { supabaseService } from '../services/supabaseService';
+import { UserService } from '../services/UserService';
 import { supabase } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 
@@ -19,12 +19,54 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
     phone: user.phone || '',
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl || '');
   const [uploadingImage, setUploadingImage] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleUpdatePassword = async () => {
+    const nextPassword = newPassword.trim();
+    const confirmPassword = confirmNewPassword.trim();
+
+    if (nextPassword.length < 6) {
+      toast.error('Password must be at least 6 characters');
+      return;
+    }
+
+    if (nextPassword !== confirmPassword) {
+      toast.error('Passwords do not match');
+      return;
+    }
+
+    setIsUpdatingPassword(true);
+    try {
+      if (!supabase) {
+        throw new Error('Supabase not initialized');
+      }
+
+      const { error } = await supabase.auth.updateUser({
+        password: nextPassword
+      });
+
+      if (error) throw error;
+
+      toast.success('Password updated successfully');
+      setNewPassword('');
+      setConfirmNewPassword('');
+    } catch (error: any) {
+      console.error('Password update failed:', error);
+      toast.error(error.message || 'Failed to update password');
+    } finally {
+      setIsUpdatingPassword(false);
+    }
+  };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -86,7 +128,7 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
 
       // Update user profile in database
       const updatedUser = { ...user, avatarUrl: publicUrl };
-      await supabaseService.saveUser(updatedUser);
+      await UserService.saveUser(updatedUser);
       onUpdate(updatedUser);
 
       toast.success('Profile photo updated successfully!');
@@ -106,7 +148,7 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
 
       // Update user profile to remove avatar
       const updatedUser = { ...user, avatarUrl: undefined };
-      await supabaseService.saveUser(updatedUser);
+      await UserService.saveUser(updatedUser);
       onUpdate(updatedUser);
 
       setAvatarUrl('');
@@ -145,10 +187,10 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
         phone: formData.phone.trim() || undefined,
       };
 
-      await supabaseService.saveUser(updatedUser);
+      await UserService.saveUser(updatedUser);
 
       // Reload user from Supabase to confirm save
-      const savedUser = await supabaseService.getUserByEmail(updatedUser.email);
+      const savedUser = await UserService.getUserByEmail(updatedUser.email);
       if (savedUser) {
         onUpdate(savedUser);
         toast.success('Profile updated successfully!');
@@ -181,7 +223,7 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
 
     setIsDeleting(true);
     try {
-      const success = await supabaseService.deleteAccount(
+      const success = await UserService.deleteAccount(
         user.id,
         user.role,
         user.companyId
@@ -356,6 +398,99 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
             </button>
           </div>
         </form>
+
+        {/* Password Section */}
+        <div className="mt-8 pt-8 border-t border-gray-200">
+          <h2 className="text-lg font-semibold text-gray-900 mb-2">Password</h2>
+          <p className="text-sm text-gray-600 mb-4">Set a new password for your account.</p>
+
+          <div className="max-w-md">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              New Password
+            </label>
+            <div className="relative">
+              <input
+                type={showNewPassword ? 'text' : 'password'}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                autoComplete="new-password"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-jam-orange focus:border-jam-orange pr-12"
+                placeholder="••••••••"
+                minLength={6}
+              />
+              <button
+                type="button"
+                onClick={() => setShowNewPassword(!showNewPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                aria-label={showNewPassword ? 'Hide password' : 'Show password'}
+              >
+                {showNewPassword ? (
+                  <Icons.EyeOff className="w-5 h-5" />
+                ) : (
+                  <Icons.Eye className="w-5 h-5" />
+                )}
+              </button>
+            </div>
+
+            <label className="block text-sm font-medium text-gray-700 mb-2 mt-4">
+              Confirm New Password
+            </label>
+            <div className="relative">
+              <input
+                type={showConfirmNewPassword ? 'text' : 'password'}
+                value={confirmNewPassword}
+                onChange={(e) => setConfirmNewPassword(e.target.value)}
+                autoComplete="new-password"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-jam-orange focus:border-jam-orange pr-12"
+                placeholder="••••••••"
+                minLength={6}
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmNewPassword(!showConfirmNewPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                aria-label={showConfirmNewPassword ? 'Hide password' : 'Show password'}
+              >
+                {showConfirmNewPassword ? (
+                  <Icons.EyeOff className="w-5 h-5" />
+                ) : (
+                  <Icons.Eye className="w-5 h-5" />
+                )}
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-500 mt-2">Minimum 6 characters.</p>
+
+            <div className="mt-4">
+              {confirmNewPassword.trim().length > 0 && newPassword.trim() !== confirmNewPassword.trim() ? (
+                <p className="text-sm text-red-600 mb-3">Passwords do not match.</p>
+              ) : null}
+              <button
+                type="button"
+                onClick={handleUpdatePassword}
+                disabled={
+                  isUpdatingPassword ||
+                  newPassword.trim().length < 6 ||
+                  confirmNewPassword.trim().length < 6 ||
+                  newPassword.trim() !== confirmNewPassword.trim()
+                }
+                className="px-6 py-2 bg-jam-black text-white rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+              >
+                {isUpdatingPassword ? (
+                  <>
+                    <Icons.Refresh className="w-5 h-5 mr-2 animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  <>
+                    <Icons.Save className="w-5 h-5 mr-2" />
+                    Update Password
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
 
         {/* Delete Account Section */}
         <div className="mt-8 pt-8 border-t border-red-200">

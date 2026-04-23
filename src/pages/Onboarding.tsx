@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import Papa from 'papaparse';
 import { Icons } from '../components/Icons';
-import { CompanySettings, Employee, Role, PayType, PayFrequency, Department } from '../core/types';
+import { CompanySettings, Employee, Role, PayType, PayFrequency, Department, BankAccount } from '../core/types';
 import { downloadFile } from '../utils/exportHelpers';
 import { generateUUID } from '../utils/uuid';
 
@@ -63,7 +63,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments 
           return;
         }
 
-        const rows = results.data as any[];
+        const rows = results.data as Record<string, string>[];
         if (rows.length === 0) {
             setImportStatus({type: 'error', message: 'CSV is empty.'});
             return;
@@ -140,7 +140,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments 
                 allowances: [],
                 deductions: [],
                 bankDetails: {
-                    bankName: formData.bankName as any || 'NCB',
+                    bankName: (formData.bankName || 'NCB') as BankAccount['bankName'],
                     accountNumber: '',
                     accountType: 'SAVINGS',
                     currency: 'JMD'

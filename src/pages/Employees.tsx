@@ -10,13 +10,15 @@ import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { isValidEmail } from '../utils/validators';
 import { generateUUID } from '../utils/uuid';
+import { isResellerEquivalentPlan, normalizePlanToFrontend } from '../utils/planNames';
+
 
 interface EmployeesProps {
     employees: Employee[];
     payRunHistory: PayRun[];
     companyData: CompanySettings;
-    onAddEmployee: (emp: Employee) => void;
-    onUpdateEmployee: (emp: Employee) => void;
+    onAddEmployee: (emp: Employee) => void | boolean | Promise<boolean>;
+    onUpdateEmployee: (emp: Employee) => void | boolean | Promise<boolean>;
     onDeleteEmployee?: (id: string) => void;
     onSimulateOnboarding?: (emp: Employee) => void;
     departments?: Department[];
@@ -29,7 +31,9 @@ interface EmployeesProps {
     users?: User[];
     onNavigate?: (path: string) => void;
     onUpdateDepartments?: (depts: Department[]) => void;
+    onUpdateCompany?: (data: CompanySettings) => void;
 }
+
 
 export const Employees: React.FC<EmployeesProps> = ({
     employees,
@@ -49,8 +53,10 @@ export const Employees: React.FC<EmployeesProps> = ({
     users = [],
     onNavigate,
     onUpdateDepartments,
+    onUpdateCompany: _onUpdateCompany,
 }) => {
     const { user: currentUser } = useAuth();
+
 
     const [viewMode, setViewMode] = useState<'active' | 'onboarding' | 'archived'>('active');
 
@@ -148,9 +154,8 @@ export const Employees: React.FC<EmployeesProps> = ({
     };
 
     const handleSendLoginInvite = async (emp: Employee) => {
-        // Check if plan is Pro, Reseller, or Enterprise
-        const planName = companyData?.plan === 'Professional' ? 'Pro' : companyData?.plan;
-        if (planName !== 'Pro' && planName !== 'Reseller' && planName !== 'Enterprise') {
+        const planName = normalizePlanToFrontend(companyData?.plan);
+        if (planName !== 'Pro' && !isResellerEquivalentPlan(companyData?.plan)) {
             toast.error('This feature is only available for Pro and Reseller plans. Please upgrade to send employee portal invites.');
             return;
         }
@@ -184,6 +189,10 @@ export const Employees: React.FC<EmployeesProps> = ({
         setIsSendingInvite(false);
     };
 
+    const activeCount = employees.filter(e => e.status === 'ACTIVE').length;
+    const onboardingCount = employees.filter(e => e.status === 'PENDING_ONBOARDING' || e.status === 'PENDING_VERIFICATION').length;
+    const archivedCount = employees.filter(e => e.status === 'ARCHIVED' || e.status === 'TERMINATED').length;
+
     const filteredEmployees = employees.filter(e => {
         const matchesSearch = e.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
             e.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -192,9 +201,9 @@ export const Employees: React.FC<EmployeesProps> = ({
         if (!matchesSearch) return false;
 
         if (viewMode === 'active') {
-            return e.status === 'ACTIVE' || e.status === 'TERMINATED';
+            return e.status === 'ACTIVE';
         } else if (viewMode === 'archived') {
-            return e.status === 'ARCHIVED';
+            return e.status === 'ARCHIVED' || e.status === 'TERMINATED';
         } else {
             return e.status === 'PENDING_ONBOARDING' || e.status === 'PENDING_VERIFICATION';
         }
@@ -236,7 +245,11 @@ export const Employees: React.FC<EmployeesProps> = ({
         );
 
         if (emailResult.success) {
-            onAddEmployee(newEmp);
+            const addResult = await Promise.resolve(onAddEmployee(newEmp));
+            if (addResult === false) {
+                setIsSendingInvite(false);
+                return;
+            }
             auditService.log(currentUser, 'CREATE', 'Employee', `Invited ${newEmp.email}`);
             setIsInviteModalOpen(false);
             setInviteData({ firstName: '', lastName: '', email: '', role: Role.EMPLOYEE });
@@ -252,7 +265,7 @@ export const Employees: React.FC<EmployeesProps> = ({
         setIsSendingInvite(false);
     };
 
-    const handleEmployeeManagerSave = (employee: Employee) => {
+    const handleEmployeeManagerSave = async (employee: Employee) => {
         if (employeeManagerMode === 'add') {
             const newEmp: Employee = {
                 ...employee,
@@ -261,15 +274,25 @@ export const Employees: React.FC<EmployeesProps> = ({
                 payFrequency: employee.payFrequency || PayFrequency.MONTHLY,
                 role: employee.role || Role.EMPLOYEE
             };
-            onAddEmployee(newEmp);
+            const addResult = await Promise.resolve(onAddEmployee(newEmp));
+            if (addResult === false) {
+                return;
+            }
             auditService.log(currentUser, 'CREATE', 'Employee', `Added new employee: ${newEmp.firstName} ${newEmp.lastName}`);
             toast.success("Employee added successfully");
-        } else {
-            // Edit mode
-            onUpdateEmployee(employee);
-            auditService.log(currentUser, 'UPDATE', 'Employee', `Updated employee: ${employee.firstName} ${employee.lastName}`);
-            toast.success("Employee updated successfully");
+            setIsEmployeeManagerOpen(false);
+            setSelectedEmployee(null);
+            return;
         }
+
+        // Edit mode
+        const updateResult = await Promise.resolve(onUpdateEmployee(employee));
+        if (updateResult === false) {
+            // App-level handler should already toast an error.
+            return;
+        }
+        auditService.log(currentUser, 'UPDATE', 'Employee', `Updated employee: ${employee.firstName} ${employee.lastName}`);
+        toast.success("Employee updated successfully");
         setIsEmployeeManagerOpen(false);
         setSelectedEmployee(null);
     };
@@ -279,7 +302,7 @@ export const Employees: React.FC<EmployeesProps> = ({
         setTerminationData({ reason: 'RESIGNATION', date: new Date().toISOString().split('T')[0], payoutVacationDays: 0, severanceAmount: 0 });
     };
 
-    const finalizeTermination = () => {
+    const finalizeTermination = async () => {
         const emp = employees.find(e => e.id === terminationModal.empId);
         if (!emp) return;
 
@@ -298,7 +321,8 @@ export const Employees: React.FC<EmployeesProps> = ({
             terminationDetails: details
         };
 
-        onUpdateEmployee(updatedEmp);
+        const updateResult = await Promise.resolve(onUpdateEmployee(updatedEmp));
+        if (updateResult === false) return;
         auditService.log(currentUser, 'UPDATE', 'Employee', `Terminated ${emp.firstName} ${emp.lastName}. Reason: ${details.reason}`);
         generateP45CSV(companyData, payRunHistory, updatedEmp);
         toast.success("Employee terminated and P45 generated.");
@@ -363,7 +387,7 @@ export const Employees: React.FC<EmployeesProps> = ({
         Papa.parse(file, {
             header: true,
             skipEmptyLines: true,
-            complete: (results: Papa.ParseResult<any>) => {
+            complete: (results: Papa.ParseResult<Record<string, string>>) => {
                 if (results.errors.length > 0) {
                     console.error("CSV Errors:", results.errors);
                     toast.error("Error parsing CSV file.");
@@ -382,7 +406,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                 }
 
                 let count = 0;
-                rows.forEach((row: any) => {
+                rows.forEach((row: Record<string, string>) => {
                     const email = row['Email']?.trim();
                     if (!email) return;
 
@@ -425,7 +449,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                 toast.success(`Successfully imported ${count} employees.`);
                 e.target.value = '';
             },
-            error: (err: any) => {
+            error: (err: Error) => {
                 console.error(err);
                 toast.error("Failed to read file.");
             }
@@ -579,6 +603,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                     }}
                     onSave={handleEmployeeManagerSave}
                 />
+
             )}
 
             {/* Termination Modal */}
@@ -606,7 +631,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                                 <select
                                     className="w-full border border-gray-300 rounded-lg p-2"
                                     value={terminationData.reason}
-                                    onChange={e => setTerminationData({ ...terminationData, reason: e.target.value as any })}
+                                    onChange={e => setTerminationData({ ...terminationData, reason: e.target.value as TerminationDetails['reason'] })}
                                 >
                                     <option value="RESIGNATION">Resignation</option>
                                     <option value="REDUNDANCY">Redundancy</option>
@@ -747,30 +772,33 @@ export const Employees: React.FC<EmployeesProps> = ({
                 <nav className="-mb-px flex space-x-8">
                     <button
                         onClick={() => setViewMode('active')}
-                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors ${viewMode === 'active'
+                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors flex items-center ${viewMode === 'active'
                             ? 'border-jam-orange text-jam-black'
                             : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                             }`}
                     >
                         Active Workforce
+                        <span className={`ml-2 py-0.5 px-2.5 rounded-full text-xs ${viewMode === 'active' ? 'bg-jam-orange text-jam-black' : 'bg-gray-100 text-gray-600'}`}>{activeCount}</span>
                     </button>
                     <button
                         onClick={() => setViewMode('onboarding')}
-                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors ${viewMode === 'onboarding'
+                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors flex items-center ${viewMode === 'onboarding'
                             ? 'border-jam-orange text-jam-black'
                             : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                             }`}
                     >
                         Onboarding / Pending
+                        <span className={`ml-2 py-0.5 px-2.5 rounded-full text-xs ${viewMode === 'onboarding' ? 'bg-jam-orange text-jam-black' : 'bg-gray-100 text-gray-600'}`}>{onboardingCount}</span>
                     </button>
                     <button
                         onClick={() => setViewMode('archived')}
-                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors ${viewMode === 'archived'
+                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors flex items-center ${viewMode === 'archived'
                             ? 'border-jam-orange text-jam-black'
                             : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                             }`}
                     >
                         Archived
+                        <span className={`ml-2 py-0.5 px-2.5 rounded-full text-xs ${viewMode === 'archived' ? 'bg-jam-orange text-jam-black' : 'bg-gray-100 text-gray-600'}`}>{archivedCount}</span>
                     </button>
                 </nav>
             </div>

@@ -7,7 +7,9 @@ import { CompanyService } from '../services/CompanyService';
 import { supabase } from '../services/supabaseClient';
 import { getAuthRedirectUrl } from '../utils/domainConfig';
 import { getPendingInvitationsByEmail, acceptMultipleInvitations, AccountMember } from '../features/employees/inviteService';
+import { normalizePlanToDatabase } from '../utils/planNames';
 import { toast } from 'sonner';
+import { AppRoute, getPathForRoute } from '../app/routes';
 
 interface AuthContextType {
   user: User | null;
@@ -37,6 +39,30 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  const ensureSelfProfile = async (sessionEmail: string) => {
+    if (!supabase) return null;
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-handler', {
+        body: { action: 'ensure-self-profile', payload: {} }
+      });
+
+      if (error) {
+        console.warn('ensure-self-profile invoke error:', error);
+        return null;
+      }
+
+      if (data?.user?.email) {
+        return await EmployeeService.getUserByEmail(data.user.email);
+      }
+
+      // Fallback: try by the session email
+      return await EmployeeService.getUserByEmail(sessionEmail);
+    } catch (e) {
+      console.warn('ensure-self-profile failed:', e);
+      return null;
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -90,19 +116,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
 
           } else if (!appUser && isMounted) {
-            // User authenticated but no profile - sign out
-            console.warn('User authenticated but no profile found');
-            try {
-              await supabase.auth.signOut();
-            } catch (error) {
-              console.warn('Sign out failed during profile check:', error);
+            // User authenticated but no profile - attempt self-heal via Edge Function
+            console.warn('User authenticated but no profile found; attempting recovery');
+            const recovered = await ensureSelfProfile(session.user.email!);
+            if (recovered && isMounted) {
+              setUser(recovered);
+              storage.saveUser(recovered);
+            } else if (isMounted) {
+              // Recovery failed - sign out
+              try {
+                await supabase.auth.signOut();
+              } catch (error) {
+                console.warn('Sign out failed during profile recovery:', error);
+              }
+              // Force clear Supabase session from localStorage
+              if (typeof window !== 'undefined') {
+                localStorage.removeItem('sb-arqbxlaudfbmiqvwwmnt-auth-token');
+              }
+              setUser(null);
+              storage.saveUser(null);
             }
-            // Force clear Supabase session from localStorage
-            if (typeof window !== 'undefined') {
-              localStorage.removeItem('sb-arqbxlaudfbmiqvwwmnt-auth-token');
-            }
-            setUser(null);
-            storage.saveUser(null);
           }
         } else {
           // Fallback to localStorage
@@ -153,7 +186,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               toast.success('Email confirmed! Welcome to PayrollJam.');
 
               // Determine redirect path based on user role
-              let redirectPath = 'dashboard';
+              let redirectPath: AppRoute = 'dashboard';
               if (appUser.role === Role.EMPLOYEE) {
                 redirectPath = 'portal-home';
               } else if (appUser.role === Role.RESELLER) {
@@ -163,8 +196,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               }
 
               setTimeout(() => {
-                if (isMounted) window.location.href = `/?page=${redirectPath}`;
+                if (isMounted) window.location.href = getPathForRoute(redirectPath);
               }, 1500);
+            }
+          } else if (!appUser && isMounted) {
+            const recovered = await ensureSelfProfile(session.user.email!);
+            if (recovered && isMounted) {
+              setUser(recovered);
+              storage.saveUser(recovered);
             }
           }
         } else if (event === 'SIGNED_OUT') {
@@ -221,7 +260,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const appUser = await EmployeeService.getUserByEmail(data.user.email!);
 
       if (!appUser) {
-        throw new Error('User profile not found in database');
+        const recovered = await ensureSelfProfile(data.user.email!);
+        if (!recovered) {
+          throw new Error('User profile not found in database');
+        }
+        console.log('✅ User profile recovered:', recovered.email);
+        setUser(recovered);
+        storage.saveUser(recovered);
+        return;
       }
 
       console.log('✅ User profile loaded:', appUser.email);
@@ -302,7 +348,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           email: userData.email,
           password: userData.password,
           options: {
-            emailRedirectTo: getAuthRedirectUrl('?page=verify-email'),
+            emailRedirectTo: getAuthRedirectUrl('/verify-email'),
           },
         });
         authData = response.data;
@@ -367,21 +413,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         console.log('🏢 Creating new company for Owner/Reseller...');
         const isPaidPlan = userData.plan && userData.plan !== 'Free';
 
-        // Map plan names to match database constraint: ('Free', 'Starter', 'Professional', 'Enterprise')
-        const mapPlanToDbFormat = (plan: string | undefined): string => {
-          if (!plan) return 'Free';
-          const planMap: Record<string, string> = {
-            'Free': 'Free',
-            'Starter': 'Starter',
-            'Pro': 'Professional',
-            'Professional': 'Professional',
-            'Reseller': 'Enterprise', // Map Reseller to Enterprise for now
-            'Enterprise': 'Enterprise'
-          };
-          return planMap[plan] || 'Free';
-        };
-
-        const dbPlan = mapPlanToDbFormat(userData.plan);
+        const dbPlan = normalizePlanToDatabase(userData.plan);
 
         // Map billing cycle to database format (MONTHLY/ANNUAL uppercase)
         const billingCycle: 'MONTHLY' | 'ANNUAL' = (userData as any).billingCycle === 'annual' ? 'ANNUAL' : 'MONTHLY';
@@ -424,7 +456,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           plan: dbPlan as any,
           billingCycle: billingCycle, // Save billing cycle
           employeeLimit: employeeLimit, // Save employee limit
-          paymentMethod: (userData as any).paymentMethod || 'card',
+          paymentMethod: (userData as any).paymentMethod,
           status: companyStatus // Add status field for approval workflow
         };
 

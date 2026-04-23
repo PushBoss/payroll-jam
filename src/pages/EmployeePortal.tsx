@@ -5,6 +5,7 @@ import { User, PayRunLineItem, LeaveType, WeeklyTimesheet, TimeEntry, LeaveReque
 import { PayslipView } from '../components/PayslipView';
 import { MultiDateCalendar } from '../components/MultiDateCalendar';
 import { generateP24CSV } from '../utils/exportHelpers';
+import { EmployeeService } from '../services/EmployeeService';
 
 interface PortalProps {
     user: User;
@@ -183,7 +184,6 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
         try {
             // Import services dynamically
             const { storageService } = await import('../services/storageService');
-            const { supabaseService } = await import('../services/supabaseService');
             
             // Upload each file to the 'documents' bucket
             const uploadPromises = uploadedFiles.map(async (file) => {
@@ -223,7 +223,7 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                 if (onUpdateEmployee && user?.companyId) {
                     onUpdateEmployee(updatedEmployee);
                     // Also save to Supabase
-                    await supabaseService.saveEmployee(updatedEmployee, user.companyId);
+                    await EmployeeService.saveEmployee(updatedEmployee, user.companyId);
                 }
                 
                 setUploadingDocument(false);

@@ -31,14 +31,37 @@ export default async function handler(
       return res.status(400).json({ error: 'Payload is required' });
     }
 
-    // Get secret key from environment variables
-    // Use VERCEL_ENV or APP_ENV to determine if we are in production
-    const isProduction =
-      process.env.VERCEL_ENV === 'production' ||
-      process.env.APP_ENV === 'production';
+    const buildWebhookUrl = () => {
+      const protoHeader = req.headers['x-forwarded-proto'];
+      const hostHeader = req.headers['x-forwarded-host'] || req.headers.host;
 
-    // Force sandbox for everything except production
-    const effectiveEnvironment = isProduction ? 'production' : 'sandbox';
+      const proto = Array.isArray(protoHeader) ? protoHeader[0] : (protoHeader as string | undefined);
+      const host = Array.isArray(hostHeader) ? hostHeader[0] : (hostHeader as string | undefined);
+
+      return `${proto || 'https'}://${host || 'localhost'}/api/dimepay-webhook`;
+    };
+
+    let payloadObject: any = payload;
+    if (typeof payloadObject === 'string') {
+      payloadObject = JSON.parse(payloadObject);
+    }
+
+    if (!payloadObject || typeof payloadObject !== 'object' || Array.isArray(payloadObject)) {
+      return res.status(400).json({ error: 'Payload must be an object' });
+    }
+
+    const webhookUrl = payloadObject.webhookUrl || payloadObject.webhook_url || buildWebhookUrl();
+
+    // Include both cases to match gateway expectations.
+    const payloadWithWebhook = {
+      ...payloadObject,
+      webhookUrl,
+      webhook_url: webhookUrl
+    };
+
+    // Determine effective environment based strictly on the client's request
+    // This ensures sandbox client tests correctly use the sandbox secret, matching the sandbox API key cleanly.
+    const effectiveEnvironment = environment === 'production' ? 'production' : 'sandbox';
 
     console.log(`🔍 [${effectiveEnvironment}] resolving keys...`);
 
@@ -67,7 +90,7 @@ export default async function handler(
     };
 
     const encodedHeader = base64url(JSON.stringify(header));
-    const encodedPayload = base64url(JSON.stringify(payload));
+    const encodedPayload = base64url(JSON.stringify(payloadWithWebhook));
     const signatureInput = `${encodedHeader}.${encodedPayload}`;
 
     // Sign with HMAC-SHA256

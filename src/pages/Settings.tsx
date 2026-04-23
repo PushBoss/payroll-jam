@@ -7,8 +7,11 @@ import { getPlanPriceDetails } from '../utils/pricing';
 import { storage } from '../services/storage';
 import { auditService } from '../core/auditService';
 import { checkDbConnection } from '../services/supabaseClient';
-import { supabaseService } from '../services/supabaseService';
+import { BillingService } from '../services/BillingService';
 import { supabase } from '../services/supabaseClient';
+import { CompanyService } from '../services/CompanyService';
+import { ResellerService } from '../services/ResellerService';
+import { UserService } from '../services/UserService';
 
 import { dimePayService } from '../services/dimePayService';
 import { emailService } from '../services/emailService';
@@ -20,6 +23,9 @@ import { useAccount } from '../hooks/useAccount';
 import { getUserRoleInAccount, MemberRole } from '../features/employees/inviteService';
 import { InviteUserCard } from '../components/InviteUserCard';
 import { AccountMembersCard } from '../components/AccountMembersCard';
+import { TaxConfigCard } from '../features/employees/TaxConfigCard';
+import { buildAppUrl } from '../app/routes';
+
 
 interface SettingsProps {
     companyData?: CompanySettings;
@@ -39,7 +45,14 @@ interface CheckoutModalProps {
     plan: PricingPlan;
     currentUser: User | null;
     onClose: () => void;
-    onSuccess: () => void;
+    onSuccess: (data?: any) => void | Promise<void>;
+}
+
+interface PaymentMethodModalProps {
+    currentUser: User | null;
+    currentSubscription: any;
+    onClose: () => void;
+    onSuccess: () => Promise<void> | void;
 }
 
 const CheckoutModal: React.FC<CheckoutModalProps> = ({ plan, currentUser, onClose, onSuccess }) => {
@@ -48,13 +61,24 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ plan, currentUser, onClos
     const [error, setError] = useState<string | null>(null);
     const [paymentSuccess, setPaymentSuccess] = useState(false);
     const isMountedRef = useRef(true);
+    const onSuccessRef = useRef(onSuccess);
 
     // Calculate price based on plan type - settings always monthly
     const { amount: price } = getPlanPriceDetails(plan, 'monthly');
     const isPaid = price > 0;
 
     useEffect(() => {
+        onSuccessRef.current = onSuccess;
+    }, [onSuccess]);
+
+    useEffect(() => {
         isMountedRef.current = true;
+
+        if (paymentSuccess) {
+            return () => {
+                isMountedRef.current = false;
+            };
+        }
 
         if (!isPaid) {
             setLoading(false);
@@ -76,14 +100,15 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ plan, currentUser, onClos
                     planId: plan.id,
                     planName: plan.name,
                     plan: plan.name,
-                    planType: plan.name.toLowerCase()
+                    planType: plan.name.toLowerCase(),
+                    name: currentUser?.name // FIX: Pass user name to fix "Hi Guest" email issue
                 },
                 onSuccess: (data) => {
                     if (isMountedRef.current) {
                         console.log('DimePay Upgrade Success:', data);
-                        console.log('📦 Subscription updated:', data.subscription_id);
+                        console.log('📦 Subscription updated:', data?.subscription_id || data?.data?.subscription_id || data?.data?.subscription?.subscription_id);
                         setPaymentSuccess(true);
-                        setTimeout(() => { if (isMountedRef.current) onSuccess(); }, 2000);
+                        setTimeout(() => { if (isMountedRef.current) onSuccessRef.current(data); }, 2000);
                     }
                 },
                 onError: (msg) => {
@@ -115,7 +140,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ plan, currentUser, onClos
                 }
             }
         };
-    }, [plan, isPaid, currentUser, price, onSuccess, error]);
+    }, [plan, isPaid, currentUser, price, paymentSuccess]);
 
     const handleFreeDowngrade = () => { setPaymentSuccess(true); setTimeout(onSuccess, 1500); };
 
@@ -153,6 +178,167 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ plan, currentUser, onClos
                             <button onClick={handleFreeDowngrade} className="w-full py-3 bg-jam-black text-white font-bold rounded-lg hover:bg-gray-800 transition-colors">Confirm Switch</button>
                         </div>
                     )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({ currentUser, currentSubscription, onClose, onSuccess }) => {
+    const [isLoading, setIsLoading] = useState(true);
+    const [isApplying, setIsApplying] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [cardUrl, setCardUrl] = useState<string | null>(null);
+    const [cardRequestToken, setCardRequestToken] = useState<string | null>(null);
+    const [verificationStatus, setVerificationStatus] = useState<string>('Initializing secure card form...');
+    const appliedRef = useRef(false);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const init = async () => {
+            if (!currentUser?.companyId) {
+                setError('Missing company information.');
+                setIsLoading(false);
+                return;
+            }
+
+            try {
+                const data = await dimePayService.createCardRequest({
+                    companyId: currentUser.companyId,
+                    localSubscriptionId: currentSubscription?.id,
+                    subscriptionId: currentSubscription?.dimepaySubscriptionId,
+                    redirectUrl: window.location.href
+                });
+
+                if (cancelled) return;
+
+                setCardUrl(data.card_url);
+                setCardRequestToken(data.token);
+                setVerificationStatus('Complete verification in the secure form below.');
+            } catch (requestError: any) {
+                if (!cancelled) {
+                    setError(requestError.message || 'Failed to initialize card verification.');
+                }
+            } finally {
+                if (!cancelled) {
+                    setIsLoading(false);
+                }
+            }
+        };
+
+        void init();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [currentSubscription?.dimepaySubscriptionId, currentSubscription?.id, currentUser?.companyId]);
+
+    useEffect(() => {
+        if (!cardRequestToken || !currentUser?.companyId || appliedRef.current) return;
+
+        let cancelled = false;
+
+        const poll = async () => {
+            try {
+                const companyId = currentUser?.companyId;
+                if (!companyId) return;
+
+                const details = await dimePayService.getCardDetails(cardRequestToken);
+                if (cancelled) return;
+
+                setVerificationStatus(`Card status: ${details.status}`);
+
+                if (details.status === 'SUCCESS' && details.token && !appliedRef.current) {
+                    appliedRef.current = true;
+                    setIsApplying(true);
+
+                    await dimePayService.updateSubscriptionPaymentMethod({
+                        companyId,
+                        localSubscriptionId: currentSubscription?.id,
+                        subscriptionId: currentSubscription?.dimepaySubscriptionId,
+                        cardToken: details.token,
+                        cardRequestToken: details.card_request_token || cardRequestToken,
+                        cardLast4: details.last_four_digits,
+                        cardBrand: details.card_scheme,
+                        cardExpiry: details.card_expiry
+                    });
+
+                    if (!cancelled) {
+                        toast.success('Payment method updated successfully.');
+                        await onSuccess();
+                    }
+                }
+            } catch (pollError: any) {
+                if (!cancelled) {
+                    setVerificationStatus(pollError.message || 'Waiting for card verification...');
+                }
+            } finally {
+                if (!cancelled) {
+                    setIsApplying(false);
+                }
+            }
+        };
+
+        void poll();
+        const interval = window.setInterval(() => void poll(), 3000);
+
+        return () => {
+            cancelled = true;
+            window.clearInterval(interval);
+        };
+    }, [cardRequestToken, currentSubscription?.dimepaySubscriptionId, currentSubscription?.id, currentUser?.companyId, onSuccess]);
+
+    return (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh] animate-scale-in">
+                <div className="bg-jam-black text-white p-6 flex justify-between items-center shrink-0">
+                    <div>
+                        <h3 className="text-xl font-bold">{currentSubscription?.paymentMethodLast4 ? 'Update Payment Method' : 'Add Payment Method'}</h3>
+                        <p className="text-xs text-gray-400">Securely verify a card and bind it to your recurring subscription.</p>
+                    </div>
+                    <button onClick={onClose}><Icons.Close className="w-6 h-6 text-gray-400 hover:text-white" /></button>
+                </div>
+                <div className="p-6 overflow-y-auto space-y-4">
+                    <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+                        <div>
+                            <p className="text-sm font-semibold text-gray-900">Verification status</p>
+                            <p className="text-xs text-gray-500 mt-1">{verificationStatus}</p>
+                        </div>
+                        {isApplying && <Icons.Refresh className="w-5 h-5 text-jam-orange animate-spin" />}
+                    </div>
+
+                    {isLoading ? (
+                        <div className="h-[480px] flex flex-col items-center justify-center text-center">
+                            <Icons.Refresh className="w-8 h-8 animate-spin text-jam-orange mb-3" />
+                            <p className="text-sm text-gray-600">Preparing secure card verification...</p>
+                        </div>
+                    ) : error ? (
+                        <div className="h-[240px] flex flex-col items-center justify-center text-center">
+                            <Icons.Alert className="w-10 h-10 text-red-500 mb-3" />
+                            <p className="text-red-600 font-medium mb-2">Unable to start card verification</p>
+                            <p className="text-xs text-gray-500 max-w-md">{error}</p>
+                        </div>
+                    ) : cardUrl ? (
+                        <>
+                            <iframe
+                                src={cardUrl}
+                                title="DimePay card verification"
+                                className="w-full h-[520px] rounded-lg border border-gray-200"
+                            />
+                            <div className="flex justify-between items-center text-xs text-gray-500">
+                                <span>If the secure form does not load, open it in a new tab.</span>
+                                <a
+                                    href={cardUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-jam-orange font-semibold hover:underline"
+                                >
+                                    Open verification page
+                                </a>
+                            </div>
+                        </>
+                    ) : null}
                 </div>
             </div>
         </div>
@@ -230,6 +416,46 @@ export const Settings: React.FC<SettingsProps> = ({
     const [isLoadingBilling, setIsLoadingBilling] = useState(false);
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [isCancelling, setIsCancelling] = useState(false);
+    const [isAddingPaymentMethod, setIsAddingPaymentMethod] = useState(false);
+
+    const mapPaymentHistoryToInvoices = (payments: any[]): PaymentRecord[] => (
+        payments.map(p => ({
+            id: p.invoiceNumber || p.id,
+            date: new Date(p.paymentDate).toLocaleDateString(),
+            amount: p.amount,
+            plan: p.description || 'Subscription',
+            method: (p.paymentMethod === 'card' ? 'Card' : 'Bank Transfer') as any,
+            status: p.status.toUpperCase() as any,
+            referenceId: p.transactionId || p.id
+        }))
+    );
+
+    const refreshBillingData = async (companyId: string) => {
+        const subscription = await BillingService.getSubscription(companyId);
+        const payments = await BillingService.getPaymentHistory(companyId);
+
+        setCurrentSubscription(subscription);
+        setInvoices(mapPaymentHistoryToInvoices(payments));
+
+        return subscription;
+    };
+
+    const waitForBillingSync = async (companyId: string, attempts = 6, delayMs = 1500) => {
+        for (let attempt = 0; attempt < attempts; attempt++) {
+            const subscription = await refreshBillingData(companyId);
+            if (subscription?.dimepaySubscriptionId || subscription?.metadata?.card_last4) {
+                return true;
+            }
+
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+
+        return false;
+    };
+
+    const storedCardLast4 = currentSubscription?.paymentMethodLast4 || currentSubscription?.metadata?.card_last4;
+    const storedCardBrand = currentSubscription?.paymentMethodBrand || currentSubscription?.metadata?.card_brand;
+    const hasStoredBillingMethod = !!storedCardLast4 || !!currentSubscription?.metadata?.dime_card_token;
 
     // Early return if companyData is not available
     if (!companyData) {
@@ -240,7 +466,7 @@ export const Settings: React.FC<SettingsProps> = ({
         const loadUsers = async () => {
             if (currentUser?.companyId) {
                 // Try to load from Supabase first
-                const dbUsers = await supabaseService.getCompanyUsers(currentUser.companyId);
+                const dbUsers = await UserService.getCompanyUsers(currentUser.companyId);
                 if (dbUsers && dbUsers.length > 0) {
                     setUsers(dbUsers);
                 } else {
@@ -266,25 +492,11 @@ export const Settings: React.FC<SettingsProps> = ({
             if (!currentUser?.companyId) return;
 
             setIsLoadingBilling(true);
-
-            // Load current subscription
-            const subscription = await supabaseService.getSubscription(currentUser.companyId);
-            setCurrentSubscription(subscription);
-
-            // Load payment history
-            const payments = await supabaseService.getPaymentHistory(currentUser.companyId);
-            const formattedPayments: PaymentRecord[] = payments.map(p => ({
-                id: p.invoiceNumber || p.id,
-                date: new Date(p.paymentDate).toLocaleDateString(),
-                amount: p.amount,
-                plan: p.description || 'Subscription',
-                method: (p.paymentMethod === 'card' ? 'Card' : 'Bank Transfer') as any,
-                status: p.status.toUpperCase() as any,
-                referenceId: p.transactionId || p.id
-            }));
-            setInvoices(formattedPayments);
-
-            setIsLoadingBilling(false);
+            try {
+                await refreshBillingData(currentUser.companyId);
+            } finally {
+                setIsLoadingBilling(false);
+            }
         };
 
         if (activeTab === 'billing') {
@@ -299,15 +511,8 @@ export const Settings: React.FC<SettingsProps> = ({
         setIsCheckingDb(false);
     };
 
-    const handleRestore = () => {
-        if (confirm("Are you sure you want to restore default 2025 tax rates?")) {
-            onUpdateTaxConfig({
-                nisRate: 0.03, nisCap: 5000000, nhtRate: 0.02, edTaxRate: 0.0225, payeThreshold: 1500009, payeRateStd: 0.25, payeRateHigh: 0.30
-            } as any);
-            auditService.log(currentUser, 'UPDATE', 'Settings', 'Restored default 2025 statutory tax rates');
-            toast.success("Default tax rates restored");
-        }
-    };
+
+
 
     const handleCompanyUpdate = (newData: CompanySettings) => { onUpdateCompany(newData); };
 
@@ -319,7 +524,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
         setIsSavingCompany(true);
         try {
-            await supabaseService.saveCompany(currentUser.companyId, companyData);
+            await CompanyService.saveCompany(currentUser.companyId, companyData);
             auditService.log(currentUser, 'UPDATE', 'Company', 'Updated company settings');
             toast.success('Company settings saved successfully');
         } catch (error: any) {
@@ -330,19 +535,14 @@ export const Settings: React.FC<SettingsProps> = ({
         }
     };
 
-    const handleTaxChange = (field: keyof TaxConfig, value: string) => {
-        const num = parseFloat(value);
-        if (!isNaN(num)) {
-            onUpdateTaxConfig({ ...taxConfig, [field]: num });
-        }
-    };
+
 
     const handleUpgradeClick = (planName: string) => {
         const targetPlan = plans.find(p => p.name === planName);
         if (targetPlan) setUpgradeTarget(targetPlan);
     };
 
-    const handleUpgradeSuccess = async () => {
+    const handleUpgradeSuccess = async (_paymentData?: any) => {
         if (upgradeTarget && currentUser?.companyId) {
             // Note: DimePay webhook will automatically create/update subscription record
             // and payment record, so we don't need to do it here
@@ -357,14 +557,14 @@ export const Settings: React.FC<SettingsProps> = ({
                 try {
                     // Update user role in Supabase and locally
                     const updatedUser = { ...currentUser, role: Role.RESELLER };
-                    await supabaseService.saveUser(updatedUser);
+                    await UserService.saveUser(updatedUser);
                     updateUser({ role: Role.RESELLER });
 
                     // Add their current company as a company they manage
                     // This allows them to continue managing their own company as a reseller
                     if (currentUser.companyId) {
                         try {
-                            await supabaseService.saveResellerClientWithServiceRole(
+                            await ResellerService.saveResellerClientWithServiceRole(
                                 currentUser.companyId,
                                 currentUser.companyId,
                                 {
@@ -407,7 +607,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
                 // Reload page to ensure reseller dashboard loads properly
                 setTimeout(() => {
-                    window.location.href = '/?page=reseller-dashboard';
+                    window.location.href = '/partner';
                 }, 1500);
             } else {
                 toast.success(`Successfully switched to ${upgradeTarget.name}!`);
@@ -415,18 +615,18 @@ export const Settings: React.FC<SettingsProps> = ({
 
             setUpgradeTarget(null);
 
-            // Reload billing data
-            const payments = await supabaseService.getPaymentHistory(currentUser.companyId);
-            const formattedPayments: PaymentRecord[] = payments.map(p => ({
-                id: p.invoiceNumber || p.id,
-                date: new Date(p.paymentDate).toLocaleDateString(),
-                amount: p.amount,
-                plan: p.description || 'Subscription',
-                method: (p.paymentMethod === 'card' ? 'Card' : 'Bank Transfer') as any,
-                status: p.status.toUpperCase() as any,
-                referenceId: p.transactionId || p.id
-            }));
-            setInvoices(formattedPayments);
+            // Reload billing data (wait for webhook to create subscription/payment rows)
+            setIsLoadingBilling(true);
+            try {
+                const synced = await waitForBillingSync(currentUser.companyId, 10, 1500);
+                await refreshBillingData(currentUser.companyId);
+
+                if (!synced) {
+                    toast.warning('Payment received, but subscription confirmation has not arrived yet. If this persists, check DimePay webhook configuration for this environment.');
+                }
+            } finally {
+                setIsLoadingBilling(false);
+            }
         }
     };
 
@@ -481,7 +681,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
         // Generate invite token and link
         const onboardingToken = generateUUID();
-        const inviteLink = `${window.location.origin}/?page=signup&token=${onboardingToken}&email=${encodeURIComponent(inviteForm.email)}`;
+        const inviteLink = buildAppUrl('signup', { token: onboardingToken, email: inviteForm.email });
 
         const newUser: User = {
             id: `u-${Date.now()}`,
@@ -509,7 +709,7 @@ export const Settings: React.FC<SettingsProps> = ({
         // Save to Supabase if available
         if (currentUser?.companyId) {
             try {
-                await supabaseService.saveUser(newUser);
+                await UserService.saveUser(newUser);
             } catch (error) {
                 console.error("Error saving user to Supabase:", error);
                 toast.error("Failed to save user to database.");
@@ -603,29 +803,12 @@ export const Settings: React.FC<SettingsProps> = ({
 
             toast.success('Subscription cancelled. You\'ll retain access until the end of your billing period.');
 
-            // Update local state
-            handleCompanyUpdate({
-                ...companyData,
-                plan: 'Free' as any,
-                subscriptionStatus: 'SUSPENDED'
-            });
-
             setShowCancelModal(false);
 
             // Reload billing data after a delay
             setTimeout(async () => {
                 if (currentUser?.companyId) {
-                    const payments = await supabaseService.getPaymentHistory(currentUser.companyId);
-                    const formattedPayments: PaymentRecord[] = payments.map(p => ({
-                        id: p.invoiceNumber || p.id,
-                        date: new Date(p.paymentDate).toLocaleDateString(),
-                        amount: p.amount,
-                        plan: p.description || 'Subscription',
-                        method: (p.paymentMethod === 'card' ? 'Card' : 'Bank Transfer') as any,
-                        status: p.status.toUpperCase() as any,
-                        referenceId: p.transactionId || p.id
-                    }));
-                    setInvoices(formattedPayments);
+                    await refreshBillingData(currentUser.companyId);
                 }
             }, 1000);
 
@@ -651,6 +834,26 @@ export const Settings: React.FC<SettingsProps> = ({
     return (
         <div className="space-y-6">
             {upgradeTarget && <CheckoutModal plan={upgradeTarget} currentUser={currentUser} onClose={() => setUpgradeTarget(null)} onSuccess={handleUpgradeSuccess} />}
+            {isAddingPaymentMethod && currentSubscription && (
+                <PaymentMethodModal
+                    currentUser={currentUser}
+                    currentSubscription={currentSubscription}
+                    onClose={() => setIsAddingPaymentMethod(false)}
+                    onSuccess={async () => {
+                        setIsAddingPaymentMethod(false);
+
+                        if (currentUser?.companyId) {
+                            setIsLoadingBilling(true);
+                            try {
+                                await waitForBillingSync(currentUser.companyId, 10, 1500);
+                                await refreshBillingData(currentUser.companyId);
+                            } finally {
+                                setIsLoadingBilling(false);
+                            }
+                        }
+                    }}
+                />
+            )}
 
             {/* Cancel Subscription Confirmation Modal */}
             {showCancelModal && (
@@ -672,7 +875,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                     <ul className="text-xs text-yellow-800 mt-2 space-y-1 list-disc list-inside">
                                         <li>You'll retain access until {currentSubscription?.nextBillingDate ? new Date(currentSubscription.nextBillingDate).toLocaleDateString() : 'the end of your billing period'}</li>
                                         <li>No further charges will be made</li>
-                                        <li>Your account will be downgraded to the Free plan</li>
+                                        <li>Your subscription will stop renewing after the current billing period</li>
                                         <li>You can resubscribe anytime</li>
                                     </ul>
                                 </div>
@@ -770,14 +973,18 @@ export const Settings: React.FC<SettingsProps> = ({
                             )}
                         </div>
                         <div className="mt-4 md:mt-0 flex flex-col space-y-2">
-                            {companyData?.plan !== 'Pro' && companyData?.plan !== 'Professional' && (
+                            {companyData?.plan !== 'Pro' && companyData?.plan !== 'Professional' && companyData?.plan !== 'Reseller' && companyData?.plan !== 'Enterprise' && (
                                 <button
                                     onClick={() => {
                                         // Show all paid plans except current plan (consistent with cards below)
                                         const currentPlan = companyData?.plan || 'Free';
                                         const availablePlans = plans.filter(p => {
-                                            // Don't show current plan
+                                            // Don't show current plan (handle potential name variations)
                                             if (p.name === currentPlan) return false;
+                                            if (p.name === 'Reseller' && currentPlan === 'Enterprise') return false;
+                                            if (p.name === 'Enterprise' && currentPlan === 'Reseller') return false;
+                                            if (p.name === 'Pro' && currentPlan === 'Professional') return false;
+                                            if (p.name === 'Professional' && currentPlan === 'Pro') return false;
                                             // Don't show Free plan (no one upgrades to Free)
                                             if (p.priceConfig.type === 'free') return false;
                                             // Show all other paid plans (Starter, Pro, Reseller, etc.)
@@ -867,6 +1074,57 @@ export const Settings: React.FC<SettingsProps> = ({
                             </div>
                         </div>
                     )}
+                    
+                    {/* Payment Method / Vault Card */}
+                    <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                        <div className="flex justify-between items-start mb-4">
+                            <div>
+                                <h3 className="text-lg font-bold mb-1">Primary Payment Method</h3>
+                                <p className="text-sm text-gray-500">Used for recurring monthly billing</p>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    if (!currentSubscription?.dimepaySubscriptionId) {
+                                        toast.error('No recurring subscription was found for this account.');
+                                        return;
+                                    }
+                                    setIsAddingPaymentMethod(true);
+                                }}
+                                className="bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm font-semibold px-4 py-2 rounded-lg transition-colors border border-gray-300"
+                            >
+                                {hasStoredBillingMethod ? "Update Method" : "Add Payment Method"}
+                            </button>
+                        </div>
+                        
+                        {hasStoredBillingMethod ? (
+                            <div className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg border border-gray-200 max-w-md">
+                                <div className="p-3 bg-white rounded shadow-sm border border-gray-100">
+                                    <Icons.Company className="w-6 h-6 text-gray-600" />
+                                </div>
+                                <div>
+                                    <p className="font-bold text-gray-800 text-lg tracking-wide uppercase">
+                                        {storedCardLast4
+                                            ? `•••• •••• •••• ${storedCardLast4}`
+                                            : 'Stored Billing Method'}
+                                    </p>
+                                    <p className={`text-xs font-semibold uppercase mt-1 ${currentSubscription?.status === 'active' ? 'text-green-600' : 'text-jam-orange'}`}>
+                                        {currentSubscription?.status === 'active' 
+                                            ? 'Active Recurring Subscription' 
+                                            : 'Billing Method On File'}
+                                    </p>
+                                    {storedCardBrand && (
+                                        <p className="text-xs text-gray-500 mt-1">{storedCardBrand}</p>
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex items-center space-x-3 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                                <Icons.Alert className="w-5 h-5 text-yellow-600" />
+                                <p className="text-sm text-yellow-800">No payment method on file. Your subscription may be interrupted.</p>
+                            </div>
+                        )}
+                    </div>
+
                     <div className="bg-white p-6 rounded-xl border border-gray-200">
                         <h3 className="text-lg font-bold mb-4">Payment History</h3>
                         {isLoadingBilling ? (
@@ -896,46 +1154,19 @@ export const Settings: React.FC<SettingsProps> = ({
 
             {activeTab === 'taxes' && (
                 <div className="space-y-6 animate-fade-in">
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                        <div className="flex justify-between items-center mb-6">
-                            <div>
-                                <h3 className="text-lg font-bold">Statutory Rates (2026)</h3>
-                                <p className="text-xs text-gray-500">Core global policies are applied by default. Edit rates below to set local company overrides.</p>
-                            </div>
-                            <button onClick={handleRestore} className="text-sm text-jam-orange hover:underline flex items-center">
-                                <Icons.Refresh className="w-3 h-3 mr-1" /> Restore Defaults
-                            </button>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
-                                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">NIS Rate (e.g. 0.03)</label>
-                                <input type="number" step="0.001" value={taxConfig.nisRate} onChange={(e) => handleTaxChange('nisRate', e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-jam-orange" />
-                            </div>
-                            <div>
-                                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">NHT Rate (e.g. 0.02)</label>
-                                <input type="number" step="0.001" value={taxConfig.nhtRate} onChange={(e) => handleTaxChange('nhtRate', e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-jam-orange" />
-                            </div>
-                            <div>
-                                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Ed Tax Rate (e.g. 0.0225)</label>
-                                <input type="number" step="0.0001" value={taxConfig.edTaxRate} onChange={(e) => handleTaxChange('edTaxRate', e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-jam-orange" />
-                            </div>
-                            <div>
-                                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">NIS Annual Cap</label>
-                                <input type="number" value={taxConfig.nisCap} onChange={(e) => handleTaxChange('nisCap', e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-jam-orange" />
-                            </div>
-                            <div>
-                                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">PAYE Threshold</label>
-                                <input type="number" value={taxConfig.payeThreshold} onChange={(e) => handleTaxChange('payeThreshold', e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-jam-orange" />
-                                <p className="text-[10px] text-gray-400 mt-1">Default: JMD 1,700,096 (2026)</p>
-                            </div>
-                            <div>
-                                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Standard PAYE Rate</label>
-                                <input type="number" step="0.01" value={taxConfig.payeRateStd} onChange={(e) => handleTaxChange('payeRateStd', e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-jam-orange" />
-                            </div>
-                        </div>
-                    </div>
+                    {/* Tax Calculation Configuration — powered by TaxConfigCard */}
+                    <TaxConfigCard
+                        config={taxConfig}
+                        onSave={async (newConfig) => {
+                            onUpdateTaxConfig(newConfig);
+                            auditService.log(currentUser, 'UPDATE', 'Settings', 'Updated statutory tax configuration');
+                            toast.success('Tax configuration saved');
+                        }}
+                        isSaving={false}
+                    />
                 </div>
             )}
+
 
             {activeTab === 'company' && (
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 animate-fade-in">

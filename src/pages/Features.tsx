@@ -2,7 +2,11 @@
 import React, { useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { Footer } from '../components/Footer';
+<<<<<<< HEAD
 import { BetaBanner } from '../components/BetaBanner';
+=======
+import { PublicHeader } from '../components/PublicHeader';
+>>>>>>> 0a6b81cb09aa2a5587c7387200103601a1de60b4
 
 interface FeaturesProps {
   onSignup: () => void;
@@ -10,11 +14,12 @@ interface FeaturesProps {
   onBack: () => void;
   onPricingClick: () => void;
   onFaqClick: () => void;
+  onContactClick?: () => void;
   onPrivacyClick?: () => void;
   onTermsClick?: () => void;
 }
 
-export const Features: React.FC<FeaturesProps> = ({ onSignup, onLogin, onBack, onPricingClick, onFaqClick, onPrivacyClick, onTermsClick }) => {
+export const Features: React.FC<FeaturesProps> = ({ onSignup, onLogin, onBack, onPricingClick, onFaqClick, onContactClick, onPrivacyClick, onTermsClick }) => {
   // SEO: Update page title and meta tags
   useEffect(() => {
     document.title = 'Features | Payroll-Jam - Jamaican Payroll & HR Software';
@@ -75,6 +80,7 @@ export const Features: React.FC<FeaturesProps> = ({ onSignup, onLogin, onBack, o
   
   return (
     <div className="min-h-screen bg-white font-sans text-slate-900">
+<<<<<<< HEAD
       <div className="fixed inset-x-0 top-0 z-50">
         <BetaBanner />
       </div>
@@ -108,6 +114,18 @@ export const Features: React.FC<FeaturesProps> = ({ onSignup, onLogin, onBack, o
           </div>
         </div>
       </nav>
+=======
+      <PublicHeader
+        currentPage="features"
+        onHomeClick={onBack}
+        onFeaturesClick={() => {}}
+        onPricingClick={onPricingClick}
+        onFaqClick={onFaqClick}
+        onContactClick={onContactClick}
+        onLogin={onLogin}
+        onSignup={onSignup}
+      />
+>>>>>>> 0a6b81cb09aa2a5587c7387200103601a1de60b4
 
       {/* Hero */}
       <div className="pt-40 pb-16 bg-gray-50">
