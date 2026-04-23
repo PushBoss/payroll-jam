@@ -160,19 +160,8 @@ export const CompanyService = {
         .eq('id', 'platform')
         .maybeSingle();
 
-      if (!error && data) {
-        return data.config as GlobalConfig;
-      }
-
-      const { data: companyData, error: companyError } = await supabase
-        .from('companies')
-        .select('settings')
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-      if (companyError || !companyData) return null;
-      return companyData.settings?.globalConfig as GlobalConfig;
+      if (error || !data) return null;
+      return data.config as GlobalConfig;
     } catch {
       return null;
     }
@@ -191,32 +180,7 @@ export const CompanyService = {
           updated_at: new Date().toISOString()
         });
 
-      if (!error) {
-        return true;
-      }
-
-      const { data: companies, error: fetchError } = await client
-        .from('companies')
-        .select('id, settings');
-
-      if (fetchError) {
-        return false;
-      }
-
-      await Promise.all((companies || []).map((company: { id: string; settings?: Record<string, unknown> }) => {
-        const currentSettings = company.settings || {};
-        return client
-          .from('companies')
-          .update({
-            settings: {
-              ...currentSettings,
-              globalConfig: config
-            }
-          })
-          .eq('id', company.id);
-      }));
-
-      return true;
+      return !error;
     } catch {
       return false;
     }

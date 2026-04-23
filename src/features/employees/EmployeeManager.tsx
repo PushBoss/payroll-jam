@@ -2,11 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Employee, EmployeeType, PayType, PayFrequency, Role, CustomDeduction, BankAccount, Department } from '../../core/types';
 import { Icons } from '../../components/Icons';
 import { isValidTRN, isValidNIS, isValidEmail, formatTRN } from '../../utils/validators';
-<<<<<<< HEAD
-=======
-
-
->>>>>>> 0a6b81cb09aa2a5587c7387200103601a1de60b4
 
 interface EmployeeManagerProps {
   employee?: Employee | null;

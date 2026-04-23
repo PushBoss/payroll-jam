@@ -76,5 +76,24 @@ export const BillingService = {
       .limit(limit);
     if (error) return [];
     return data || [];
-  }
+  },
+
+  getBillingStats: async (filter: 'month' | 'quarter' | 'year' | 'all' = 'all') => {
+    if (!supabase) return null;
+    const { data, error } = await supabase.functions.invoke('admin-handler', {
+      body: { action: 'get-billing-stats', payload: { filter } },
+    });
+    if (error) return null;
+    return data as {
+      billingStats: {
+        totalRevenue: number;
+        monthlyRecurringRevenue: number;
+        annualRecurringRevenue: number;
+        totalSubscriptions: number;
+        activeSubscriptions: number;
+        totalPayments: number;
+      };
+      revenueData: { name: string; revenue: number }[];
+    };
+  },
 };

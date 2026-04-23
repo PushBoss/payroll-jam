@@ -423,35 +423,47 @@ serve(async (req: Request) => {
 
                 if (compError) throw compError;
 
-                // Enrich with owner name from app_users
-                const enriched = await Promise.all((companies || []).map(async (c: any) => {
-                    const { data: ownerData } = await adminClient
-                        .from('app_users')
-                        .select('name, email')
-                        .eq('company_id', c.id)
-                        .in('role', ['OWNER', 'ADMIN'])
-                        .order('role', { ascending: true }) // ADMIN < OWNER alphabetically, but OWNER preferred
-                        .limit(1)
-                        .maybeSingle();
+                const companyIds = (companies || []).map((c: any) => c.id);
 
-                    // Accurate employee count instead of settings cache
-                    const { count: empCount } = await adminClient
-                        .from('employees')
-                        .select('*', { count: 'exact', head: true })
-                        .eq('company_id', c.id);
+                // Batch owners + employee counts — 2 queries regardless of page size
+                const [ownerResult, empCountResult] = await Promise.all([
+                    companyIds.length > 0
+                        ? adminClient
+                            .from('app_users')
+                            .select('company_id, name, email, role')
+                            .in('company_id', companyIds)
+                            .in('role', ['OWNER', 'ADMIN'])
+                        : Promise.resolve({ data: [] as any[] }),
+                    companyIds.length > 0
+                        ? adminClient.rpc('get_company_employee_counts', { company_ids: companyIds })
+                        : Promise.resolve({ data: [] as any[] }),
+                ]);
 
+                // Prefer OWNER row when multiple users share a company
+                const ownerMap = new Map<string, { name: string; email: string }>();
+                for (const u of (ownerResult.data || [])) {
+                    if (!ownerMap.has(u.company_id) || u.role === 'OWNER') {
+                        ownerMap.set(u.company_id, { name: u.name, email: u.email });
+                    }
+                }
+                const empCountMap = new Map<string, number>(
+                    (empCountResult.data || []).map((r: any) => [r.company_id, Number(r.employee_count)])
+                );
+
+                const enriched = (companies || []).map((c: any) => {
+                    const owner = ownerMap.get(c.id);
                     return {
                         id: c.id,
                         companyName: c.name,
-                        email: c.email || ownerData?.email || '',
-                        contactName: ownerData?.name || c.settings?.contactName || 'N/A',
+                        email: c.email || owner?.email || '',
+                        contactName: owner?.name || c.settings?.contactName || 'N/A',
                         plan: normalizePlanToFrontend(c.plan),
                         status: c.status || 'ACTIVE',
-                        employeeCount: empCount || 0,
+                        employeeCount: empCountMap.get(c.id) || 0,
                         mrr: c.settings?.mrr || 0,
                         createdAt: c.created_at
                     };
-                }));
+                });
 
                 return new Response(JSON.stringify({ companies: enriched, total: count }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -514,19 +526,29 @@ serve(async (req: Request) => {
                     .eq('user_id', resellerUserId)
                     .eq('status', 'accepted');
 
-                let syncedCount = 0;
-                for (const mem of (memberships || [])) {
-                    if (mem.account_id === resellerCompanyId) continue;
-                    const { error: linkError } = await adminClient.from('reseller_clients').upsert({
-                        reseller_id: resellerCompanyId,
-                        client_company_id: mem.account_id,
-                        status: 'ACTIVE',
-                        access_level: 'FULL'
-                    }, { onConflict: 'reseller_id,client_company_id' });
+                const clientIds: string[] = (memberships || [])
+                    .map((m: any) => m.account_id)
+                    .filter((id: string) => id !== resellerCompanyId);
 
-                    if (!linkError) {
-                        await adminClient.from('companies').update({ reseller_id: resellerCompanyId }).eq('id', mem.account_id);
-                        syncedCount++;
+                let syncedCount = 0;
+                if (clientIds.length > 0) {
+                    const resellerRows = clientIds.map((cid: string) => ({
+                        reseller_id: resellerCompanyId,
+                        client_company_id: cid,
+                        status: 'ACTIVE',
+                        access_level: 'FULL',
+                    }));
+
+                    const { error: batchLinkErr } = await adminClient
+                        .from('reseller_clients')
+                        .upsert(resellerRows, { onConflict: 'reseller_id,client_company_id' });
+
+                    if (!batchLinkErr) {
+                        await adminClient
+                            .from('companies')
+                            .update({ reseller_id: resellerCompanyId })
+                            .in('id', clientIds);
+                        syncedCount = clientIds.length;
                     }
                 }
 
@@ -775,17 +797,21 @@ serve(async (req: Request) => {
                     { count: activeTenants },
                     { count: pendingApprovals },
                     { count: totalEmployees },
-                    { data: activeCompanies }
+                    { data: activeSubs }
                 ] = await Promise.all([
                     adminClient.from('companies').select('*', { count: 'exact', head: true }),
                     adminClient.from('companies').select('*', { count: 'exact', head: true }).eq('status', 'ACTIVE'),
                     adminClient.from('companies').select('*', { count: 'exact', head: true }).in('status', ['PENDING_PAYMENT', 'PENDING_APPROVAL']),
                     adminClient.from('employees').select('*', { count: 'exact', head: true }),
-                    adminClient.from('companies').select('settings').eq('status', 'ACTIVE')
+                    adminClient.from('subscriptions').select('billing_frequency, amount').eq('status', 'active'),
                 ]);
 
-                // Sum up MRR from settings
-                const totalMRR = (activeCompanies || []).reduce((sum: number, c: any) => sum + (c.settings?.mrr || 0), 0);
+                // Compute MRR from subscriptions table (authoritative source, not settings cache)
+                const totalMRR = (activeSubs || []).reduce((sum: number, s: any) => {
+                    if (s.billing_frequency === 'monthly') return sum + Number(s.amount || 0);
+                    if (s.billing_frequency === 'yearly') return sum + Number(s.amount || 0) / 12;
+                    return sum;
+                }, 0);
 
                 return new Response(JSON.stringify({
                     totalTenants: totalTenants || 0,
@@ -820,7 +846,7 @@ serve(async (req: Request) => {
 
             case 'get-all-payments': {
                 if (!authUser) throw new Error('Unauthorized');
-                
+
                 // Simple role check for Super Admin
                 const { data: profile } = await adminClient.from('app_users').select('role').eq('id', authUser.id).maybeSingle();
                 if (profile?.role?.toUpperCase() !== 'SUPER_ADMIN') {
@@ -837,6 +863,79 @@ serve(async (req: Request) => {
                 return new Response(JSON.stringify({ payments: data }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });
+            }
+
+            case 'get-billing-stats': {
+                if (!authUser) throw new Error('Unauthorized');
+                const { data: profile } = await adminClient.from('app_users').select('role').eq('id', authUser.id).maybeSingle();
+                if (profile?.role?.toUpperCase() !== 'SUPER_ADMIN') {
+                    throw new Error('Unauthorized: Super Admin required');
+                }
+
+                const { filter = 'all' } = payload || {};
+
+                // Date cutoff for payment history window
+                const now = new Date();
+                let cutoffDate: string | null = null;
+                if (filter === 'month') cutoffDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+                else if (filter === 'quarter') cutoffDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString();
+                else if (filter === 'year') cutoffDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000).toISOString();
+
+                let paymentsQuery = adminClient
+                    .from('payment_history')
+                    .select('amount, payment_date')
+                    .eq('status', 'completed')
+                    .order('payment_date', { ascending: true });
+
+                if (cutoffDate) paymentsQuery = paymentsQuery.gte('payment_date', cutoffDate);
+
+                const [subsResult, paymentsResult] = await Promise.all([
+                    adminClient.from('subscriptions').select('status, billing_frequency, amount'),
+                    paymentsQuery,
+                ]);
+
+                if (subsResult.error) throw subsResult.error;
+                if (paymentsResult.error) throw paymentsResult.error;
+
+                const subs = subsResult.data || [];
+                const payments = paymentsResult.data || [];
+                const activeSubs = subs.filter((s: any) => s.status === 'active');
+
+                const mrr = activeSubs.reduce((sum: number, s: any) => {
+                    if (s.billing_frequency === 'monthly') return sum + Number(s.amount || 0);
+                    if (s.billing_frequency === 'yearly') return sum + Number(s.amount || 0) / 12;
+                    return sum;
+                }, 0);
+
+                const monthlyRevenue: Record<string, number> = {};
+                let totalRevenue = 0;
+                for (const p of payments) {
+                    const amount = Number((p as any).amount || 0);
+                    totalRevenue += amount;
+                    const monthKey = new Date((p as any).payment_date).toLocaleDateString('en-US', { month: 'short' });
+                    monthlyRevenue[monthKey] = (monthlyRevenue[monthKey] || 0) + amount;
+                }
+
+                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                const currentMonth = new Date().getMonth();
+                const lookBackMonths = (filter === 'year' || filter === 'all') ? 12 : 6;
+                const revenueData = [];
+                for (let i = lookBackMonths - 1; i >= 0; i--) {
+                    const monthName = months[(currentMonth - i + 12) % 12];
+                    revenueData.push({ name: monthName, revenue: monthlyRevenue[monthName] || 0 });
+                }
+
+                return new Response(JSON.stringify({
+                    billingStats: {
+                        totalRevenue,
+                        monthlyRecurringRevenue: mrr,
+                        annualRecurringRevenue: mrr * 12,
+                        totalSubscriptions: subs.length,
+                        activeSubscriptions: activeSubs.length,
+                        totalPayments: payments.length,
+                    },
+                    revenueData,
+                }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
             }
 
             case 'get-all-super-admins': {

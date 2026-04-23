@@ -84,19 +84,6 @@ const isSchemaMismatchError = (error: { message?: string; details?: string; hint
     || message.includes('schema cache');
 };
 
-const getMissingColumnFromError = (error: { message?: string; details?: string; hint?: string }) => {
-  const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
-  
-  const matchPostgrest = message.match(/could not find the ['"]?([^'"]+)['"]?/i);
-  if (matchPostgrest?.[1]) return matchPostgrest[1];
-
-  const matchPostgres = message.match(/column ['"]?([^'"]+)['"]? (?:of relation|does not exist|in)/i);
-  if (matchPostgres?.[1]) return matchPostgres[1];
-
-  console.error('getMissingColumnFromError: Failed to parse missing column from:', message, error);
-  return null;
-};
-
 const mutateEmployeeRow = async (
   client: ReturnType<typeof requireSupabase>,
   payload: Record<string, any>,
@@ -118,37 +105,41 @@ const mutateEmployeeRow = async (
   }
 };
 
-const mutateEmployeeRowWithSchemaFallback = async (
-  client: ReturnType<typeof requireSupabase>,
-  payload: Record<string, any>,
-  companyId: string,
-  employeeId: string,
-  mode: EmployeeSaveMode,
-) => {
-  const nextPayload = { ...payload };
+const buildEmployeePayload = (emp: Employee, companyId: string, mode: EmployeeSaveMode) => {
+  const normalizedCustomDeductions = normalizeCustomDeductions(emp.customDeductions);
+  const normalizedSimpleDeductions = normalizeSimpleDeductions(emp.deductions);
+  const persistedDeductions = normalizedCustomDeductions.length > 0
+    ? normalizedCustomDeductions
+    : normalizedSimpleDeductions;
 
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    const result = await mutateEmployeeRow(client, nextPayload, companyId, employeeId, mode);
-    if (!result.error) return result;
-
-    if (!isSchemaMismatchError(result.error)) {
-      return result;
-    }
-
-    const missingColumn = getMissingColumnFromError(result.error);
-    if (!missingColumn || !(missingColumn in nextPayload)) {
-      console.error('Fallback loop aborting on matching schema error:', { missingColumn, error: result.error, payloadKeys: Object.keys(nextPayload) });
-      return result;
-    }
-
-    delete nextPayload[missingColumn];
-  }
-
-  const finalResult = await mutateEmployeeRow(client, nextPayload, companyId, employeeId, mode);
-  if (finalResult.error) {
-    console.error('Final attempt failed:', finalResult.error);
-  }
-  return finalResult;
+  return {
+    ...(mode === 'update' ? {} : { id: emp.id, company_id: companyId }),
+    first_name: emp.firstName,
+    last_name: emp.lastName,
+    email: emp.email,
+    trn: emp.trn,
+    nis: emp.nis,
+    employee_id: emp.employeeId || null,
+    role: emp.role,
+    status: emp.status,
+    hire_date: emp.hireDate,
+    joining_date: emp.joiningDate || emp.hireDate,
+    job_title: emp.jobTitle || null,
+    department: emp.department || null,
+    phone: emp.phone || null,
+    address: emp.address || null,
+    emergency_contact: emp.emergencyContact || null,
+    gross_salary: emp.grossSalary,
+    hourly_rate: emp.hourlyRate ?? null,
+    pay_type: emp.payType,
+    pay_frequency: emp.payFrequency,
+    bank_details: emp.bankDetails || null,
+    leave_balance: emp.leaveBalance || null,
+    allowances: emp.allowances || [],
+    custom_deductions: persistedDeductions,
+    termination_details: emp.terminationDetails || null,
+    onboarding_token: emp.onboardingToken || null
+  };
 };
 
 
@@ -167,18 +158,6 @@ export const EmployeeService = {
     if (error || !data) return null;
     const row = data as DbAppUserRow;
     return {
-<<<<<<< HEAD
-      id: data.id,
-      name: data.name,
-      email: data.email,
-      role: data.role as any,
-      companyId: data.company_id,
-      isOnboarded: data.is_onboarded,
-      avatarUrl: data.avatar_url,
-      phone: data.phone,
-      onboardingToken: data.onboarding_token
-    } as any;
-=======
       id: row.id,
       name: row.name,
       email: row.email,
@@ -189,7 +168,6 @@ export const EmployeeService = {
       phone: row.phone ?? undefined,
       onboardingToken: row.onboarding_token ?? undefined
     };
->>>>>>> 0a6b81cb09aa2a5587c7387200103601a1de60b4
   },
 
   saveUser: async (user: User) => {
@@ -287,110 +265,16 @@ export const EmployeeService = {
 
   saveEmployee: async (emp: Employee, companyId: string, mode: EmployeeSaveMode = 'upsert') => {
     const client = requireSupabase();
+    const payload = buildEmployeePayload(emp, companyId, mode);
+    const { error } = await mutateEmployeeRow(client, payload, companyId, emp.id, mode);
 
-    const payData = {
-      grossSalary: emp.grossSalary,
-      hourlyRate: emp.hourlyRate,
-      payType: emp.payType,
-      payFrequency: emp.payFrequency
-    };
-
-    const normalizedCustomDeductions = normalizeCustomDeductions(emp.customDeductions);
-    const normalizedSimpleDeductions = normalizeSimpleDeductions(emp.deductions);
-    const persistedDeductions = (normalizedCustomDeductions.length > 0)
-      ? normalizedCustomDeductions
-      : normalizedSimpleDeductions;
-
-    const basePayload: Record<string, any> = {
-      ...(mode === 'update' ? {} : { id: emp.id, company_id: companyId }),
-      first_name: emp.firstName,
-      last_name: emp.lastName,
-      email: emp.email,
-      trn: emp.trn,
-      nis: emp.nis,
-      phone: emp.phone || null,
-      address: emp.address || null,
-      role: emp.role,
-      status: emp.status,
-      hire_date: emp.hireDate,
-      joining_date: emp.joiningDate || emp.hireDate,
-      job_title: emp.jobTitle || null,
-      department: emp.department || null,
-      emergency_contact: emp.emergencyContact || null,
-      bank_details: emp.bankDetails || null,
-      leave_balance: emp.leaveBalance || null,
-      allowances: emp.allowances || [],
-      termination_details: emp.terminationDetails || null,
-      onboarding_token: emp.onboardingToken || null
-    };
-
-    const compatibilityPayload: Record<string, any> = {
-      ...(mode === 'update' ? {} : { id: emp.id, company_id: companyId }),
-      first_name: emp.firstName,
-      last_name: emp.lastName,
-      email: emp.email,
-      trn: emp.trn,
-      nis: emp.nis,
-      role: emp.role,
-      status: emp.status,
-      hire_date: emp.hireDate,
-      job_title: emp.jobTitle || null,
-      department: emp.department || null,
-      gross_salary: emp.grossSalary,
-      hourly_rate: emp.hourlyRate ?? null,
-      pay_type: emp.payType,
-      pay_frequency: emp.payFrequency
-    };
-
-    const attemptLegacy = {
-      ...basePayload,
-      employee_id: emp.employeeId || null,
-      gross_salary: emp.grossSalary,
-      hourly_rate: emp.hourlyRate ?? null,
-      pay_type: emp.payType,
-      pay_frequency: emp.payFrequency,
-      custom_deductions: persistedDeductions
-    };
-
-    const { error: legacyError } = await mutateEmployeeRowWithSchemaFallback(client, attemptLegacy, companyId, emp.id, mode);
-    if (!legacyError) return;
-
-    if (!isSchemaMismatchError(legacyError)) {
-      throw legacyError;
-    }
-
-    const attemptNew = {
-      ...basePayload,
-      employee_number: emp.employeeId || null,
-      pay_data: payData,
-      deductions: persistedDeductions
-    };
-
-    const compatibilityNew = {
-      ...compatibilityPayload,
-      pay_data: payData
-    };
-
-    if (mode === 'update') {
-      const updateCandidates = [attemptLegacy, compatibilityPayload, attemptNew, compatibilityNew];
-      let lastError: any = null;
-
-      for (const candidate of updateCandidates) {
-        const { error } = await mutateEmployeeRowWithSchemaFallback(client, candidate, companyId, emp.id, mode);
-        if (!error) return;
-        lastError = error;
+    if (error) {
+      if (isSchemaMismatchError(error)) {
+        throw new Error(`Employee save failed because the employees table is missing expected columns. Apply the latest employee migrations and retry. Original error: ${error.message}`);
       }
 
-      if (lastError) {
-        console.error('Final Supabase Employee Save Error (Update mode exhausted):', lastError);
-      }
-      throw lastError;
-    }
-
-    const { error: newError } = await mutateEmployeeRowWithSchemaFallback(client, attemptNew, companyId, emp.id, mode);
-    if (newError) {
-      console.error('Final Supabase Employee Save Error:', newError);
-      throw newError;
+      console.error('Supabase employee save failed:', error);
+      throw error;
     }
   },
 

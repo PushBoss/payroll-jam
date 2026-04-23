@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Dispatch, SetStateAction, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { PayRun as PayRunType, User, WeeklyTimesheet } from '../../core/types';
 import { storage } from '../../services/storage';
@@ -11,15 +11,43 @@ interface UsePayrollDataArgs {
 
 export const usePayrollData = ({ user, isSupabaseMode }: UsePayrollDataArgs) => {
   const [payRunHistory, setPayRunHistory] = useState<PayRunType[]>(storage.getPayRuns() || []);
-  const [timesheets, setTimesheets] = useState<WeeklyTimesheet[]>(storage.getTimesheets() || []);
+  const [timesheets, setTimesheetsState] = useState<WeeklyTimesheet[]>(storage.getTimesheets() || []);
+  const timesheetsRef = useRef(timesheets);
 
   useEffect(() => {
     storage.savePayRuns(payRunHistory);
   }, [payRunHistory]);
 
   useEffect(() => {
+    timesheetsRef.current = timesheets;
+  }, [timesheets]);
+
+  useEffect(() => {
     storage.saveTimesheets(timesheets);
   }, [timesheets]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadTimesheets = async () => {
+      if (!isSupabaseMode || !user?.companyId) return;
+
+      try {
+        const dbTimesheets = await PayrollService.getTimesheets(user.companyId);
+        if (!isMounted) return;
+        timesheetsRef.current = dbTimesheets;
+        setTimesheetsState(dbTimesheets);
+      } catch (error) {
+        console.error('Failed to load timesheets from Supabase:', error);
+      }
+    };
+
+    void loadTimesheets();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isSupabaseMode, user?.companyId]);
 
   const upsertPayRunLocally = (runs: PayRunType[], run: PayRunType) => {
     const existingIndex = runs.findIndex((savedRun) => savedRun.id === run.id);
@@ -29,6 +57,38 @@ export const usePayrollData = ({ user, isSupabaseMode }: UsePayrollDataArgs) => 
       return updated;
     }
     return [run, ...runs];
+  };
+
+  const persistTimesheetChanges = async (previous: WeeklyTimesheet[], next: WeeklyTimesheet[]) => {
+    if (!isSupabaseMode || !user?.companyId) return;
+
+    const changedTimesheets = next.filter((timesheet) => {
+      const previousTimesheet = previous.find((item) => item.id === timesheet.id);
+      return !previousTimesheet || JSON.stringify(previousTimesheet) !== JSON.stringify(timesheet);
+    });
+
+    if (changedTimesheets.length === 0) return;
+
+    await Promise.all(changedTimesheets.map((timesheet) => PayrollService.saveTimesheet(timesheet, user.companyId!)));
+  };
+
+  const setTimesheets: Dispatch<SetStateAction<WeeklyTimesheet[]>> = (update) => {
+    const previous = timesheetsRef.current;
+    const next = typeof update === 'function'
+      ? (update as (prevState: WeeklyTimesheet[]) => WeeklyTimesheet[])(previous)
+      : update;
+
+    timesheetsRef.current = next;
+    setTimesheetsState(next);
+
+    if (isSupabaseMode && user?.companyId) {
+      void persistTimesheetChanges(previous, next).catch((error: any) => {
+        console.error('Failed to persist timesheet changes:', error);
+        timesheetsRef.current = previous;
+        setTimesheetsState(previous);
+        toast.error(error?.message || 'Failed to save timesheet changes to the database.');
+      });
+    }
   };
 
   const handleSavePayRun = async (run: PayRunType): Promise<boolean> => {

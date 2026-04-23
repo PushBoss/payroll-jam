@@ -1,10 +1,6 @@
 import { supabase } from '../../services/supabaseClient';
 import { emailService } from '../../services/emailService';
-<<<<<<< HEAD
-=======
 import { buildAppUrl } from '../../app/routes';
-
->>>>>>> 0a6b81cb09aa2a5587c7387200103601a1de60b4
 
 export type MemberRole = 'OWNER' | 'ADMIN' | 'MANAGER' | 'EMPLOYEE' | 'RESELLER' | 'owner' | 'admin' | 'manager' | 'employee' | 'reseller';
 
@@ -368,13 +364,8 @@ export async function getPendingInvitationsByEmail(
 
         if (invite.inviter && Array.isArray(invite.inviter) && invite.inviter.length > 0) {
           const ownerId = invite.inviter[0].owner_id;
-<<<<<<< HEAD
-          if (ownerId) {
-            const { data: inviterUser } = await client
-=======
           if (ownerId && supabase) {
-            const { data: inviterUser } = await supabase
->>>>>>> 0a6b81cb09aa2a5587c7387200103601a1de60b4
+            const { data: inviterUser } = await client
               .from('app_users')
               .select('name')
               .eq('id', ownerId)

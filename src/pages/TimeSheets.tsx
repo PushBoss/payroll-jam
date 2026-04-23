@@ -4,7 +4,7 @@ import { WeeklyTimesheet } from '../core/types';
 
 interface TimeSheetsProps {
   timesheets?: WeeklyTimesheet[];
-  onUpdate?: (ts: WeeklyTimesheet) => void;
+  onUpdate?: (ts: WeeklyTimesheet) => void | Promise<void>;
 }
 
 export const TimeSheets: React.FC<TimeSheetsProps> = ({ 

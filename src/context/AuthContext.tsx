@@ -66,6 +66,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   useEffect(() => {
     let isMounted = true;
+    let authSubscription: { unsubscribe: () => void } | null = null;
 
     // Check for existing Supabase session
     const initAuth = async () => {
@@ -157,14 +158,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     };
 
-    initAuth();
-
-    return () => {
-      isMounted = false;
-    };
-
     // Listen for auth changes
-    let authSubscription: any = null;
     if (supabase) {
       const { data: { subscription } } = supabase!.auth.onAuthStateChange(async (event, session) => {
         if (!isMounted) return;
@@ -216,6 +210,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       authSubscription = subscription;
     }
+
+    void initAuth();
 
     return () => {
       isMounted = false;

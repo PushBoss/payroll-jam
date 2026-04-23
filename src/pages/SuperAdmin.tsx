@@ -37,9 +37,9 @@ const DEFAULT_PAYMENT_CONFIG: GlobalConfig = {
         enabled: true,
         environment: 'sandbox',
         sandbox: {
-            apiKey: 'ck_LGKMlNpFiRr63ce0s621VuGLjYdey',
-            secretKey: 'sk_rYoMG45jVM2gvhE-pm4to9EZoW9tD',
-            merchantId: 'mQn_iBSUd-KNq3K',
+            apiKey: '',
+            secretKey: '',
+            merchantId: '',
             domain: 'https://staging.api.dimepay.app'
         },
         production: {
@@ -81,6 +81,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
 
     // Payment Settings State
     const [paymentConfig, setPaymentConfig] = useState<GlobalConfig>(() => storage.getGlobalConfig() || DEFAULT_PAYMENT_CONFIG);
+    const [hasLoadedGlobalConfig, setHasLoadedGlobalConfig] = useState(false);
 
     // Sync with prop if provided
     useEffect(() => {
@@ -174,19 +175,18 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 }
             } catch (e) {
                 console.error("Error loading global config from Supabase:", e);
+            } finally {
+                setHasLoadedGlobalConfig(true);
             }
         };
         loadGlobalConfig();
     }, []);
 
-    // Save global config to both localStorage and Supabase
+    // Keep local cache in sync, but only persist to Supabase from the explicit save action.
     useEffect(() => {
+        if (!hasLoadedGlobalConfig) return;
         storage.saveGlobalConfig(paymentConfig);
-        // Also save to Supabase
-        CompanyService.saveGlobalConfig(paymentConfig).catch(e => {
-            console.error("Error saving global config to Supabase:", e);
-        });
-    }, [paymentConfig]);
+    }, [hasLoadedGlobalConfig, paymentConfig]);
     useEffect(() => { storage.saveSuperAdmins(admins); }, [admins]);
     useEffect(() => {
         const loadLogs = async () => {

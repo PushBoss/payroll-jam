@@ -2,23 +2,25 @@
 import React, { useState, useEffect } from 'react';
 import { Icons } from './Icons';
 
+const CONSENT_KEY = 'payroll_jam_cookie_consent';
+
 export const CookieConsent: React.FC = () => {
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
-    const consent = localStorage.getItem('payroll_jam_cookie_consent');
+    const consent = localStorage.getItem(CONSENT_KEY);
     if (!consent) {
       setIsVisible(true);
     }
   }, []);
 
   const handleAccept = () => {
-    localStorage.setItem('payroll_jam_cookie_consent', 'true');
+    localStorage.setItem(CONSENT_KEY, 'true');
     setIsVisible(false);
   };
 
   const handleDecline = () => {
-    localStorage.setItem('payroll_jam_cookie_consent', 'false');
+    localStorage.setItem(CONSENT_KEY, 'false');
     setIsVisible(false);
   };
 

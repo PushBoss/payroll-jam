@@ -142,13 +142,13 @@ export const Reports: React.FC<ReportsProps> = ({
       });
 
       if (filteredRuns.length === 0) {
-        alert(`No payroll data found for ${new Date(year, month - 1).toLocaleString('default', { month: 'long', year: 'numeric' })}`);
+        toast.error(`No payroll data found for ${new Date(year, month - 1).toLocaleString('default', { month: 'long', year: 'numeric' })}`);
         return;
       }
 
       generateS01CSV(companyData, filteredRuns);
     } else {
-      alert("No data available to generate S01.");
+      toast.error("No data available to generate S01.");
     }
   };
 
@@ -174,7 +174,7 @@ export const Reports: React.FC<ReportsProps> = ({
     if (companyData && displayHistory.length > 0) {
       generateS02CSV(companyData, displayHistory);
     } else {
-      alert("No data available to generate S02.");
+      toast.error("No data available to generate S02.");
     }
   };
 
@@ -644,3 +644,4 @@ export const Reports: React.FC<ReportsProps> = ({
     </div>
   );
 };
+   
