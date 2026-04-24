@@ -1345,7 +1345,7 @@ export const Settings: React.FC<SettingsProps> = ({
             {activeTab === 'users' && (() => {
                 // Use account.id if available, fallback to currentUser.id for invitations
                 // The account record will be created via trigger or manually if needed
-                const accountId = account?.id || currentUser?.id;
+                const accountId = account?.id || currentUser?.companyId;
 
                 if (!accountId) {
                     return (
