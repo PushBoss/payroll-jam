@@ -261,16 +261,10 @@ export const calculateProration = (
 
   if (totalWorkDays === 0) return { amount: fullSalary, isProrated: false, daysWorked: 0, totalWorkDays: 0 };
 
-  // Calculate standard working days for a full month (22 days)
-  const standardMonthWorkDays = 22;
-
-  // If the actual period is shorter than standard, pro-rate based on period length
-  // AND also account for new hires within the period
-  const periodIsShort = totalWorkDays < standardMonthWorkDays;
-  const isNewHireInPeriod = hired > start;
-
-  if (periodIsShort || isNewHireInPeriod) {
-    const amount = (fullSalary / standardMonthWorkDays) * daysWorked;
+  // Only prorate if the employee hasn't worked the full period
+  if (daysWorked < totalWorkDays) {
+    // Pro-rate based on the actual working days in this specific period
+    const amount = (fullSalary / totalWorkDays) * daysWorked;
     return {
       amount: parseFloat(amount.toFixed(2)),
       isProrated: true,
@@ -279,6 +273,6 @@ export const calculateProration = (
     };
   }
 
-  // Employee was hired before period start AND period is full length
-  return { amount: fullSalary, isProrated: false, daysWorked: 0, totalWorkDays: 0 };
+  // Employee worked the full length of this period
+  return { amount: fullSalary, isProrated: false, daysWorked: totalWorkDays, totalWorkDays };
 };

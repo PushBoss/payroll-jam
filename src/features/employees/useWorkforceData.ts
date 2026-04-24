@@ -15,9 +15,10 @@ export interface EmployeeAccountSetupState {
 interface UseWorkforceDataArgs {
   user: User | null;
   isSupabaseMode: boolean;
+  activeCompanyId?: string;
 }
 
-export const useWorkforceData = ({ user, isSupabaseMode }: UseWorkforceDataArgs) => {
+export const useWorkforceData = ({ user, isSupabaseMode, activeCompanyId }: UseWorkforceDataArgs) => {
   const [employees, setEmployees] = useState<Employee[]>(storage.getEmployees() || []);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(storage.getLeaveRequests() || []);
   const [assets, setAssets] = useState<Asset[]>(storage.getAssets() || []);
@@ -52,11 +53,12 @@ export const useWorkforceData = ({ user, isSupabaseMode }: UseWorkforceDataArgs)
       return [...prev, employee];
     });
 
-    if (!isSupabaseMode || !user?.companyId) return true;
+    const targetCompanyId = activeCompanyId || user?.companyId;
+    if (!isSupabaseMode || !targetCompanyId) return true;
 
     try {
-      await EmployeeService.saveEmployee(employee, user.companyId, 'insert');
-      const freshEmployees = await EmployeeService.getEmployees(user.companyId);
+      await EmployeeService.saveEmployee(employee, targetCompanyId, 'insert');
+      const freshEmployees = await EmployeeService.getEmployees(targetCompanyId);
       setEmployees(freshEmployees);
       return true;
     } catch (error: any) {
@@ -74,11 +76,12 @@ export const useWorkforceData = ({ user, isSupabaseMode }: UseWorkforceDataArgs)
       return prev.map((existing) => (existing.id === employee.id ? employee : existing));
     });
 
-    if (!isSupabaseMode || !user?.companyId) return true;
+    const targetCompanyId = activeCompanyId || user?.companyId;
+    if (!isSupabaseMode || !targetCompanyId) return true;
 
     try {
-      await EmployeeService.saveEmployee(employee, user.companyId, 'update');
-      const freshEmployees = await EmployeeService.getEmployees(user.companyId);
+      await EmployeeService.saveEmployee(employee, targetCompanyId, 'update');
+      const freshEmployees = await EmployeeService.getEmployees(targetCompanyId);
       setEmployees(freshEmployees);
       return true;
     } catch (error: any) {
@@ -91,9 +94,10 @@ export const useWorkforceData = ({ user, isSupabaseMode }: UseWorkforceDataArgs)
 
   const handleDeleteEmployee = async (employeeId: string) => {
     setEmployees((prev) => prev.filter((employee) => employee.id !== employeeId));
-    if (isSupabaseMode && user?.companyId) {
+    const targetCompanyId = activeCompanyId || user?.companyId;
+    if (isSupabaseMode && targetCompanyId) {
       try {
-        await EmployeeService.deleteEmployee(employeeId, user.companyId);
+        await EmployeeService.deleteEmployee(employeeId, targetCompanyId);
       } catch (error) {
         console.error('Error deleting employee from Supabase:', error);
         toast.error('Failed to delete employee from database.');
@@ -103,8 +107,9 @@ export const useWorkforceData = ({ user, isSupabaseMode }: UseWorkforceDataArgs)
 
   const handleSaveLeaveRequest = async (request: LeaveRequest) => {
     setLeaveRequests((prev) => [request, ...prev]);
-    if (isSupabaseMode && user?.companyId) {
-      await EmployeeService.saveLeaveRequest(request, user.companyId);
+    const targetCompanyId = activeCompanyId || user?.companyId;
+    if (isSupabaseMode && targetCompanyId) {
+      await EmployeeService.saveLeaveRequest(request, targetCompanyId);
     }
   };
 
@@ -114,10 +119,11 @@ export const useWorkforceData = ({ user, isSupabaseMode }: UseWorkforceDataArgs)
     );
     setLeaveRequests(updated);
 
-    if (isSupabaseMode && user?.companyId) {
+    const targetCompanyId = activeCompanyId || user?.companyId;
+    if (isSupabaseMode && targetCompanyId) {
       const target = updated.find((request) => request.id === id);
       if (target) {
-        await EmployeeService.saveLeaveRequest(target, user.companyId);
+        await EmployeeService.saveLeaveRequest(target, targetCompanyId);
       }
     }
   };
@@ -136,8 +142,8 @@ export const useWorkforceData = ({ user, isSupabaseMode }: UseWorkforceDataArgs)
         }
       }
 
-      if (!finalCompanyId && user?.companyId) {
-        finalCompanyId = user.companyId;
+      if (!finalCompanyId && (activeCompanyId || user?.companyId)) {
+        finalCompanyId = activeCompanyId || user?.companyId || '';
       }
 
       if (!finalCompanyId) {

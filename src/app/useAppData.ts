@@ -59,11 +59,13 @@ export const useAppData = ({ user, updateUser, impersonate, navigateTo }: UseApp
   const workforce = useWorkforceData({
     user,
     isSupabaseMode,
+    activeCompanyId: companyData?.id,
   });
 
   const payroll = usePayrollData({
     user,
     isSupabaseMode,
+    activeCompanyId: companyData?.id,
   });
 
   const {

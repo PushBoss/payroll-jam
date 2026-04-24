@@ -311,73 +311,27 @@ export const EmployeeService = {
       onboarding_token: emp.onboardingToken || null
     };
 
-    const compatibilityPayload: Record<string, any> = {
-      ...(mode === 'update' ? {} : { id: emp.id, company_id: companyId }),
-      first_name: emp.firstName,
-      last_name: emp.lastName,
-      email: emp.email,
-      trn: emp.trn,
-      nis: emp.nis,
-      role: emp.role,
-      status: emp.status,
-      hire_date: emp.hireDate,
-      job_title: emp.jobTitle || null,
-      department: emp.department || null,
-      gross_salary: emp.grossSalary,
-      hourly_rate: emp.hourlyRate ?? null,
-      pay_type: emp.payType,
-      pay_frequency: emp.payFrequency
-    };
-
-    const attemptLegacy = {
+    const comprehensivePayload: Record<string, any> = {
       ...basePayload,
-      employee_id: emp.employeeId || null,
+      // Legacy individual columns
       gross_salary: emp.grossSalary,
       hourly_rate: emp.hourlyRate ?? null,
       pay_type: emp.payType,
       pay_frequency: emp.payFrequency,
-      custom_deductions: persistedDeductions
-    };
-
-    const { error: legacyError } = await mutateEmployeeRowWithSchemaFallback(client, attemptLegacy, companyId, emp.id, mode);
-    if (!legacyError) return;
-
-    if (!isSchemaMismatchError(legacyError)) {
-      throw legacyError;
-    }
-
-    const attemptNew = {
-      ...basePayload,
-      employee_number: emp.employeeId || null,
+      // JSONB unified columns
       pay_data: payData,
-      deductions: persistedDeductions
+      // Handle the deduction column renaming
+      custom_deductions: persistedDeductions,
+      deductions: persistedDeductions,
+      // Handle the employee ID column renaming
+      employee_id: emp.employeeId || null,
+      employee_number: emp.employeeId || null
     };
 
-    const compatibilityNew = {
-      ...compatibilityPayload,
-      pay_data: payData
-    };
-
-    if (mode === 'update') {
-      const updateCandidates = [attemptLegacy, compatibilityPayload, attemptNew, compatibilityNew];
-      let lastError: any = null;
-
-      for (const candidate of updateCandidates) {
-        const { error } = await mutateEmployeeRowWithSchemaFallback(client, candidate, companyId, emp.id, mode);
-        if (!error) return;
-        lastError = error;
-      }
-
-      if (lastError) {
-        console.error('Final Supabase Employee Save Error (Update mode exhausted):', lastError);
-      }
-      throw lastError;
-    }
-
-    const { error: newError } = await mutateEmployeeRowWithSchemaFallback(client, attemptNew, companyId, emp.id, mode);
-    if (newError) {
-      console.error('Final Supabase Employee Save Error:', newError);
-      throw newError;
+    const { error } = await mutateEmployeeRowWithSchemaFallback(client, comprehensivePayload, companyId, emp.id, mode);
+    if (error) {
+      console.error('Final Supabase Employee Save Error:', error);
+      throw error;
     }
   },
 

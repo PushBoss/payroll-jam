@@ -7,9 +7,10 @@ import { PayrollService } from '../../services/PayrollService';
 interface UsePayrollDataArgs {
   user: User | null;
   isSupabaseMode: boolean;
+  activeCompanyId?: string;
 }
 
-export const usePayrollData = ({ user, isSupabaseMode }: UsePayrollDataArgs) => {
+export const usePayrollData = ({ user, isSupabaseMode, activeCompanyId }: UsePayrollDataArgs) => {
   const [payRunHistory, setPayRunHistory] = useState<PayRunType[]>(storage.getPayRuns() || []);
   const [timesheets, setTimesheets] = useState<WeeklyTimesheet[]>(storage.getTimesheets() || []);
 
@@ -32,9 +33,10 @@ export const usePayrollData = ({ user, isSupabaseMode }: UsePayrollDataArgs) => 
   };
 
   const handleSavePayRun = async (run: PayRunType): Promise<boolean> => {
-    if (isSupabaseMode && user?.companyId) {
+    const targetCompanyId = activeCompanyId || user?.companyId;
+    if (isSupabaseMode && targetCompanyId) {
       try {
-        await PayrollService.savePayRun(run, user.companyId);
+        await PayrollService.savePayRun(run, targetCompanyId);
         setPayRunHistory((prev) => upsertPayRunLocally(prev, run));
         return true;
       } catch (error: any) {
@@ -50,10 +52,11 @@ export const usePayrollData = ({ user, isSupabaseMode }: UsePayrollDataArgs) => 
   };
 
   const handleDeletePayRun = async (runId: string) => {
-    if (!isSupabaseMode || !user?.companyId) return;
+    const targetCompanyId = activeCompanyId || user?.companyId;
+    if (!isSupabaseMode || !targetCompanyId) return;
 
     try {
-      const deleted = await PayrollService.deletePayRun(runId, user.companyId);
+      const deleted = await PayrollService.deletePayRun(runId, targetCompanyId);
       if (deleted) {
         setPayRunHistory((prev) => prev.filter((run) => run.id !== runId));
         toast.success('Pay run deleted');
