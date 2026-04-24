@@ -220,15 +220,11 @@ export const VerifyEmail: React.FC<VerifyEmailProps> = ({ email, onLoginClick, o
         <div className="mt-8 text-center">
           <p className="text-xs text-gray-500">
             Need help?{' '}
-<<<<<<< HEAD
-            <a href={SUPPORT_MAILTO} className="text-jam-orange hover:underline font-medium">
-=======
             <button
               type="button"
               onClick={onContactSupport}
               className="text-jam-orange hover:underline font-medium"
             >
->>>>>>> 0a6b81cb09aa2a5587c7387200103601a1de60b4
               Contact Support
             </button>
           </p>

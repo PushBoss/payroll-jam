@@ -2,12 +2,7 @@
 import React, { useState } from 'react';
 import { Icons } from '../components/Icons';
 import { Footer } from '../components/Footer';
-<<<<<<< HEAD
-import { BetaBanner } from '../components/BetaBanner';
-import { SUPPORT_MAILTO } from '../constants/support';
-=======
 import { PublicHeader } from '../components/PublicHeader';
->>>>>>> 0a6b81cb09aa2a5587c7387200103601a1de60b4
 
 interface FAQProps {
   onSignup: () => void;
@@ -98,41 +93,6 @@ export const FAQ: React.FC<FAQProps> = ({ onSignup, onLogin, onBack, onPricingCl
 
   return (
     <div className="min-h-screen bg-white font-sans text-slate-900">
-<<<<<<< HEAD
-      <div className="fixed inset-x-0 top-0 z-50">
-        <BetaBanner />
-      </div>
-
-      {/* Navigation */}
-      <nav className="fixed top-10 w-full z-40 bg-white/80 backdrop-blur-md border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-20">
-            <button onClick={onBack} className="flex items-center text-2xl font-extrabold text-jam-black tracking-tight hover:opacity-80 transition-opacity">
-              Payroll<span className="text-jam-orange">-Jam</span>
-            </button>
-            <div className="hidden md:flex items-center space-x-8">
-              <button onClick={onFeaturesClick} className="text-gray-600 hover:text-gray-900 font-medium">Features</button>
-              <button onClick={onPricingClick} className="text-gray-600 hover:text-gray-900 font-medium">Pricing</button>
-              <button className="text-jam-orange font-bold">FAQ</button>
-            </div>
-            <div className="flex items-center space-x-4">
-              <button 
-                onClick={onLogin}
-                className="text-gray-900 font-medium hover:text-jam-orange transition-colors"
-              >
-                Log In
-              </button>
-              <button 
-                onClick={onSignup}
-                className="bg-jam-black text-white px-6 py-2.5 rounded-full font-semibold hover:bg-gray-800 transition-all shadow-lg"
-              >
-                Sign Up Free
-              </button>
-            </div>
-          </div>
-        </div>
-      </nav>
-=======
       <PublicHeader
         currentPage="faq"
         onHomeClick={onBack}
@@ -143,7 +103,7 @@ export const FAQ: React.FC<FAQProps> = ({ onSignup, onLogin, onBack, onPricingCl
         onLogin={onLogin}
         onSignup={onSignup}
       />
->>>>>>> 0a6b81cb09aa2a5587c7387200103601a1de60b4
+
 
       {/* Hero */}
       <div className="pt-40 pb-16 bg-gray-50">
@@ -229,17 +189,13 @@ export const FAQ: React.FC<FAQProps> = ({ onSignup, onLogin, onBack, onPricingCl
           <h2 className="text-3xl font-bold mb-6">Still have questions?</h2>
           <p className="text-gray-400 mb-8">Our support team is based in Kingston and ready to assist you.</p>
           <div className="flex flex-col sm:flex-row justify-center space-y-4 sm:space-y-0 sm:space-x-4">
-<<<<<<< HEAD
-            <a href={SUPPORT_MAILTO} className="px-8 py-3 bg-jam-orange text-jam-black font-bold rounded-full hover:bg-yellow-500 transition-colors inline-flex items-center justify-center">
-=======
             <button
               type="button"
               onClick={onContactSupport}
               className="px-8 py-3 bg-jam-orange text-jam-black font-bold rounded-full hover:bg-yellow-500 transition-colors"
             >
->>>>>>> 0a6b81cb09aa2a5587c7387200103601a1de60b4
               Contact Support
-            </a>
+            </button>
             <button onClick={onSignup} className="px-8 py-3 bg-gray-800 text-white font-bold rounded-full hover:bg-gray-700 transition-colors">
               Start Free Trial
             </button>

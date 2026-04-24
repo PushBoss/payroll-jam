@@ -167,18 +167,6 @@ export const EmployeeService = {
     if (error || !data) return null;
     const row = data as DbAppUserRow;
     return {
-<<<<<<< HEAD
-      id: data.id,
-      name: data.name,
-      email: data.email,
-      role: data.role as any,
-      companyId: data.company_id,
-      isOnboarded: data.is_onboarded,
-      avatarUrl: data.avatar_url,
-      phone: data.phone,
-      onboardingToken: data.onboarding_token
-    } as any;
-=======
       id: row.id,
       name: row.name,
       email: row.email,
@@ -189,7 +177,6 @@ export const EmployeeService = {
       phone: row.phone ?? undefined,
       onboardingToken: row.onboarding_token ?? undefined
     };
->>>>>>> 0a6b81cb09aa2a5587c7387200103601a1de60b4
   },
 
   saveUser: async (user: User) => {

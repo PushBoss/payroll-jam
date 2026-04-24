@@ -1,10 +1,6 @@
 import { supabase } from '../../services/supabaseClient';
 import { emailService } from '../../services/emailService';
-<<<<<<< HEAD
-=======
 import { buildAppUrl } from '../../app/routes';
-
->>>>>>> 0a6b81cb09aa2a5587c7387200103601a1de60b4
 
 export type MemberRole = 'OWNER' | 'ADMIN' | 'MANAGER' | 'EMPLOYEE' | 'RESELLER' | 'owner' | 'admin' | 'manager' | 'employee' | 'reseller';
 
@@ -208,35 +204,27 @@ export async function inviteUserToAccount(payload: {
       invitationData.user_id = userId;
     }
 
-    // Use upsert to handle resending invites
-    let { data, error } = await supabase
-      .from('account_members')
-      .upsert(
-        invitationData,
-        {
-          onConflict: 'account_id,email',
-          ignoreDuplicates: false
-        }
-      )
-      .select()
-      .maybeSingle();
+    let data, error;
 
-    // Fallback: If 400 (likely missing constraint) and we have a userId, try account_id,user_id
-    if (error && (error.code === '400' || (error as any).status === 400) && invitationData.user_id) {
-      console.warn('⚠️ account_id+email constraint missing, retrying with user_id...');
-      const { data: fallbackData, error: fallbackError } = await supabase
+    if (existingByEmail) {
+      // Use update instead of upsert to avoid RLS violation on upsert
+      const { data: updateData, error: updateError } = await supabase
         .from('account_members')
-        .upsert(
-          invitationData,
-          {
-            onConflict: 'account_id,user_id',
-            ignoreDuplicates: false
-          }
-        )
+        .update(invitationData)
+        .eq('id', existingByEmail.id)
         .select()
         .maybeSingle();
-      data = fallbackData;
-      error = fallbackError;
+      data = updateData;
+      error = updateError;
+    } else {
+      // Use insert for new invitations
+      const { data: insertData, error: insertError } = await supabase
+        .from('account_members')
+        .insert(invitationData)
+        .select()
+        .maybeSingle();
+      data = insertData;
+      error = insertError;
     }
 
     if (error) {
@@ -368,13 +356,8 @@ export async function getPendingInvitationsByEmail(
 
         if (invite.inviter && Array.isArray(invite.inviter) && invite.inviter.length > 0) {
           const ownerId = invite.inviter[0].owner_id;
-<<<<<<< HEAD
-          if (ownerId) {
-            const { data: inviterUser } = await client
-=======
           if (ownerId && supabase) {
             const { data: inviterUser } = await supabase
->>>>>>> 0a6b81cb09aa2a5587c7387200103601a1de60b4
               .from('app_users')
               .select('name')
               .eq('id', ownerId)
