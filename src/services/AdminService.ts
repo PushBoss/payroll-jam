@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient';
 import { CompanySettings, Employee, PayRun, LeaveRequest, User, toPlanLabel, toRole, toPayType, toPayFrequency } from '../core/types';
+import { normalizePlanToFrontend } from '../utils/planNames';
 import { getEffectiveSubscriptionStatus, toBillingGift } from '../utils/billingGift';
 
 const normalizeDbPeriodToApp = (start: string, end: string): { periodStart: string; periodEnd: string } => {
@@ -55,15 +56,18 @@ export const AdminService = {
         bankName: settings.bankName || 'NCB',
         accountNumber: settings.accountNumber || '',
         branchCode: settings.branchCode || '',
-        plan: toPlanLabel(dbCompany.plan),
+        plan: toPlanLabel(normalizePlanToFrontend(dbCompany.plan)),
         subscriptionStatus: getEffectiveSubscriptionStatus({
           subscriptionStatus: dbCompany.status || 'ACTIVE',
           billingGift,
         }),
+        paymentMethod: settings.paymentMethod,
+        resellerId: dbCompany.reseller_id,
         policies: settings.policies,
+        reseller_defaults: settings.reseller_defaults,
         taxConfig: settings.taxConfig,
-        departments: dbCompany.departments || [],
-        designations: dbCompany.designations || [],
+        departments: settings.departments || dbCompany.departments || [],
+        designations: settings.designations || dbCompany.designations || [],
         billingGift,
       } as CompanySettings : null;
 

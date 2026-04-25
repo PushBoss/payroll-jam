@@ -7,6 +7,7 @@ import { EmployeeService } from '../services/EmployeeService';
 import { PayrollService } from '../services/PayrollService';
 
 const BOOTSTRAP_QUERY_TIMEOUT_MS = 8000;
+const ADMIN_BOOTSTRAP_ROLES = new Set(['OWNER', 'ADMIN']);
 
 const withTimeout = async <T,>(promise: Promise<T>, label: string, timeoutMs = BOOTSTRAP_QUERY_TIMEOUT_MS): Promise<T> => {
   return await Promise.race([
@@ -77,6 +78,28 @@ export const useAppBootstrap = ({
           if (failures.length > 0) {
             console.error('Bootstrap queries failed:', failures.map((failure) => failure.reason));
           }
+
+          const normalizedRole = String(user.role || '').toUpperCase();
+          const canUseAdminFallback = ADMIN_BOOTSTRAP_ROLES.has(normalizedRole);
+          const hasLoadedUsers = Array.isArray(dbUsers) && dbUsers.length > 0;
+          const shouldUseAdminFallback = canUseAdminFallback && (!dbCompany || !hasLoadedUsers || failures.length > 0);
+
+          if (shouldUseAdminFallback) {
+            try {
+              const fallbackContext = await withTimeout(
+                AdminService.getCompanyContext(user.companyId),
+                'Owner/Admin company context'
+              );
+
+              dbCompany = fallbackContext.company ?? dbCompany;
+              dbEmps = fallbackContext.employees ?? dbEmps;
+              dbRuns = fallbackContext.payRuns ?? dbRuns;
+              dbLeaves = fallbackContext.leaveRequests ?? dbLeaves;
+              dbUsers = fallbackContext.users ?? dbUsers;
+            } catch (fallbackError) {
+              console.error('Bootstrap owner/admin fallback failed:', fallbackError);
+            }
+          }
         }
 
         if (dbCompany) {
@@ -98,7 +121,7 @@ export const useAppBootstrap = ({
     }
 
     void loadData();
-  }, [applyLoadedCompany, isSupabaseMode, setEmployees, setLeaveRequests, setPayRunHistory, setUsers, user?.companyId, user?.originalRole]);
+  }, [applyLoadedCompany, isSupabaseMode, setEmployees, setLeaveRequests, setPayRunHistory, setUsers, user?.companyId, user?.originalRole, user?.role]);
 
   return {
     dataLoading,

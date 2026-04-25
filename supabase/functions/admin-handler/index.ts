@@ -1024,7 +1024,7 @@ serve(async (req: Request) => {
                 const { companyId } = payload;
                 if (!companyId) throw new Error('companyId required');
 
-                await assertCompanyAccess(adminClient, authUser, companyId, ['RESELLER', 'SUPER_ADMIN']);
+                await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'RESELLER', 'SUPER_ADMIN']);
 
                 // 3. Fetch all data in parallel
                 const [
