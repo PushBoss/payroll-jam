@@ -306,6 +306,16 @@ export interface PayRun {
   payFrequency?: 'WEEKLY' | 'FORTNIGHTLY' | 'MONTHLY'; // Optional for backward compatibility
 }
 
+export interface BillingGift {
+  giftedUntil: string;
+  grantedAt: string;
+  grantedBy: string;
+  grantedByName?: string;
+  monthsGranted: number;
+  note?: string;
+  employeeLimitOverride?: string;
+}
+
 export interface ChatMessage {
   role: 'user' | 'model';
   text: string;
@@ -329,6 +339,8 @@ export interface ResellerClient {
   plan: 'Free' | 'Starter' | 'Pro' | 'Enterprise' | 'Reseller';
   status: 'ACTIVE' | 'PENDING' | 'SUSPENDED';
   subscriptionStatus?: 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'PENDING_PAYMENT';
+  billingGift?: BillingGift;
+  hasActiveBillingGift?: boolean;
   mrr: number;
   createdAt?: string;
 }
@@ -424,6 +436,7 @@ export interface CompanySettings {
   taxConfig?: TaxConfig;
   departments?: Department[];
   designations?: Designation[];
+  billingGift?: BillingGift;
 }
 
 

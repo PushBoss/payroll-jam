@@ -76,6 +76,19 @@ const MOCK_REVENUE_DATA = [
     { name: 'Jan', revenue: 90500 },
 ];
 
+const formatGiftedUntil = (value?: string) => {
+    if (!value) return null;
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+
+    return date.toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+    });
+};
+
 export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, onImpersonate, initialTab }) => {
     const [activeTab, setActiveTab] = useState<'overview' | 'tenants' | 'users' | 'plans' | 'logs' | 'settings' | 'health' | 'billing' | 'pending-payments'>('overview');
 
@@ -98,6 +111,10 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     const [isLoadingTenants, setIsLoadingTenants] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState<'ALL' | 'ACTIVE' | 'SUSPENDED'>('ALL');
+    const [giftingTenant, setGiftingTenant] = useState<ResellerClient | null>(null);
+    const [giftMonths, setGiftMonths] = useState(1);
+    const [giftNote, setGiftNote] = useState('');
+    const [isGiftingAccess, setIsGiftingAccess] = useState(false);
 
     // Super Admin User State
     const [admins, setAdmins] = useState<User[]>(() => {
@@ -496,6 +513,58 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 console.error('Error deleting tenant:', error);
                 toast.error("An error occurred during deletion");
             }
+        }
+    };
+
+    const closeGiftModal = () => {
+        setGiftingTenant(null);
+        setGiftMonths(1);
+        setGiftNote('');
+        setIsGiftingAccess(false);
+    };
+
+    const handleGiftMonths = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!giftingTenant) return;
+
+        setIsGiftingAccess(true);
+        try {
+            const { data, error } = await supabase!.functions.invoke('admin-handler', {
+                body: {
+                    action: 'gift-company-months',
+                    payload: {
+                        companyId: giftingTenant.id,
+                        months: giftMonths,
+                        note: giftNote.trim(),
+                    },
+                },
+            });
+
+            if (error) throw error;
+
+            const updatedCompany = data?.company;
+            setTenants((prev) => prev.map((tenant) => (
+                tenant.id === giftingTenant.id
+                    ? {
+                        ...tenant,
+                        billingGift: updatedCompany?.billingGift ?? tenant.billingGift,
+                        hasActiveBillingGift: updatedCompany?.hasActiveBillingGift ?? true,
+                    }
+                    : tenant
+            )));
+
+            auditService.log(
+                { id: 'sys', name: 'Super Admin', email: 'sys', role: Role.SUPER_ADMIN },
+                'UPDATE',
+                'Company',
+                `Gifted ${giftMonths} free month${giftMonths === 1 ? '' : 's'} to tenant: ${giftingTenant.companyName}`
+            );
+            toast.success(`Gifted ${giftMonths} free month${giftMonths === 1 ? '' : 's'} to ${giftingTenant.companyName}`);
+            closeGiftModal();
+        } catch (error: any) {
+            console.error('Error gifting free months:', error);
+            toast.error(error.message || 'Failed to gift free months');
+            setIsGiftingAccess(false);
         }
     };
 
@@ -944,10 +1013,26 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                                     }`}>
                                                     {tenant.status}
                                                 </span>
+                                                {tenant.hasActiveBillingGift && (
+                                                    <div className="mt-2 inline-flex items-center rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
+                                                        <Icons.CalendarDays className="mr-1.5 h-3.5 w-3.5" />
+                                                        Gifted through {formatGiftedUntil(tenant.billingGift?.giftedUntil) || 'active period'}
+                                                    </div>
+                                                )}
                                             </td>
                                             <td className="px-6 py-4 text-right space-x-2">
                                                 <button onClick={() => onImpersonate(tenant)} className="text-jam-orange hover:text-yellow-600 text-xs font-bold uppercase">
                                                     Manage
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        setGiftingTenant(tenant);
+                                                        setGiftMonths(1);
+                                                        setGiftNote('');
+                                                    }}
+                                                    className="text-amber-600 hover:text-amber-700 text-xs font-bold uppercase"
+                                                >
+                                                    {tenant.hasActiveBillingGift ? 'Extend Gift' : 'Gift Month'}
                                                 </button>
                                                 <button onClick={() => handleSuspend(tenant.id)} className="text-gray-500 hover:text-gray-900 text-xs font-bold uppercase">
                                                     {tenant.status === 'ACTIVE' ? 'Suspend' : 'Activate'}
@@ -2472,6 +2557,63 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                             <button onClick={() => setEditingPlan(null)} className="px-4 py-2 text-gray-500 hover:text-gray-700">Cancel</button>
                             <button onClick={handleSavePlan} className="bg-jam-black text-white px-6 py-2 rounded font-bold hover:bg-gray-800">Save Changes</button>
                         </div>
+                    </div>
+                </div>
+            )}
+            {giftingTenant && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                    <div className="w-full max-w-lg overflow-hidden rounded-xl bg-white shadow-2xl animate-scale-in">
+                        <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 p-6">
+                            <div>
+                                <h3 className="text-xl font-bold text-gray-900">Gift Free Months</h3>
+                                <p className="mt-1 text-sm text-gray-500">
+                                    Temporarily unlock payroll and employee-limit gating for {giftingTenant.companyName}.
+                                </p>
+                            </div>
+                            <button onClick={closeGiftModal} className="text-gray-400 hover:text-gray-600">
+                                <Icons.Close className="h-6 w-6" />
+                            </button>
+                        </div>
+                        <form onSubmit={handleGiftMonths} className="space-y-5 p-6">
+                            <div className="rounded-lg border border-amber-100 bg-amber-50 p-4 text-sm text-amber-900">
+                                The gifted window keeps the tenant on their current plan, but temporarily treats billing as active and lifts the employee cap.
+                            </div>
+                            <div>
+                                <label className="mb-1 block text-xs font-bold uppercase text-gray-500">Months To Gift</label>
+                                <input
+                                    type="number"
+                                    min={1}
+                                    max={12}
+                                    required
+                                    className="w-full rounded border border-gray-300 px-3 py-2"
+                                    value={giftMonths}
+                                    onChange={(event) => setGiftMonths(Math.min(12, Math.max(1, Number(event.target.value) || 1)))}
+                                />
+                                <p className="mt-1 text-xs text-gray-500">Each gift extends from today, or from the end of an existing active gift.</p>
+                            </div>
+                            <div>
+                                <label className="mb-1 block text-xs font-bold uppercase text-gray-500">Internal Note</label>
+                                <textarea
+                                    rows={3}
+                                    className="w-full rounded border border-gray-300 px-3 py-2"
+                                    placeholder="Optional note for why this grace period was granted"
+                                    value={giftNote}
+                                    onChange={(event) => setGiftNote(event.target.value)}
+                                />
+                            </div>
+                            <div className="flex justify-end space-x-2 border-t border-gray-100 pt-4">
+                                <button type="button" onClick={closeGiftModal} className="px-4 py-2 text-gray-500 hover:text-gray-700">
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isGiftingAccess}
+                                    className="rounded bg-jam-orange px-6 py-2 font-bold text-jam-black hover:bg-yellow-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    {isGiftingAccess ? 'Applying...' : 'Apply Gift'}
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}

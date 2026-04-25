@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient';
 import { CompanySettings, Employee, PayRun, LeaveRequest, User, toPlanLabel, toRole, toPayType, toPayFrequency } from '../core/types';
+import { getEffectiveSubscriptionStatus, toBillingGift } from '../utils/billingGift';
 
 const normalizeDbPeriodToApp = (start: string, end: string): { periodStart: string; periodEnd: string } => {
   const isDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
@@ -44,6 +45,7 @@ export const AdminService = {
       // Map Company
       const dbCompany = data.company;
       const settings = dbCompany?.settings || {};
+      const billingGift = toBillingGift(settings.billingGift);
       const company: CompanySettings | null = dbCompany ? {
         id: dbCompany.id,
         name: dbCompany.name,
@@ -54,11 +56,15 @@ export const AdminService = {
         accountNumber: settings.accountNumber || '',
         branchCode: settings.branchCode || '',
         plan: toPlanLabel(dbCompany.plan),
-        subscriptionStatus: dbCompany.status || 'ACTIVE',
+        subscriptionStatus: getEffectiveSubscriptionStatus({
+          subscriptionStatus: dbCompany.status || 'ACTIVE',
+          billingGift,
+        }),
         policies: settings.policies,
         taxConfig: settings.taxConfig,
         departments: dbCompany.departments || [],
-        designations: dbCompany.designations || []
+        designations: dbCompany.designations || [],
+        billingGift,
       } as CompanySettings : null;
 
       // Map Employees

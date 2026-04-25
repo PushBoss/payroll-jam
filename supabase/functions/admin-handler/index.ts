@@ -64,7 +64,7 @@ const getCallerProfile = async (adminClient: any, authUser: any) => {
 
     const { data: callerProfile, error } = await adminClient
         .from('app_users')
-        .select('id, role, company_id')
+        .select('id, name, email, role, company_id')
         .eq('id', authUser.id)
         .maybeSingle();
 
@@ -247,6 +247,58 @@ const buildEmployeePayload = (employee: Record<string, any>, companyId: string, 
         employee_id: employee.employeeId || null,
         employee_number: employee.employeeId || null
     };
+};
+
+const toBillingGift = (value: unknown) => {
+    if (!value || typeof value !== 'object') return null;
+
+    const raw = value as Record<string, unknown>;
+    const giftedUntil = typeof raw.giftedUntil === 'string' ? raw.giftedUntil : '';
+    const grantedAt = typeof raw.grantedAt === 'string' ? raw.grantedAt : '';
+    const grantedBy = typeof raw.grantedBy === 'string' ? raw.grantedBy : '';
+    const monthsGranted = typeof raw.monthsGranted === 'number'
+        ? raw.monthsGranted
+        : Number(raw.monthsGranted);
+
+    if (!giftedUntil || !grantedAt || !grantedBy || !Number.isFinite(monthsGranted)) {
+        return null;
+    }
+
+    return {
+        giftedUntil,
+        grantedAt,
+        grantedBy,
+        grantedByName: typeof raw.grantedByName === 'string' ? raw.grantedByName : undefined,
+        monthsGranted,
+        note: typeof raw.note === 'string' ? raw.note : undefined,
+        employeeLimitOverride: typeof raw.employeeLimitOverride === 'string'
+            ? raw.employeeLimitOverride
+            : undefined,
+    };
+};
+
+const isBillingGiftActive = (billingGift: ReturnType<typeof toBillingGift>, now = new Date()) => {
+    if (!billingGift?.giftedUntil) return false;
+
+    const giftedUntil = new Date(billingGift.giftedUntil);
+    return Number.isFinite(giftedUntil.getTime()) && giftedUntil.getTime() >= now.getTime();
+};
+
+const addMonths = (date: Date, months: number) => {
+    const next = new Date(date);
+    next.setMonth(next.getMonth() + months);
+    return next;
+};
+
+const assertSuperAdmin = async (adminClient: any, authUser: any) => {
+    if (!authUser) throw new Error('Unauthorized');
+
+    const callerProfile = await getCallerProfile(adminClient, authUser);
+    if (normalizeRole(callerProfile.role) !== 'SUPER_ADMIN') {
+        throw new Error('Unauthorized');
+    }
+
+    return callerProfile;
 };
 
 serve(async (req: Request) => {
@@ -636,6 +688,7 @@ serve(async (req: Request) => {
 
                 // Enrich with owner name from app_users
                 const enriched = await Promise.all((companies || []).map(async (c: any) => {
+                    const billingGift = toBillingGift(c.settings?.billingGift);
                     const { data: ownerData } = await adminClient
                         .from('app_users')
                         .select('name, email')
@@ -658,6 +711,8 @@ serve(async (req: Request) => {
                         contactName: ownerData?.name || c.settings?.contactName || 'N/A',
                         plan: normalizePlanToFrontend(c.plan),
                         status: c.status || 'ACTIVE',
+                        billingGift,
+                        hasActiveBillingGift: isBillingGiftActive(billingGift),
                         employeeCount: empCount || 0,
                         mrr: c.settings?.mrr || 0,
                         createdAt: c.created_at
@@ -665,6 +720,69 @@ serve(async (req: Request) => {
                 }));
 
                 return new Response(JSON.stringify({ companies: enriched, total: count }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'gift-company-months': {
+                const callerProfile = await assertSuperAdmin(adminClient, authUser);
+                const companyId = payload?.companyId;
+                const requestedMonths = Number(payload?.months);
+                const note = typeof payload?.note === 'string' ? payload.note.trim() : '';
+
+                if (!companyId) throw new Error('companyId is required');
+                if (!Number.isInteger(requestedMonths) || requestedMonths < 1 || requestedMonths > 12) {
+                    throw new Error('months must be an integer between 1 and 12');
+                }
+
+                const { data: company, error: companyError } = await adminClient
+                    .from('companies')
+                    .select('id, name, settings')
+                    .eq('id', companyId)
+                    .maybeSingle();
+
+                if (companyError) throw companyError;
+                if (!company) throw new Error('Company not found');
+
+                const existingSettings = company.settings || {};
+                const existingGift = toBillingGift(existingSettings.billingGift);
+                const now = new Date();
+                const extensionBase = existingGift && isBillingGiftActive(existingGift, now)
+                    ? new Date(existingGift.giftedUntil)
+                    : now;
+                const giftedUntil = addMonths(extensionBase, requestedMonths).toISOString();
+
+                const billingGift = {
+                    giftedUntil,
+                    grantedAt: now.toISOString(),
+                    grantedBy: callerProfile.id,
+                    grantedByName: callerProfile.name || authUser.email || 'Super Admin',
+                    monthsGranted: requestedMonths,
+                    note: note || existingGift?.note,
+                    employeeLimitOverride: 'Unlimited',
+                };
+
+                const { error: updateError } = await adminClient
+                    .from('companies')
+                    .update({
+                        settings: {
+                            ...existingSettings,
+                            billingGift,
+                        },
+                    })
+                    .eq('id', companyId);
+
+                if (updateError) throw updateError;
+
+                return new Response(JSON.stringify({
+                    success: true,
+                    company: {
+                        id: company.id,
+                        companyName: company.name,
+                        billingGift,
+                        hasActiveBillingGift: true,
+                    },
+                }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });
             }

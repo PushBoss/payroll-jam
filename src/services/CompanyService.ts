@@ -1,6 +1,7 @@
 import { supabase } from './supabaseClient';
 import { CompanySettings, GlobalConfig, ResellerClient, DbCompanyRow, toPlanLabel, toCompanyStatus } from '../core/types';
 import { normalizePlanToDatabase, normalizePlanToFrontend } from '../utils/planNames';
+import { getEffectiveSubscriptionStatus, isBillingGiftActive, toBillingGift } from '../utils/billingGift';
 
 
 export const CompanyService = {
@@ -15,6 +16,7 @@ export const CompanyService = {
     if (error || !data) return null;
 
     const settings = data.settings || {};
+    const billingGift = toBillingGift(settings.billingGift);
     return {
       id: data.id,
       name: data.name,
@@ -25,14 +27,18 @@ export const CompanyService = {
       accountNumber: settings.accountNumber || '',
       branchCode: settings.branchCode || '',
       plan: toPlanLabel(normalizePlanToFrontend(data.plan)),
-      subscriptionStatus: data.status || 'ACTIVE',
+      subscriptionStatus: getEffectiveSubscriptionStatus({
+        subscriptionStatus: data.status || 'ACTIVE',
+        billingGift,
+      }),
       paymentMethod: settings.paymentMethod,
       resellerId: data.reseller_id,
       policies: settings.policies,
       reseller_defaults: settings.reseller_defaults,
       taxConfig: settings.taxConfig,
       departments: settings.departments || data.departments || [],
-      designations: settings.designations || data.designations || []
+      designations: settings.designations || data.designations || [],
+      billingGift,
     };
   },
 
@@ -119,6 +125,7 @@ export const CompanyService = {
 
     return data.map((company: DbCompanyRow) => {
       const settings = (company.settings || {}) as Record<string, unknown>;
+      const billingGift = toBillingGift(settings.billingGift);
       return {
       id: company.id,
       companyName: company.name,
@@ -127,6 +134,8 @@ export const CompanyService = {
       employeeCount: (settings.employeeCount as number) || 0,
       plan: toPlanLabel(normalizePlanToFrontend(company.plan || 'Free')),
       status: toCompanyStatus(company.status) as ResellerClient['status'],
+      billingGift,
+      hasActiveBillingGift: isBillingGiftActive(billingGift),
       mrr: (settings.mrr as number) || 0,
     };
     });
