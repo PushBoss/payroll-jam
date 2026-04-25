@@ -72,3 +72,7 @@ Date: 2026-04-08
 1. Move email/export sequencing into workflow helpers or a dedicated delivery module
 2. Continue replacing remaining payrun page inline sections with feature-scoped view components
 3. Add focused tests for the new UI state hook and finalize-step integration points
+
+## Persistence boundary note
+- Payrun reads can continue using direct company-scoped queries for standard users and `admin-handler` for impersonated reseller access.
+- Payrun writes now belong behind `admin-handler` so draft saves, finalization saves, payrun audit logs, and finalize-linked employee deduction updates do not depend on client-side `INSERT` RLS policies.

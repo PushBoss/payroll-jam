@@ -282,7 +282,12 @@ export const PayRun: React.FC<PayRunProps> = ({
             const updatedEmployee = applyFinalizedCustomDeductions(employee, lineItem);
 
             try {
-                await EmployeeService.saveEmployee(updatedEmployee, currentUser?.companyId || '');
+                await EmployeeService.saveEmployee(
+                    updatedEmployee,
+                    currentUser?.companyId || '',
+                    'update',
+                    { useAdminHandler: true }
+                );
                 console.log(`✅ Updated custom deductions for ${employee.firstName} ${employee.lastName}`);
             } catch (error) {
                 console.error(`❌ Failed to update custom deductions for ${employee.firstName} ${employee.lastName}:`, error);

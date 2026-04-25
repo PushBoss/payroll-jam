@@ -2,6 +2,9 @@ import { supabase } from './supabaseClient';
 import { Employee, User, LeaveRequest, DbAppUserRow, DbEmployeeRow, toRole, toPayType, toPayFrequency, toEmployeeStatus, CustomDeduction, Deduction } from '../core/types';
 
 type EmployeeSaveMode = 'insert' | 'update' | 'upsert';
+type EmployeeSaveOptions = {
+  useAdminHandler?: boolean;
+};
 
 const requireSupabase = () => {
   if (!supabase) throw new Error('Supabase client not initialized');
@@ -272,8 +275,33 @@ export const EmployeeService = {
     });
   },
 
-  saveEmployee: async (emp: Employee, companyId: string, mode: EmployeeSaveMode = 'upsert') => {
+  saveEmployee: async (
+    emp: Employee,
+    companyId: string,
+    mode: EmployeeSaveMode = 'upsert',
+    options: EmployeeSaveOptions = {}
+  ) => {
     const client = requireSupabase();
+
+    if (options.useAdminHandler) {
+      const { error } = await client.functions.invoke('admin-handler', {
+        body: {
+          action: 'save-employee-for-company',
+          payload: {
+            companyId,
+            employee: emp,
+            mode,
+          },
+        },
+      });
+
+      if (error) {
+        console.error('Admin handler employee save failed:', error);
+        throw error;
+      }
+
+      return;
+    }
 
     const payData = {
       grossSalary: emp.grossSalary,

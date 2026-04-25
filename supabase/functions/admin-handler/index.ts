@@ -38,6 +38,217 @@ const normalizeMemberRole = (role?: string | null): string => {
     return 'EMPLOYEE';
 };
 
+const isYearMonth = (value?: string | null): value is string =>
+    typeof value === 'string' && /^\d{4}-\d{2}$/.test(value);
+
+const toDbPeriodStart = (value?: string | null): string | null => {
+    if (!value) return null;
+    return isYearMonth(value) ? `${value}-01` : value;
+};
+
+const toDbPeriodEnd = (value?: string | null): string | null => {
+    if (!value) return null;
+    if (!isYearMonth(value)) return value;
+
+    const [yearStr, monthStr] = value.split('-');
+    const year = Number(yearStr);
+    const month = Number(monthStr);
+    const lastDay = new Date(year, month, 0).getDate();
+    return `${value}-${String(lastDay).padStart(2, '0')}`;
+};
+
+const normalizeRole = (role?: string | null): string => (role || '').trim().toUpperCase();
+
+const getCallerProfile = async (adminClient: any, authUser: any) => {
+    if (!authUser?.id) throw new Error('Unauthorized');
+
+    const { data: callerProfile, error } = await adminClient
+        .from('app_users')
+        .select('id, role, company_id')
+        .eq('id', authUser.id)
+        .maybeSingle();
+
+    if (error) throw error;
+    if (!callerProfile) throw new Error('Unauthorized');
+
+    return callerProfile;
+};
+
+const assertCompanyAccess = async (
+    adminClient: any,
+    authUser: any,
+    companyId: string,
+    allowedRoles: string[]
+) => {
+    const callerProfile = await getCallerProfile(adminClient, authUser);
+    const callerRole = normalizeRole(callerProfile.role);
+
+    if (!allowedRoles.includes(callerRole)) {
+        throw new Error('Unauthorized');
+    }
+
+    if (callerRole === 'SUPER_ADMIN') {
+        return callerProfile;
+    }
+
+    if ((callerRole === 'OWNER' || callerRole === 'ADMIN') && callerProfile.company_id === companyId) {
+        return callerProfile;
+    }
+
+    if (callerRole === 'OWNER' || callerRole === 'ADMIN') {
+        const [{ data: membership, error: membershipError }, { data: company, error: companyError }] = await Promise.all([
+            adminClient
+                .from('account_members')
+                .select('account_id')
+                .eq('account_id', companyId)
+                .eq('user_id', authUser.id)
+                .eq('status', 'accepted')
+                .maybeSingle(),
+            adminClient
+                .from('companies')
+                .select('id, owner_id')
+                .eq('id', companyId)
+                .maybeSingle(),
+        ]);
+
+        if (membershipError) throw membershipError;
+        if (companyError) throw companyError;
+        if (membership || company?.owner_id === authUser.id) {
+            return callerProfile;
+        }
+    }
+
+    if (callerRole === 'RESELLER') {
+        const { data: relationship, error: relationshipError } = await adminClient
+            .from('reseller_clients')
+            .select('client_company_id')
+            .eq('reseller_id', callerProfile.company_id)
+            .eq('client_company_id', companyId)
+            .eq('status', 'ACTIVE')
+            .maybeSingle();
+
+        if (relationshipError) throw relationshipError;
+        if (relationship) {
+            return callerProfile;
+        }
+
+        const { data: membership, error: membershipError } = await adminClient
+            .from('account_members')
+            .select('account_id')
+            .eq('account_id', companyId)
+            .eq('user_id', authUser.id)
+            .eq('status', 'accepted')
+            .maybeSingle();
+
+        if (membershipError) throw membershipError;
+        if (membership) {
+            return callerProfile;
+        }
+    }
+
+    throw new Error('Unauthorized: No relationship with this company');
+};
+
+const coerceFiniteNumber = (value: unknown, fallback = 0) => {
+    const num = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(num) ? num : fallback;
+};
+
+const parseJsonArrayIfNeeded = (value: unknown): unknown[] | null => {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string') return null;
+
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : null;
+    } catch {
+        return null;
+    }
+};
+
+const normalizeCustomDeductions = (value: unknown) => {
+    const arr = parseJsonArrayIfNeeded(value) ?? (Array.isArray(value) ? value : []);
+    return arr
+        .filter(Boolean)
+        .map((raw: Record<string, unknown>) => {
+            const periodType = raw?.periodType === 'TARGET_BALANCE' ? 'TARGET_BALANCE' : 'FIXED_TERM';
+            return {
+                id: String(raw?.id ?? `deduction_${Date.now()}`),
+                name: String(raw?.name ?? ''),
+                amount: coerceFiniteNumber(raw?.amount, 0),
+                periodType,
+                remainingTerm: raw?.remainingTerm === undefined ? undefined : coerceFiniteNumber(raw?.remainingTerm, 0),
+                periodFrequency: raw?.periodFrequency,
+                currentBalance: raw?.currentBalance === undefined ? undefined : coerceFiniteNumber(raw?.currentBalance, 0),
+                targetBalance: raw?.targetBalance === undefined ? undefined : coerceFiniteNumber(raw?.targetBalance, 0)
+            };
+        })
+        .filter((deduction) => deduction.name && coerceFiniteNumber(deduction.amount, 0) > 0);
+};
+
+const normalizeSimpleDeductions = (value: unknown) => {
+    const arr = parseJsonArrayIfNeeded(value) ?? (Array.isArray(value) ? value : []);
+    return arr
+        .filter(Boolean)
+        .map((raw: Record<string, unknown>) => ({
+            id: String(raw?.id ?? `other_${Date.now()}`),
+            name: String(raw?.name ?? ''),
+            amount: coerceFiniteNumber(raw?.amount, 0)
+        }))
+        .filter((deduction) => deduction.name && coerceFiniteNumber(deduction.amount, 0) > 0);
+};
+
+const buildEmployeePayload = (employee: Record<string, any>, companyId: string, mode: 'insert' | 'update' | 'upsert') => {
+    const payData = {
+        grossSalary: employee.grossSalary,
+        hourlyRate: employee.hourlyRate,
+        payType: employee.payType,
+        payFrequency: employee.payFrequency
+    };
+
+    const normalizedCustomDeductions = normalizeCustomDeductions(employee.customDeductions);
+    const normalizedSimpleDeductions = normalizeSimpleDeductions(employee.deductions);
+    const persistedDeductions = normalizedCustomDeductions.length > 0
+        ? normalizedCustomDeductions
+        : normalizedSimpleDeductions;
+
+    const basePayload: Record<string, unknown> = {
+        ...(mode === 'update' ? {} : { id: employee.id, company_id: companyId }),
+        first_name: employee.firstName,
+        last_name: employee.lastName,
+        email: employee.email,
+        trn: employee.trn,
+        nis: employee.nis,
+        phone: employee.phone || null,
+        address: employee.address || null,
+        role: employee.role,
+        status: employee.status,
+        hire_date: employee.hireDate,
+        joining_date: employee.joiningDate || employee.hireDate,
+        job_title: employee.jobTitle || null,
+        department: employee.department || null,
+        emergency_contact: employee.emergencyContact || null,
+        bank_details: employee.bankDetails || null,
+        leave_balance: employee.leaveBalance || null,
+        allowances: employee.allowances || [],
+        termination_details: employee.terminationDetails || null,
+        onboarding_token: employee.onboardingToken || null
+    };
+
+    return {
+        ...basePayload,
+        gross_salary: employee.grossSalary,
+        hourly_rate: employee.hourlyRate ?? null,
+        pay_type: employee.payType,
+        pay_frequency: employee.payFrequency,
+        pay_data: payData,
+        custom_deductions: persistedDeductions,
+        deductions: persistedDeductions,
+        employee_id: employee.employeeId || null,
+        employee_number: employee.employeeId || null
+    };
+};
+
 serve(async (req: Request) => {
     // 1. CORS Preflight
     if (req.method === 'OPTIONS') {
@@ -695,47 +906,7 @@ serve(async (req: Request) => {
                 const { companyId } = payload;
                 if (!companyId) throw new Error('companyId required');
 
-                // 1. Validate Caller role
-                if (!authUser) throw new Error('Unauthorized');
-                const { data: callerProfile } = await adminClient
-                    .from('app_users')
-                    .select('role, company_id')
-                    .eq('id', authUser.id)
-                    .maybeSingle();
-
-                const callerRole = callerProfile?.role?.toUpperCase();
-                const isSuperAdmin = callerRole === 'SUPER_ADMIN';
-                const isReseller = callerRole === 'RESELLER';
-
-                if (!isSuperAdmin && !isReseller) {
-                    throw new Error('Unauthorized: Admin or Reseller role required');
-                }
-
-                // 2. If Reseller, validate relationship
-                if (isReseller) {
-                    const { data: relationship } = await adminClient
-                        .from('reseller_clients')
-                        .select('*')
-                        .eq('reseller_id', callerProfile.company_id)
-                        .eq('client_company_id', companyId)
-                        .eq('status', 'ACTIVE')
-                        .maybeSingle();
-
-                    if (!relationship) {
-                        // Also check if they are a member of the team
-                        const { data: membership } = await adminClient
-                            .from('account_members')
-                            .select('*')
-                            .eq('account_id', companyId)
-                            .eq('user_id', authUser.id)
-                            .eq('status', 'accepted')
-                            .maybeSingle();
-
-                        if (!membership) {
-                            throw new Error('Unauthorized: No relationship with this company');
-                        }
-                    }
-                }
+                await assertCompanyAccess(adminClient, authUser, companyId, ['RESELLER', 'SUPER_ADMIN']);
 
                 // 3. Fetch all data in parallel
                 const [
@@ -759,6 +930,116 @@ serve(async (req: Request) => {
                     leaveRequests,
                     users
                 }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'save-pay-run': {
+                const { companyId, payRun } = payload || {};
+                if (!companyId) throw new Error('companyId required');
+                if (!payRun || typeof payRun !== 'object') throw new Error('payRun payload required');
+
+                await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'RESELLER', 'SUPER_ADMIN']);
+
+                const runRecord = payRun as Record<string, any>;
+                const payRunPayload = {
+                    id: runRecord.id,
+                    company_id: companyId,
+                    period_start: toDbPeriodStart(runRecord.period_start ?? runRecord.periodStart),
+                    period_end: toDbPeriodEnd(runRecord.period_end ?? runRecord.periodEnd),
+                    pay_date: runRecord.pay_date ?? runRecord.payDate,
+                    pay_frequency: runRecord.pay_frequency ?? runRecord.payFrequency ?? 'MONTHLY',
+                    status: runRecord.status,
+                    total_gross: runRecord.total_gross ?? runRecord.totalGross ?? 0,
+                    total_net: runRecord.total_net ?? runRecord.totalNet ?? 0,
+                    employee_count: runRecord.employee_count ?? runRecord.employeeCount ?? runRecord.line_items?.length ?? runRecord.lineItems?.length ?? 0,
+                    line_items: runRecord.line_items ?? runRecord.lineItems ?? []
+                };
+
+                const { data: savedPayRun, error: saveError } = await adminClient
+                    .from('pay_runs')
+                    .upsert(payRunPayload)
+                    .select('*')
+                    .maybeSingle();
+
+                if (saveError) throw saveError;
+
+                return new Response(JSON.stringify({ success: true, payRun: savedPayRun }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'delete-pay-run': {
+                const { companyId, runId } = payload || {};
+                if (!companyId) throw new Error('companyId required');
+                if (!runId) throw new Error('runId required');
+
+                await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'RESELLER', 'SUPER_ADMIN']);
+
+                const { error: deleteError } = await adminClient
+                    .from('pay_runs')
+                    .delete()
+                    .eq('id', runId)
+                    .eq('company_id', companyId);
+
+                if (deleteError) throw deleteError;
+
+                return new Response(JSON.stringify({ success: true }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'save-audit-log': {
+                const { companyId, log } = payload || {};
+                if (!log || typeof log !== 'object') throw new Error('log payload required');
+
+                if (companyId) {
+                    await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'RESELLER', 'SUPER_ADMIN']);
+                } else {
+                    const callerProfile = await getCallerProfile(adminClient, authUser);
+                    if (normalizeRole(callerProfile.role) !== 'SUPER_ADMIN') {
+                        throw new Error('Unauthorized');
+                    }
+                }
+
+                const { error: auditError } = await adminClient.from('audit_logs').insert(log);
+                if (auditError) throw auditError;
+
+                return new Response(JSON.stringify({ success: true }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'save-employee-for-company': {
+                const { companyId, employee, mode = 'upsert' } = payload || {};
+                if (!companyId) throw new Error('companyId required');
+                if (!employee || typeof employee !== 'object') throw new Error('employee payload required');
+                if (!['insert', 'update', 'upsert'].includes(mode)) throw new Error('Invalid employee save mode');
+
+                await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'RESELLER', 'SUPER_ADMIN']);
+
+                const employeeRecord = buildEmployeePayload(employee as Record<string, any>, companyId, mode);
+                let result;
+
+                switch (mode) {
+                    case 'insert':
+                        result = await adminClient.from('employees').insert(employeeRecord);
+                        break;
+                    case 'update':
+                        result = await adminClient
+                            .from('employees')
+                            .update(employeeRecord)
+                            .eq('id', (employee as Record<string, any>).id)
+                            .eq('company_id', companyId);
+                        break;
+                    default:
+                        result = await adminClient.from('employees').upsert(employeeRecord);
+                        break;
+                }
+
+                if (result.error) throw result.error;
+
+                return new Response(JSON.stringify({ success: true }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });
             }

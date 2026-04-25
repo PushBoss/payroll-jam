@@ -50,6 +50,19 @@ const requireSupabase = () => {
   return supabase;
 };
 
+const invokeAdminHandler = async <T,>(payload: { action: string; payload: Record<string, unknown> }): Promise<T> => {
+  const client = requireSupabase();
+  const { data, error } = await client.functions.invoke('admin-handler', {
+    body: payload,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data as T;
+};
+
 export const PayrollService = {
   getPayRuns: async (companyId: string): Promise<PayRun[]> => {
     if (!supabase) return [];
@@ -73,7 +86,6 @@ export const PayrollService = {
   },
 
   savePayRun: async (run: PayRun, companyId: string) => {
-    const client = requireSupabase();
     const payFrequency = run.payFrequency || 'MONTHLY';
 
     // Supabase schema expects DATE strings in `period_start` / `period_end`.
@@ -81,33 +93,36 @@ export const PayrollService = {
     const periodStart = toDbPeriodStart(run.periodStart);
     const periodEnd = toDbPeriodEnd(run.periodEnd);
 
-    const { error } = await client
-      .from('pay_runs')
-      .upsert({
-        id: run.id,
-        company_id: companyId,
-        period_start: periodStart,
-        period_end: periodEnd,
-        pay_date: run.payDate,
-        pay_frequency: payFrequency,
-        status: run.status,
-        total_gross: run.totalGross,
-        total_net: run.totalNet,
-        employee_count: run.lineItems?.length || 0,
-        line_items: run.lineItems
-      });
-    if (error) throw error;
+    await invokeAdminHandler<{ success: boolean; payRun?: DbPayRunRow }>({
+      action: 'save-pay-run',
+      payload: {
+        companyId,
+        payRun: {
+          id: run.id,
+          period_start: periodStart,
+          period_end: periodEnd,
+          pay_date: run.payDate,
+          pay_frequency: payFrequency,
+          status: run.status,
+          total_gross: run.totalGross,
+          total_net: run.totalNet,
+          employee_count: run.lineItems?.length || 0,
+          line_items: run.lineItems,
+        },
+      },
+    });
   },
 
   deletePayRun: async (runId: string, companyId: string) => {
-    const client = requireSupabase();
-    const { error } = await client
-      .from('pay_runs')
-      .delete()
-      .eq('id', runId)
-      .eq('company_id', companyId);
-    
-    return !error;
+    const data = await invokeAdminHandler<{ success?: boolean }>({
+      action: 'delete-pay-run',
+      payload: {
+        companyId,
+        runId,
+      },
+    });
+
+    return data?.success ?? true;
   },
 
   getTimesheets: async (companyId: string): Promise<WeeklyTimesheet[]> => {

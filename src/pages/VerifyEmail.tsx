@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { supabase } from '../services/supabaseClient';
 import { toast } from 'sonner';
-import { SUPPORT_MAILTO } from '../constants/support';
 
 interface VerifyEmailProps {
   email?: string;

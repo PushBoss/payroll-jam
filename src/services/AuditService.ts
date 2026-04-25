@@ -3,9 +3,16 @@ import { AuditLogEntry, DbAuditLogRow } from '../core/types';
 
 const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
+const requireSupabase = () => {
+  if (!supabase) {
+    throw new Error('Supabase client not initialized. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY (or configure local overrides).');
+  }
+  return supabase;
+};
+
 export const AuditService = {
   saveAuditLog: async (log: AuditLogEntry, companyId: string | null) => {
-    if (!supabase) return;
+    const client = requireSupabase();
 
     const payload: Record<string, string | undefined> = {
       id: log.id,
@@ -20,7 +27,16 @@ export const AuditService = {
     if (companyId && isUuid(companyId)) payload.company_id = companyId;
     if (log.actorId && isUuid(log.actorId)) payload.actor_id = log.actorId;
 
-    const { error } = await supabase.from('audit_logs').insert(payload);
+    const { error } = await client.functions.invoke('admin-handler', {
+      body: {
+        action: 'save-audit-log',
+        payload: {
+          companyId,
+          log: payload,
+        },
+      },
+    });
+
     if (error) {
       console.error('Failed to save audit log:', error);
       throw error;
