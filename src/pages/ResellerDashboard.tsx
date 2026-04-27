@@ -85,14 +85,14 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                             return paymentDate.getMonth() === month && paymentDate.getFullYear() === year && p.status === 'completed';
                         }).reduce((sum, p) => sum + (p.amount || 0), 0) : 0;
 
-                        // Revenue: Estimated Client MRR
+                        // Revenue: Estimated client billings at retail rates
                         const activeClientsInMonth = Array.isArray(resellerClients) ? resellerClients.filter(c => {
                             if (c.status !== 'ACTIVE') return false;
                             if (!c.createdAt) return true;
                             return new Date(c.createdAt) <= monthEnd;
                         }) : [];
 
-                        const revenue = activeClientsInMonth.reduce((sum, c) => sum + (c.mrr || 0), 0);
+                        const revenue = activeClientsInMonth.reduce((sum, c) => sum + calculateClientMonthlyBill(c), 0);
 
                         return { name, revenue, profit: revenue - cost, cost };
                     });
@@ -118,19 +118,25 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
 
     // --- Stats Calculation ---
     // 1. Calculate Client Revenue (What clients would pay at retail)
-    // We use the real plan prices passed in the plans prop
+    // Keep one source of truth for monthly pricing math.
+    const getClientMonthlyPricingParts = (planName: string) => {
+        const plan = plans.find(p => p.name === planName);
+        if (!plan || plan.priceConfig.type === 'free') {
+            return { baseFee: 0, perUserFee: 0 };
+        }
+
+        const { amount } = getPlanPriceDetails(plan, 'monthly');
+        const baseFee = plan.priceConfig.type === 'base' ? amount : plan.priceConfig.monthly;
+        const perUserFee = plan.priceConfig.type === 'base' ? (plan.priceConfig.perUserFee || 0) : 0;
+
+        return { baseFee, perUserFee };
+    };
+
     const calculateClientMonthlyBill = (client: ResellerClient) => {
         if (client.status !== 'ACTIVE') return 0;
-        const plan = plans.find(p => p.name === client.plan);
-        if (!plan) return 0;
-
-        // Base Fee
-        const baseFee = plan.priceConfig.monthly;
-
-        // Employee Fee - using perUserFee from plan config
-        const perUserFee = plan.priceConfig.perUserFee || 0;
-
-        return baseFee + (client.employeeCount * perUserFee);
+        const { baseFee, perUserFee } = getClientMonthlyPricingParts(client.plan);
+        const employeeCount = Math.max(0, Number(client.employeeCount) || 0);
+        return baseFee + (employeeCount * perUserFee);
     };
 
     const totalClientRevenue = clients.reduce((sum, client) => sum + calculateClientMonthlyBill(client), 0);
@@ -290,9 +296,9 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
     };
 
     const calculateMRR = (plan: string, empCount: number) => {
-        // Updated Reseller Model: $3000 Base + $500 per Employee
-        if (plan === 'Free') return 0;
-        return 3000 + (empCount * 500);
+        const { baseFee, perUserFee } = getClientMonthlyPricingParts(plan);
+        const employeeCount = Math.max(0, Number(empCount) || 0);
+        return baseFee + (employeeCount * perUserFee);
     };
 
     const saveNewClient = async (e: React.FormEvent) => {
@@ -519,9 +525,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                                 </tr>
                                 ${clients.filter(c => c.status === 'ACTIVE').map(client => {
                 const clientBill = calculateClientMonthlyBill(client);
-                const plan = plans.find(p => p.name === client.plan);
-                const baseFee = plan?.priceConfig.monthly || 0;
-                const perUserFee = plan?.priceConfig.perUserFee || 0;
+                const { baseFee, perUserFee } = getClientMonthlyPricingParts(client.plan);
                 const employeeFee = client.employeeCount * perUserFee;
 
                 return `
@@ -718,7 +722,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                                     </span>
                                 </td>
                                 <td className="px-6 py-4 font-medium text-gray-900">
-                                    ${(client.plan === 'Free' ? 0 : 3000 + (client.employeeCount * 500)).toLocaleString()}
+                                    ${calculateClientMonthlyBill(client).toLocaleString()}
                                 </td>
                                 <td className="px-6 py-4">
                                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
@@ -1205,7 +1209,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                                         </div>
                                     </div>
                                     <div className="mt-4 text-sm text-gray-500">
-                                        {((commissionCredit / totalClientRevenue) * 100).toFixed(1)}% Commission Rate
+                                        {totalClientRevenue > 0 ? ((commissionCredit / totalClientRevenue) * 100).toFixed(1) : '0.0'}% Commission Rate
                                     </div>
                                 </div>
                                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">

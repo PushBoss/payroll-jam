@@ -148,6 +148,8 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
             perEmpPrice: 0,
             subtotal: 0,
             billableAmount: 0,
+            resellerCommissionRate: 0,
+            resellerCommissionAmount: 0,
             platformFees: 0,
             total: 0,
             totalUSD: '0.00'
@@ -183,13 +185,26 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
         }
 
         const commissionRate = (selectedPlan?.priceConfig.resellerCommission || 20) / 100;
-        const billableAmount = formData.plan === 'Reseller' ? (subtotal * commissionRate) : subtotal;
+        // Reseller commission is partner payout metadata; it should not reduce customer checkout amount.
+        const resellerCommissionAmount = formData.plan === 'Reseller' ? (subtotal * commissionRate) : 0;
+        const billableAmount = subtotal;
 
         const platformFees = billableAmount * 0.035; // Dime platform fees (3.5%)
         const total = billableAmount + platformFees;
         const totalUSD = (total / 155).toFixed(2);
 
-        return { type, basePrice, perEmpPrice, subtotal, billableAmount, platformFees, total, totalUSD };
+        return {
+            type,
+            basePrice,
+            perEmpPrice,
+            subtotal,
+            billableAmount,
+            resellerCommissionRate: commissionRate,
+            resellerCommissionAmount,
+            platformFees,
+            total,
+            totalUSD
+        };
     };
 
     // Recalculate pricing whenever formData changes (especially billingCycle, plan, or employee counts)
@@ -1040,6 +1055,12 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                             <div className="flex justify-between text-gray-600">
                                                 <span>Dime Platform Fees (3.5%)</span>
                                                 <span>${pricing.platformFees.toLocaleString()}</span>
+                                            </div>
+                                        )}
+                                        {formData.plan === 'Reseller' && pricing.resellerCommissionAmount > 0 && (
+                                            <div className="flex justify-between text-gray-500 text-xs">
+                                                <span>Partner commission payout ({Math.round(pricing.resellerCommissionRate * 100)}%)</span>
+                                                <span>${pricing.resellerCommissionAmount.toLocaleString()}</span>
                                             </div>
                                         )}
                                         <div className="flex justify-between font-bold text-gray-900 pt-2 border-t border-gray-200">
