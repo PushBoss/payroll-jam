@@ -50,7 +50,7 @@ interface CheckoutModalProps {
 
 interface PaymentMethodModalProps {
     currentUser: User | null;
-    currentSubscription: any;
+    currentSubscription?: any;
     onClose: () => void;
     onSuccess: () => Promise<void> | void;
 }
@@ -834,7 +834,7 @@ export const Settings: React.FC<SettingsProps> = ({
     return (
         <div className="space-y-6">
             {upgradeTarget && <CheckoutModal plan={upgradeTarget} currentUser={currentUser} onClose={() => setUpgradeTarget(null)} onSuccess={handleUpgradeSuccess} />}
-            {isAddingPaymentMethod && currentSubscription && (
+            {isAddingPaymentMethod && (
                 <PaymentMethodModal
                     currentUser={currentUser}
                     currentSubscription={currentSubscription}
@@ -1084,9 +1084,13 @@ export const Settings: React.FC<SettingsProps> = ({
                             </div>
                             <button
                                 onClick={() => {
-                                    if (!currentSubscription?.dimepaySubscriptionId) {
-                                        toast.error('No recurring subscription was found for this account.');
+                                    if (!currentUser?.companyId) {
+                                        toast.error('Missing company information for billing.');
                                         return;
+                                    }
+
+                                    if (!currentSubscription?.dimepaySubscriptionId) {
+                                        toast.info('No active recurring subscription found yet. Add your payment method now to complete monthly billing migration.');
                                     }
                                     setIsAddingPaymentMethod(true);
                                 }}
@@ -1118,9 +1122,16 @@ export const Settings: React.FC<SettingsProps> = ({
                                 </div>
                             </div>
                         ) : (
-                            <div className="flex items-center space-x-3 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-                                <Icons.Alert className="w-5 h-5 text-yellow-600" />
-                                <p className="text-sm text-yellow-800">No payment method on file. Your subscription may be interrupted.</p>
+                            <div className="space-y-2">
+                                <div className="flex items-center space-x-3 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                                    <Icons.Alert className="w-5 h-5 text-yellow-600" />
+                                    <p className="text-sm text-yellow-800">No payment method on file. Your subscription may be interrupted.</p>
+                                </div>
+                                {!currentSubscription?.dimepaySubscriptionId && (
+                                    <p className="text-xs text-gray-500">
+                                        Legacy account detected: add a payment method to migrate this account into recurring monthly billing.
+                                    </p>
+                                )}
                             </div>
                         )}
                     </div>
