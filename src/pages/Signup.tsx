@@ -367,7 +367,9 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                 email: formData.email,
                 password: formData.password,
                 role: role,
-                companyId: isTeamInvitation ? undefined : generateUUID(), // Use undefined instead of empty string
+                // Use the same pre-generated companyId passed to DimePay so webhook subscription rows
+                // are written against the exact company created at signup.
+                companyId: isTeamInvitation ? undefined : companyId,
                 isOnboarded: isTeamInvitation, // Team members are considered "onboarded" manually
                 companyName: isTeamInvitation ? undefined : (formData.name + "'s Company"),
                 plan: isTeamInvitation ? 'Free' : formData.plan,
