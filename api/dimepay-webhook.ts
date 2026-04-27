@@ -2,6 +2,101 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import crypto from 'crypto';
 import { supabaseAdmin as supabase } from './_supabaseAdmin';
 
+const sendBillingNotificationEmail = async (params: {
+  companyId: string;
+  companyName?: string;
+  subject: string;
+  heading: string;
+  message: string;
+  amount?: number;
+  invoiceNumber?: string;
+  retryCount?: number;
+}) => {
+  try {
+    const { data: company } = await supabase
+      .from('companies')
+      .select('name')
+      .eq('id', params.companyId)
+      .maybeSingle();
+
+    const companyName = params.companyName || company?.name || 'Your Company';
+
+    const { data: ownerUser } = await supabase
+      .from('app_users')
+      .select('email, name, role')
+      .eq('company_id', params.companyId)
+      .in('role', ['OWNER', 'ADMIN'])
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    const recipientEmail = ownerUser?.email;
+    if (!recipientEmail) {
+      console.warn('⚠️ No billing recipient email found for company:', params.companyId);
+      return;
+    }
+
+    const host = process.env.APP_BASE_URL || 'https://www.payrolljam.com';
+    const billingUrl = `${host.replace(/\/+$/, '')}/settings`;
+    const amountLine = typeof params.amount === 'number'
+      ? `<p style="margin:0 0 8px;"><strong>Amount:</strong> JMD $${Number(params.amount).toLocaleString()}</p>`
+      : '';
+    const invoiceLine = params.invoiceNumber
+      ? `<p style="margin:0 0 8px;"><strong>Invoice:</strong> ${params.invoiceNumber}</p>`
+      : '';
+    const retryLine = typeof params.retryCount === 'number'
+      ? `<p style="margin:0 0 8px;"><strong>Attempt:</strong> ${params.retryCount} of 3</p>`
+      : '';
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; color: #111827; line-height: 1.5;">
+        <h2 style="margin: 0 0 12px;">${params.heading}</h2>
+        <p style="margin: 0 0 16px;">Hi ${ownerUser?.name || 'there'},</p>
+        <p style="margin: 0 0 16px;">${params.message}</p>
+        <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:12px; margin: 0 0 16px;">
+          <p style="margin:0 0 8px;"><strong>Company:</strong> ${companyName}</p>
+          ${amountLine}
+          ${invoiceLine}
+          ${retryLine}
+        </div>
+        <p style="margin: 0 0 16px;">
+          Update your billing method or complete payment from your Billing settings.
+        </p>
+        <a href="${billingUrl}" style="display:inline-block;padding:10px 14px;background:#111827;color:#fff;text-decoration:none;border-radius:6px;">
+          Go To Billing Settings
+        </a>
+      </div>
+    `;
+
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+    if (!supabaseUrl) {
+      console.warn('⚠️ SUPABASE_URL missing; cannot send billing email');
+      return;
+    }
+
+    const response = await fetch(`${supabaseUrl.replace(/\/+$/, '')}/functions/v1/send-email`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(supabaseAnonKey ? { apikey: supabaseAnonKey, Authorization: `Bearer ${supabaseAnonKey}` } : {})
+      },
+      body: JSON.stringify({
+        to: recipientEmail,
+        subject: params.subject,
+        html
+      })
+    });
+
+    if (!response.ok) {
+      const details = await response.text();
+      console.error('❌ Failed to send billing email:', details);
+    }
+  } catch (emailError) {
+    console.error('❌ Billing notification email error:', emailError);
+  }
+};
+
 const updateCompanyBillingState = async (
   companyId: string,
   status: 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED',
@@ -394,6 +489,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         // Determine action based on retry count
         if (retryCount >= 3) {
+          await sendBillingNotificationEmail({
+            companyId: subscription.company_id,
+            subject: 'Final notice: account access will be suspended for unpaid invoice',
+            heading: 'Final billing notice',
+            message: 'We were unable to process your payment after multiple attempts. Please settle this invoice now to avoid interruption to account access.',
+            amount: data.amount,
+            invoiceNumber: data.invoice_number || data.invoice_id,
+            retryCount
+          });
+
           // Suspend after 3 failed attempts
           console.log('🚫 Suspending subscription after 3 failed attempts');
 
@@ -410,6 +515,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           // TODO: Send suspension email notification
         } else {
+          await sendBillingNotificationEmail({
+            companyId: subscription.company_id,
+            subject: 'Payment failed: action required to avoid account lock',
+            heading: 'Payment could not be processed',
+            message: 'Your invoice payment attempt failed. Please update your card or complete payment to keep account access active.',
+            amount: data.amount,
+            invoiceNumber: data.invoice_number || data.invoice_id,
+            retryCount
+          });
+
           // Mark as past_due but allow retries
           console.log(`⚠️ Payment failed (attempt ${retryCount}/3) - marking past due`);
 
