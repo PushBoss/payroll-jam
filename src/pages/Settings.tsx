@@ -456,6 +456,18 @@ export const Settings: React.FC<SettingsProps> = ({
     const storedCardLast4 = currentSubscription?.paymentMethodLast4 || currentSubscription?.metadata?.card_last4;
     const storedCardBrand = currentSubscription?.paymentMethodBrand || currentSubscription?.metadata?.card_brand;
     const hasStoredBillingMethod = !!storedCardLast4 || !!currentSubscription?.metadata?.dime_card_token;
+    const BILLING_GRACE_DAYS = 7;
+    const currentRetryCount = Number(currentSubscription?.metadata?.retry_count || 0);
+    const failedAtRaw = currentSubscription?.metadata?.last_failed_date;
+    const failedAtDate = failedAtRaw ? new Date(failedAtRaw) : null;
+    const graceEndsAt = failedAtDate
+        ? new Date(failedAtDate.getTime() + (BILLING_GRACE_DAYS * 24 * 60 * 60 * 1000))
+        : null;
+    const daysUntilSuspension = graceEndsAt
+        ? Math.max(0, Math.ceil((graceEndsAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000)))
+        : null;
+    const isPastDue = currentSubscription?.status === 'past_due';
+    const shouldShowGraceCountdown = isPastDue && graceEndsAt && currentRetryCount > 0;
 
     // Early return if companyData is not available
     if (!companyData) {
@@ -969,6 +981,16 @@ export const Settings: React.FC<SettingsProps> = ({
                             {currentSubscription && currentSubscription.amount > 0 && (
                                 <div className="mt-2 text-sm text-gray-400">
                                     ${currentSubscription.amount.toLocaleString()} {currentSubscription.currency} / {currentSubscription.billingFrequency}
+                                </div>
+                            )}
+                            {shouldShowGraceCountdown && (
+                                <div className="mt-4 rounded-lg border border-yellow-500/40 bg-yellow-500/10 p-3 max-w-xl">
+                                    <p className="text-sm font-semibold text-yellow-300">
+                                        Payment overdue: {daysUntilSuspension} day{daysUntilSuspension === 1 ? '' : 's'} until account lock
+                                    </p>
+                                    <p className="text-xs text-yellow-100/90 mt-1">
+                                        Attempt {currentRetryCount} of 3. Please pay this invoice or update your payment method before {graceEndsAt?.toLocaleDateString()} to avoid suspension.
+                                    </p>
                                 </div>
                             )}
                         </div>
