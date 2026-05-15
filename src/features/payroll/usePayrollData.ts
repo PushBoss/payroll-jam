@@ -47,6 +47,11 @@ export const usePayrollData = ({ user, isSupabaseMode, activeCompanyId }: UsePay
     }
 
     setPayRunHistory((prev) => upsertPayRunLocally(prev, run));
+    if (run.status === 'DRAFT') {
+      toast.warning('Database not configured. Draft saved locally only.');
+      return true;
+    }
+
     toast.error('Database not configured. Pay run saved locally only.');
     return false;
   };

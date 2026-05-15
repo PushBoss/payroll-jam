@@ -66,6 +66,7 @@ export const PayRun: React.FC<PayRunProps> = ({
     // Loading States
     const [isCalculating, setIsCalculating] = useState(false);
     const [isFinalizing, setIsFinalizing] = useState(false);
+    const [isSavingDraft, setIsSavingDraft] = useState(false);
     const [isEmailing, setIsEmailing] = useState(false);
     const [currentRun, setCurrentRun] = useState<PayRunType | null>(null);
     const [isPayRunConfirmed, setIsPayRunConfirmed] = useState(false);
@@ -126,6 +127,16 @@ export const PayRun: React.FC<PayRunProps> = ({
 
     // Load run for editing - only once when editRunId changes
     useEffect(() => {
+        if (!editRunId && hasLoadedEdit) {
+            setHasLoadedEdit(false);
+            return;
+        }
+
+        if (!editRunId || hasLoadedEdit) return;
+
+        // Wait for pay run history to hydrate before deciding the run is missing.
+        if (payRunHistory.length === 0) return;
+
         // Only load if we have an editRunId and haven't loaded yet
         if (editRunId && !hasLoadedEdit && payRunHistory.length > 0) {
             const runToEdit = payRunHistory.find(r => r.id === editRunId);
@@ -137,6 +148,10 @@ export const PayRun: React.FC<PayRunProps> = ({
                     period = period.substring(0, 7); // Extract YYYY-MM from YYYY-MM-DD
                 }
                 setPayPeriod(period);
+                if (runToEdit.periodStart.match(/^\d{4}-\d{2}-\d{2}$/) && runToEdit.periodEnd.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                    setPeriodStartDate(runToEdit.periodStart);
+                    setPeriodEndDate(runToEdit.periodEnd);
+                }
                 setCurrentRun(runToEdit);
                 // Load the line items into draft
                 if (runToEdit.lineItems && runToEdit.lineItems.length > 0) {
@@ -148,19 +163,12 @@ export const PayRun: React.FC<PayRunProps> = ({
             } else if (runToEdit && runToEdit.status === 'FINALIZED') {
                 toast.error('Cannot edit finalized pay runs');
                 setHasLoadedEdit(true);
+            } else {
+                toast.error('Pay run not found');
+                setHasLoadedEdit(true);
             }
-        } else if (editRunId && !hasLoadedEdit && payRunHistory.length === 0) {
-            toast.error('Pay run not found');
-            setHasLoadedEdit(true);
         }
-
-        // Reset hasLoadedEdit when editRunId changes
-        if (!editRunId && hasLoadedEdit) {
-            setHasLoadedEdit(false);
-        }
-        // Only depend on editRunId and hasLoadedEdit to prevent re-triggering on payRunHistory updates
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [editRunId, hasLoadedEdit]);
+    }, [editRunId, hasLoadedEdit, loadDraftItems, payRunHistory]);
 
     // Generate Pay Period Options
     const payPeriodOptions = useMemo(() => {
@@ -201,6 +209,46 @@ export const PayRun: React.FC<PayRunProps> = ({
         }, 800);
     };
 
+    const buildCurrentDraftRun = (status: PayRunType['status']) => buildPayRunRecord({
+        id: editingRun?.id || currentRun?.id || generateUUID(),
+        payPeriod,
+        periodStart: periodStartDate || undefined,
+        periodEnd: periodEndDate || undefined,
+        payDate: editingRun?.payDate || currentRun?.payDate,
+        payFrequency: editingRun?.payFrequency as PayFrequency || getPayFrequencyForCycle(payCycle),
+        status,
+        totalGross: totals.gross,
+        totalNet: totals.net,
+        lineItems: draftItems
+    });
+
+    const handleSaveDraft = async () => {
+        if (draftItems.length === 0) {
+            toast.error("No employees in pay run. Add employees first.");
+            return false;
+        }
+
+        setIsSavingDraft(true);
+        let saved = false;
+        const draftRun = buildCurrentDraftRun('DRAFT');
+        try {
+            saved = await onSave(draftRun);
+        } finally {
+            setIsSavingDraft(false);
+        }
+
+        if (!saved) {
+            toast.error('Could not save draft pay run to database.');
+            return false;
+        }
+
+        setEditingRun(draftRun);
+        setCurrentRun(draftRun);
+        auditService.log(currentUser, 'UPDATE', 'PayRun', `Saved draft payroll for ${payPeriod}`);
+        toast.success("Draft pay run saved");
+        return true;
+    };
+
     const handleContinueToFinalize = async () => {
         if (draftItems.length === 0) {
             toast.error("No employees in pay run. Add employees first.");
@@ -213,18 +261,14 @@ export const PayRun: React.FC<PayRunProps> = ({
             return;
         }
 
-        // Auto-save draft before moving to finalize
-        const draftRun: PayRunType = buildPayRunRecord({
-            id: editingRun?.id || generateUUID(),
-            payPeriod,
-            payFrequency: editingRun?.payFrequency as PayFrequency || getPayFrequencyForCycle(payCycle),
-            status: 'DRAFT',
-            totalGross: totals.gross,
-            totalNet: totals.net,
-            lineItems: draftItems
-        });
-
-        const saved = await onSave(draftRun);
+        const draftRun = buildCurrentDraftRun('DRAFT');
+        setIsSavingDraft(true);
+        let saved = false;
+        try {
+            saved = await onSave(draftRun);
+        } finally {
+            setIsSavingDraft(false);
+        }
         if (!saved) {
             toast.error('Could not save draft pay run to database.');
             return;
@@ -238,8 +282,6 @@ export const PayRun: React.FC<PayRunProps> = ({
         setIsPayRunConfirmed(false);
         toast.success("Review your pay run and click Finalize to complete");
     };
-
-    // Removed handleSaveDraft - using auto-save with handleContinueToFinalize now
 
     // Removed handleSaveAsApproved - merging approval into finalize step
 
@@ -255,6 +297,9 @@ export const PayRun: React.FC<PayRunProps> = ({
         const newRun: PayRunType = buildPayRunRecord({
             id: editingRun?.id || currentRun?.id || generateUUID(),
             payPeriod,
+            periodStart: periodStartDate || undefined,
+            periodEnd: periodEndDate || undefined,
+            payDate: editingRun?.payDate || currentRun?.payDate,
             payFrequency: editingRun?.payFrequency as PayFrequency || getPayFrequencyForCycle(payCycle),
             status: 'FINALIZED',
             totalGross: totals.gross,
@@ -565,8 +610,17 @@ export const PayRun: React.FC<PayRunProps> = ({
                         }} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm font-medium">
                             Cancel
                         </button>
-                        <button onClick={handleContinueToFinalize} disabled={isFinalizing} className="bg-jam-orange text-jam-black px-6 py-2 font-bold rounded-lg hover:bg-yellow-500 shadow-lg flex items-center text-sm disabled:opacity-50 disabled:cursor-not-allowed">
-                            {isFinalizing ? (
+                        <button onClick={handleSaveDraft} disabled={isSavingDraft || isFinalizing} className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 shadow-sm flex items-center text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                            {isSavingDraft ? (
+                                <span className="flex items-center"><Icons.Refresh className="w-4 h-4 mr-2 animate-spin" /> Saving...</span>
+                            ) : (
+                                <span className="flex items-center"><Icons.Save className="w-4 h-4 mr-2" /> Save Draft</span>
+                            )}
+                        </button>
+                        <button onClick={handleContinueToFinalize} disabled={isSavingDraft || isFinalizing} className="bg-jam-orange text-jam-black px-6 py-2 font-bold rounded-lg hover:bg-yellow-500 shadow-lg flex items-center text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                            {isSavingDraft ? (
+                                <span className="flex items-center"><Icons.Refresh className="w-4 h-4 mr-2 animate-spin" /> Saving...</span>
+                            ) : isFinalizing ? (
                                 <span className="flex items-center"><Icons.Refresh className="w-4 h-4 mr-2 animate-spin" /> Finalizing...</span>
                             ) : (
                                 <span className="flex items-center"><Icons.ChevronRight className="w-4 h-4 mr-1" /> Continue to Finalize</span>

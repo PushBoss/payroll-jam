@@ -3,6 +3,8 @@ import { CustomDeduction, Employee, PayFrequency, PayRun, PayRunLineItem } from 
 interface BuildPayRunRecordParams {
   id: string;
   payPeriod: string;
+  periodStart?: string;
+  periodEnd?: string;
   payFrequency: PayFrequency;
   status: PayRun['status'];
   totalGross: number;
@@ -14,6 +16,8 @@ interface BuildPayRunRecordParams {
 export const buildPayRunRecord = ({
   id,
   payPeriod,
+  periodStart,
+  periodEnd,
   payFrequency,
   status,
   totalGross,
@@ -22,8 +26,8 @@ export const buildPayRunRecord = ({
   payDate = new Date().toISOString().split('T')[0]
 }: BuildPayRunRecordParams): PayRun => ({
   id,
-  periodStart: payPeriod,
-  periodEnd: payPeriod,
+  periodStart: periodStart || payPeriod,
+  periodEnd: periodEnd || payPeriod,
   payDate,
   payFrequency,
   status,
