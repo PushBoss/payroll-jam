@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabaseAdmin } from './_supabaseAdmin';
-import { cancelDimePaySubscription, resolveDimePayEnvironment } from './_dimepay';
+import { supabaseAdmin } from './_supabaseAdmin.ts';
+import { cancelDimePaySubscription, resolveDimePayEnvironment } from './_dimepay.ts';
 
 /**
  * Cancel DimePay Subscription API Endpoint

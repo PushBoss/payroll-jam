@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabaseAdmin } from './_supabaseAdmin';
+import { supabaseAdmin } from './_supabaseAdmin.ts';
 import {
   resolveDimePayEnvironment,
   updateDimePaySubscriptionCard
-} from './_dimepay';
+} from './_dimepay.ts';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {

@@ -4,7 +4,7 @@ import {
   buildCardReferenceId,
   postSignedDimePayRequest,
   resolveDimePayEnvironment
-} from './_dimepay';
+} from './_dimepay.ts';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {

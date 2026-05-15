@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getDimePayRequest, resolveDimePayEnvironment } from './_dimepay';
+import { getDimePayRequest, resolveDimePayEnvironment } from './_dimepay.ts';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {

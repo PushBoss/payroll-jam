@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import crypto from 'crypto';
-import { supabaseAdmin as supabase } from './_supabaseAdmin';
+import { supabaseAdmin as supabase } from './_supabaseAdmin.ts';
 
 const sendBillingNotificationEmail = async (params: {
   companyId: string;

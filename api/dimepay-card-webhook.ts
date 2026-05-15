@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import crypto from 'crypto';
-import { supabaseAdmin } from './_supabaseAdmin';
-import { parseCardReferenceId, resolveDimePayEnvironment, updateDimePaySubscriptionCard } from './_dimepay';
+import { supabaseAdmin } from './_supabaseAdmin.ts';
+import { parseCardReferenceId, resolveDimePayEnvironment, updateDimePaySubscriptionCard } from './_dimepay.ts';
 
 const verifyWebhookSignature = (payload: any, signature: string | undefined, secret: string) => {
   if (!signature) return false;
