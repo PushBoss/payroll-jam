@@ -35,6 +35,14 @@ const DEMO_CONFIG = {
     passFeesTo: 'MERCHANT' as const
 };
 
+const getBrowserDimePayEnvironment = (): 'sandbox' | 'production' => {
+    if (typeof window === 'undefined') return 'sandbox';
+    const hostname = window.location.hostname;
+    return hostname === 'www.payrolljam.com' || hostname === 'payrolljam.com'
+        ? 'production'
+        : 'sandbox';
+};
+
 export const dimePayService = {
     /**
      * Renders the Dime Pay Embedded Widget
@@ -338,7 +346,9 @@ export const dimePayService = {
         localSubscriptionId?: string;
         subscriptionId?: string;
         redirectUrl?: string;
+        environment?: 'sandbox' | 'production';
     }) => {
+        const environment = params.environment || getBrowserDimePayEnvironment();
         const response = await fetch('/api/create-card-request', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -346,7 +356,8 @@ export const dimePayService = {
                 company_id: params.companyId,
                 local_subscription_id: params.localSubscriptionId,
                 subscription_id: params.subscriptionId,
-                redirect_url: params.redirectUrl
+                redirect_url: params.redirectUrl,
+                environment
             })
         });
 
@@ -358,8 +369,12 @@ export const dimePayService = {
         return data;
     },
 
-    getCardDetails: async (cardRequestToken: string) => {
-        const response = await fetch(`/api/get-card-details?token=${encodeURIComponent(cardRequestToken)}`);
+    getCardDetails: async (cardRequestToken: string, environment = getBrowserDimePayEnvironment()) => {
+        const params = new URLSearchParams({
+            token: cardRequestToken,
+            environment
+        });
+        const response = await fetch(`/api/get-card-details?${params.toString()}`);
         const data = await response.json();
 
         if (!response.ok) {
@@ -378,7 +393,9 @@ export const dimePayService = {
         cardLast4?: string;
         cardBrand?: string;
         cardExpiry?: string;
+        environment?: 'sandbox' | 'production';
     }) => {
+        const environment = params.environment || getBrowserDimePayEnvironment();
         const response = await fetch('/api/update-subscription-payment-method', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -390,7 +407,8 @@ export const dimePayService = {
                 card_request_token: params.cardRequestToken,
                 card_last4: params.cardLast4,
                 card_brand: params.cardBrand,
-                card_expiry: params.cardExpiry
+                card_expiry: params.cardExpiry,
+                environment
             })
         });
 

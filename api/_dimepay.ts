@@ -35,8 +35,26 @@ export const resolveDimePayEnvironment = (
 
 export const getDimePayCredentials = (environment: DimePayEnvironment): DimePayCredentials => {
   const clientKey = environment === 'production'
-    ? (process.env.DIMEPAY_CLIENT_ID_PROD || process.env.VITE_DIMEPAY_CLIENT_ID_PROD || process.env.DIMEPAY_CLIENT_ID || process.env.VITE_DIMEPAY_API_KEY_PROD || process.env.VITE_DIMEPAY_API_KEY || '')
-    : (process.env.DIMEPAY_CLIENT_ID_SANDBOX || process.env.VITE_DIMEPAY_CLIENT_ID_SANDBOX || process.env.DIMEPAY_CLIENT_ID || process.env.VITE_DIMEPAY_API_KEY_SANDBOX || process.env.VITE_DIMEPAY_API_KEY || '');
+    ? (
+      process.env.DIMEPAY_CLIENT_ID_PROD ||
+      process.env.DIMEPAY_API_KEY_PROD ||
+      process.env.VITE_DIMEPAY_CLIENT_ID_PROD ||
+      process.env.VITE_DIMEPAY_API_KEY_PROD ||
+      process.env.DIMEPAY_CLIENT_ID ||
+      process.env.DIMEPAY_API_KEY ||
+      process.env.VITE_DIMEPAY_API_KEY ||
+      ''
+    )
+    : (
+      process.env.DIMEPAY_CLIENT_ID_SANDBOX ||
+      process.env.DIMEPAY_API_KEY_SANDBOX ||
+      process.env.VITE_DIMEPAY_CLIENT_ID_SANDBOX ||
+      process.env.VITE_DIMEPAY_API_KEY_SANDBOX ||
+      process.env.DIMEPAY_CLIENT_ID ||
+      process.env.DIMEPAY_API_KEY ||
+      process.env.VITE_DIMEPAY_API_KEY ||
+      ''
+    );
 
   const secretKey = environment === 'production'
     ? (process.env.DIMEPAY_SECRET_KEY_PROD || process.env.VITE_DIMEPAY_SECRET_KEY_PROD || process.env.DIMEPAY_SECRET_KEY || process.env.VITE_DIMEPAY_SECRET_KEY || '')
