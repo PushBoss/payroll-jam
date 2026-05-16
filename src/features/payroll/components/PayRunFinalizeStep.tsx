@@ -13,6 +13,7 @@ interface PayRunFinalizeStepProps {
     isPayRunConfirmed: boolean;
     isFinalizing: boolean;
     isEmailing: boolean;
+    canEmailPayslips: boolean;
     bankTotals: BankTotals;
     integrationProvider: string;
     ncbCardClass: string;
@@ -36,6 +37,7 @@ export const PayRunFinalizeStep: React.FC<PayRunFinalizeStepProps> = ({
     isPayRunConfirmed,
     isFinalizing,
     isEmailing,
+    canEmailPayslips,
     bankTotals,
     integrationProvider,
     ncbCardClass,
@@ -94,7 +96,9 @@ export const PayRunFinalizeStep: React.FC<PayRunFinalizeStepProps> = ({
                         </div>
                         <div>
                             <h2 className="text-xl font-bold text-green-900">Pay Run Finalized Successfully!</h2>
-                            <p className="text-green-700 text-sm">Payslips have been generated and saved to reports. You can now export bank files and send payslips.</p>
+                            <p className="text-green-700 text-sm">
+                                Payslips have been generated and saved to reports. You can now export files{canEmailPayslips ? ' and send payslips.' : '.'}
+                            </p>
                         </div>
                     </div>
                     <div className="flex items-center space-x-3">
@@ -198,14 +202,16 @@ export const PayRunFinalizeStep: React.FC<PayRunFinalizeStepProps> = ({
                                 <Icons.Download className="w-4 h-4 mr-2" />
                                 Download All
                             </button>
-                            <button
-                                onClick={onEmailPayslips}
-                                disabled={isEmailing}
-                                className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-100 disabled:opacity-50"
-                            >
-                                <Icons.Mail className="w-4 h-4 mr-2" />
-                                {isEmailing ? 'Sending...' : 'Email All'}
-                            </button>
+                            {canEmailPayslips && (
+                                <button
+                                    onClick={onEmailPayslips}
+                                    disabled={isEmailing}
+                                    className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-100 disabled:opacity-50"
+                                >
+                                    <Icons.Mail className="w-4 h-4 mr-2" />
+                                    {isEmailing ? 'Sending...' : 'Email All'}
+                                </button>
+                            )}
                             <button
                                 onClick={onPrintAllPayslips}
                                 className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-100"

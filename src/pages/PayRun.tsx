@@ -12,7 +12,6 @@ import {
     buildPayPeriodOptions,
     buildPayRunRecord,
     calculateBankTotals,
-    createPayslipDownloadToken,
     getIncompletePayRunEmployees,
     getMissingPayRunEmployees,
     getPayFrequencyForCycle,
@@ -188,6 +187,7 @@ export const PayRun: React.FC<PayRunProps> = ({
 
     const ncbCardClass = showNcbCard ? 'border-gray-200 hover:border-jam-orange bg-white' : 'border-gray-100 bg-gray-50 opacity-60';
     const bnsCardClass = showBnsCard ? 'border-gray-200 hover:border-jam-orange bg-white' : 'border-gray-100 bg-gray-50 opacity-60';
+    const canEmailPayslips = hasEmployeePortalAccess(companyData?.plan || 'Free');
 
     const incompleteEmployees = useMemo(() => {
         return getIncompletePayRunEmployees(draftItems, employees);
@@ -389,35 +389,22 @@ export const PayRun: React.FC<PayRunProps> = ({
 
     const handleEmailPayslips = async () => {
         if (!currentRun) return;
+        if (!canEmailPayslips) {
+            toast.error('Payslip email is available on the Pro plan and above. Download payslips and send them manually for this plan.');
+            return;
+        }
+
         setIsEmailing(true);
         let sentCount = 0;
-
-        // Check company plan for employee portal access
-        const hasPortalAccess = hasEmployeePortalAccess(companyData?.plan || 'Free');
 
         try {
             for (const line of currentRun.lineItems) {
                 const emp = employees.find(e => e.id === line.employeeId);
                 if (emp?.email) {
-                    // Generate download token for Free plan users
-                    let downloadToken = '';
-                    if (!hasPortalAccess) {
-                        downloadToken = createPayslipDownloadToken(line, currentRun);
-                        console.log('🔑 Generated download token for Free plan:', {
-                            employeeId: line.employeeId,
-                            token: downloadToken,
-                            decoded: {
-                                employeeId: line.employeeId,
-                                period: currentRun.periodStart,
-                                runId: currentRun.id
-                            }
-                        });
-                    }
-
                     console.log('📧 Sending payslip email:', {
                         email: emp.email,
-                        hasPortalAccess,
-                        downloadToken: downloadToken || 'N/A (portal access)'
+                        hasPortalAccess: true,
+                        downloadToken: 'N/A (portal access)'
                     });
 
                     await emailService.sendPayslipNotification(
@@ -425,8 +412,8 @@ export const PayRun: React.FC<PayRunProps> = ({
                         emp.firstName,
                         currentRun.periodStart,
                         `$${line.netPay.toLocaleString()}`,
-                        hasPortalAccess,
-                        downloadToken
+                        true,
+                        ''
                     );
                     sentCount++;
                 }
@@ -709,6 +696,7 @@ export const PayRun: React.FC<PayRunProps> = ({
                 isPayRunConfirmed={isPayRunConfirmed}
                 isFinalizing={isFinalizing}
                 isEmailing={isEmailing}
+                canEmailPayslips={canEmailPayslips}
                 bankTotals={bankTotals}
                 integrationProvider={integrationConfig.provider}
                 ncbCardClass={ncbCardClass}

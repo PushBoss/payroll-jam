@@ -97,7 +97,7 @@ export const calculateBankTotals = (run: PayRun | null, employees: Employee[]): 
 };
 
 export const hasEmployeePortalAccess = (plan?: string) => {
-  return plan === 'Starter' || plan === 'Pro' || plan === 'Professional';
+  return plan === 'Pro' || plan === 'Professional' || plan === 'Enterprise' || plan === 'Reseller';
 };
 
 export const createPayslipDownloadToken = (lineItem: PayRunLineItem, run: PayRun) => {
