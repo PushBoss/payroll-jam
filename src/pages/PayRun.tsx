@@ -210,8 +210,26 @@ export const PayRun: React.FC<PayRunProps> = ({
         }, 800);
     };
 
+    const resolveDraftRunId = (status: PayRunType['status']) => {
+        if (editingRun?.id) return editingRun.id;
+        if (currentRun?.id) return currentRun.id;
+        if (status !== 'DRAFT') return generateUUID();
+
+        const periodStart = periodStartDate || payPeriod;
+        const periodEnd = periodEndDate || payPeriod;
+        const payFrequency = getPayFrequencyForCycle(payCycle);
+        const existingDraft = payRunHistory.find(run =>
+            run.status === 'DRAFT' &&
+            run.periodStart === periodStart &&
+            run.periodEnd === periodEnd &&
+            run.payFrequency === payFrequency
+        );
+
+        return existingDraft?.id || generateUUID();
+    };
+
     const buildCurrentDraftRun = (status: PayRunType['status']) => buildPayRunRecord({
-        id: editingRun?.id || currentRun?.id || generateUUID(),
+        id: resolveDraftRunId(status),
         payPeriod,
         periodStart: periodStartDate || undefined,
         periodEnd: periodEndDate || undefined,
