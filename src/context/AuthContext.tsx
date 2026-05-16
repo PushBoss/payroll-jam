@@ -19,6 +19,16 @@ interface AuthContextType {
     password: string;
     companyName?: string;
     plan?: string;
+    address?: string;
+    city?: string;
+    parish?: string;
+    billingCycle?: 'monthly' | 'annual';
+    employeeLimit?: string;
+    paymentMethod?: 'card' | 'direct-deposit' | 'reseller-billing';
+    numEmployees?: number;
+    numCompanies?: number;
+    legalConsentAccepted?: boolean;
+    legalConsentAcceptedAt?: string;
     skipEmailVerification?: boolean;
     resellerInviteToken?: string;
     resellerUserId?: string;
@@ -283,6 +293,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     password: string;
     companyName?: string;
     plan?: string;
+    address?: string;
+    city?: string;
+    parish?: string;
+    billingCycle?: 'monthly' | 'annual';
+    employeeLimit?: string;
+    paymentMethod?: 'card' | 'direct-deposit' | 'reseller-billing';
+    numEmployees?: number;
+    numCompanies?: number;
+    legalConsentAccepted?: boolean;
+    legalConsentAcceptedAt?: string;
     skipEmailVerification?: boolean;
     resellerInviteToken?: string;
     resellerUserId?: string;
@@ -296,7 +316,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       // Server-side guard: prevent Free-plan signups with too many employees
       if (userData.plan === 'Free') {
-        const empCount = (userData as any).numEmployees || 0;
+        const empCount = Number((userData as any).numEmployees || 0);
         if (empCount > 5) {
           const err = new Error('Free plan supports up to 5 employees. Please choose a paid plan.');
           (err as any).code = 'FREE_PLAN_LIMIT';
@@ -446,8 +466,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           name: userData.companyName!,
           email: userData.email, // Added email
           trn: '',
-          address: '',
-          phone: '',
+          address: userData.address || '',
+          phone: userData.phone || '',
+          city: userData.city,
+          parish: userData.parish,
           bankName: '',
           accountNumber: '',
           branchCode: '',
@@ -457,6 +479,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           billingCycle: billingCycle, // Save billing cycle
           employeeLimit: employeeLimit, // Save employee limit
           paymentMethod: (userData as any).paymentMethod,
+          signupDetails: {
+            numEmployees: userData.numEmployees,
+            numCompanies: userData.numCompanies,
+            legalConsentAccepted: userData.legalConsentAccepted,
+            legalConsentAcceptedAt: userData.legalConsentAcceptedAt
+          },
           status: companyStatus // Add status field for approval workflow
         };
 

@@ -429,7 +429,15 @@ export interface CompanySettings {
   plan?: string;
   billingCycle?: 'MONTHLY' | 'ANNUAL';
   employeeLimit?: string;
-  paymentMethod?: 'card' | 'direct-deposit';
+  paymentMethod?: 'card' | 'direct-deposit' | 'reseller-billing';
+  city?: string;
+  parish?: string;
+  signupDetails?: {
+    numEmployees?: number;
+    numCompanies?: number;
+    legalConsentAccepted?: boolean;
+    legalConsentAcceptedAt?: string;
+  };
   resellerId?: string;
   policies?: Record<string, any>;
   reseller_defaults?: Record<string, any>;

@@ -23,6 +23,23 @@ interface SignupProps {
     plans: PricingPlan[];
 }
 
+const JAMAICA_PARISHES = [
+    'Kingston',
+    'St. Andrew',
+    'St. Catherine',
+    'Clarendon',
+    'Manchester',
+    'St. Elizabeth',
+    'Westmoreland',
+    'Hanover',
+    'St. James',
+    'Trelawny',
+    'St. Ann',
+    'St. Mary',
+    'Portland',
+    'St. Thomas',
+];
+
 export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick, onBack, onNavigate, initialPlan = 'Starter', initialBillingCycle = 'monthly', plans }) => {
     const { signup, updateUser } = useAuth();
     const [step, setStep] = useState<'account' | 'billing'>('account');
@@ -365,17 +382,25 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                 id: generateUUID(),
                 name: formData.name,
                 email: formData.email,
+                phone: formData.phone.trim() || undefined,
                 password: formData.password,
                 role: role,
                 // Use the same pre-generated companyId passed to DimePay so webhook subscription rows
                 // are written against the exact company created at signup.
                 companyId: isTeamInvitation ? undefined : companyId,
                 isOnboarded: isTeamInvitation, // Team members are considered "onboarded" manually
-                companyName: isTeamInvitation ? undefined : (formData.name + "'s Company"),
+                companyName: isTeamInvitation ? undefined : (formData.companyName.trim() || `${formData.name}'s Company`),
+                address: formData.address.trim() || undefined,
+                city: formData.city.trim() || undefined,
+                parish: formData.parish,
                 plan: isTeamInvitation ? 'Free' : formData.plan,
                 billingCycle: formData.billingCycle,
                 employeeLimit: employeeLimit,
                 paymentMethod: paymentMethod,
+                numEmployees: parseInt(formData.numEmployees) || undefined,
+                numCompanies: parseInt(formData.numCompanies) || undefined,
+                legalConsentAccepted: legalConsent,
+                legalConsentAcceptedAt: new Date().toISOString(),
                 resellerInviteToken: resellerInviteToken || undefined,
                 resellerUserId: resellerUserId || undefined,
                 resellerEmail: resellerEmail || undefined,
@@ -604,6 +629,36 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                         <label className="block text-sm font-medium text-gray-700">Work Email</label>
                                         <input required type="email" autoComplete="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
                                     </div>
+                                    {!isTeamInvitation && (
+                                        <>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700">Company Name</label>
+                                                <input required type="text" value={formData.companyName} onChange={(e) => setFormData({ ...formData, companyName: e.target.value })} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700">Phone</label>
+                                                <input type="tel" autoComplete="tel" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700">Business Address</label>
+                                                <input type="text" autoComplete="street-address" value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
+                                            </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700">City</label>
+                                                    <input type="text" value={formData.city} onChange={(e) => setFormData({ ...formData, city: e.target.value })} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700">Parish</label>
+                                                    <select value={formData.parish} onChange={(e) => setFormData({ ...formData, parish: e.target.value })} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-jam-orange focus:border-jam-orange sm:text-sm">
+                                                        {JAMAICA_PARISHES.map(parish => (
+                                                            <option key={parish} value={parish}>{parish}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
                                     {/* Show employee count field for all plans except Free - hidden for team invitations */}
                                     {!isTeamInvitation && formData.plan !== 'Free' && (
                                         <div>

@@ -3,6 +3,12 @@ import { CompanySettings, GlobalConfig, ResellerClient, DbCompanyRow, toPlanLabe
 import { normalizePlanToDatabase, normalizePlanToFrontend } from '../utils/planNames';
 import { getEffectiveSubscriptionStatus, isBillingGiftActive, toBillingGift } from '../utils/billingGift';
 
+const parseEmployeeLimit = (limit?: string): number | null => {
+  if (!limit || limit === 'Unlimited') return 999999;
+  const match = limit.match(/\d+/);
+  return match ? Number(match[0]) : null;
+};
+
 
 export const CompanyService = {
   getCompany: async (companyId: string): Promise<CompanySettings | null> => {
@@ -26,6 +32,8 @@ export const CompanyService = {
       bankName: settings.bankName || 'NCB',
       accountNumber: settings.accountNumber || '',
       branchCode: settings.branchCode || '',
+      billingCycle: data.billing_cycle === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY',
+      employeeLimit: data.employee_limit && data.employee_limit < 999999 ? `${data.employee_limit} Employees` : 'Unlimited',
       plan: toPlanLabel(normalizePlanToFrontend(data.plan)),
       subscriptionStatus: getEffectiveSubscriptionStatus({
         subscriptionStatus: data.status || 'ACTIVE',
@@ -57,19 +65,24 @@ export const CompanyService = {
 
     const existingSettings = existingCompany?.settings || {};
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('companies')
-      .update({
+      .upsert({
+        id: companyId,
         name: settings.name,
         trn: settings.trn,
         address: settings.address,
         settings: {
           ...existingSettings,
+          email: settings.email ?? existingSettings.email,
           phone: settings.phone,
           bankName: settings.bankName,
           accountNumber: settings.accountNumber,
           branchCode: settings.branchCode,
           paymentMethod: settings.paymentMethod,
+          city: settings.city ?? existingSettings.city,
+          parish: settings.parish ?? existingSettings.parish,
+          signupDetails: settings.signupDetails ?? existingSettings.signupDetails,
           payFrequency: settings.payFrequency ?? existingSettings.payFrequency,
           defaultPayDate: settings.defaultPayDate ?? existingSettings.defaultPayDate,
           policies: settings.policies ?? existingSettings.policies,
@@ -78,11 +91,15 @@ export const CompanyService = {
           departments: settings.departments ?? existingSettings.departments ?? [],
           designations: settings.designations ?? existingSettings.designations ?? []
         },
-        status: settings.subscriptionStatus || 'ACTIVE',
-        plan: normalizePlanToDatabase(settings.plan)
+        status: (settings as any).status || settings.subscriptionStatus || 'ACTIVE',
+        plan: normalizePlanToDatabase(settings.plan),
+        billing_cycle: settings.billingCycle || 'MONTHLY',
+        employee_limit: parseEmployeeLimit(settings.employeeLimit)
       })
-      .eq('id', companyId);
+      .select('*')
+      .single();
     if (error) throw error;
+    return data;
   },
 
   savePaymentGatewaySettings: async (companyId: string, paymentConfig: Record<string, unknown>) => {
