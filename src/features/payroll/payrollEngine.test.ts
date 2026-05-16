@@ -182,4 +182,76 @@ describe('payrollEngine', () => {
     expect(lineItem.deductions).toBe(500);
     expect(lineItem.deductionsBreakdown?.some(d => d.name === 'Union Fee')).toBe(true);
   });
+
+  it('keeps cumulative PAYE when recalculating edited draft lines', () => {
+    const january = calculatePayRunLineItem({
+      employee: defaultEmployee,
+      period: '2026-01',
+      context: {
+        timesheets: [],
+        leaveRequests: [],
+        payRunHistory: [],
+        companyData: defaultCompanyData
+      }
+    });
+    const history: PayRun[] = [{
+      id: 'run-jan',
+      periodStart: '2026-01',
+      periodEnd: '2026-01',
+      payDate: '2026-01-31',
+      payFrequency: PayFrequency.MONTHLY,
+      status: 'FINALIZED',
+      totalGross: january.grossPay,
+      totalNet: january.netPay,
+      lineItems: [january]
+    }];
+    const february = calculatePayRunLineItem({
+      employee: defaultEmployee,
+      period: '2026-02',
+      context: {
+        timesheets: [],
+        leaveRequests: [],
+        payRunHistory: history,
+        companyData: defaultCompanyData
+      }
+    });
+
+    const recalculated = recalculateDraftLineItem({
+      item: february,
+      employee: defaultEmployee,
+      companyData: defaultCompanyData,
+      period: '2026-02',
+      payRunHistory: history
+    });
+
+    expect(recalculated.paye).toBe(february.paye);
+    expect(recalculated.totalDeductions).toBe(february.totalDeductions);
+  });
+
+  it('excludes exhausted custom deductions and caps target-balance deductions', () => {
+    const employeeWithCompletedDeductions: Employee = {
+      ...defaultEmployee,
+      customDeductions: [
+        { id: 'fixed-done', name: 'Finished Loan', amount: 1000, periodType: 'FIXED_TERM', remainingTerm: 0 },
+        { id: 'target-done', name: 'Finished Advance', amount: 1000, periodType: 'TARGET_BALANCE', currentBalance: 5000, targetBalance: 5000 },
+        { id: 'target-last', name: 'Final Advance Payment', amount: 1000, periodType: 'TARGET_BALANCE', currentBalance: 4500, targetBalance: 5000 }
+      ]
+    };
+
+    const lineItem = calculatePayRunLineItem({
+      employee: employeeWithCompletedDeductions,
+      period: '2026-01',
+      context: {
+        timesheets: [],
+        leaveRequests: [],
+        payRunHistory: [],
+        companyData: defaultCompanyData
+      }
+    });
+
+    expect(lineItem.deductionsBreakdown).toEqual([
+      { id: 'target-last', name: 'Final Advance Payment', amount: 500 }
+    ]);
+    expect(lineItem.deductions).toBe(500);
+  });
 });

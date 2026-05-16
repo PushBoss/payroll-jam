@@ -108,7 +108,8 @@ export const PayRun: React.FC<PayRunProps> = ({
     } = usePayRunUiState({
         currentUser,
         addAdHocItem,
-        updateLineItemTaxes
+        updateLineItemTaxes,
+        payPeriod
     });
 
     const isSuspended = companyData?.subscriptionStatus === 'SUSPENDED';
@@ -653,6 +654,7 @@ export const PayRun: React.FC<PayRunProps> = ({
                                 <PayRunDraftRow
                                     key={item.employeeId}
                                     item={item}
+                                    payPeriod={payPeriod}
                                     updateLineItemGross={updateLineItemGross}
                                     openAdHocModal={openAdHocModal}
                                     openTaxModal={openTaxModal}

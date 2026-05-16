@@ -36,6 +36,20 @@ const getEmployeeTaxOverrides = (companyData: CompanySettings | undefined, emplo
   return buildPayrollOverrides(resolveCompanyTaxConfig(companyData), employee?.pensionContributionRate || 0);
 };
 
+const isCustomDeductionActive = (deduction: { periodType?: string; remainingTerm?: number; currentBalance?: number; targetBalance?: number }) => {
+  if (deduction.periodType === 'FIXED_TERM') {
+    return deduction.remainingTerm === undefined || toFiniteNumber(deduction.remainingTerm) > 0;
+  }
+
+  if (deduction.periodType === 'TARGET_BALANCE') {
+    const targetBalance = toFiniteNumber(deduction.targetBalance);
+    if (targetBalance <= 0) return true;
+    return toFiniteNumber(deduction.currentBalance) < targetBalance;
+  }
+
+  return true;
+};
+
 export const calculatePayrollTotals = (items: PayRunLineItem[]) => ({
   gross: items.reduce(
     (sum, line) => sum + toFiniteNumber(line.grossPay) + toFiniteNumber(line.additions),
@@ -218,11 +232,21 @@ export const calculatePayRunLineItem = ({
     isTaxable: allowance.isTaxable
   }));
 
-  employee.customDeductions?.forEach(deduction => deductionsBreakdown.push({
-    id: deduction.id,
-    name: deduction.name,
-    amount: toFiniteNumber(deduction.amount)
-  }));
+  employee.customDeductions
+    ?.filter(isCustomDeductionActive)
+    .forEach(deduction => {
+      let amount = toFiniteNumber(deduction.amount);
+      if (deduction.periodType === 'TARGET_BALANCE' && deduction.targetBalance !== undefined) {
+        const remainingBalance = Math.max(0, toFiniteNumber(deduction.targetBalance) - toFiniteNumber(deduction.currentBalance));
+        amount = Math.min(amount, remainingBalance || amount);
+      }
+
+      deductionsBreakdown.push({
+        id: deduction.id,
+        name: deduction.name,
+        amount
+      });
+    });
 
   // Support legacy/simple employee deductions (non-term based) as “Other Deductions” in Pay Run.
   // Some parts of the app still populate `employee.deductions` (vs `customDeductions`).
@@ -353,14 +377,19 @@ export const initializePayRunLineItems = ({
 export const recalculateDraftLineItem = ({
   item,
   employee,
-  companyData
+  companyData,
+  period,
+  payRunHistory = []
 }: {
   item: PayRunLineItem;
   employee?: Employee;
   companyData?: CompanySettings;
+  period?: string;
+  payRunHistory?: PayRun[];
 }): PayRunLineItem => {
   if (!employee) return item;
 
+  const periodBounds = getPeriodBounds(period || new Date().toISOString().slice(0, 7));
   const additionsBreakdown = (item.additionsBreakdown || []).map(detail => ({
     ...detail,
     amount: toFiniteNumber(detail.amount)
@@ -378,24 +407,27 @@ export const recalculateDraftLineItem = ({
   const allAdditions = taxableAdditions + nonTaxableAdditions;
   const deductionTotal = deductionsBreakdown.reduce((sum, detail) => sum + toFiniteNumber(detail.amount), 0);
   const safeGrossPay = toFiniteNumber(item.grossPay);
-  const taxOverrides = getEmployeeTaxOverrides(companyData, employee);
-  const taxes = calculateTaxes(safeGrossPay + taxableAdditions, employee.payFrequency || PayFrequency.MONTHLY, taxOverrides);
-  const totalDeductions = taxes.totalDeductions + deductionTotal;
+  const computed = calculateComputedAmounts({
+    employee,
+    grossPay: safeGrossPay,
+    additionsBreakdown,
+    deductionsBreakdown,
+    period: periodBounds,
+    context: {
+      timesheets: [],
+      leaveRequests: [],
+      payRunHistory,
+      companyData
+    }
+  });
 
   return {
     ...item,
+    ...computed,
     additions: allAdditions,
     deductions: deductionTotal,
     additionsBreakdown,
     deductionsBreakdown,
-    ...taxes,
-    totalDeductions,
-    netPay: safeGrossPay + allAdditions - totalDeductions,
-    employerContributions: calculateEmployerContributions(
-      Math.max(0, safeGrossPay + taxableAdditions),
-      employee.payFrequency,
-      resolveCompanyTaxConfig(companyData)
-    ),
     isTaxOverridden: false
   };
 };

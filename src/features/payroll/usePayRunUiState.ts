@@ -14,15 +14,18 @@ interface UsePayRunUiStateParams {
     addAdHocItem: (
         employeeId: string,
         type: 'ADDITIONS' | 'DEDUCTIONS',
-        detail: { id: string; name: string; amount: number; isTaxable: boolean }
+        detail: { id: string; name: string; amount: number; isTaxable: boolean },
+        period?: string
     ) => void;
     updateLineItemTaxes: (employeeId: string, updates: Partial<StatutoryDeductions>) => void;
+    payPeriod?: string;
 }
 
 export const usePayRunUiState = ({
     currentUser,
     addAdHocItem,
-    updateLineItemTaxes
+    updateLineItemTaxes,
+    payPeriod
 }: UsePayRunUiStateParams) => {
     const [adHocModal, setAdHocModal] = useState<AdHocModalState>({
         isOpen: false,
@@ -59,12 +62,17 @@ export const usePayRunUiState = ({
         event.preventDefault();
         if (!newItemName || !newItemAmount) return;
 
-        addAdHocItem(adHocModal.employeeId, adHocModal.type, {
-            id: `adhoc-${Date.now()}`,
-            name: newItemName,
-            amount: parseFloat(newItemAmount),
-            isTaxable: true
-        });
+        addAdHocItem(
+            adHocModal.employeeId,
+            adHocModal.type,
+            {
+                id: `adhoc-${Date.now()}`,
+                name: newItemName,
+                amount: parseFloat(newItemAmount),
+                isTaxable: true
+            },
+            payPeriod
+        );
 
         closeAdHocModal();
         toast.success('Item added to this pay run');

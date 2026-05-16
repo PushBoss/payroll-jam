@@ -69,7 +69,7 @@ export const usePayroll = (
         }));
     };
 
-    const updateLineItemGross = (employeeId: string, newGrossStr: string) => {
+    const updateLineItemGross = (employeeId: string, newGrossStr: string, period?: string) => {
         const numValue = parseFloat(newGrossStr) || 0;
         setDraftItems(prev => prev.map(item => {
             if (item.employeeId !== employeeId) return item;
@@ -79,12 +79,14 @@ export const usePayroll = (
                     grossPay: numValue
                 },
                 employee: employees.find(e => e.id === employeeId),
-                companyData
+                companyData,
+                period,
+                payRunHistory
             });
         }));
     };
 
-    const addAdHocItem = (employeeId: string, type: 'ADDITIONS' | 'DEDUCTIONS', detail: PayrollItemDetail) => {
+    const addAdHocItem = (employeeId: string, type: 'ADDITIONS' | 'DEDUCTIONS', detail: PayrollItemDetail, period?: string) => {
         setDraftItems(prev => prev.map(item => {
             if (item.employeeId !== employeeId) return item;
 
@@ -101,12 +103,14 @@ export const usePayroll = (
                     deductionsBreakdown: deds
                 },
                 employee: employees.find(e => e.id === employeeId),
-                companyData
+                companyData,
+                period,
+                payRunHistory
             });
         }));
     };
 
-    const removeAdHocItem = (employeeId: string, itemId: string) => {
+    const removeAdHocItem = (employeeId: string, itemId: string, period?: string) => {
         setDraftItems(prev => prev.map(item => {
             if (item.employeeId !== employeeId) return item;
 
@@ -120,7 +124,9 @@ export const usePayroll = (
                     deductionsBreakdown: deds
                 },
                 employee: employees.find(e => e.id === employeeId),
-                companyData
+                companyData,
+                period,
+                payRunHistory
             });
         }));
     };

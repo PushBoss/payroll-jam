@@ -4,15 +4,17 @@ import { PayRunLineItem } from '../../../core/types';
 
 interface PayRunDraftRowProps {
   item: PayRunLineItem;
-  updateLineItemGross: (id: string, val: string) => void;
+  payPeriod?: string;
+  updateLineItemGross: (id: string, val: string, period?: string) => void;
   openAdHocModal: (id: string, type: 'ADDITIONS' | 'DEDUCTIONS') => void;
   openTaxModal: (item: PayRunLineItem) => void;
   removeEmployeeFromRun: (id: string) => void;
-  removeAdHocItem: (employeeId: string, itemId: string) => void;
+  removeAdHocItem: (employeeId: string, itemId: string, period?: string) => void;
 }
 
 export const PayRunDraftRow: React.FC<PayRunDraftRowProps> = ({
   item,
+  payPeriod,
   updateLineItemGross,
   openAdHocModal,
   openTaxModal,
@@ -36,7 +38,7 @@ export const PayRunDraftRow: React.FC<PayRunDraftRowProps> = ({
           <input
             type="number"
             value={item.grossPay}
-            onChange={(e) => updateLineItemGross(item.employeeId, e.target.value)}
+            onChange={(e) => updateLineItemGross(item.employeeId, e.target.value, payPeriod)}
             className="w-28 text-right border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-jam-orange focus:border-jam-orange bg-white shadow-sm"
           />
         </div>
@@ -67,7 +69,7 @@ export const PayRunDraftRow: React.FC<PayRunDraftRowProps> = ({
                           <span className="text-green-600 font-bold">${add.amount.toLocaleString()}</span>
                           <button
                             onClick={() => {
-                              removeAdHocItem(item.employeeId, add.id);
+                              removeAdHocItem(item.employeeId, add.id, payPeriod);
                               if (item.additionsBreakdown?.length === 1) setShowAdditionsMenu(false);
                             }}
                             className="text-red-500 hover:text-red-700"
@@ -126,7 +128,7 @@ export const PayRunDraftRow: React.FC<PayRunDraftRowProps> = ({
                           <span className="text-red-600 font-bold">${ded.amount.toLocaleString()}</span>
                           <button
                             onClick={() => {
-                              removeAdHocItem(item.employeeId, ded.id);
+                              removeAdHocItem(item.employeeId, ded.id, payPeriod);
                               if (item.deductionsBreakdown?.length === 1) setShowDeductionsMenu(false);
                             }}
                             className="text-red-500 hover:text-red-700"
