@@ -3,6 +3,8 @@
 @theme {
   --color-jam-black: #1a1a1a;
   --color-jam-orange: #FFA500;
+  --color-jam-navy: #1A1F2E;
+  --color-jam-gold: #F5A623;
   
   --animate-fade-in: fadeIn 0.3s ease-in;
 }

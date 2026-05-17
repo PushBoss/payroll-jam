@@ -10,6 +10,7 @@ import {
   Bot, 
   Menu, 
   X,
+  Info,
   Calendar,
   AlertTriangle,
   Download,
@@ -64,7 +65,8 @@ import {
   ShieldCheck,
   Eye,
   EyeOff,
-  LayoutGrid
+  LayoutGrid,
+  Send
 } from 'lucide-react';
 
 export const Icons = {
@@ -97,6 +99,7 @@ export const Icons = {
   ChevronDown: ChevronDown,
   ChevronUp: ChevronUp,
   User: User,
+  Info: Info,
   Trending: TrendingUp,
   Refresh: RefreshCw,
   Reports: BarChart3,
@@ -136,6 +139,7 @@ export const Icons = {
   Eye: Eye,
   EyeOff: EyeOff,
   LayoutGrid: LayoutGrid,
+  Send: Send,
   Spinner: RefreshCw, // Fallback to existing icon if Loader2 not imported
   Lock: Shield // Fallback to Shield if Lock doesn't exist
 };

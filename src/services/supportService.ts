@@ -70,6 +70,10 @@ export async function sendContactUsSubmission(params: {
   message: string;
   currentUrl?: string;
   user?: SupportUserContext | null;
+  company?: string;
+  phone?: string;
+  enquiry_type?: string;
+  priority?: string;
 }): Promise<{ success: boolean; message?: string; error?: string }> {
   const to = (await getSupportEmail()) || 'support@payrolljam.com';
 
@@ -77,8 +81,12 @@ export async function sendContactUsSubmission(params: {
   const safeEmail = String(params.email || '').trim();
   const safeSubject = String(params.subject || 'Contact Us Submission').trim();
   const safeMessage = String(params.message || '').trim();
+  const safeCompany = String(params.company || '').trim();
+  const safePhone = String(params.phone || '').trim();
+  const safeEnquiryType = String(params.enquiry_type || '').trim();
+  const safePriority = String(params.priority || 'Low').trim();
 
-  const subject = `Contact Us: ${safeSubject}`;
+  const subject = `Contact Us [${safeEnquiryType || 'Support'}]: ${safeSubject}`;
 
   const html = `
     <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
@@ -86,6 +94,10 @@ export async function sendContactUsSubmission(params: {
       <table style="border-collapse: collapse; width: 100%; margin-bottom: 16px;">
         <tr><td style="padding: 6px 0; width: 140px;"><strong>Name</strong></td><td style="padding: 6px 0;">${escapeHtml(safeName)}</td></tr>
         <tr><td style="padding: 6px 0;"><strong>Email</strong></td><td style="padding: 6px 0;">${escapeHtml(safeEmail)}</td></tr>
+        ${safeCompany ? `<tr><td style="padding: 6px 0;"><strong>Company</strong></td><td style="padding: 6px 0;">${escapeHtml(safeCompany)}</td></tr>` : ''}
+        ${safePhone ? `<tr><td style="padding: 6px 0;"><strong>Phone</strong></td><td style="padding: 6px 0;">${escapeHtml(safePhone)}</td></tr>` : ''}
+        ${safeEnquiryType ? `<tr><td style="padding: 6px 0;"><strong>Enquiry Type</strong></td><td style="padding: 6px 0;">${escapeHtml(safeEnquiryType)}</td></tr>` : ''}
+        ${safePriority ? `<tr><td style="padding: 6px 0;"><strong>Priority</strong></td><td style="padding: 6px 0;">${escapeHtml(safePriority)}</td></tr>` : ''}
         <tr><td style="padding: 6px 0;"><strong>Subject</strong></td><td style="padding: 6px 0;">${escapeHtml(safeSubject)}</td></tr>
         <tr><td style="padding: 6px 0;"><strong>URL</strong></td><td style="padding: 6px 0;">${escapeHtml(params.currentUrl || '')}</td></tr>
         <tr><td style="padding: 6px 0;"><strong>User ID</strong></td><td style="padding: 6px 0;">${escapeHtml(params.user?.id || '')}</td></tr>

@@ -104,3 +104,68 @@ All currency should be in JMD (Jamaican Dollars).`;
     return "Sorry, I encountered an error while processing your request. Please try again later.";
   }
 };
+
+export const getSupportAIResponse = async (
+  message: string,
+  history: ChatMessage[]
+): Promise<string> => {
+  if (!API_KEY) {
+    return "Error: AI Service is not configured. Please add your Google AI API key to the environment variables.";
+  }
+
+  try {
+    const { GoogleGenerativeAI } = await import("@google/generative-ai");
+    const genAI = new GoogleGenerativeAI(API_KEY);
+
+    const systemInstruction = `You are a support intake assistant for Payroll-Jam, a payroll software company.
+Your job is to modify the contact form and collect the user's support requests.
+
+The form has these steps:
+1. Collect full name, work email, company name, and phone number. (Required)
+2. Ask the user to select an enquiry type: Technical Support, Billing, Sales & Plans, Onboarding, or General.
+3. Based on the enquiry type selected, show the relevant subject options:
+   - Technical Support: Cannot upload documents | Login or access issues | Payroll calculation errors | Integration not working | Other technical issue
+   - Billing: Charge I don't recognise | Request a refund | Update payment method | Cancel my subscription | Invoice or receipt request
+   - Sales & Plans: Upgrade my plan | Compare plans | Request a demo | Volume or enterprise pricing | Other sales enquiry
+   - Onboarding: Account setup help | Employee onboarding issue | ID verification problem | Importing data | Other onboarding question
+   - General: Product feedback | Partnership enquiry | Press or media | Other
+4. Show a helpful context tip based on the enquiry type to guide what the user should include in their message.
+5. Ask the user to select a priority level: Low, Medium, or Urgent.
+6. Ask the user to describe their issue in detail. Prompt them with the relevant context tip if they seem vague.
+7. Summarise the submission back to the user before confirming, so they can correct anything.
+8. On confirmation, submit the following structured data to the backend:
+   { name, email, company, phone, enquiry_type, subject, priority, message }
+
+Tone: professional, warm, efficient. Brand colors: dark navy (#1A1F2E) and gold (#F5A623). Keep responses concise. Do not ask for information already provided.
+
+CRITICAL: When the user confirms the details are correct, you must generate a final response that contains a JSON object at the very end of your response, prefixed by "SUBMIT_DATA: ", like this:
+SUBMIT_DATA: {"name": "John Doe", "email": "john@example.com", "company": "Example Inc", "phone": "123-456-7890", "enquiry_type": "Technical Support", "subject": "Cannot upload documents", "priority": "Urgent", "message": "My PDF uploads are failing with error 500."}
+
+Make sure all 8 fields are filled. If phone was not provided, use an empty string.
+Ensure the JSON is valid and on a single line. Do not write markdown blocks around it.`;
+
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-1.5-flash',
+      systemInstruction: systemInstruction
+    }, { apiVersion: 'v1' });
+
+    // Format history for Gemini (maximum 15 messages for context window stability)
+    const contents = history.slice(-15).map(msg => ({
+      role: msg.role === 'model' ? 'model' as const : 'user' as const,
+      parts: [{ text: msg.text }]
+    }));
+
+    // Add current user message
+    contents.push({
+      role: 'user',
+      parts: [{ text: message }]
+    });
+
+    const result = await model.generateContent({ contents });
+    const response = await result.response;
+    return response.text() || "I couldn't generate a response at this time.";
+  } catch (error: any) {
+    console.error("Support AI Service Error:", error);
+    return `Error: ${error.message || 'I encountered an error connecting to the support system.'}`;
+  }
+};

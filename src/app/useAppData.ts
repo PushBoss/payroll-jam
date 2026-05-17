@@ -8,6 +8,7 @@ import {
   ResellerClient,
   TaxConfig,
   User,
+  Role,
 } from '../core/types';
 import { initializeCacheValidation } from '../utils/cacheUtils';
 import { useWorkforceData } from '../features/employees/useWorkforceData';
@@ -17,6 +18,8 @@ import { useSubscription } from '../hooks/useSubscription';
 import { NavigateFunction } from './useAppNavigation';
 import { createAppFlowHandlers } from './appFlowHandlers';
 import { useAppBootstrap } from './useAppBootstrap';
+import { isResellerEquivalentPlan } from '../utils/planNames';
+import { UserService } from '../services/UserService';
 
 interface UseAppDataArgs {
   user: User | null;
@@ -55,6 +58,32 @@ export const useAppData = ({ user, updateUser, impersonate, navigateTo }: UseApp
     handleUpdateDesignations: updateDesignations,
     handleUpdateTaxConfig: updateTaxConfig,
   } = companyConfig;
+
+  // Dynamic user role synchronization based on company subscription plan
+  useEffect(() => {
+    if (companyData && user && !user.originalRole) {
+      // Special recovery for Reseller email (aarongardiner6@gmail.com) if it was accidentally downgraded
+      if (user.email === 'aarongardiner6@gmail.com' && user.role !== Role.RESELLER) {
+        console.log('🔄 Restoring reseller role for aarongardiner6@gmail.com');
+        const updatedUser = { ...user, role: Role.RESELLER };
+        updateUser({ role: Role.RESELLER });
+        UserService.saveUser(updatedUser).catch((err: any) =>
+          console.error('Failed to restore Reseller role to DB:', err)
+        );
+        return;
+      }
+
+      const isResellerPlan = isResellerEquivalentPlan(companyData.plan);
+      if (isResellerPlan && (user.role === Role.OWNER || user.role === Role.ADMIN)) {
+        console.log('🔄 Syncing user role to RESELLER due to Reseller plan');
+        const updatedUser = { ...user, role: Role.RESELLER };
+        updateUser({ role: Role.RESELLER });
+        UserService.saveUser(updatedUser).catch((err: any) =>
+          console.error('Failed to sync Reseller role to DB:', err)
+        );
+      }
+    }
+  }, [companyData, user, updateUser]);
 
   const workforce = useWorkforceData({
     user,

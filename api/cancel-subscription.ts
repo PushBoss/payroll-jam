@@ -17,13 +17,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { subscription_id, company_id } = req.body;
+    const { subscription_id, company_id, request_refund } = req.body;
 
     if (!subscription_id || !company_id) {
       return res.status(400).json({ error: 'Missing subscription_id or company_id' });
     }
 
-    console.log('🔄 Cancelling DimePay subscription:', subscription_id);
+    console.log(`🔄 Cancelling DimePay subscription: ${subscription_id} (refund requested: ${!!request_refund})`);
 
     const environment = resolveDimePayEnvironment(undefined, req);
     const remoteCancellation = await cancelDimePaySubscription({
@@ -42,18 +42,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .eq('company_id', company_id)
       .maybeSingle();
 
+    const isRefundRequested = !!request_refund;
+
     const { error: updateError } = await supabaseAdmin
       .from('subscriptions')
       .update({
         status: 'cancelled',
-        end_date: currentSubscription?.next_billing_date || null,
+        end_date: isRefundRequested ? new Date().toISOString() : (currentSubscription?.next_billing_date || null),
         auto_renew: false,
         updated_at: new Date().toISOString(),
         metadata: {
           ...(currentSubscription?.metadata || {}),
           cancelled_at: new Date().toISOString(),
           cancelled_by: 'user',
-          cancel_at_period_end: true
+          cancel_at_period_end: !isRefundRequested,
+          refund_requested: isRefundRequested,
+          refund_status: isRefundRequested ? 'pending' : undefined
         }
       })
       .eq('dimepay_subscription_id', subscription_id)
@@ -62,6 +66,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (updateError) {
       console.error('❌ Error updating subscription in database:', updateError);
       return res.status(500).json({ error: 'Failed to update subscription status' });
+    }
+
+    // Downgrade company plan to Free immediately if refund is requested
+    if (isRefundRequested) {
+      console.log(`📉 Immediately downgrading company ${company_id} to Free plan due to refund request`);
+      const { error: companyUpdateError } = await supabaseAdmin
+        .from('companies')
+        .update({
+          plan: 'Free',
+          status: 'ACTIVE'
+        })
+        .eq('id', company_id);
+
+      if (companyUpdateError) {
+        console.error('❌ Error downgrading company plan to free:', companyUpdateError);
+      }
     }
 
     console.log('✅ Subscription marked for cancellation in database');

@@ -516,9 +516,18 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Hire Date *
-                  </label>
+                  <div className="flex items-center gap-1.5 mb-2 relative group">
+                    <label className="block text-sm font-semibold text-gray-700">
+                      Hire Date *
+                    </label>
+                    <div className="relative inline-block">
+                      <Icons.Info className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600 cursor-help transition-colors" />
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-64 bg-gray-900 text-white text-xs p-2.5 rounded-lg shadow-xl z-50 font-normal leading-relaxed text-center">
+                        <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+                        The official date the employee was added to company payroll. Used to calculate tax periods and statutory benefits.
+                      </div>
+                    </div>
+                  </div>
                   <input
                     type="date"
                     value={formData.hireDate}
@@ -533,9 +542,18 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Joining Date
-                  </label>
+                  <div className="flex items-center gap-1.5 mb-2 relative group">
+                    <label className="block text-sm font-semibold text-gray-700">
+                      Joining Date
+                    </label>
+                    <div className="relative inline-block">
+                      <Icons.Info className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600 cursor-help transition-colors" />
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-64 bg-gray-900 text-white text-xs p-2.5 rounded-lg shadow-xl z-50 font-normal leading-relaxed text-center">
+                        <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+                        The actual calendar date the employee started working at the company. Useful for probation and tracking purposes.
+                      </div>
+                    </div>
+                  </div>
                   <input
                     type="date"
                     value={formData.joiningDate || ''}

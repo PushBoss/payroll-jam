@@ -1,8 +1,8 @@
-import React, { useState, useRef } from 'react';
-import Papa from 'papaparse';
+import React, { useState } from 'react';
 import { Employee, PayFrequency, Role, PayRun, CompanySettings, PayType, Department, Designation, Asset, PerformanceReview, TerminationDetails, PricingPlan, User } from '../core/types';
 import { Icons } from '../components/Icons';
 import { EmployeeManager } from '../features/employees/EmployeeManager';
+import { CsvImportWizard } from '../features/employees/CsvImportWizard';
 import { auditService } from '../core/auditService';
 import { downloadFile, generateP45CSV } from '../utils/exportHelpers';
 import { emailService } from '../services/emailService';
@@ -79,7 +79,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     const [employeeManagerMode, setEmployeeManagerMode] = useState<'add' | 'edit'>('add');
 
     const [searchTerm, setSearchTerm] = useState('');
-    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [isCsvWizardOpen, setIsCsvWizardOpen] = useState(false);
 
     const [inviteData, setInviteData] = useState({
         firstName: '',
@@ -380,81 +380,7 @@ export const Employees: React.FC<EmployeesProps> = ({
         setRevokeWarning({ isOpen: false, empId: '', email: '' });
     };
 
-    const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        Papa.parse(file, {
-            header: true,
-            skipEmptyLines: true,
-            complete: (results: Papa.ParseResult<Record<string, string>>) => {
-                if (results.errors.length > 0) {
-                    console.error("CSV Errors:", results.errors);
-                    toast.error("Error parsing CSV file.");
-                    return;
-                }
-
-                const rows = results.data;
-                if (rows.length === 0) {
-                    toast.error("CSV file is empty.");
-                    return;
-                }
-
-                if (!checkPlanLimit(rows.length)) {
-                    e.target.value = '';
-                    return;
-                }
-
-                let count = 0;
-                rows.forEach((row: Record<string, string>) => {
-                    const email = row['Email']?.trim();
-                    if (!email) return;
-
-                    // Match department name to department ID
-                    const departmentName = row['Department']?.trim() || '';
-                    let departmentId = '';
-                    if (departmentName) {
-                        const matchedDept = departments.find(
-                            d => d.name.toLowerCase() === departmentName.toLowerCase()
-                        );
-                        departmentId = matchedDept?.id || '';
-                        if (!matchedDept && departmentName) {
-                            console.warn(`Department "${departmentName}" not found. Employee will be imported without department assignment.`);
-                        }
-                    }
-
-                    const newEmp: Employee = {
-                        id: generateUUID(),
-                        firstName: row['First Name'] || 'Unknown',
-                        lastName: row['Last Name'] || '',
-                        email: email,
-                        trn: row['TRN'] || '',
-                        nis: '',
-                        grossSalary: parseFloat(row['Gross Salary']) || 0,
-                        payType: PayType.SALARIED,
-                        payFrequency: PayFrequency.MONTHLY,
-                        role: Role.EMPLOYEE,
-                        status: 'ACTIVE',
-                        hireDate: new Date().toISOString().split('T')[0],
-                        allowances: [],
-                        deductions: [],
-                        department: departmentId,
-                        jobTitle: row['Job Title']?.trim() || ''
-                    };
-                    onAddEmployee(newEmp);
-                    count++;
-                });
-
-                auditService.log(currentUser, 'CREATE', 'Employee', `Bulk imported ${count} employees via CSV`);
-                toast.success(`Successfully imported ${count} employees.`);
-                e.target.value = '';
-            },
-            error: (err: Error) => {
-                console.error(err);
-                toast.error("Failed to read file.");
-            }
-        });
-    };
+    // Removed legacy handleImportCSV in favor of CSV Mapping Wizard
 
     const handleDownloadTemplate = () => {
         const headers = "First Name,Last Name,Email,TRN,Gross Salary,Role,Department,Job Title";
@@ -603,7 +529,40 @@ export const Employees: React.FC<EmployeesProps> = ({
                     }}
                     onSave={handleEmployeeManagerSave}
                 />
+            )}
 
+            {isCsvWizardOpen && (
+                <CsvImportWizard
+                    isOpen={isCsvWizardOpen}
+                    onClose={() => setIsCsvWizardOpen(false)}
+                    existingEmployees={employees}
+                    departments={departments}
+                    onUpdateDepartments={onUpdateDepartments}
+                    onImportComplete={async (employeesToSave, skippedCount) => {
+                        const newCount = employeesToSave.filter(e => !employees.some(existing => existing.id === e.id)).length;
+                        if (!checkPlanLimit(newCount)) {
+                            setIsCsvWizardOpen(false);
+                            return;
+                        }
+
+                        let inserted = 0;
+                        let updated = 0;
+                        for (const emp of employeesToSave) {
+                            const isExisting = employees.some(existing => existing.id === emp.id);
+                            if (isExisting) {
+                                await onUpdateEmployee(emp);
+                                updated++;
+                            } else {
+                                await onAddEmployee(emp);
+                                inserted++;
+                            }
+                        }
+
+                        auditService.log(currentUser, 'CREATE', 'Employee', `Bulk imported ${inserted} and updated ${updated} employees via CSV Mapping Wizard`);
+                        toast.success(`Successfully processed employees: ${inserted} added, ${updated} updated, ${skippedCount} duplicates skipped.`);
+                        setIsCsvWizardOpen(false);
+                    }}
+                />
             )}
 
             {/* Termination Modal */}
@@ -729,27 +688,18 @@ export const Employees: React.FC<EmployeesProps> = ({
                     <p className="text-gray-500 mt-1">Manage your workforce, view profiles, and update salaries.</p>
                 </div>
                 <div className="flex space-x-3 mt-4 md:mt-0">
-                    <div className="relative">
-                        <input
-                            type="file"
-                            accept=".csv"
-                            ref={fileInputRef}
-                            onChange={handleImportCSV}
-                            className="hidden"
-                        />
-                        <button
-                            onClick={() => fileInputRef.current?.click()}
-                            className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 flex items-center shadow-sm"
-                        >
-                            <Icons.Upload className="w-4 h-4 mr-2" /> Import CSV
-                        </button>
-                    </div>
+                    <button
+                        onClick={() => setIsCsvWizardOpen(true)}
+                        className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 flex items-center shadow-sm"
+                    >
+                        <Icons.Upload className="w-4 h-4 mr-2" /> Import CSV
+                    </button>
                     <button
                         onClick={handleDownloadTemplate}
-                        className="bg-white border border-gray-300 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-50 shadow-sm"
-                        title="Download CSV Template"
+                        className="text-gray-500 hover:text-gray-700 px-3 py-2 flex items-center text-sm font-semibold transition-colors"
+                        title="Legacy template file for manual formatting"
                     >
-                        <Icons.Download className="w-4 h-4" />
+                        <Icons.Download className="w-4 h-4 mr-2" /> Download Template
                     </button>
                     <button
                         onClick={handleAddClick}

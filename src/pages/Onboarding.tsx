@@ -1,9 +1,8 @@
-import React, { useState, useRef } from 'react';
-import Papa from 'papaparse';
+import React, { useState } from 'react';
 import { Icons } from '../components/Icons';
-import { CompanySettings, Employee, Role, PayType, PayFrequency, Department, BankAccount } from '../core/types';
+import { CompanySettings, Employee, Department } from '../core/types';
 import { downloadFile } from '../utils/exportHelpers';
-import { generateUUID } from '../utils/uuid';
+import { CsvImportWizard } from '../features/employees/CsvImportWizard';
 
 interface OnboardingProps {
   onComplete: (data: CompanySettings, employees: Employee[]) => void;
@@ -15,7 +14,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments 
   const [step, setStep] = useState(1);
   const [importedEmployees, setImportedEmployees] = useState<Employee[]>([]);
   const [importStatus, setImportStatus] = useState<{type: 'success' | 'error', message: string} | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isCsvWizardOpen, setIsCsvWizardOpen] = useState(false);
 
   const [formData, setFormData] = useState<CompanySettings>({
       name: '',
@@ -47,137 +46,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments 
       const sample = "John,Doe,john.doe@example.com,123-456-789,250000,Employee,Operations,Driver";
       downloadFile('Employee_Import_Template.csv', `${headers}\n${sample}`, 'text/csv');
   };
-  const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setImportStatus(null);
-
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (results) => {
-        if (results.errors.length > 0) {
-          console.error("CSV Errors:", results.errors);
-          setImportStatus({type: 'error', message: 'Error parsing CSV. Please check file format.'});
-          return;
-        }
-
-        const rows = results.data as Record<string, string>[];
-        if (rows.length === 0) {
-            setImportStatus({type: 'error', message: 'CSV is empty.'});
-            return;
-        }
-
-        const newEmps: Employee[] = [];
-        const freq = formData.payFrequency?.toUpperCase() as PayFrequency || PayFrequency.MONTHLY;
-        const newDepartments: Department[] = [...departments]; // Copy existing departments
-
-        // Helper to find keys case-insensitively
-        const keys = Object.keys(rows[0]);
-        const findKey = (term: string) => keys.find(k => k.toLowerCase().includes(term.toLowerCase()));
-
-        const emailKey = findKey('email');
-        const firstKey = findKey('first');
-        const lastKey = findKey('last');
-        const trnKey = findKey('trn');
-        const grossKey = findKey('gross') || findKey('salary');
-        const roleKey = findKey('role');
-        const deptKey = findKey('dept');
-        const titleKey = findKey('title') || findKey('job');
-
-        if (!emailKey) {
-            setImportStatus({type: 'error', message: 'CSV must contain an "Email" column.'});
-            return;
-        }
-
-        // First pass: Collect all unique department names from CSV
-        const departmentNames = new Set<string>();
-        rows.forEach((row) => {
-            if (deptKey && row[deptKey]) {
-                const deptName = row[deptKey].trim();
-                if (deptName) {
-                    departmentNames.add(deptName);
-                }
-            }
-        });
-
-        // Create departments that don't exist
-        departmentNames.forEach((deptName) => {
-            const exists = newDepartments.some(d => d.name.toLowerCase() === deptName.toLowerCase());
-            if (!exists) {
-                const newDept: Department = {
-                    id: generateUUID(),
-                    name: deptName
-                };
-                newDepartments.push(newDept);
-            }
-        });
-
-        // Update departments if callback is provided
-        if (onUpdateDepartments && newDepartments.length > departments.length) {
-            onUpdateDepartments(newDepartments);
-        }
-
-        rows.forEach((row) => {
-            const email = row[emailKey]?.trim();
-            if (!email) return;
-
-            const newEmp: Employee = {
-                id: generateUUID(),
-                firstName: firstKey ? row[firstKey]?.trim() : 'Unknown',
-                lastName: lastKey ? row[lastKey]?.trim() : '',
-                email: email,
-                trn: trnKey ? row[trnKey]?.trim() : '',
-                nis: 'PENDING',
-                grossSalary: grossKey ? (parseFloat(row[grossKey]) || 0) : 0,
-                payType: PayType.SALARIED,
-                payFrequency: freq,
-                role: Role.EMPLOYEE, 
-                status: 'ACTIVE',
-                hireDate: new Date().toISOString().split('T')[0],
-                jobTitle: titleKey ? row[titleKey]?.trim() : undefined,
-                allowances: [],
-                deductions: [],
-                bankDetails: {
-                    bankName: (formData.bankName || 'NCB') as BankAccount['bankName'],
-                    accountNumber: '',
-                    accountType: 'SAVINGS',
-                    currency: 'JMD'
-                }
-            };
-
-            // Map Role
-            if (roleKey && row[roleKey]) {
-                const r = row[roleKey].toUpperCase();
-                if (r.includes('ADMIN')) newEmp.role = Role.ADMIN;
-                else if (r.includes('MANAGER')) newEmp.role = Role.MANAGER;
-            }
-
-            // Map Department Name to ID (now using updated departments list)
-            if (deptKey && row[deptKey]) {
-                const deptName = row[deptKey].trim();
-                const matchedDept = newDepartments.find(d => d.name.toLowerCase() === deptName.toLowerCase());
-                if (matchedDept) {
-                    newEmp.department = matchedDept.id;
-                }
-            }
-
-            newEmps.push(newEmp);
-        });
-
-        setImportedEmployees(newEmps);
-        const deptCount = newDepartments.length - departments.length;
-        const deptMessage = deptCount > 0 ? ` and created ${deptCount} new department${deptCount > 1 ? 's' : ''}` : '';
-        setImportStatus({type: 'success', message: `Successfully imported ${newEmps.length} employee${newEmps.length > 1 ? 's' : ''}${deptMessage}`});
-        e.target.value = ''; // Reset input
-      },
-      error: (err) => {
-        console.error(err);
-        setImportStatus({type: 'error', message: 'Failed to read CSV file.'});
-      }
-    });
-  };
+  // Removed legacy handleImportCSV
 
   const StepIndicator = () => (
     <div className="flex items-center justify-center mb-10">
@@ -294,10 +163,19 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments 
                         <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:bg-gray-50 transition-colors">
                             <Icons.Upload className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                             <p className="text-gray-600 mb-4">Drag and drop your employee list here</p>
-                            <input type="file" accept=".csv" ref={fileInputRef} onChange={handleImportCSV} className="hidden" />
-                            <div className="flex justify-center space-x-3">
-                                <button onClick={() => fileInputRef.current?.click()} className="px-4 py-2 bg-jam-black text-white rounded-lg text-sm">Select File</button>
-                                <button onClick={handleDownloadTemplate} className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm">Download Template</button>
+                            <div className="flex flex-col items-center space-y-4">
+                                <button 
+                                    onClick={() => setIsCsvWizardOpen(true)} 
+                                    className="px-6 py-2.5 bg-jam-black text-white rounded-lg text-sm font-bold hover:bg-gray-800 shadow-md transition-colors"
+                                >
+                                    Select File to Map
+                                </button>
+                                <button 
+                                    onClick={handleDownloadTemplate} 
+                                    className="text-xs text-gray-500 hover:text-gray-700 underline"
+                                >
+                                    Need a reference layout? Download our legacy CSV template.
+                                </button>
                             </div>
                         </div>
 
@@ -348,6 +226,23 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments 
                 </div>
             </div>
         </div>
+        {isCsvWizardOpen && (
+            <CsvImportWizard
+                isOpen={isCsvWizardOpen}
+                onClose={() => setIsCsvWizardOpen(false)}
+                existingEmployees={importedEmployees}
+                departments={departments}
+                onUpdateDepartments={onUpdateDepartments}
+                onImportComplete={(employeesToSave, _skippedCount) => {
+                    setImportedEmployees(employeesToSave);
+                    setImportStatus({
+                        type: 'success',
+                        message: `Successfully mapped and imported ${employeesToSave.length} employee(s).`
+                    });
+                    setIsCsvWizardOpen(false);
+                }}
+            />
+        )}
     </div>
   );
 };

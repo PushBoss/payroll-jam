@@ -345,6 +345,70 @@ const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({ currentUser, cu
     );
 };
 
+interface PlanSelectorModalProps {
+    plans: PricingPlan[];
+    currentPlan: string;
+    onClose: () => void;
+    onSelectPlan: (planName: string) => void;
+}
+
+const PlanSelectorModal: React.FC<PlanSelectorModalProps> = ({ plans, currentPlan, onClose, onSelectPlan }) => {
+    const availablePlans = plans.filter(p => {
+        if (p.name === currentPlan) return false;
+        if (p.name === 'Reseller' && currentPlan === 'Enterprise') return false;
+        if (p.name === 'Enterprise' && currentPlan === 'Reseller') return false;
+        if (p.name === 'Pro' && currentPlan === 'Professional') return false;
+        if (p.name === 'Professional' && currentPlan === 'Pro') return false;
+        if (p.priceConfig.type === 'free') return false;
+        return p.isActive;
+    });
+
+    return (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] animate-scale-in text-gray-800">
+                <div className="bg-jam-black text-white p-6 flex justify-between items-center shrink-0">
+                    <div>
+                        <h3 className="text-xl font-bold">Select Upgrade Plan</h3>
+                        <p className="text-xs text-gray-400">Choose a new plan to unlock more features</p>
+                    </div>
+                    <button onClick={onClose}>
+                        <Icons.Close className="w-6 h-6 text-gray-400 hover:text-white" />
+                    </button>
+                </div>
+                <div className="p-6 overflow-y-auto space-y-4">
+                    {availablePlans.length === 0 ? (
+                        <p className="text-center text-gray-500 py-8">No other upgrade plans available.</p>
+                    ) : (
+                        availablePlans.map(plan => {
+                            const monthlyPrice = plan.priceConfig.monthly || plan.priceConfig.baseFee || 0;
+                            return (
+                                <div key={plan.id} className="border border-gray-200 hover:border-jam-orange rounded-xl p-4 transition-all flex flex-col justify-between hover:shadow-md bg-gray-50/50">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div>
+                                            <h4 className="font-bold text-lg text-gray-900">{plan.name}</h4>
+                                            <p className="text-xs text-gray-500 mt-0.5">{plan.description}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="text-xl font-extrabold text-jam-black">${monthlyPrice.toLocaleString()}</span>
+                                            <span className="text-xs text-gray-500 block">/month</span>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => onSelectPlan(plan.name)}
+                                        className="mt-3 w-full py-2 bg-jam-black text-white font-bold rounded-lg hover:bg-jam-orange hover:text-jam-black transition-colors text-sm"
+                                    >
+                                        Select {plan.name}
+                                    </button>
+                                </div>
+                            );
+                        })
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
 export const Settings: React.FC<SettingsProps> = ({
     companyData,
     onUpdateCompany,
@@ -416,7 +480,9 @@ export const Settings: React.FC<SettingsProps> = ({
     const [isLoadingBilling, setIsLoadingBilling] = useState(false);
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [isCancelling, setIsCancelling] = useState(false);
+    const [requestRefund, setRequestRefund] = useState(false);
     const [isAddingPaymentMethod, setIsAddingPaymentMethod] = useState(false);
+    const [showPlanSelectorModal, setShowPlanSelectorModal] = useState(false);
 
     const mapPaymentHistoryToInvoices = (payments: any[]): PaymentRecord[] => (
         payments.map(p => ({
@@ -790,8 +856,8 @@ export const Settings: React.FC<SettingsProps> = ({
     };
 
     const handleCancelSubscription = async () => {
-        if (!currentUser?.companyId || !currentSubscription?.dimepaySubscriptionId) {
-            toast.error('Unable to cancel subscription. Missing subscription information.');
+        if (!currentUser?.companyId) {
+            toast.error('Unable to cancel subscription. Missing company information.');
             return;
         }
 
@@ -802,8 +868,9 @@ export const Settings: React.FC<SettingsProps> = ({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    subscription_id: currentSubscription.dimepaySubscriptionId,
-                    company_id: currentUser.companyId
+                    subscription_id: currentSubscription?.dimepaySubscriptionId || 'legacy',
+                    company_id: currentUser.companyId,
+                    request_refund: requestRefund
                 })
             });
 
@@ -813,9 +880,16 @@ export const Settings: React.FC<SettingsProps> = ({
                 throw new Error(data.error || 'Failed to cancel subscription');
             }
 
-            toast.success('Subscription cancelled. You\'ll retain access until the end of your billing period.');
+            toast.success(requestRefund 
+                ? 'Subscription cancelled and refund requested successfully.' 
+                : 'Subscription cancelled. You\'ll retain access until the end of your billing period.'
+            );
 
             setShowCancelModal(false);
+
+            if (requestRefund && companyData) {
+                handleCompanyUpdate({ ...companyData, plan: 'Free', subscriptionStatus: 'ACTIVE' });
+            }
 
             // Reload billing data after a delay
             setTimeout(async () => {
@@ -846,6 +920,17 @@ export const Settings: React.FC<SettingsProps> = ({
     return (
         <div className="space-y-6">
             {upgradeTarget && <CheckoutModal plan={upgradeTarget} currentUser={currentUser} onClose={() => setUpgradeTarget(null)} onSuccess={handleUpgradeSuccess} />}
+            {showPlanSelectorModal && (
+                <PlanSelectorModal
+                    plans={plans}
+                    currentPlan={companyData?.plan || 'Free'}
+                    onClose={() => setShowPlanSelectorModal(false)}
+                    onSelectPlan={(planName) => {
+                        setShowPlanSelectorModal(false);
+                        handleUpgradeClick(planName);
+                    }}
+                />
+            )}
             {isAddingPaymentMethod && (
                 <PaymentMethodModal
                     currentUser={currentUser}
@@ -868,58 +953,109 @@ export const Settings: React.FC<SettingsProps> = ({
             )}
 
             {/* Cancel Subscription Confirmation Modal */}
-            {showCancelModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <div className="bg-white rounded-xl w-full max-w-md p-6 animate-fade-in">
-                        <div className="flex items-start mb-4">
-                            <div className="flex-shrink-0">
-                                <Icons.Alert className="w-10 h-10 text-red-500" />
-                            </div>
-                            <div className="ml-4">
-                                <h3 className="text-xl font-bold mb-2">Cancel Subscription?</h3>
-                                <p className="text-sm text-gray-600 mb-4">
-                                    Are you sure you want to cancel your <strong>{currentSubscription?.planName || companyData?.plan}</strong> subscription?
-                                </p>
-                                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
-                                    <p className="text-xs text-yellow-800">
-                                        <strong>What happens next:</strong>
+            {showCancelModal && (() => {
+                const getDaysSinceSubscriptionStart = () => {
+                    if (!currentSubscription?.startDate) return 0;
+                    const start = new Date(currentSubscription.startDate);
+                    const now = new Date();
+                    const diffTime = Math.abs(now.getTime() - start.getTime());
+                    return Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                };
+
+                const daysSinceStart = getDaysSinceSubscriptionStart();
+                const canRequestRefund = daysSinceStart <= 15;
+
+                return (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                        <div className="bg-white rounded-xl w-full max-w-md p-6 animate-fade-in text-gray-800">
+                            <div className="flex items-start mb-4">
+                                <div className="flex-shrink-0 mt-1">
+                                    <Icons.Alert className="w-10 h-10 text-red-500" />
+                                </div>
+                                <div className="ml-4 w-full">
+                                    <h3 className="text-xl font-bold mb-2">Cancel Subscription?</h3>
+                                    <p className="text-sm text-gray-600 mb-4">
+                                        Are you sure you want to cancel your <strong>{currentSubscription?.planName || companyData?.plan}</strong> subscription?
                                     </p>
-                                    <ul className="text-xs text-yellow-800 mt-2 space-y-1 list-disc list-inside">
-                                        <li>You'll retain access until {currentSubscription?.nextBillingDate ? new Date(currentSubscription.nextBillingDate).toLocaleDateString() : 'the end of your billing period'}</li>
-                                        <li>No further charges will be made</li>
-                                        <li>Your subscription will stop renewing after the current billing period</li>
-                                        <li>You can resubscribe anytime</li>
-                                    </ul>
+                                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+                                        <p className="text-xs text-yellow-800 font-semibold">
+                                            What happens next:
+                                        </p>
+                                        <ul className="text-xs text-yellow-800 mt-2 space-y-1 list-disc list-inside">
+                                            {requestRefund ? (
+                                                <li>Your access to paid plan features will end immediately</li>
+                                            ) : (
+                                                <li>You'll retain access until {currentSubscription?.nextBillingDate ? new Date(currentSubscription.nextBillingDate).toLocaleDateString() : 'the end of your billing period'}</li>
+                                            )}
+                                            <li>No further charges will be made</li>
+                                            <li>Your subscription will stop renewing after the current billing period</li>
+                                            <li>You can resubscribe anytime</li>
+                                        </ul>
+                                    </div>
+
+                                    {canRequestRefund ? (
+                                        <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                                            <label className="flex items-center space-x-2 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={requestRefund}
+                                                    onChange={(e) => setRequestRefund(e.target.checked)}
+                                                    className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                                                />
+                                                <span className="text-xs font-semibold text-green-800">
+                                                    Request a full refund
+                                                </span>
+                                            </label>
+                                            <p className="text-[11px] text-green-700 mt-1 pl-5">
+                                                You are within the 15-day refund window ({daysSinceStart} days elapsed). If requested, your access will end immediately.
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                                            <div className="flex items-center space-x-2 text-gray-500">
+                                                <Icons.Alert className="w-4 h-4 text-gray-400" />
+                                                <span className="text-xs font-semibold text-gray-600">
+                                                    Refund not available
+                                                </span>
+                                            </div>
+                                            <p className="text-[11px] text-gray-400 mt-1">
+                                                Refunds are only available within the first 15 days of purchase ({daysSinceStart} days elapsed).
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
-                        </div>
-                        <div className="flex justify-end space-x-2">
-                            <button
-                                type="button"
-                                onClick={() => setShowCancelModal(false)}
-                                className="px-4 py-2 text-gray-500 hover:text-gray-700"
-                                disabled={isCancelling}
-                            >
-                                Keep Subscription
-                            </button>
-                            <button
-                                onClick={handleCancelSubscription}
-                                className="px-4 py-2 bg-red-600 text-white rounded font-bold hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-                                disabled={isCancelling}
-                            >
-                                {isCancelling ? (
-                                    <>
-                                        <Icons.Refresh className="w-4 h-4 mr-2 animate-spin" />
-                                        Cancelling...
-                                    </>
-                                ) : (
-                                    'Yes, Cancel Subscription'
-                                )}
-                            </button>
+                            <div className="flex justify-end space-x-2 mt-4">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowCancelModal(false);
+                                        setRequestRefund(false);
+                                    }}
+                                    className="px-4 py-2 text-gray-500 hover:text-gray-700 font-semibold"
+                                    disabled={isCancelling}
+                                >
+                                    Keep Subscription
+                                </button>
+                                <button
+                                    onClick={handleCancelSubscription}
+                                    className="px-4 py-2 bg-red-600 text-white rounded font-bold hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                                    disabled={isCancelling}
+                                >
+                                    {isCancelling ? (
+                                        <>
+                                            <Icons.Refresh className="w-4 h-4 mr-2 animate-spin" />
+                                            Cancelling...
+                                        </>
+                                    ) : (
+                                        'Yes, Cancel Subscription'
+                                    )}
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                );
+            })()}
 
             {isInviteModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -995,7 +1131,7 @@ export const Settings: React.FC<SettingsProps> = ({
                             )}
                         </div>
                         <div className="mt-4 md:mt-0 flex flex-col space-y-2">
-                            {companyData?.plan !== 'Pro' && companyData?.plan !== 'Professional' && companyData?.plan !== 'Reseller' && companyData?.plan !== 'Enterprise' && (
+                            {companyData?.plan !== 'Reseller' && companyData?.plan !== 'Enterprise' && (
                                 <button
                                     onClick={() => {
                                         // Show all paid plans except current plan (consistent with cards below)
@@ -1021,15 +1157,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                         if (availablePlans.length === 1) {
                                             handleUpgradeClick(availablePlans[0].name);
                                         } else {
-                                            // Show plan selector with all options
-                                            const planNames = availablePlans.map(p => `${p.name} ($${p.priceConfig.monthly?.toLocaleString() || p.priceConfig.baseFee?.toLocaleString()}/mo)`).join('\n');
-                                            const choice = window.prompt(`Choose a plan to upgrade:\n\n${planNames}\n\nEnter plan name:`);
-                                            if (choice && availablePlans.find(p => p.name.toLowerCase() === choice.toLowerCase())) {
-                                                const selectedPlan = availablePlans.find(p => p.name.toLowerCase() === choice.toLowerCase());
-                                                if (selectedPlan) {
-                                                    handleUpgradeClick(selectedPlan.name);
-                                                }
-                                            }
+                                            setShowPlanSelectorModal(true);
                                         }
                                     }}
                                     className="bg-jam-orange text-jam-black px-6 py-2.5 rounded-lg font-bold text-sm hover:bg-yellow-500 transition-colors"
@@ -1037,7 +1165,7 @@ export const Settings: React.FC<SettingsProps> = ({
                                     Upgrade Plan
                                 </button>
                             )}
-                            {currentSubscription && currentSubscription.status === 'active' && companyData?.plan !== 'Free' && (
+                            {companyData?.plan && companyData.plan !== 'Free' && currentSubscription?.status !== 'cancelled' && (
                                 <button
                                     onClick={() => setShowCancelModal(true)}
                                     className="bg-transparent border border-gray-500 text-gray-300 px-6 py-2.5 rounded-lg font-bold text-sm hover:bg-gray-800 hover:border-gray-400 transition-colors"

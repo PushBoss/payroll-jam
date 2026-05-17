@@ -13,6 +13,7 @@ export const getPlanFeatures = (planName: string | undefined): string[] => {
       return ['Basic Payroll', 'Payslip PDF', 'S01/S02 Reports', 'ACH Bank Files', 'Email Support', 'Employee Portal'];
     case 'Pro':
     case 'Professional':
+      return ['Basic Payroll', 'Payslip PDF', 'S01/S02 Reports', 'ACH Bank Files', 'Email Support', 'GL Integration', 'Employee Portal', 'Advanced HR', 'AI Assistant', 'Compliance', 'Documents'];
     case 'Enterprise':
     case 'Reseller':
       return ['Basic Payroll', 'Payslip PDF', 'S01/S02 Reports', 'ACH Bank Files', 'Email Support', 'GL Integration', 'Employee Portal', 'Advanced HR', 'AI Assistant', 'Compliance', 'Documents', 'Reseller Dashboard', 'Multi-Company'];
