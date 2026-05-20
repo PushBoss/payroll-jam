@@ -368,7 +368,12 @@ serve(async (req: Request) => {
 
                 // Infer company + role from accepted memberships
                 let companyId: string | null = null;
-                let role: string = 'EMPLOYEE';
+                const metadataRole = normalizeRole(
+                    authUser?.app_metadata?.role || authUser?.user_metadata?.role || null
+                );
+                let role: string = normalizeMemberRole(
+                    metadataRole || 'OWNER'
+                );
 
                 const { data: membership } = await adminClient
                     .from('account_members')
@@ -394,6 +399,11 @@ serve(async (req: Request) => {
                         role = 'OWNER';
                     }
                 }
+
+                // If we still cannot infer company context and role resolved to EMPLOYEE,
+                // default to OWNER for self-signup recovery flows to avoid detached
+                // employee-style profiles being created accidentally.
+                if (!companyId && role === 'EMPLOYEE') role = 'OWNER';
 
                 const name =
                     (authUser.user_metadata?.full_name || authUser.user_metadata?.name || '').toString().trim() ||
