@@ -58,6 +58,15 @@ const toDbPeriodEnd = (value?: string | null): string | null => {
 };
 
 const normalizeRole = (role?: string | null): string => (role || '').trim().toUpperCase();
+const allowedAppRoles = new Set(['OWNER', 'ADMIN', 'MANAGER', 'EMPLOYEE', 'RESELLER', 'SUPER_ADMIN']);
+
+const assertSuperAdminCaller = async (adminClient: any, authUser: any) => {
+    const callerProfile = await getCallerProfile(adminClient, authUser);
+    if (normalizeRole(callerProfile.role) !== 'SUPER_ADMIN') {
+        throw new Error('Unauthorized: Super Admin required');
+    }
+    return callerProfile;
+};
 
 const getCallerProfile = async (adminClient: any, authUser: any) => {
     if (!authUser?.id) throw new Error('Unauthorized');
@@ -449,6 +458,7 @@ serve(async (req: Request) => {
                 }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
             }
             
+
             case 'onboard-confirmed-user': {
                 if (!payload || typeof payload !== 'object') {
                     throw new Error('Missing payload for onboard-confirmed-user');
@@ -468,6 +478,41 @@ serve(async (req: Request) => {
                 if (password.length < 6) {
                     throw new Error('Password must be at least 6 characters');
                 }
+
+                const { data, error } = await adminClient.auth.admin.createUser({
+                    email: normalizedEmail,
+                    password,
+                    email_confirm: true,
+                    user_metadata: {
+                        full_name: normalizedName
+                    }
+                });
+
+                if (error) throw error;
+                return new Response(JSON.stringify({ user: data.user }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+            }
+
+            case 'create-super-admin': {
+                if (!payload || typeof payload !== 'object') {
+                    throw new Error('Missing payload for create-super-admin');
+                }
+
+                const { email, password, name } = payload;
+                if (!email || typeof email !== 'string') throw new Error('Email is required');
+                if (!password || typeof password !== 'string') throw new Error('Password is required');
+
+                const normalizedEmail = email.trim().toLowerCase();
+                const normalizedName = typeof name === 'string' ? name.trim() : '';
+                const normalizedRole = 'SUPER_ADMIN';
+
+                if (!normalizedEmail.includes('@')) {
+                    throw new Error('Invalid email address');
+                }
+
+                if (password.length < 6) {
+                    throw new Error('Password must be at least 6 characters');
+                }
+
                 // Only allow this if perhaps we don't have strict authUser constraints, or specifically reseller/owner
                 const { data, error } = await adminClient.auth.admin.createUser({
                     email: normalizedEmail,
@@ -479,6 +524,30 @@ serve(async (req: Request) => {
                 });
                 
                 if (error) throw error;
+
+                if (!allowedAppRoles.has(normalizedRole)) {
+                    throw new Error('Invalid role for app_users profile');
+                }
+
+                const userId = data.user?.id;
+                if (!userId) throw new Error('No user id returned from auth create');
+
+                const { error: profileError } = await adminClient
+                    .from('app_users')
+                    .insert({
+                        id: userId,
+                        auth_user_id: userId,
+                        email: normalizedEmail,
+                        name: normalizedName,
+                        role: normalizedRole,
+                        is_onboarded: true,
+                    });
+
+                if (profileError) {
+                    await adminClient.auth.admin.deleteUser(userId);
+                    throw profileError;
+                }
+
                 return new Response(JSON.stringify({ user: data.user }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
             }
 
