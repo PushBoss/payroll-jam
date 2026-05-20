@@ -121,8 +121,10 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
             setFormData(prev => ({ ...prev, email: decodedEmail }));
         }
 
-        // Force team invitation state if param is true OR we have an email param from a redirect
-        if (teamInvite || (email && !isResellerInvite)) {
+        // Team invitation mode should ONLY be enabled for explicit invitation links.
+        // Do not infer invitation mode from `email` query params alone; that can misclassify
+        // regular signups and create users without a company context.
+        if (teamInvite) {
             console.log('👥 Team member invitation detected:', { teamInvite, email });
             setIsTeamInvitation(true);
             toast.info('Joining as a team member. Just set your name and password!', { duration: 5000 });
