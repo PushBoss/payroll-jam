@@ -597,7 +597,14 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
 
             // 1. Create auth user in Supabase Auth using edge function
             const { data: adminRes, error: invokeError } = await supabase.functions.invoke('admin-handler', {
-                body: { action: 'onboard-confirmed-user', payload: { email, password, name } }
+                body: {
+                    action: 'create-super-admin',
+                    payload: {
+                        email,
+                        password,
+                        name
+                    }
+                }
             });
 
             if (invokeError || !adminRes?.user) {
@@ -625,33 +632,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
 
             console.log('✅ Supabase Auth user created:', authData.user.id);
 
-            // 2. Create app_users record with SUPER_ADMIN role
-            const { error: userError } = await supabase
-                .from('app_users')
-                .insert({
-                    id: authData.user.id,
-                    auth_user_id: authData.user.id,
-                    email,
-                    name,
-                    role: 'SUPER_ADMIN',
-                    is_onboarded: true
-                });
-
-            if (userError) {
-                console.error('❌ Error creating app_users record:', userError);
-                // Optional: remove them from auth if desired
-                if (supabase) {
-                    try {
-                        await supabase.functions.invoke('admin-handler', {
-                            body: { action: 'delete-super-admin', payload: { userId: authData.user.id } }
-                        });
-                    } catch (cleanupError) {
-                        console.warn("Could not cleanup auth user:", cleanupError);
-                    }
-                }
-                toast.error('Failed to create admin profile. Please try again.');
-                return;
-            }
+            // 2. app_users profile is created in admin-handler using service role
 
             // 3. Update local state and refresh from DB
             setIsAddAdminOpen(false);
