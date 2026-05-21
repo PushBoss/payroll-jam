@@ -611,8 +611,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
       }
 
-      setUser(finalUser);
-      storage.saveUser(finalUser);
+      // Only log the user in locally if Supabase returned an active session 
+      // (which happens if Confirm Email is off, or if created via admin handler).
+      if (authData.session || userData.skipEmailVerification) {
+        setUser(finalUser);
+        storage.saveUser(finalUser);
+      }
 
       console.log('✅ Signup completed successfully');
 
