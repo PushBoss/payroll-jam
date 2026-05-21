@@ -106,7 +106,7 @@ export const PublicApp: React.FC<PublicAppProps> = ({ currentPath, navigateTo, a
       case 'pricing':
         return (
           <PricingPage
-            onSignup={(plan, cycle) => openSignup(plan, cycle)}
+            onSignup={(plan: string, cycle: 'monthly' | 'annual') => openSignup(plan, cycle)}
             onLogin={() => navigateTo('login')}
             onBack={() => navigateTo('home')}
             onFeaturesClick={() => navigateTo('features')}
@@ -178,7 +178,7 @@ export const PublicApp: React.FC<PublicAppProps> = ({ currentPath, navigateTo, a
           <LandingPagePage
             plans={appData.plans}
             onLogin={() => navigateTo('login')}
-            onSignup={(plan) => openSignup(plan || 'Free', 'monthly')}
+            onSignup={(plan: string) => openSignup(plan || 'Free', 'monthly')}
             onPricingClick={() => navigateTo('pricing')}
             onFeaturesClick={() => navigateTo('features')}
             onFaqClick={() => navigateTo('faq')}

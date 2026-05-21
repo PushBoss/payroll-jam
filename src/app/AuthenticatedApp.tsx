@@ -93,7 +93,7 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
             onAddEmployee={appData.handleAddEmployee}
             onUpdateEmployee={appData.handleUpdateEmployee}
             onDeleteEmployee={appData.handleDeleteEmployee}
-            onSimulateOnboarding={(employee) => alert(`Link: ${window.location.origin}/?token=${employee.onboardingToken}`)}
+            onSimulateOnboarding={(employee: any) => alert(`Link: ${window.location.origin}/?token=${employee.onboardingToken}`)}
             departments={appData.departments}
             designations={appData.designations}
             assets={appData.assets}
@@ -193,7 +193,7 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
         return (
           <TimeSheetsPage
             timesheets={appData.timesheets}
-            onUpdate={(timesheet) =>
+            onUpdate={(timesheet: any) =>
               appData.setTimesheets(appData.timesheets.map((saved) => (saved.id === timesheet.id ? timesheet : saved)))
             }
           />
