@@ -432,7 +432,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
 
       try {
-        await EmployeeService.saveUser(appUser);
+        // Use SECURITY DEFINER RPC to insert the initial profile.
+        // supabase.auth.signUp() with email confirmation enabled returns NO
+        // active session yet — so auth.uid() is NULL server-side and any
+        // direct .from('app_users').insert() call will be rejected by the
+        // INSERT RLS policy (auth.uid() = id → NULL = id → false).
+        // The RPC runs as the DB owner and validates the auth user exists
+        // before inserting, making it safe without opening an RLS hole.
+        const { error: rpcError } = await supabase.rpc('create_user_profile', {
+          p_user_id: appUser.id,
+          p_email:   appUser.email,
+          p_name:    appUser.name,
+          p_role:    appUser.role,
+        });
+
+        if (rpcError) throw rpcError;
         console.log('✅ User profile saved to app_users table:', appUser.email);
       } catch (profileError) {
         console.error('❌ CRITICAL: Failed to create user profile:', profileError);
