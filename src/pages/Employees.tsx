@@ -77,6 +77,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     // New EmployeeManager State
     const [isEmployeeManagerOpen, setIsEmployeeManagerOpen] = useState(false);
     const [employeeManagerMode, setEmployeeManagerMode] = useState<'add' | 'edit'>('add');
+    const [isSavingEmployee, setIsSavingEmployee] = useState(false);
 
     const [searchTerm, setSearchTerm] = useState('');
     const [isCsvWizardOpen, setIsCsvWizardOpen] = useState(false);
@@ -266,35 +267,40 @@ export const Employees: React.FC<EmployeesProps> = ({
     };
 
     const handleEmployeeManagerSave = async (employee: Employee) => {
-        if (employeeManagerMode === 'add') {
-            const newEmp: Employee = {
-                ...employee,
-                id: employee.id || generateUUID(),
-                status: 'ACTIVE',
-                payFrequency: employee.payFrequency || PayFrequency.MONTHLY,
-                role: employee.role || Role.EMPLOYEE
-            };
-            const addResult = await Promise.resolve(onAddEmployee(newEmp));
-            if (addResult === false) {
+        setIsSavingEmployee(true);
+        try {
+            if (employeeManagerMode === 'add') {
+                const newEmp: Employee = {
+                    ...employee,
+                    id: employee.id || generateUUID(),
+                    status: 'ACTIVE',
+                    payFrequency: employee.payFrequency || PayFrequency.MONTHLY,
+                    role: employee.role || Role.EMPLOYEE
+                };
+                const addResult = await Promise.resolve(onAddEmployee(newEmp));
+                if (addResult === false) {
+                    return;
+                }
+                auditService.log(currentUser, 'CREATE', 'Employee', `Added new employee: ${newEmp.firstName} ${newEmp.lastName}`);
+                toast.success("Employee added successfully");
+                setIsEmployeeManagerOpen(false);
+                setSelectedEmployee(null);
                 return;
             }
-            auditService.log(currentUser, 'CREATE', 'Employee', `Added new employee: ${newEmp.firstName} ${newEmp.lastName}`);
-            toast.success("Employee added successfully");
+
+            // Edit mode
+            const updateResult = await Promise.resolve(onUpdateEmployee(employee));
+            if (updateResult === false) {
+                // App-level handler should already toast an error.
+                return;
+            }
+            auditService.log(currentUser, 'UPDATE', 'Employee', `Updated employee: ${employee.firstName} ${employee.lastName}`);
+            toast.success("Employee updated successfully");
             setIsEmployeeManagerOpen(false);
             setSelectedEmployee(null);
-            return;
+        } finally {
+            setIsSavingEmployee(false);
         }
-
-        // Edit mode
-        const updateResult = await Promise.resolve(onUpdateEmployee(employee));
-        if (updateResult === false) {
-            // App-level handler should already toast an error.
-            return;
-        }
-        auditService.log(currentUser, 'UPDATE', 'Employee', `Updated employee: ${employee.firstName} ${employee.lastName}`);
-        toast.success("Employee updated successfully");
-        setIsEmployeeManagerOpen(false);
-        setSelectedEmployee(null);
     };
 
     const startTermination = (empId: string) => {
@@ -528,6 +534,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                         setSelectedEmployee(null);
                     }}
                     onSave={handleEmployeeManagerSave}
+                    isLoading={isSavingEmployee}
                 />
             )}
 
