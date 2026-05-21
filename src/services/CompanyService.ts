@@ -67,8 +67,7 @@ export const CompanyService = {
 
     const { data, error } = await supabase
       .from('companies')
-      .upsert({
-        id: companyId,
+      .update({
         name: settings.name,
         trn: settings.trn,
         address: settings.address,
@@ -96,6 +95,7 @@ export const CompanyService = {
         billing_cycle: settings.billingCycle || 'MONTHLY',
         employee_limit: parseEmployeeLimit(settings.employeeLimit)
       })
+      .eq('id', companyId)
       .select('*')
       .single();
     if (error) throw error;

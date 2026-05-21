@@ -47,6 +47,7 @@ export const createAppFlowHandlers = ({
   const handleCompanyOnboardComplete = async (data: CompanySettings, importedEmployees: Employee[]) => {
     const existingPlan = companyData?.plan || 'Free';
     const companyDataWithStatus: CompanySettings = {
+      ...companyData,
       ...data,
       subscriptionStatus: data.subscriptionStatus || 'ACTIVE',
       plan: existingPlan,
