@@ -56,6 +56,7 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
     if (!user.isOnboarded && user.role === Role.OWNER) {
       return (
         <OnboardingPage
+          companyData={appData.companyData || undefined}
           departments={appData.departments}
           onComplete={appData.handleCompanyOnboardComplete}
           onUpdateDepartments={appData.handleUpdateDepartments}

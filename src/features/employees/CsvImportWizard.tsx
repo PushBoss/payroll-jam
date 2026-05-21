@@ -390,14 +390,23 @@ export const CsvImportWizard: React.FC<CsvImportWizardProps> = ({
         if (isNaN(num) || num <= 0) {
           errors.grossSalary = 'Gross salary must be a positive number.';
         } else {
+          delete errors.grossSalary;
           updatedData.grossSalary = num;
         }
       }
-      if (field === 'trn' && value && !isValidTRN(value)) {
-        errors.trn = 'TRN must be exactly 9 digits.';
+      if (field === 'trn') {
+        if (value && !isValidTRN(value)) {
+          errors.trn = 'TRN must be exactly 9 digits.';
+        } else {
+          delete errors.trn;
+        }
       }
-      if (field === 'nis' && value && !isValidNIS(value)) {
-        errors.nis = 'NIS format must be Letter + 6 digits or PENDING.';
+      if (field === 'nis') {
+        if (value && !isValidNIS(value)) {
+          errors.nis = 'NIS format must be Letter + 6 digits or PENDING.';
+        } else {
+          delete errors.nis;
+        }
       }
 
       return {
@@ -602,7 +611,7 @@ export const CsvImportWizard: React.FC<CsvImportWizardProps> = ({
         </div>
 
         {/* Wizard Steps */}
-        <div className="flex-1 overflow-y-auto p-8 min-h-[400px]">
+        <div className="flex-1 overflow-y-auto p-8 pb-24 min-h-[400px]">
           
           {/* STEP 1: Upload File */}
           {step === 1 && (
