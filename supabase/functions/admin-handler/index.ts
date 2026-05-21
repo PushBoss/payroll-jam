@@ -541,6 +541,59 @@ serve(async (req: Request) => {
                 return new Response(JSON.stringify({ user: data.user }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
             }
 
+            case 'create-company': {
+                // Creates a company record during signup when the caller has no active session yet.
+                // Uses service_role (adminClient) to bypass RLS.
+                const {
+                    companyId, ownerId, name, email, trn, address, plan,
+                    billingCycle, employeeLimit, status, settings
+                } = payload;
+
+                if (!companyId || !ownerId || !name) {
+                    throw new Error('companyId, ownerId, and name are required');
+                }
+
+                // Verify the owner exists in auth.users to prevent abuse
+                const { data: authOwner, error: ownerCheckError } = await adminClient.auth.admin.getUserById(ownerId);
+                if (ownerCheckError || !authOwner?.user) {
+                    throw new Error('Owner user not found in auth.users');
+                }
+
+                const { data: company, error: companyError } = await adminClient
+                    .from('companies')
+                    .upsert({
+                        id: companyId,
+                        owner_id: ownerId,
+                        name: (name || '').trim(),
+                        trn: trn || '',
+                        address: address || '',
+                        plan: plan || 'FREE',
+                        billing_cycle: billingCycle || 'MONTHLY',
+                        employee_limit: employeeLimit ?? 999999,
+                        status: status || 'ACTIVE',
+                        settings: settings || {},
+                    })
+                    .select('*')
+                    .single();
+
+                if (companyError) throw companyError;
+
+                // Link the app_users row to this company
+                const { error: linkError } = await adminClient
+                    .from('app_users')
+                    .update({ company_id: companyId })
+                    .eq('id', ownerId);
+
+                if (linkError) {
+                    console.error('Warning: company created but failed to link user:', linkError);
+                }
+
+                return new Response(
+                    JSON.stringify({ company }),
+                    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+
             case 'accept-invitation': {
                 const { accountId, userId, userEmail, verifyEmail, invitationIds } = payload;
                 if (!userId) throw new Error("userId is required to accept invitations");

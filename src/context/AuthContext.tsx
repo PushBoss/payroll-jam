@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User, Role, ResellerClient, CompanySettings } from '../core/types';
+import { User, Role, ResellerClient } from '../core/types';
 import { storage } from '../services/storage';
 import { EmployeeService } from '../services/EmployeeService';
 import { CompanyService } from '../services/CompanyService';
@@ -498,41 +498,52 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           console.log('✅ Reseller Billing detected: Bypassing immediate payment for company');
         }
 
-        const companyData: CompanySettings & { status?: string } = {
-          name: userData.companyName!,
-          email: userData.email, // Added email
-          trn: '',
-          address: userData.address || '',
-          phone: userData.phone || '',
-          city: userData.city,
-          parish: userData.parish,
-          bankName: '',
-          accountNumber: '',
-          branchCode: '',
-          payFrequency: 'Monthly',
-          subscriptionStatus: (isPaidPlan && (userData as any).paymentMethod === 'direct-deposit' ? 'PENDING_PAYMENT' : 'ACTIVE') as any,
-          plan: dbPlan as any,
-          billingCycle: billingCycle, // Save billing cycle
-          employeeLimit: employeeLimit, // Save employee limit
-          paymentMethod: (userData as any).paymentMethod,
-          signupDetails: {
-            numEmployees: userData.numEmployees,
-            numCompanies: userData.numCompanies,
-            legalConsentAccepted: userData.legalConsentAccepted,
-            legalConsentAcceptedAt: userData.legalConsentAcceptedAt
-          },
-          status: companyStatus // Add status field for approval workflow
+
+        // Use the Edge Function (service_role) to create the company, because
+        // auth.uid() is NULL at this point (no session until email is verified).
+        // Direct client writes to 'companies' are rejected by RLS (401/403).
+        const parseEmployeeLimit = (limit?: string): number => {
+          if (!limit || limit === 'Unlimited') return 999999;
+          const match = limit.match(/\d+/);
+          return match ? Number(match[0]) : 999999;
         };
 
-        const savedCompany = await CompanyService.saveCompany(userData.companyId!, companyData);
-        if (!savedCompany) {
-          throw new Error('Failed to create company record');
-        }
-        console.log('✅ Company saved to Supabase:', userData.companyName);
+        const { data: companyResult, error: companyInvokeError } = await supabase.functions.invoke('admin-handler', {
+          body: {
+            action: 'create-company',
+            payload: {
+              companyId:      userData.companyId,
+              ownerId:        authData.user.id,
+              name:           userData.companyName,
+              email:          userData.email,
+              trn:            '',
+              address:        userData.address || '',
+              plan:           normalizePlanToDatabase(userData.plan),
+              billingCycle:   billingCycle,
+              employeeLimit:  parseEmployeeLimit(employeeLimit),
+              status:         companyStatus,
+              settings: {
+                email:          userData.email,
+                phone:          userData.phone || '',
+                city:           userData.city,
+                parish:         userData.parish,
+                paymentMethod:  (userData as any).paymentMethod,
+                signupDetails: {
+                  numEmployees:             userData.numEmployees,
+                  numCompanies:             userData.numCompanies,
+                  legalConsentAccepted:     userData.legalConsentAccepted,
+                  legalConsentAcceptedAt:   userData.legalConsentAcceptedAt,
+                },
+              },
+            }
+          }
+        });
 
-        // Update the user profile with the new company link (now that the company exists)
-        await EmployeeService.saveUser({ ...appUser, companyId: userData.companyId });
-        console.log('✅ User profile linked to new company');
+        if (companyInvokeError) throw companyInvokeError;
+        if (!companyResult?.company) throw new Error('Failed to create company record');
+
+        // company created successfully via edge function (service_role)
+
 
         // If there's a reseller invite token, accept it
         if (userData.resellerInviteToken) {
