@@ -47,8 +47,7 @@ BEGIN
     DELETE FROM public.pay_runs         WHERE company_id = v_company_id;
     DELETE FROM public.leave_requests   WHERE company_id = v_company_id;
     DELETE FROM public.timesheets       WHERE company_id = v_company_id;
-    DELETE FROM public.tax_config       WHERE company_id = v_company_id;
-    DELETE FROM public.integration_config WHERE company_id = v_company_id;
+
     DELETE FROM public.departments      WHERE company_id = v_company_id;
     DELETE FROM public.designations     WHERE company_id = v_company_id;
     DELETE FROM public.documents        WHERE company_id = v_company_id;

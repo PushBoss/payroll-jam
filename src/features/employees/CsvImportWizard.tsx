@@ -903,10 +903,21 @@ export const CsvImportWizard: React.FC<CsvImportWizardProps> = ({
                             ) : rec.isDuplicateFile ? (
                               <span className="text-red-700 font-semibold bg-red-100/50 px-2.5 py-1 rounded-lg">Duplicate in CSV file</span>
                             ) : hasErrors ? (
-                              <span className="text-red-700 font-semibold flex items-center space-x-1.5">
-                                <Icons.Alert className="w-3.5 h-3.5 text-red-500" />
-                                <span>Invalid Input</span>
-                              </span>
+                              <div className="flex flex-col space-y-1">
+                                <span className="text-red-700 font-semibold flex items-center space-x-1.5">
+                                  <Icons.Alert className="w-3.5 h-3.5 text-red-500" />
+                                  <span>Invalid Input</span>
+                                </span>
+                                {Object.entries(rec.errors).map(([key, msg]) => {
+                                  // Only show errors for fields not editable inline in this view
+                                  if (['firstName', 'lastName', 'email', 'trn', 'grossSalary'].includes(key)) return null;
+                                  return (
+                                    <span key={key} className="text-[10px] text-red-600 block leading-tight border-l-2 border-red-300 pl-1">
+                                      {key.toUpperCase()}: {msg}
+                                    </span>
+                                  );
+                                })}
+                              </div>
                             ) : (
                               <span className="text-green-700 font-semibold flex items-center space-x-1.5">
                                 <Icons.CheckMark className="w-3.5 h-3.5 text-green-500" />

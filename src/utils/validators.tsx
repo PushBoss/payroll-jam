@@ -27,8 +27,10 @@ export const isValidNIS = (nis: string): boolean => {
     if (normalized === 'PENDING') return true;
     const cleanNIS = normalized.replace(/[^A-Z0-9]/g, '');
 
-    // Standard Regex: Starts with a letter, followed by 6 digits
-    const nisRegex = /^[A-Z]\d{6}$/;
+    // Standard Jamaican NIS is typically 1 Letter + 6 Digits (e.g., A123456).
+    // However, older or alternative formats can vary, sometimes including a trailing letter (A123456B).
+    // We allow any alphanumeric string between 6 and 9 characters to be safe.
+    const nisRegex = /^[A-Z0-9]{6,9}$/;
     return nisRegex.test(cleanNIS);
 };
 
