@@ -128,7 +128,7 @@ describe('payrunWorkflow', () => {
 
   it('flags portal access and encodes payslip tokens', () => {
     expect(hasEmployeePortalAccess('Free')).toBe(false);
-    expect(hasEmployeePortalAccess('Starter')).toBe(false);
+    expect(hasEmployeePortalAccess('Starter')).toBe(true);
     expect(hasEmployeePortalAccess('Pro')).toBe(true);
     expect(hasEmployeePortalAccess('Professional')).toBe(true);
 

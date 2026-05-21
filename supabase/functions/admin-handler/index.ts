@@ -100,11 +100,11 @@ const assertCompanyAccess = async (
         return callerProfile;
     }
 
-    if ((callerRole === 'OWNER' || callerRole === 'ADMIN') && callerProfile.company_id === companyId) {
+    if ((callerRole === 'OWNER' || callerRole === 'ADMIN' || callerRole === 'RESELLER') && callerProfile.company_id === companyId) {
         return callerProfile;
     }
 
-    if (callerRole === 'OWNER' || callerRole === 'ADMIN') {
+    if (callerRole === 'OWNER' || callerRole === 'ADMIN' || callerRole === 'RESELLER') {
         const [{ data: membership, error: membershipError }, { data: company, error: companyError }] = await Promise.all([
             adminClient
                 .from('account_members')
@@ -395,17 +395,31 @@ serve(async (req: Request) => {
 
                 if (membership?.account_id) {
                     companyId = membership.account_id;
-                    role = normalizeMemberRole(membership.role);
+                    const baseRole = normalizeMemberRole(membership.role);
+                    if (baseRole === 'OWNER') {
+                        const { data: company } = await adminClient
+                            .from('companies')
+                            .select('plan')
+                            .eq('id', companyId)
+                            .maybeSingle();
+                        if (company && isResellerEquivalentPlan(company.plan)) {
+                            role = 'RESELLER';
+                        } else {
+                            role = 'OWNER';
+                        }
+                    } else {
+                        role = baseRole;
+                    }
                 } else {
-                    // Fallback: if they own a company, treat as OWNER
+                    // Fallback: if they own a company, treat as OWNER or RESELLER
                     const { data: ownedCompany } = await adminClient
                         .from('companies')
-                        .select('id')
+                        .select('id, plan')
                         .eq('owner_id', authUser.id)
                         .maybeSingle();
                     if (ownedCompany?.id) {
                         companyId = ownedCompany.id;
-                        role = 'OWNER';
+                        role = isResellerEquivalentPlan(ownedCompany.plan) ? 'RESELLER' : 'OWNER';
                     }
                 }
 

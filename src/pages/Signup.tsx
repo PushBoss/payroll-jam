@@ -372,7 +372,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
         setIsSubmitting(true);
 
         try {
-            const role = isTeamInvitation ? Role.MANAGER : (formData.plan === 'Reseller' ? Role.RESELLER : Role.OWNER);
+            const role = isTeamInvitation ? Role.MANAGER : (formData.plan === 'Reseller' || formData.plan === 'Enterprise' ? Role.RESELLER : Role.OWNER);
             const isPaidPlan = !isTeamInvitation && formData.plan !== 'Free' && pricing.total > 0;
             const requiresApproval = isPaidPlan && (paymentMethod === 'direct-deposit' || paymentMethod === 'reseller-billing');
 

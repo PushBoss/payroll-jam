@@ -104,6 +104,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
 
         if (session?.user) {
+          // Block unconfirmed signup emails from logging in
+          if (!session.user.email_confirmed_at) {
+            console.warn('Session user email not confirmed. Signing out.');
+            setUser(null);
+            storage.saveUser(null);
+            try {
+              await supabase.auth.signOut();
+            } catch (signOutError) {
+              console.warn('Sign out failed:', signOutError);
+            }
+            if (isMounted) setIsLoading(false);
+            return;
+          }
+
           // Load user profile from app_users table
           const appUser = await EmployeeService.getUserByEmail(session.user.email!);
           if (appUser && isMounted) {
@@ -169,10 +183,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     initAuth();
 
-    return () => {
-      isMounted = false;
-    };
-
     // Listen for auth changes
     let authSubscription: any = null;
     if (supabase) {
@@ -183,6 +193,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         // Handle email confirmation
         if (event === 'SIGNED_IN' && session?.user) {
+          if (!session.user.email_confirmed_at) {
+            console.warn('🔄 SIGNED_IN event for unconfirmed user. Signing out.');
+            setUser(null);
+            storage.saveUser(null);
+            try {
+              await supabase!.auth.signOut();
+            } catch (signOutError) {
+              console.warn('Sign out failed:', signOutError);
+            }
+            return;
+          }
+
           const appUser = await EmployeeService.getUserByEmail(session.user.email!);
           if (appUser && isMounted) {
             setUser(appUser);

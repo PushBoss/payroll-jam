@@ -358,6 +358,24 @@ export const EmployeeService = {
 
     const { error } = await mutateEmployeeRowWithSchemaFallback(client, comprehensivePayload, companyId, emp.id, mode);
     if (error) {
+      if (error.code === '42501') {
+        console.warn('RLS policy violation. Retrying employee save via admin-handler...');
+        const { error: adminError } = await client.functions.invoke('admin-handler', {
+          body: {
+            action: 'save-employee-for-company',
+            payload: {
+              companyId,
+              employee: emp,
+              mode,
+            },
+          },
+        });
+        if (!adminError) {
+          console.log('Employee saved successfully via admin-handler fallback.');
+          return;
+        }
+        console.error('Admin-handler fallback also failed:', adminError);
+      }
       console.error('Final Supabase Employee Save Error:', error);
       throw error;
     }

@@ -181,6 +181,17 @@ export const PayRunDraftRow: React.FC<PayRunDraftRowProps> = ({
         </div>
       </td>
       <td className="px-6 py-4 text-right">
+        <div className="text-xs text-gray-500 space-y-0.5">
+          <div className="flex justify-end space-x-2"><span>NIS:</span> <span className="font-medium text-gray-700">{(item.employerContributions?.employerNIS || 0).toLocaleString()}</span></div>
+          <div className="flex justify-end space-x-2"><span>NHT:</span> <span className="font-medium text-gray-700">{(item.employerContributions?.employerNHT || 0).toLocaleString()}</span></div>
+          <div className="flex justify-end space-x-2"><span>Ed:</span> <span className="font-medium text-gray-700">{(item.employerContributions?.employerEdTax || 0).toLocaleString()}</span></div>
+          <div className="flex justify-end space-x-2"><span>HEART:</span> <span className="font-medium text-gray-700">{(item.employerContributions?.employerHEART || 0).toLocaleString()}</span></div>
+          <div className="mt-1 flex justify-end font-bold text-gray-700 text-[10px] uppercase tracking-wider">
+            Total: ${(item.employerContributions?.totalEmployerCost || 0).toLocaleString()}
+          </div>
+        </div>
+      </td>
+      <td className="px-6 py-4 text-right">
         <span className="font-bold text-lg text-gray-900">${item.netPay.toLocaleString()}</span>
       </td>
       <td className="px-6 py-4 text-center">

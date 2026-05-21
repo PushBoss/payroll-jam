@@ -427,6 +427,45 @@ export const PayRun: React.FC<PayRunProps> = ({
         }
     };
 
+    const handleEmailSinglePayslip = async (employeeIndex: number) => {
+        if (!currentRun) return;
+        if (!canEmailPayslips) {
+            toast.error('Payslip email is available on the Pro plan and above. Download payslips and send them manually for this plan.');
+            return;
+        }
+
+        const line = currentRun.lineItems[employeeIndex];
+        const emp = employees.find(e => e.id === line.employeeId);
+        if (!emp?.email) {
+            toast.error('Employee does not have an email address configured.');
+            return;
+        }
+
+        setIsEmailing(true);
+        try {
+            console.log('📧 Sending individual payslip email:', {
+                email: emp.email,
+                hasPortalAccess: true,
+                downloadToken: 'N/A (portal access)'
+            });
+
+            await emailService.sendPayslipNotification(
+                emp.email,
+                emp.firstName,
+                currentRun.periodStart,
+                `$${line.netPay.toLocaleString()}`,
+                true,
+                ''
+            );
+            toast.success(`Payslip emailed to ${emp.firstName} ${emp.lastName}`);
+        } catch (error) {
+            console.error('Error sending individual payslip email:', error);
+            toast.error(`Failed to send email to ${emp.firstName}.`);
+        } finally {
+            setIsEmailing(false);
+        }
+    };
+
     const runPayslipSequence = (
         successStartMessage: string,
         successEndMessage: string,
@@ -649,7 +688,8 @@ export const PayRun: React.FC<PayRunProps> = ({
                                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase text-right w-40">Gross</th>
                                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase text-center">Income / Bonus</th>
                                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase text-center">Other Deductions</th>
-                                <th className="px-6 py-4 text-xs font-bold text-red-500 uppercase text-right">Taxes</th>
+                                <th className="px-6 py-4 text-xs font-bold text-red-500 uppercase text-right w-40">Employee Tax</th>
+                                <th className="px-6 py-4 text-xs font-bold text-blue-500 uppercase text-right w-40">Employer Tax</th>
                                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase text-right">Net Pay</th>
                                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase text-center">Action</th>
                             </tr>
@@ -712,6 +752,7 @@ export const PayRun: React.FC<PayRunProps> = ({
                 onDownloadAllPayslips={handleDownloadAllPayslips}
                 onEmailPayslips={handleEmailPayslips}
                 onPrintAllPayslips={handlePrintAllPayslips}
+                onEmailSinglePayslip={handleEmailSinglePayslip}
                 onViewPayslip={(employeeIndex) => {
                     const payslip = currentRun?.lineItems[employeeIndex];
                     if (payslip) {

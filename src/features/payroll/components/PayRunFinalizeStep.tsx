@@ -30,6 +30,7 @@ interface PayRunFinalizeStepProps {
     onEmailPayslips: () => void;
     onPrintAllPayslips: () => void;
     onViewPayslip: (employeeIndex: number) => void;
+    onEmailSinglePayslip: (employeeIndex: number) => void;
 }
 
 export const PayRunFinalizeStep: React.FC<PayRunFinalizeStepProps> = ({
@@ -53,7 +54,8 @@ export const PayRunFinalizeStep: React.FC<PayRunFinalizeStepProps> = ({
     onDownloadAllPayslips,
     onEmailPayslips,
     onPrintAllPayslips,
-    onViewPayslip
+    onViewPayslip,
+    onEmailSinglePayslip
 }) => {
     return (
         <div className="animate-fade-in relative pb-12">
@@ -202,16 +204,14 @@ export const PayRunFinalizeStep: React.FC<PayRunFinalizeStepProps> = ({
                                 <Icons.Download className="w-4 h-4 mr-2" />
                                 Download All
                             </button>
-                            {canEmailPayslips && (
-                                <button
-                                    onClick={onEmailPayslips}
-                                    disabled={isEmailing}
-                                    className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-100 disabled:opacity-50"
-                                >
-                                    <Icons.Mail className="w-4 h-4 mr-2" />
-                                    {isEmailing ? 'Sending...' : 'Email All'}
-                                </button>
-                            )}
+                            <button
+                                onClick={onEmailPayslips}
+                                disabled={isEmailing}
+                                className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-100 disabled:opacity-50"
+                            >
+                                <Icons.Mail className="w-4 h-4 mr-2" />
+                                {isEmailing ? 'Sending...' : 'Email All'}
+                            </button>
                             <button
                                 onClick={onPrintAllPayslips}
                                 className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-100"
@@ -240,6 +240,15 @@ export const PayRunFinalizeStep: React.FC<PayRunFinalizeStepProps> = ({
                                     <p className="text-xs text-gray-400 uppercase font-bold">Net Pay</p>
                                     <p className="font-bold text-gray-900">${item.netPay.toLocaleString()}</p>
                                 </div>
+                                {isPayRunConfirmed && (
+                                    <button
+                                        onClick={() => onEmailSinglePayslip(idx)}
+                                        disabled={isEmailing}
+                                        className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:text-jam-orange hover:border-jam-orange hover:bg-orange-50 transition-all flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        <Icons.Mail className="w-3 h-3 mr-2" /> Email
+                                    </button>
+                                )}
                                 <button
                                     onClick={() => onViewPayslip(idx)}
                                     className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:text-jam-orange hover:border-jam-orange hover:bg-orange-50 transition-all flex items-center"

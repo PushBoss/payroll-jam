@@ -7,7 +7,7 @@ import { EmployeeService } from '../services/EmployeeService';
 import { PayrollService } from '../services/PayrollService';
 
 const BOOTSTRAP_QUERY_TIMEOUT_MS = 8000;
-const ADMIN_BOOTSTRAP_ROLES = new Set(['OWNER', 'ADMIN']);
+const ADMIN_BOOTSTRAP_ROLES = new Set(['OWNER', 'ADMIN', 'RESELLER']);
 
 const withTimeout = async <T,>(promise: Promise<T>, label: string, timeoutMs = BOOTSTRAP_QUERY_TIMEOUT_MS): Promise<T> => {
   return await Promise.race([

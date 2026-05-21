@@ -383,8 +383,8 @@ export const Employees: React.FC<EmployeesProps> = ({
     // Removed legacy handleImportCSV in favor of CSV Mapping Wizard
 
     const handleDownloadTemplate = () => {
-        const headers = "First Name,Last Name,Email,TRN,Gross Salary,Role,Department,Job Title";
-        const sample = "John,Doe,john.doe@example.com,123-456-789,250000,Employee,Operations,Driver";
+        const headers = "First Name,Last Name,Email Address,Mobile Phone,Address,Hire Date,Joining Date,Emergency Contact,Employee ID,Job Title,Department,Status,Employee Type,Pay Type,Pay Frequency,Gross Salary/Rate,Hourly Rate,Bank Name,Bank Account Number,Bank Account Type,Bank Currency,Tax Payer ID (TRN),NIS Number,Pension Rate (%),Pension Provider";
+        const sample = "John,Doe,john.doe@example.com,123-456-7890,123 Main St,2025-01-01,2025-01-01,Jane Doe,EMP001,Driver,Operations,ACTIVE,STAFF,SALARIED,MONTHLY,250000,0,NCB,123456789,SAVINGS,JMD,123-456-789,A123456B,5,NCB Pension";
         downloadFile('Employee_Import_Template.csv', `${headers}\n${sample}`, 'text/csv');
     };
 

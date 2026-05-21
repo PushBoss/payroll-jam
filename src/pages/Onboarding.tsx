@@ -3,6 +3,9 @@ import { Icons } from '../components/Icons';
 import { CompanySettings, Employee, Department } from '../core/types';
 import { downloadFile } from '../utils/exportHelpers';
 import { CsvImportWizard } from '../features/employees/CsvImportWizard';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../services/supabaseClient';
+import { toast } from 'sonner';
 
 interface OnboardingProps {
   onComplete: (data: CompanySettings, employees: Employee[]) => void;
@@ -11,10 +14,14 @@ interface OnboardingProps {
 }
 
 export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments = [], onUpdateDepartments }) => {
+  const { user: currentUser } = useAuth();
   const [step, setStep] = useState(1);
   const [importedEmployees, setImportedEmployees] = useState<Employee[]>([]);
   const [importStatus, setImportStatus] = useState<{type: 'success' | 'error', message: string} | null>(null);
   const [isCsvWizardOpen, setIsCsvWizardOpen] = useState(false);
+  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   const [formData, setFormData] = useState<CompanySettings>({
       name: '',
@@ -34,23 +41,82 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments 
       setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const nextStep = () => setStep(s => Math.min(s + 1, 4));
+  const nextStep = () => setStep(s => Math.min(s + 1, 5));
   const prevStep = () => setStep(s => Math.max(s - 1, 1));
 
   const handleFinish = () => {
       onComplete(formData, importedEmployees);
   };
 
+  const handleCheckVerification = async () => {
+      if (!supabase) {
+          toast.success('Email verified successfully (Test mode)!');
+          handleFinish();
+          return;
+      }
+      setIsCheckingEmail(true);
+      try {
+          const { data: { user }, error } = await supabase.auth.getUser();
+          if (error) throw error;
+          
+          if (user?.email_confirmed_at) {
+              toast.success('🎉 Email verified successfully! Welcome.');
+              handleFinish();
+          } else {
+              toast.error('Email is not verified yet. Please check your inbox and click the verification link.');
+          }
+      } catch (err: any) {
+          console.error('Error checking verification:', err);
+          toast.error(err.message || 'Failed to check verification status.');
+      } finally {
+          setIsCheckingEmail(false);
+      }
+  };
+
+  const handleResendVerification = async () => {
+      const email = currentUser?.email;
+      if (!email) {
+          toast.error('User email not found.');
+          return;
+      }
+      setIsResending(true);
+      try {
+          if (!supabase) {
+              toast.success('Verification email resent successfully (Test mode)!');
+              return;
+          }
+          const { error } = await supabase.auth.resend({
+              type: 'signup',
+              email,
+          });
+          if (error) throw error;
+          toast.success('Verification email resent successfully!');
+          setResendCooldown(60);
+          const interval = setInterval(() => {
+              setResendCooldown((prev) => {
+                  if (prev <= 1) {
+                      clearInterval(interval);
+                      return 0;
+                  }
+                  return prev - 1;
+              });
+          }, 1000);
+      } catch (err: any) {
+          toast.error(err.message || 'Failed to resend verification email.');
+      } finally {
+          setIsResending(false);
+      }
+  };
+
   const handleDownloadTemplate = () => {
-      const headers = "FirstName,LastName,Email,TRN,GrossSalary,Role,Department,JobTitle";
-      const sample = "John,Doe,john.doe@example.com,123-456-789,250000,Employee,Operations,Driver";
+      const headers = "First Name,Last Name,Email Address,Mobile Phone,Address,Hire Date,Joining Date,Emergency Contact,Employee ID,Job Title,Department,Status,Employee Type,Pay Type,Pay Frequency,Gross Salary/Rate,Hourly Rate,Bank Name,Bank Account Number,Bank Account Type,Bank Currency,Tax Payer ID (TRN),NIS Number,Pension Rate (%),Pension Provider";
+      const sample = "John,Doe,john.doe@example.com,123-456-7890,123 Main St,2025-01-01,2025-01-01,Jane Doe,EMP001,Driver,Operations,ACTIVE,STAFF,SALARIED,MONTHLY,250000,0,NCB,123456789,SAVINGS,JMD,123-456-789,A123456B,5,NCB Pension";
       downloadFile('Employee_Import_Template.csv', `${headers}\n${sample}`, 'text/csv');
   };
-  // Removed legacy handleImportCSV
 
   const StepIndicator = () => (
     <div className="flex items-center justify-center mb-10">
-        {[1, 2, 3, 4].map((s) => (
+        {[1, 2, 3, 4, 5].map((s) => (
             <div key={s} className="flex items-center">
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold border-2 transition-all
                     ${step === s ? 'bg-jam-orange border-jam-orange text-jam-black' : 
@@ -58,7 +124,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments 
                     }`}>
                     {step > s ? <Icons.Check className="w-5 h-5" /> : s}
                 </div>
-                {s < 4 && (
+                {s < 5 && (
                     <div className={`w-12 h-1 mx-2 rounded ${step > s ? 'bg-jam-black' : 'bg-gray-200'}`} />
                 )}
             </div>
@@ -200,11 +266,50 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments 
                     </div>
                 )}
 
+                {step === 5 && (
+                    <div className="space-y-6 animate-fade-in text-center">
+                        <div className="mx-auto w-16 h-16 bg-jam-orange rounded-full flex items-center justify-center mb-4">
+                            <Icons.Mail className="w-8 h-8 text-white" />
+                        </div>
+                        <h3 className="text-2xl font-bold text-gray-900">Verify Your Email</h3>
+                        <p className="text-gray-500 max-w-md mx-auto">
+                            To secure your account and start managing payroll, please verify your email address. We sent a verification link to:
+                        </p>
+                        <div className="bg-gray-50 rounded-lg p-3 inline-block border border-gray-200 font-semibold text-gray-800">
+                            {currentUser?.email || 'your email'}
+                        </div>
+                        
+                        <div className="flex flex-col sm:flex-row justify-center gap-4 mt-6">
+                            <button
+                                onClick={handleCheckVerification}
+                                disabled={isCheckingEmail}
+                                className="bg-jam-black text-white px-6 py-2 rounded-lg font-bold hover:bg-gray-800 flex items-center justify-center gap-2"
+                            >
+                                {isCheckingEmail ? (
+                                    <>
+                                        <Icons.Refresh className="w-4 h-4 animate-spin" />
+                                        Checking...
+                                    </>
+                                ) : (
+                                    'Check Verification Status'
+                                )}
+                            </button>
+                            <button
+                                onClick={handleResendVerification}
+                                disabled={isResending || resendCooldown > 0}
+                                className="bg-gray-100 text-gray-700 px-6 py-2 rounded-lg font-semibold hover:bg-gray-200 disabled:opacity-50"
+                            >
+                                {isResending ? 'Sending...' : resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend Email'}
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 <div className="mt-8 flex justify-between pt-6 border-t border-gray-100">
                     <button 
                         onClick={prevStep} 
-                        disabled={step === 1}
-                        className={`px-6 py-2 rounded-lg font-medium transition-colors ${step === 1 ? 'text-gray-300 cursor-not-allowed' : 'text-gray-600 hover:bg-gray-100'}`}
+                        disabled={step === 1 || step === 5}
+                        className={`px-6 py-2 rounded-lg font-medium transition-colors ${(step === 1 || step === 5) ? 'text-gray-300 cursor-not-allowed' : 'text-gray-600 hover:bg-gray-100'}`}
                     >
                         Back
                     </button>
@@ -215,14 +320,14 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments 
                         >
                             Continue
                         </button>
-                    ) : (
+                    ) : step === 4 ? (
                         <button 
-                            onClick={handleFinish}
+                            onClick={nextStep}
                             className="bg-jam-orange text-jam-black px-8 py-2 rounded-lg font-bold hover:bg-yellow-500 shadow-lg"
                         >
-                            Go to Dashboard
+                            Continue to Verify Email
                         </button>
-                    )}
+                    ) : null}
                 </div>
             </div>
         </div>

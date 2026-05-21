@@ -128,9 +128,14 @@ export const CsvImportWizard: React.FC<CsvImportWizardProps> = ({
           console.error('CSV Parsing Errors:', results.errors);
         }
         
-        const data = results.data as Record<string, string>[];
+        let data = results.data as Record<string, string>[];
+        // Filter out rows where all values are empty or whitespace
+        data = data.filter(row => {
+          return Object.values(row).some(val => val !== null && val !== undefined && val.trim() !== '');
+        });
+
         if (data.length === 0) {
-          alert('CSV file is empty');
+          alert('CSV file has no valid data rows');
           return;
         }
 
@@ -672,9 +677,20 @@ export const CsvImportWizard: React.FC<CsvImportWizardProps> = ({
                     return (
                       <div key={field.key} className="flex flex-col space-y-1.5 p-4 rounded-xl border bg-white border-gray-200 hover:border-gray-300 transition-all">
                         <div className="flex justify-between items-center">
-                          <label className="text-sm font-bold text-gray-900 flex items-center">
+                          <label className="text-sm font-bold text-gray-900 flex items-center relative">
                             {field.label}
-                            {field.isMandatory && <span className="text-red-500 ml-1">*</span>}
+                            {field.isMandatory && (
+                              <>
+                                <span className="text-red-500 ml-1">*</span>
+                                <span className="relative group ml-1.5 cursor-help inline-flex items-center">
+                                  <Icons.Info className="w-3.5 h-3.5 text-gray-400 hover:text-jam-orange transition-colors" />
+                                  <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-gray-900 text-white text-[10px] p-2 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-50 font-normal leading-normal text-center normal-case">
+                                    This field is required. If it isn't in your Excel sheet, you need to add this column to your spreadsheet before importing.
+                                    <span className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-900"></span>
+                                  </span>
+                                </span>
+                              </>
+                            )}
                           </label>
                           {mappedHeader && (
                             <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider

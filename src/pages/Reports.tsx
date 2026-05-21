@@ -8,6 +8,8 @@ import { PayslipView } from '../components/PayslipView';
 import { auditService } from '../core/auditService';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
+import { emailService } from '../services/emailService';
+import { hasEmployeePortalAccess } from '../features/payroll/payrunWorkflow';
 
 interface ReportsProps {
   history?: PayRun[];
@@ -36,6 +38,7 @@ export const Reports: React.FC<ReportsProps> = ({
   const [auditFilter, setAuditFilter] = useState('ALL');
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM format
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'DRAFT' | 'APPROVED' | 'FINALIZED'>('ALL');
+  const [isEmailing, setIsEmailing] = useState(false);
 
   useEffect(() => {
     const loadAuditLogs = async () => {
@@ -178,6 +181,116 @@ export const Reports: React.FC<ReportsProps> = ({
     }
   };
 
+  const handleEmailSinglePayslip = async (line: PayRunLineItem, run: PayRun) => {
+    if (!companyData) return;
+    
+    const canEmailPayslips = hasEmployeePortalAccess(companyData.plan || 'Free');
+    if (!canEmailPayslips) {
+      toast.error('Payslip email is available on the Pro plan and above. Download payslips and send them manually for this plan.');
+      return;
+    }
+
+    const emp = employees.find(e => e.id === line.employeeId);
+    if (!emp?.email) {
+      toast.error('Employee does not have an email address configured.');
+      return;
+    }
+
+    setIsEmailing(true);
+    const loadingToast = toast.loading(`Sending payslip email to ${emp.firstName}...`);
+    try {
+      console.log('📧 Sending individual payslip email from Reports:', {
+        email: emp.email,
+        hasPortalAccess: true,
+        downloadToken: 'N/A (portal access)'
+      });
+
+      const result = await emailService.sendPayslipNotification(
+        emp.email,
+        emp.firstName,
+        run.periodStart,
+        `$${line.netPay.toLocaleString()}`,
+        true,
+        ''
+      );
+      
+      if (result && !result.success) {
+        throw new Error(result.message || 'Failed to send email');
+      }
+
+      toast.success(`Payslip emailed to ${emp.firstName} ${emp.lastName}`, { id: loadingToast });
+    } catch (error: any) {
+      console.error('Error sending payslip:', error);
+      toast.error(`Failed to send email: ${error.message || 'Unknown error'}`, { id: loadingToast });
+    } finally {
+      setIsEmailing(false);
+    }
+  };
+
+  const handleEmailAllPayslips = async (run: PayRun) => {
+    if (!companyData) return;
+
+    const canEmailPayslips = hasEmployeePortalAccess(companyData.plan || 'Free');
+    if (!canEmailPayslips) {
+      toast.error('Payslip email is available on the Pro plan and above. Download payslips and send them manually for this plan.');
+      return;
+    }
+
+    if (!run.lineItems || run.lineItems.length === 0) {
+      toast.error('No employees in this pay run.');
+      return;
+    }
+
+    const confirmSend = window.confirm(`Are you sure you want to email payslips to all ${run.lineItems.length} employees?`);
+    if (!confirmSend) return;
+
+    setIsEmailing(true);
+    const loadingToast = toast.loading('Sending payslip emails to all employees...');
+    let sentCount = 0;
+    let failedCount = 0;
+
+    try {
+      for (const line of run.lineItems) {
+        const emp = employees.find(e => e.id === line.employeeId);
+        if (emp?.email) {
+          console.log('📧 Sending payslip email from Reports (All):', {
+            email: emp.email,
+            hasPortalAccess: true,
+            downloadToken: 'N/A (portal access)'
+          });
+
+          const result = await emailService.sendPayslipNotification(
+            emp.email,
+            emp.firstName,
+            run.periodStart,
+            `$${line.netPay.toLocaleString()}`,
+            true,
+            ''
+          );
+          
+          if (result && !result.success) {
+            failedCount++;
+          } else {
+            sentCount++;
+          }
+        } else {
+          failedCount++;
+        }
+      }
+      
+      if (failedCount > 0) {
+        toast.success(`Sent ${sentCount} successfully. ${failedCount} failed or had no email configured.`, { id: loadingToast });
+      } else {
+        toast.success(`Payslips emailed to all ${sentCount} employees successfully.`, { id: loadingToast });
+      }
+    } catch (error: any) {
+      console.error('Error sending all payslips:', error);
+      toast.error(`Failed to send some emails: ${error.message || 'Unknown error'}`, { id: loadingToast });
+    } finally {
+      setIsEmailing(false);
+    }
+  };
+
   const renderDetailModal = () => {
     if (!selectedRun) return null;
 
@@ -245,12 +358,21 @@ export const Reports: React.FC<ReportsProps> = ({
                       <td className="px-4 py-3 text-right text-red-500">-${line.paye.toLocaleString()}</td>
                       <td className="px-4 py-3 text-right font-bold">${line.netPay.toLocaleString()}</td>
                       <td className="px-4 py-3 text-center no-print">
-                        <button
-                          onClick={() => setViewingPayslip(line)}
-                          className="text-xs bg-white border border-gray-300 px-2 py-1 rounded hover:bg-gray-50 text-gray-700"
-                        >
-                          View Slip
-                        </button>
+                        <div className="flex items-center justify-center space-x-2">
+                          <button
+                            onClick={() => setViewingPayslip(line)}
+                            className="text-xs bg-white border border-gray-300 px-2 py-1 rounded hover:bg-gray-50 text-gray-700"
+                          >
+                            View Slip
+                          </button>
+                          <button
+                            onClick={() => handleEmailSinglePayslip(line, selectedRun)}
+                            disabled={isEmailing}
+                            className="text-xs bg-white border border-gray-300 px-2 py-1 rounded hover:bg-gray-50 text-gray-700 disabled:opacity-50"
+                          >
+                            Email Slip
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -264,6 +386,14 @@ export const Reports: React.FC<ReportsProps> = ({
           </div>
 
           <div className="p-6 border-t border-gray-200 bg-gray-50 flex flex-wrap justify-end gap-3 no-print">
+            <button
+              onClick={() => handleEmailAllPayslips(selectedRun)}
+              disabled={isEmailing}
+              className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 text-sm flex items-center disabled:opacity-50"
+            >
+              <Icons.Mail className="w-4 h-4 mr-2" />
+              Email All
+            </button>
             <button
               onClick={() => handleDownloadGL(selectedRun)}
               className="px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 hover:bg-blue-100 flex items-center text-sm font-bold"
