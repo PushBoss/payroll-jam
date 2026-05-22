@@ -116,8 +116,7 @@ export const Layout: React.FC<LayoutProps> = ({
 
   const handleLogout = async (e: React.MouseEvent) => {
     e.preventDefault();
-    await logout();
-    // Clear all storage and redirect
+    void logout();
     window.location.href = '/login';
   };
 

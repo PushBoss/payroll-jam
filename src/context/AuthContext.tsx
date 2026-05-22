@@ -46,6 +46,26 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const SIGN_OUT_TIMEOUT_MS = 3000;
+
+const clearLocalAuthState = () => {
+  storage.saveUser(null);
+  if (typeof window === 'undefined') return;
+
+  Object.keys(localStorage)
+    .filter((key) => key.startsWith('sb-') && key.endsWith('-auth-token'))
+    .forEach((key) => localStorage.removeItem(key));
+};
+
+const signOutWithTimeout = async () => {
+  if (!supabase) return;
+  await Promise.race([
+    supabase.auth.signOut(),
+    new Promise<void>((_, reject) => {
+      window.setTimeout(() => reject(new Error('Supabase sign out timed out')), SIGN_OUT_TIMEOUT_MS);
+    }),
+  ]);
+};
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(() => storage.getUser());
@@ -658,19 +678,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = async () => {
+    setUser(null);
+    clearLocalAuthState();
+
     try {
-      if (supabase) {
-        await supabase.auth.signOut();
-      }
+      await signOutWithTimeout();
     } catch (error) {
       console.warn('Sign out failed (possibly session already expired):', error);
     }
-    // Force clear Supabase session from localStorage
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('sb-arqbxlaudfbmiqvwwmnt-auth-token');
-    }
-    setUser(null);
-    storage.saveUser(null);
   };
 
   const updateUser = useCallback((updates: Partial<User>) => {
