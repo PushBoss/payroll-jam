@@ -148,4 +148,26 @@ describe('payroll write hardening', () => {
       },
     });
   });
+
+  it('inserts employees through admin-handler with the expected payload shape', async () => {
+    const employee = makeEmployee({
+      id: 'emp-insert-1',
+      email: 'new.employee@example.com',
+      phone: '876-555-0199',
+      status: 'ACTIVE',
+    });
+
+    await EmployeeService.saveEmployee(employee, companyId, 'insert');
+
+    expect(invoke).toHaveBeenCalledWith('admin-handler', {
+      body: {
+        action: 'save-employee-for-company',
+        payload: {
+          companyId,
+          employee,
+          mode: 'insert',
+        },
+      },
+    });
+  });
 });

@@ -1,3 +1,10 @@
+<!-- ai-context
+feature: employees
+status: current
+summary: Employee lifecycle, import, invite, profile, and persistence rules.
+do-not-change: Employee statuses are uppercase app-domain values and employees writes must route through admin-handler for privileged persistence.
+-->
+
 # Employee Management Specification
 
 ## 1. Overview
@@ -19,14 +26,16 @@
 - **Data Model**: `Employee`, `User` interfaces located in `src/core/types.ts`.
 
 ## 4. Business Rules
-1. **Status Segregation**: Employees are strictly bucketed into `ACTIVE`, `PENDING` (awaiting email verification/onboarding), and `TERMINATED` (archived). Terminated employees cannot receive new payslips or log in.
+1. **Status Segregation**: Employees are strictly bucketed into `ACTIVE`, `PENDING_ONBOARDING`, `PENDING_VERIFICATION`, `ARCHIVED`, and `TERMINATED`. Terminated and archived employees cannot receive new payslips or log in.
 2. **Invitation Tokens**: Employees invited to the platform receive securely hashed tokens that map their email directly to a pending profile. The token is invalidated upon successful registration completion.
 3. **Cross-Referencing**: Every `Employee` entity is linked to a Supabase auth `User` via the `auth_user_id` constraint to enable RBAC (Role-Based Access Control) login.
+4. **Status Constraint Invariant**: The `employees.status` database constraint must accept the same uppercase values used by `src/core/types.ts`. CSV import, manual add/edit, and `admin-handler` normalize aliases like `active`, `pending`, or `inactive` into these uppercase values before persistence. Do not change the database constraint back to lowercase statuses.
 
 ## 5. Security & Constraints
 - **RLS Policies Involved**: `app_users_insert`, `app_users_select` (Constrained to `auth.uid() = id`), and `employees` (Constrained to `company_id`).
 - **Validation Schema**: Strict regex matching on Jamaican Statutory IDs (TRN: `/^\d{3}-\d{3}-\d{3}$/`, NIS: `/^[A-Z]\d{6}$/`) inside `EmployeeManager`. "PENDING" is optionally allowed for new hires.
 - **Role Permissions**: `EMPLOYEE` role can only READ their own profile; `OWNER`, `RESELLER`, and `ADMIN` can CREATE/UPDATE company employees.
+- **Privileged Writes**: Employee create/update operations go through the `admin-handler` edge function (`save-employee-for-company`). Service role bypasses RLS, but it does not bypass database constraints.
 
 ## 6. Implementation Notes
 - The "Tax Calculation Configuration" card has been decoupled from the individual `EmployeeManager` modal and moved to `Platform Settings` to ensure global continuity. 

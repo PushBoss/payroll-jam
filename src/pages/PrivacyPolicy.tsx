@@ -147,7 +147,7 @@ export const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({ onBack, onFeatures
               If you have any questions about this privacy policy or our privacy practices, please contact us at:
             </p>
             <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-              <p className="text-gray-700"><strong>Email:</strong> privacy@payrolljam.com</p>
+              <p className="text-gray-700"><strong>Email:</strong> support@payrolljam.com</p>
               <p className="text-gray-700 mt-2"><strong>Address:</strong> Kingston, Jamaica</p>
             </div>
           </section>

@@ -11,20 +11,26 @@ interface OnboardingProps {
   companyData?: CompanySettings;
 }
 
+const COMPANY_TRN_LENGTH = 9;
+const BANK_ACCOUNT_MAX_LENGTH = 20;
+
+const digitsOnly = (value: string, maxLength: number) => value.replace(/\D/g, '').slice(0, maxLength);
+
 export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments = [], onUpdateDepartments, companyData }) => {
   const [step, setStep] = useState(1);
   const [importedEmployees, setImportedEmployees] = useState<Employee[]>([]);
   const [importStatus, setImportStatus] = useState<{type: 'success' | 'error', message: string} | null>(null);
   const [isCsvWizardOpen, setIsCsvWizardOpen] = useState(false);
+  const [errors, setErrors] = useState<Partial<Record<keyof CompanySettings, string>>>({});
 
   const [formData, setFormData] = useState<CompanySettings>({
       name: companyData?.name || '',
-      trn: companyData?.trn || '',
+      trn: digitsOnly(companyData?.trn || '', COMPANY_TRN_LENGTH),
       address: companyData?.address || '',
       phone: companyData?.phone || '',
       bankName: companyData?.bankName || 'NCB',
-      accountNumber: companyData?.accountNumber || '',
-      branchCode: companyData?.branchCode || '',
+      accountNumber: digitsOnly(companyData?.accountNumber || '', BANK_ACCOUNT_MAX_LENGTH),
+      branchCode: digitsOnly(companyData?.branchCode || '', BANK_ACCOUNT_MAX_LENGTH),
       payFrequency: companyData?.payFrequency || 'Monthly',
       defaultPayDate: companyData?.defaultPayDate || '25th of the month',
       plan: companyData?.plan || 'Free',
@@ -32,10 +38,40 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments 
   });
 
   const updateField = (field: keyof CompanySettings, value: string) => {
-      setFormData(prev => ({ ...prev, [field]: value }));
+      const sanitizedValue = (() => {
+        if (field === 'trn') return digitsOnly(value, COMPANY_TRN_LENGTH);
+        if (field === 'accountNumber' || field === 'branchCode') return digitsOnly(value, BANK_ACCOUNT_MAX_LENGTH);
+        return value;
+      })();
+
+      setErrors(prev => {
+        if (!prev[field]) return prev;
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      });
+      setFormData(prev => ({ ...prev, [field]: sanitizedValue }));
   };
 
-  const nextStep = () => setStep(s => Math.min(s + 1, 4));
+  const validateStep = () => {
+      const nextErrors: Partial<Record<keyof CompanySettings, string>> = {};
+
+      if (step === 1 && formData.trn && formData.trn.length !== COMPANY_TRN_LENGTH) {
+          nextErrors.trn = 'TRN must be exactly 9 digits.';
+      }
+
+      if (step === 2 && formData.accountNumber && !/^\d+$/.test(formData.accountNumber)) {
+          nextErrors.accountNumber = 'Bank account number must contain digits only.';
+      }
+
+      setErrors(nextErrors);
+      return Object.keys(nextErrors).length === 0;
+  };
+
+  const nextStep = () => {
+      if (!validateStep()) return;
+      setStep(s => Math.min(s + 1, 4));
+  };
   const prevStep = () => setStep(s => Math.max(s - 1, 1));
 
   const handleFinish = () => {
@@ -90,7 +126,17 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments 
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">TRN</label>
-                                <input type="text" className="w-full border border-gray-300 rounded-lg p-2" value={formData.trn} onChange={e => updateField('trn', e.target.value)} />
+                                <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    pattern="\d{9}"
+                                    maxLength={COMPANY_TRN_LENGTH}
+                                    className={`w-full border rounded-lg p-2 ${errors.trn ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
+                                    value={formData.trn}
+                                    onChange={e => updateField('trn', e.target.value)}
+                                    placeholder="9 digits"
+                                />
+                                {errors.trn && <p className="text-xs text-red-600 mt-1">{errors.trn}</p>}
                             </div>
                         </div>
                         <div>
@@ -119,8 +165,17 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, departments 
                                     <option value="BNS">Scotiabank</option>
                                     <option value="JN">JN Bank</option>
                                 </select>
-                                <input type="text" placeholder="Account Number" className="w-full border border-blue-200 rounded p-1 text-sm" value={formData.accountNumber} onChange={e => updateField('accountNumber', e.target.value)} />
+                                <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    maxLength={BANK_ACCOUNT_MAX_LENGTH}
+                                    placeholder="Account Number"
+                                    className={`w-full border rounded p-1 text-sm ${errors.accountNumber ? 'border-red-500 bg-red-50' : 'border-blue-200'}`}
+                                    value={formData.accountNumber}
+                                    onChange={e => updateField('accountNumber', e.target.value)}
+                                />
                             </div>
+                            {errors.accountNumber && <p className="text-xs text-red-600 mt-2">{errors.accountNumber}</p>}
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Pay Frequency</label>

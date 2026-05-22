@@ -448,6 +448,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         if (rpcError) throw rpcError;
         console.log('✅ User profile saved to app_users table:', appUser.email);
+
+        if (userData.phone?.trim()) {
+          const { error: phoneUpdateError } = await supabase.functions.invoke('admin-handler', {
+            body: {
+              action: 'update-signup-profile',
+              payload: {
+                userId: appUser.id,
+                email: appUser.email,
+                phone: userData.phone.trim(),
+              },
+            },
+          });
+
+          if (phoneUpdateError) throw phoneUpdateError;
+          appUser.phone = userData.phone.trim();
+        }
       } catch (profileError) {
         console.error('❌ CRITICAL: Failed to create user profile:', profileError);
         // Try to clean up auth user if profile creation fails

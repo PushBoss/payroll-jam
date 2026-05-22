@@ -40,6 +40,13 @@ const JAMAICA_PARISHES = [
     'St. Thomas',
 ];
 
+const sanitizeIntegerInput = (value: string) => value.replace(/\D/g, '');
+const sanitizePhoneInput = (value: string) => value.replace(/[^\d\s()+-]/g, '');
+const isValidPhone = (value: string) => {
+    const digits = value.replace(/\D/g, '');
+    return digits.length >= 7 && digits.length <= 15;
+};
+
 export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick, onBack, onNavigate, initialPlan = 'Starter', initialBillingCycle = 'monthly', plans }) => {
     const { signup, updateUser } = useAuth();
     const [step, setStep] = useState<'account' | 'billing'>('account');
@@ -331,9 +338,21 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
 
     // Default numCompanies to "1" when Reseller is selected (their own company)
     useEffect(() => {
-        if (formData.plan === 'Reseller' && (!formData.numCompanies || formData.numCompanies === '')) {
-            setFormData(prev => ({ ...prev, numCompanies: '1' }));
-        }
+        setFormData(prev => {
+            if (prev.plan === 'Free' && (prev.numEmployees || prev.numCompanies)) {
+                return { ...prev, numEmployees: '', numCompanies: '' };
+            }
+
+            if (prev.plan === 'Reseller' && (!prev.numCompanies || prev.numCompanies === '')) {
+                return { ...prev, numCompanies: '1' };
+            }
+
+            if (prev.plan !== 'Reseller' && prev.numCompanies) {
+                return { ...prev, numCompanies: '' };
+            }
+
+            return prev;
+        });
     }, [formData.plan]);
 
     const handleAccountSubmit = (e: React.FormEvent) => {
@@ -347,6 +366,32 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
         if (!formData.phone.trim()) {
             toast.error("Please enter your phone number to continue.");
             return;
+        }
+
+        if (!isValidPhone(formData.phone)) {
+            toast.error("Please enter a valid phone number.");
+            return;
+        }
+
+        if (!isTeamInvitation && formData.plan !== 'Free') {
+            const employeeCount = Number(formData.numEmployees);
+            if (!Number.isInteger(employeeCount) || employeeCount < 1) {
+                toast.error("Please enter a valid number of employees.");
+                return;
+            }
+
+            if (formData.plan !== 'Reseller' && employeeCount > employeeLimit) {
+                toast.error(`${formData.plan} supports up to ${employeeLimit} employees. Please reduce the count or choose another plan.`);
+                return;
+            }
+        }
+
+        if (!isTeamInvitation && formData.plan === 'Reseller') {
+            const companyCount = Number(formData.numCompanies);
+            if (!Number.isInteger(companyCount) || companyCount < 1) {
+                toast.error("Please enter a valid number of companies.");
+                return;
+            }
         }
 
         if (!legalConsent) {
@@ -409,8 +454,8 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                 billingCycle: formData.billingCycle,
                 employeeLimit: employeeLimit,
                 paymentMethod: paymentMethod,
-                numEmployees: parseInt(formData.numEmployees) || undefined,
-                numCompanies: parseInt(formData.numCompanies) || undefined,
+                numEmployees: formData.plan === 'Free' ? undefined : (parseInt(formData.numEmployees) || undefined),
+                numCompanies: formData.plan === 'Reseller' ? (parseInt(formData.numCompanies) || undefined) : undefined,
                 legalConsentAccepted: legalConsent,
                 legalConsentAcceptedAt: new Date().toISOString(),
                 resellerInviteToken: resellerInviteToken || undefined,
@@ -643,7 +688,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700">Phone</label>
-                                        <input required type="tel" autoComplete="tel" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
+                                        <input required type="tel" inputMode="tel" autoComplete="tel" pattern="[0-9\\s()+-]{7,20}" title="Enter a valid phone number using digits, spaces, +, -, or parentheses." value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: sanitizePhoneInput(e.target.value) })} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
                                     </div>
                                     {!isTeamInvitation && (
                                         <>
@@ -681,7 +726,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                                 min="1"
                                                 max={formData.plan === 'Reseller' ? 9999 : employeeLimit}
                                                 value={formData.numEmployees}
-                                                onChange={(e) => setFormData({ ...formData, numEmployees: e.target.value })}
+                                                onChange={(e) => setFormData({ ...formData, numEmployees: sanitizeIntegerInput(e.target.value) })}
                                                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm"
                                                 placeholder="e.g., 10"
                                             />
@@ -705,7 +750,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                                 min="1"
                                                 max="9999"
                                                 value={formData.numCompanies}
-                                                onChange={(e) => setFormData({ ...formData, numCompanies: e.target.value })}
+                                                onChange={(e) => setFormData({ ...formData, numCompanies: sanitizeIntegerInput(e.target.value) })}
                                                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm"
                                                 placeholder="1 (your company)"
                                             />

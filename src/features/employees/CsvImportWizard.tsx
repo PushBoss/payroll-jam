@@ -73,6 +73,16 @@ interface ValidatedRecord {
   duplicateAction: 'skip' | 'overwrite' | 'none';
 }
 
+const CSV_MIME_TYPES = new Set([
+  'text/csv',
+  'application/csv',
+]);
+
+const isCsvFile = (file: File) => {
+  const hasCsvExtension = file.name.trim().toLowerCase().endsWith('.csv');
+  return hasCsvExtension || CSV_MIME_TYPES.has(file.type);
+};
+
 export const CsvImportWizard: React.FC<CsvImportWizardProps> = ({
   isOpen,
   onClose,
@@ -119,6 +129,14 @@ export const CsvImportWizard: React.FC<CsvImportWizardProps> = ({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
+
+    if (!isCsvFile(selectedFile)) {
+      alert('Please upload a CSV file. Other file types are not supported for employee imports.');
+      e.target.value = '';
+      setFile(null);
+      return;
+    }
+
     setFile(selectedFile);
 
     Papa.parse(selectedFile, {
@@ -636,12 +654,12 @@ export const CsvImportWizard: React.FC<CsvImportWizardProps> = ({
               </div>
               <div>
                 <h4 className="text-lg font-bold text-gray-900">Upload your employee CSV file</h4>
-                <p className="text-gray-500 text-sm mt-1">Select any structured file containing employee data. You will be able to map headers in the next step.</p>
+                <p className="text-gray-500 text-sm mt-1">Select a .csv file containing employee data. You will be able to map headers in the next step.</p>
               </div>
 
               <input
                 type="file"
-                accept=".csv"
+                accept=".csv,text/csv"
                 ref={fileInputRef}
                 onChange={handleFileChange}
                 className="hidden"

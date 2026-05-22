@@ -18,6 +18,10 @@ interface UseWorkforceDataArgs {
   activeCompanyId?: string;
 }
 
+interface EmployeeMutationOptions {
+  refreshAfterSave?: boolean;
+}
+
 export const useWorkforceData = ({ user, isSupabaseMode, activeCompanyId }: UseWorkforceDataArgs) => {
   const [employees, setEmployees] = useState<Employee[]>(storage.getEmployees() || []);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(storage.getLeaveRequests() || []);
@@ -46,7 +50,8 @@ export const useWorkforceData = ({ user, isSupabaseMode, activeCompanyId }: UseW
     storage.saveCompanyUsers(users);
   }, [users]);
 
-  const handleAddEmployee = async (employee: Employee): Promise<boolean> => {
+  const handleAddEmployee = async (employee: Employee, options: EmployeeMutationOptions = {}): Promise<boolean> => {
+    const { refreshAfterSave = true } = options;
     let previousEmployees: Employee[] | null = null;
     setEmployees((prev) => {
       previousEmployees = prev;
@@ -58,8 +63,10 @@ export const useWorkforceData = ({ user, isSupabaseMode, activeCompanyId }: UseW
 
     try {
       await EmployeeService.saveEmployee(employee, targetCompanyId, 'insert');
-      const freshEmployees = await EmployeeService.getEmployees(targetCompanyId);
-      setEmployees(freshEmployees);
+      if (refreshAfterSave) {
+        const freshEmployees = await EmployeeService.getEmployees(targetCompanyId);
+        setEmployees(freshEmployees);
+      }
       return true;
     } catch (error: any) {
       console.error('Failed to save employee to Supabase:', error);
@@ -69,7 +76,8 @@ export const useWorkforceData = ({ user, isSupabaseMode, activeCompanyId }: UseW
     }
   };
 
-  const handleUpdateEmployee = async (employee: Employee): Promise<boolean> => {
+  const handleUpdateEmployee = async (employee: Employee, options: EmployeeMutationOptions = {}): Promise<boolean> => {
+    const { refreshAfterSave = true } = options;
     let previousEmployees: Employee[] | null = null;
     setEmployees((prev) => {
       previousEmployees = prev;
@@ -81,8 +89,10 @@ export const useWorkforceData = ({ user, isSupabaseMode, activeCompanyId }: UseW
 
     try {
       await EmployeeService.saveEmployee(employee, targetCompanyId, 'update');
-      const freshEmployees = await EmployeeService.getEmployees(targetCompanyId);
-      setEmployees(freshEmployees);
+      if (refreshAfterSave) {
+        const freshEmployees = await EmployeeService.getEmployees(targetCompanyId);
+        setEmployees(freshEmployees);
+      }
       return true;
     } catch (error: any) {
       console.error('Failed to save employee to Supabase:', error);

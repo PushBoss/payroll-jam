@@ -129,13 +129,13 @@ export const useAppData = ({ user, updateUser, impersonate, navigateTo }: UseApp
 
   const subscription = useSubscription(employees, companyData || ({ plan: 'Free' } as CompanySettings), plans, users);
 
-  const handleAddEmployee = async (employee: Employee) => {
+  const handleAddEmployee = async (employee: Employee, options?: { refreshAfterSave?: boolean }) => {
     if (!subscription.canAddEmployee) {
       toast.error('Plan Limit Reached. Please upgrade.');
       return false;
     }
 
-    return addEmployee(employee);
+    return addEmployee(employee, options);
   };
 
   const { dataLoading } = useAppBootstrap({

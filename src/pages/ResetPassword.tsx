@@ -3,6 +3,8 @@ import { Icons } from '../components/Icons';
 import { supabase } from '../services/supabaseClient';
 import { toast } from 'sonner';
 
+const RESET_TOAST_DURATION_MS = 5000;
+
 export const ResetPassword: React.FC = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -18,7 +20,7 @@ export const ResetPassword: React.FC = () => {
       if (!supabase) {
         console.error('❌ Supabase not initialized');
         setIsCheckingSession(false);
-        toast.error('System error. Please try again.');
+        toast.error('System error. Please try again.', { duration: RESET_TOAST_DURATION_MS });
         return;
       }
       
@@ -34,7 +36,9 @@ export const ResetPassword: React.FC = () => {
 
         if (searchError) {
           console.error('❌ Error in URL query:', searchError, searchErrorDescription);
-          toast.error(searchErrorDescription || 'Invalid or expired reset link. Please request a new one.');
+          toast.error(searchErrorDescription || 'Invalid or expired reset link. Please request a new one.', {
+            duration: RESET_TOAST_DURATION_MS,
+          });
           setTimeout(() => {
             window.location.href = '/login';
           }, 3000);
@@ -74,7 +78,9 @@ export const ResetPassword: React.FC = () => {
         // Check for errors in the URL
         if (error) {
           console.error('❌ Error in URL:', error, errorDescription);
-          toast.error(errorDescription || 'Invalid or expired reset link. Please request a new one.');
+          toast.error(errorDescription || 'Invalid or expired reset link. Please request a new one.', {
+            duration: RESET_TOAST_DURATION_MS,
+          });
           setTimeout(() => {
             window.location.href = '/login';
           }, 3000);
@@ -115,7 +121,7 @@ export const ResetPassword: React.FC = () => {
         if (!session) {
           console.error('❌ No valid session found');
           toast.error('Invalid or expired reset link. Please request a new one.', {
-            duration: 5000
+            duration: RESET_TOAST_DURATION_MS,
           });
           setTimeout(() => {
             window.location.href = '/login';
@@ -126,7 +132,9 @@ export const ResetPassword: React.FC = () => {
         }
       } catch (err: any) {
         console.error('❌ Session check error:', err);
-        toast.error(err.message || 'Error verifying reset link. Please request a new one.');
+        toast.error(err.message || 'Error verifying reset link. Please request a new one.', {
+          duration: RESET_TOAST_DURATION_MS,
+        });
         setTimeout(() => {
           window.location.href = '/login';
         }, 3000);
@@ -142,12 +150,12 @@ export const ResetPassword: React.FC = () => {
     e.preventDefault();
 
     if (password.length < 6) {
-      toast.error('Password must be at least 6 characters');
+      toast.error('Password must be at least 6 characters', { duration: RESET_TOAST_DURATION_MS });
       return;
     }
 
     if (password !== confirmPassword) {
-      toast.error('Passwords do not match');
+      toast.error('Passwords do not match', { duration: RESET_TOAST_DURATION_MS });
       return;
     }
 
@@ -173,13 +181,14 @@ export const ResetPassword: React.FC = () => {
       
       // Redirect to login page
       setTimeout(() => {
+        toast.dismiss();
         window.location.href = '/login';
       }, 1500);
       
       // Note: Keep isLoading true to prevent double submission
     } catch (error: any) {
       console.error('Password reset failed:', error);
-      toast.error(error.message || 'Failed to reset password');
+      toast.error(error.message || 'Failed to reset password', { duration: RESET_TOAST_DURATION_MS });
       setIsLoading(false);
     }
   };

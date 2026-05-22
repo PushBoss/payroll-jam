@@ -40,62 +40,49 @@ export const useAppBootstrap = ({
   const [dataLoading, setDataLoading] = useState(false);
 
   useEffect(() => {
+    let isCancelled = false;
+
     async function loadData() {
       if (!isSupabaseMode || !user?.companyId) return;
 
       setDataLoading(true);
       try {
         const isImpersonating = Boolean(user.originalRole);
-        let dbCompany: CompanySettings | null = null;
-        let dbEmps: Employee[] | null = null;
-        let dbRuns: PayRun[] | null = null;
-        let dbLeaves: LeaveRequest[] | null = null;
-        let dbUsers: User[] | null = null;
 
         if (isImpersonating) {
           const context = await withTimeout(AdminService.getCompanyContext(user.companyId), 'Admin company context');
-          dbCompany = context.company;
-          dbEmps = context.employees;
-          dbRuns = context.payRuns;
-          dbLeaves = context.leaveRequests;
-          dbUsers = context.users;
-        } else {
-          const results = await Promise.allSettled([
-            withTimeout(CompanyService.getCompany(user.companyId), 'Company settings'),
-            withTimeout(EmployeeService.getEmployees(user.companyId), 'Employees'),
-            withTimeout(PayrollService.getPayRuns(user.companyId), 'Pay runs'),
-            withTimeout(EmployeeService.getLeaveRequests(user.companyId), 'Leave requests'),
-            withTimeout(EmployeeService.getCompanyUsers(user.companyId), 'Company users'),
-          ]);
+          if (isCancelled) return;
+          if (context.company) applyLoadedCompany(context.company);
+          if (context.employees) setEmployees(context.employees);
+          if (context.payRuns) setPayRunHistory(context.payRuns);
+          if (context.leaveRequests) setLeaveRequests(context.leaveRequests);
+          if (context.users) setUsers(context.users);
+          return;
+        }
 
-          if (results[0].status === 'fulfilled') dbCompany = results[0].value;
-          if (results[1].status === 'fulfilled') dbEmps = results[1].value;
-          if (results[2].status === 'fulfilled') dbRuns = results[2].value;
-          if (results[3].status === 'fulfilled') dbLeaves = results[3].value;
-          if (results[4].status === 'fulfilled') dbUsers = results[4].value;
+        const normalizedRole = String(user.role || '').toUpperCase();
+        const canUseAdminFallback = ADMIN_BOOTSTRAP_ROLES.has(normalizedRole);
 
-          const failures = results.filter((result) => result.status === 'rejected') as PromiseRejectedResult[];
-          if (failures.length > 0) {
-            console.error('Bootstrap queries failed:', failures.map((failure) => failure.reason));
-          }
+        let dbCompany: CompanySettings | null = null;
+        try {
+          dbCompany = await withTimeout(CompanyService.getCompany(user.companyId), 'Company settings');
+        } catch (companyError) {
+          console.error('Company bootstrap query failed:', companyError);
 
-          const normalizedRole = String(user.role || '').toUpperCase();
-          const canUseAdminFallback = ADMIN_BOOTSTRAP_ROLES.has(normalizedRole);
-          const hasLoadedUsers = Array.isArray(dbUsers) && dbUsers.length > 0;
-          const shouldUseAdminFallback = canUseAdminFallback && (!dbCompany || !hasLoadedUsers || failures.length > 0);
-
-          if (shouldUseAdminFallback) {
+          if (canUseAdminFallback) {
             try {
               const fallbackContext = await withTimeout(
                 AdminService.getCompanyContext(user.companyId),
                 'Owner/Admin company context'
               );
 
-              dbCompany = fallbackContext.company ?? dbCompany;
-              dbEmps = fallbackContext.employees ?? dbEmps;
-              dbRuns = fallbackContext.payRuns ?? dbRuns;
-              dbLeaves = fallbackContext.leaveRequests ?? dbLeaves;
-              dbUsers = fallbackContext.users ?? dbUsers;
+              if (isCancelled) return;
+              if (fallbackContext.company) applyLoadedCompany(fallbackContext.company);
+              if (fallbackContext.employees) setEmployees(fallbackContext.employees);
+              if (fallbackContext.payRuns) setPayRunHistory(fallbackContext.payRuns);
+              if (fallbackContext.leaveRequests) setLeaveRequests(fallbackContext.leaveRequests);
+              if (fallbackContext.users) setUsers(fallbackContext.users);
+              return;
             } catch (fallbackError) {
               console.error('Bootstrap owner/admin fallback failed:', fallbackError);
             }
@@ -104,23 +91,42 @@ export const useAppBootstrap = ({
 
         if (dbCompany) {
           applyLoadedCompany(dbCompany);
-        } else if (!isImpersonating) {
+        } else {
           toast.error("Couldn't load company settings. Please try refreshing.");
         }
 
-        if (dbEmps) setEmployees(dbEmps);
-        if (dbRuns) setPayRunHistory(dbRuns);
-        if (dbLeaves) setLeaveRequests(dbLeaves);
-        if (dbUsers) setUsers(dbUsers);
+        setDataLoading(false);
+
+        const results = await Promise.allSettled([
+          withTimeout(EmployeeService.getEmployees(user.companyId), 'Employees'),
+          withTimeout(PayrollService.getPayRuns(user.companyId), 'Pay runs'),
+          withTimeout(EmployeeService.getLeaveRequests(user.companyId), 'Leave requests'),
+          withTimeout(EmployeeService.getCompanyUsers(user.companyId), 'Company users'),
+        ]);
+
+        if (isCancelled) return;
+        if (results[0].status === 'fulfilled') setEmployees(results[0].value);
+        if (results[1].status === 'fulfilled') setPayRunHistory(results[1].value);
+        if (results[2].status === 'fulfilled') setLeaveRequests(results[2].value);
+        if (results[3].status === 'fulfilled') setUsers(results[3].value);
+
+        const failures = results.filter((result) => result.status === 'rejected') as PromiseRejectedResult[];
+        if (failures.length > 0) {
+          console.error('Background bootstrap queries failed:', failures.map((failure) => failure.reason));
+        }
       } catch (error) {
         console.error('Failed to load cloud data', error);
         toast.error('Failed to sync with database. Using local cache.');
       } finally {
-        setDataLoading(false);
+        if (!isCancelled) setDataLoading(false);
       }
     }
 
     void loadData();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [applyLoadedCompany, isSupabaseMode, setEmployees, setLeaveRequests, setPayRunHistory, setUsers, user?.companyId, user?.originalRole, user?.role]);
 
   return {

@@ -614,7 +614,10 @@ serve(async (req: Request) => {
                 // Link the app_users row to this company
                 const { error: linkError } = await adminClient
                     .from('app_users')
-                    .update({ company_id: companyId })
+                    .update({
+                        company_id: companyId,
+                        phone: settings?.phone ? String(settings.phone).trim() : null,
+                    })
                     .eq('id', ownerId);
 
                 if (linkError) {
@@ -623,6 +626,38 @@ serve(async (req: Request) => {
 
                 return new Response(
                     JSON.stringify({ company }),
+                    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+
+            case 'update-signup-profile': {
+                // Persists profile fields captured during signup when the user may
+                // not have an active session yet because email verification is pending.
+                const { userId, email, phone } = payload || {};
+                if (!userId || !email) throw new Error('userId and email are required');
+
+                const normalizedEmail = String(email).trim().toLowerCase();
+                const { data: authUserResult, error: authUserError } = await adminClient.auth.admin.getUserById(userId);
+                if (authUserError || !authUserResult?.user) {
+                    throw new Error('Signup user not found in auth.users');
+                }
+
+                if ((authUserResult.user.email || '').toLowerCase() !== normalizedEmail) {
+                    throw new Error('Signup profile email mismatch');
+                }
+
+                const { data: updatedProfile, error: profileUpdateError } = await adminClient
+                    .from('app_users')
+                    .update({ phone: phone ? String(phone).trim() : null })
+                    .eq('id', userId)
+                    .eq('email', normalizedEmail)
+                    .select('*')
+                    .maybeSingle();
+
+                if (profileUpdateError) throw profileUpdateError;
+
+                return new Response(
+                    JSON.stringify({ user: updatedProfile }),
                     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                 );
             }

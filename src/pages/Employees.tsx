@@ -17,8 +17,8 @@ interface EmployeesProps {
     employees: Employee[];
     payRunHistory: PayRun[];
     companyData: CompanySettings;
-    onAddEmployee: (emp: Employee) => void | boolean | Promise<boolean>;
-    onUpdateEmployee: (emp: Employee) => void | boolean | Promise<boolean>;
+    onAddEmployee: (emp: Employee, options?: { refreshAfterSave?: boolean }) => void | boolean | Promise<boolean>;
+    onUpdateEmployee: (emp: Employee, options?: { refreshAfterSave?: boolean }) => void | boolean | Promise<boolean>;
     onDeleteEmployee?: (id: string) => void;
     onSimulateOnboarding?: (emp: Employee) => void;
     departments?: Department[];
@@ -558,14 +558,14 @@ export const Employees: React.FC<EmployeesProps> = ({
                         for (const emp of employeesToSave) {
                             const isExisting = employees.some(existing => existing.id === emp.id);
                             if (isExisting) {
-                                const updateResult = await Promise.resolve(onUpdateEmployee(emp));
+                                const updateResult = await Promise.resolve(onUpdateEmployee(emp, { refreshAfterSave: false }));
                                 if (updateResult === false) {
                                     failed++;
                                 } else {
                                     updated++;
                                 }
                             } else {
-                                const addResult = await Promise.resolve(onAddEmployee(emp));
+                                const addResult = await Promise.resolve(onAddEmployee(emp, { refreshAfterSave: false }));
                                 if (addResult === false) {
                                     failed++;
                                 } else {
