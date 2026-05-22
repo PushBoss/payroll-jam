@@ -5,7 +5,6 @@ import { User, PayRunLineItem, LeaveType, WeeklyTimesheet, TimeEntry, LeaveReque
 import { PayslipView } from '../components/PayslipView';
 import { MultiDateCalendar } from '../components/MultiDateCalendar';
 import { generateP24CSV } from '../utils/exportHelpers';
-import { EmployeeService } from '../services/EmployeeService';
 
 interface PortalProps {
     user: User;
@@ -15,7 +14,7 @@ interface PortalProps {
     onRequestLeave: (req: LeaveRequest) => void;
     payRunHistory?: PayRun[];
     companyData?: CompanySettings;
-    onUpdateEmployee?: (emp: Employee) => void;
+    onUpdateEmployee?: (emp: Employee) => void | boolean | Promise<void | boolean>;
 }
 
 export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = 'home', leaveRequests, onRequestLeave, payRunHistory = [], companyData, onUpdateEmployee }) => {
@@ -219,11 +218,11 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                     ]
                 };
                 
-                // Update in database if onUpdateEmployee is provided
-                if (onUpdateEmployee && user?.companyId) {
-                    onUpdateEmployee(updatedEmployee);
-                    // Also save to Supabase
-                    await EmployeeService.saveEmployee(updatedEmployee, user.companyId);
+                if (onUpdateEmployee) {
+                    const updateResult = await Promise.resolve(onUpdateEmployee(updatedEmployee));
+                    if (updateResult === false) {
+                        throw new Error('Failed to save document details to employee profile');
+                    }
                 }
                 
                 setUploadingDocument(false);

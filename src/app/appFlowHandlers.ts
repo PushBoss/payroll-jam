@@ -16,6 +16,7 @@ interface CreateAppFlowHandlersArgs {
   setEmployees: (updater: (employees: Employee[]) => Employee[]) => void;
   setSelectedPlan: (plan: string) => void;
   setSelectedCycle: (cycle: 'monthly' | 'annual') => void;
+  saveImportedEmployee?: (employee: Employee, options?: { refreshAfterSave?: boolean }) => boolean | Promise<boolean>;
 }
 
 const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
@@ -31,6 +32,7 @@ export const createAppFlowHandlers = ({
   setEmployees,
   setSelectedPlan,
   setSelectedCycle,
+  saveImportedEmployee,
 }: CreateAppFlowHandlersArgs) => {
   const onLoginSuccess = (signedInUser: User) => {
     navigateTo(getDefaultRouteForUser(signedInUser));
@@ -54,23 +56,46 @@ export const createAppFlowHandlers = ({
     };
 
     setCompanyData(companyDataWithStatus);
-    setEmployees((prev) => [...prev, ...importedEmployees]);
     storage.saveCompanyData(companyDataWithStatus);
 
     if (isSupabaseMode && user?.companyId && isUuid(user.companyId)) {
+      const savedEmployees: Employee[] = [];
+      const failedEmployees: Employee[] = [];
+
       try {
         await CompanyService.saveCompany(user.companyId, companyDataWithStatus);
         for (const employee of importedEmployees) {
           try {
-            await EmployeeService.saveEmployee(employee, user.companyId);
+            if (saveImportedEmployee) {
+              const saved = await Promise.resolve(saveImportedEmployee(employee, { refreshAfterSave: false }));
+              if (saved === false) {
+                failedEmployees.push(employee);
+              } else {
+                savedEmployees.push(employee);
+              }
+            } else {
+              await EmployeeService.saveEmployee(employee, user.companyId, 'insert');
+              savedEmployees.push(employee);
+            }
           } catch (employeeError) {
             console.warn(`Failed to save employee ${employee.email}:`, employeeError);
+            failedEmployees.push(employee);
           }
         }
       } catch (error) {
         console.error('Failed to sync to Supabase:', error);
         toast.error('Failed to save to database. Data saved locally.');
       }
+
+      if (!saveImportedEmployee && savedEmployees.length > 0) {
+        setEmployees((prev) => [...prev, ...savedEmployees]);
+      }
+
+      if (failedEmployees.length > 0) {
+        toast.error(`${failedEmployees.length} imported employee(s) could not be saved. You can retry from the Employees page.`);
+      }
+    } else if (importedEmployees.length > 0) {
+      setEmployees((prev) => [...prev, ...importedEmployees]);
     }
 
     updateUser({ isOnboarded: true });

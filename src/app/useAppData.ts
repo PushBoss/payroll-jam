@@ -181,6 +181,7 @@ export const useAppData = ({ user, updateUser, impersonate, navigateTo }: UseApp
     setEmployees,
     setSelectedPlan,
     setSelectedCycle,
+    saveImportedEmployee: addEmployee,
   });
 
   return {

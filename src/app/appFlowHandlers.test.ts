@@ -167,4 +167,28 @@ describe('appFlowHandlers', () => {
     expect(updateUser).toHaveBeenCalledWith({ isOnboarded: true });
     expect(navigateTo).toHaveBeenCalledWith('dashboard');
   });
+
+  it('saves onboarding CSV employees through the shared employee save flow in Supabase mode', async () => {
+    const saveImportedEmployee = vi.fn().mockResolvedValue(true);
+    const importedEmployee = makeEmployee();
+    const handlers = createAppFlowHandlers({
+      user: makeUser(),
+      companyData: makeCompany({ plan: 'Pro' as any }),
+      isSupabaseMode: true,
+      navigateTo,
+      updateUser,
+      impersonate,
+      setCompanyData,
+      setEmployees,
+      setSelectedPlan,
+      setSelectedCycle,
+      saveImportedEmployee,
+    });
+
+    await handlers.handleCompanyOnboardComplete(makeCompany(), [importedEmployee]);
+
+    expect(saveImportedEmployee).toHaveBeenCalledWith(importedEmployee, { refreshAfterSave: false });
+    expect(setEmployees).not.toHaveBeenCalled();
+    expect(updateUser).toHaveBeenCalledWith({ isOnboarded: true });
+  });
 });
