@@ -594,6 +594,93 @@ serve(async (req: Request) => {
                 );
             }
 
+            case 'update-company': {
+                // Updates a company record bypassing strict client-side RLS.
+                // Verifies that the currently logged in user belongs to the company.
+                const {
+                    companyId, name, trn, address, plan,
+                    billingCycle, employeeLimit, status, settings
+                } = payload;
+
+                if (!companyId) {
+                    throw new Error('companyId is required');
+                }
+
+                // Security check: callerProfile.company_id must match companyId OR they must be a Super Admin
+                // Resellers can edit their client's companies via the SA interface if needed, or if properly linked.
+                const isSuperAdmin = callerProfile?.role === 'SUPER_ADMIN';
+                const isResellerClient = callerRole === 'RESELLER' && payload.isClientUpdate;
+
+                if (!isSuperAdmin && !isResellerClient && callerProfile?.company_id !== companyId) {
+                    // Try checking membership table if standard check fails
+                    const { data: mem } = await adminClient
+                        .from('account_members')
+                        .select('account_id')
+                        .eq('account_id', companyId)
+                        .eq('user_id', authUser.id)
+                        .maybeSingle();
+                        
+                    if (!mem) {
+                        throw new Error('Unauthorized to update this company');
+                    }
+                }
+
+                const updateData: any = {};
+                if (name !== undefined) updateData.name = name.trim();
+                if (trn !== undefined) updateData.trn = trn;
+                if (address !== undefined) updateData.address = address;
+                if (plan !== undefined) updateData.plan = plan;
+                if (billingCycle !== undefined) updateData.billing_cycle = billingCycle;
+                if (employeeLimit !== undefined) updateData.employee_limit = employeeLimit;
+                if (status !== undefined) updateData.status = status;
+                if (settings !== undefined) updateData.settings = settings;
+
+                if (Object.keys(updateData).length === 0) {
+                    return new Response(
+                        JSON.stringify({ message: 'No data to update' }),
+                        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    );
+                }
+
+                const { data: company, error: companyError } = await adminClient
+                    .from('companies')
+                    .update(updateData)
+                    .eq('id', companyId)
+                    .select('*')
+                    .single();
+
+                if (companyError) throw companyError;
+
+                return new Response(
+                    JSON.stringify({ company }),
+                    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+
+            case 'decline-invitation': {
+                if (!authUser) throw new Error('Unauthorized');
+                const { accountId, userId } = payload || {};
+                if (!accountId || !userId) throw new Error('accountId and userId are required');
+
+                // Verify the caller is the user being declined (or a super admin)
+                const callerProfile = await adminClient.from('app_users').select('role').eq('id', authUser.id).maybeSingle();
+                if (authUser.id !== userId && callerProfile?.data?.role !== 'SUPER_ADMIN') {
+                    throw new Error('You can only decline your own invitations');
+                }
+
+                const { error } = await adminClient
+                    .from('account_members')
+                    .update({ status: 'declined' })
+                    .eq('account_id', accountId)
+                    .eq('user_id', userId);
+
+                if (error) throw error;
+
+                return new Response(JSON.stringify({ success: true }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
             case 'accept-invitation': {
                 const { accountId, userId, userEmail, verifyEmail, invitationIds } = payload;
                 if (!userId) throw new Error("userId is required to accept invitations");
@@ -1240,6 +1327,58 @@ serve(async (req: Request) => {
                 });
             }
 
+            case 'get-employee-by-token': {
+                const { token, email } = payload || {};
+                if (!token) throw new Error('token is required');
+
+                // This is a public-facing lookup — any authenticated user clicking an
+                // invite link needs to resolve their onboarding token. The service-role
+                // client bypasses RLS so the query works even before the employee has
+                // been linked to an auth user.
+                let query = adminClient
+                    .from('employees')
+                    .select('*, companies(name)')
+                    .eq('onboarding_token', token);
+
+                if (email) {
+                    query = query.eq('email', email.toLowerCase().trim());
+                }
+
+                const { data, error } = await query.maybeSingle();
+
+                if (error) throw error;
+                if (!data) {
+                    return new Response(JSON.stringify({ employee: null }), {
+                        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                    });
+                }
+
+                return new Response(JSON.stringify({ employee: data }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'save-leave-request': {
+                const { companyId, leaveRequest } = payload || {};
+                if (!companyId) throw new Error('companyId is required');
+                if (!leaveRequest) throw new Error('leaveRequest payload is required');
+
+                // Verify the caller has access to this company
+                if (authUser) {
+                    await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'MANAGER', 'RESELLER', 'SUPER_ADMIN', 'EMPLOYEE']);
+                }
+
+                const { error } = await adminClient
+                    .from('leave_requests')
+                    .upsert({ ...leaveRequest, company_id: companyId });
+
+                if (error) throw error;
+
+                return new Response(JSON.stringify({ success: true }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
             case 'save-employee-for-company': {
                 const { companyId, employee, mode = 'upsert' } = payload || {};
                 if (!companyId) throw new Error('companyId required');
@@ -1248,26 +1387,60 @@ serve(async (req: Request) => {
 
                 await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'RESELLER', 'SUPER_ADMIN']);
 
-                const employeeRecord = buildEmployeePayload(employee as Record<string, any>, companyId, mode);
+                // Ensure empty strings are converted to null to avoid unique constraint violations
+                const cleanEmployee = { ...employee } as Record<string, any>;
+                if (cleanEmployee.trn === '') cleanEmployee.trn = null;
+                if (cleanEmployee.nis === '') cleanEmployee.nis = null;
+
+                const employeeRecord = buildEmployeePayload(cleanEmployee, companyId, mode);
                 let result;
 
-                switch (mode) {
-                    case 'insert':
-                        result = await adminClient.from('employees').insert(employeeRecord);
+                // Fallback loop for schema mismatches
+                let nextPayload = { ...employeeRecord };
+                for (let attempt = 0; attempt < 8; attempt++) {
+                    switch (mode) {
+                        case 'insert':
+                            result = await adminClient.from('employees').insert(nextPayload);
+                            break;
+                        case 'update':
+                            result = await adminClient
+                                .from('employees')
+                                .update(nextPayload)
+                                .eq('id', cleanEmployee.id)
+                                .eq('company_id', companyId);
+                            break;
+                        default:
+                            result = await adminClient.from('employees').upsert(nextPayload);
+                            break;
+                    }
+
+                    if (!result.error) break;
+
+                    const message = (result.error.message || '').toLowerCase();
+                    const details = (result.error.details || '').toLowerCase();
+                    const code = String(result.error.code || '').toUpperCase();
+
+                    const isSchemaMismatch = code === 'PGRST204' 
+                        || (message.includes('column') && message.includes('does not exist'))
+                        || message.includes('could not find the');
+
+                    if (!isSchemaMismatch) {
                         break;
-                    case 'update':
-                        result = await adminClient
-                            .from('employees')
-                            .update(employeeRecord)
-                            .eq('id', (employee as Record<string, any>).id)
-                            .eq('company_id', companyId);
+                    }
+
+                    const combinedMsg = `${message} ${details}`;
+                    const matchPostgrest = combinedMsg.match(/could not find the ['"]?([^'"]+)['"]?/i);
+                    const matchPostgres = combinedMsg.match(/column ['"]?([^'"]+)['"]? (?:of relation|does not exist|in)/i);
+                    const missingColumn = (matchPostgrest?.[1] || matchPostgres?.[1] || '').trim();
+
+                    if (!missingColumn || !(missingColumn in nextPayload)) {
                         break;
-                    default:
-                        result = await adminClient.from('employees').upsert(employeeRecord);
-                        break;
+                    }
+
+                    delete nextPayload[missingColumn];
                 }
 
-                if (result.error) throw result.error;
+                if (result?.error) throw result.error;
 
                 return new Response(JSON.stringify({ success: true }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }

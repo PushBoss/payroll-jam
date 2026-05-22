@@ -279,7 +279,7 @@ export const EmployeeService = {
     emp: Employee,
     companyId: string,
     mode: EmployeeSaveMode = 'upsert',
-    options: EmployeeSaveOptions = {}
+    options: EmployeeSaveOptions = { useAdminHandler: true }
   ) => {
     const client = requireSupabase();
 
@@ -393,50 +393,58 @@ export const EmployeeService = {
 
   getEmployeeByToken: async (token: string, email?: string): Promise<{ employee: Employee; companyName: string; companyId: string } | null> => {
     if (!supabase) return null;
-    let query = requireSupabase()
-      .from('employees')
-      .select('*, companies(name)')
-      .eq('onboarding_token', token);
 
-    if (email) query = query.eq('email', email);
+    try {
+      // Route through admin-handler to bypass RLS. New employees clicking
+      // invite links don't have a role or auth_user_id linkage yet, so
+      // direct client queries against the employees table return 0 rows.
+      const { data: result, error: invokeError } = await requireSupabase().functions.invoke('admin-handler', {
+        body: {
+          action: 'get-employee-by-token',
+          payload: { token, email },
+        },
+      });
 
-    const { data, error } = await query.maybeSingle();
-    if (error || !data) return null;
+      if (invokeError || !result?.employee) return null;
 
-    const row = data as DbEmployeeRow;
-    const payData = getPayDataFromRow(row);
+      const row = result.employee as DbEmployeeRow;
+      const payData = getPayDataFromRow(row);
 
-    return {
-      employee: {
-        id: row.id,
-        firstName: row.first_name,
-        lastName: row.last_name,
-        email: row.email,
-        trn: row.trn || '',
-        nis: row.nis || '',
-        employeeId: row.employee_number || row.employee_id || undefined,
-        status: toEmployeeStatus(row.status),
-        role: toRole(row.role),
-        hireDate: row.hire_date,
-        jobTitle: row.job_title || undefined,
-        department: row.department || undefined,
-        phone: row.phone || undefined,
-        address: row.address || undefined,
-        emergencyContact: row.emergency_contact || undefined,
-        grossSalary: payData?.grossSalary || 0,
-        hourlyRate: payData?.hourlyRate,
-        payType: toPayType(payData?.payType),
-        payFrequency: toPayFrequency(payData?.payFrequency),
-        bankDetails: row.bank_details || undefined,
-        leaveBalance: row.leave_balance || undefined,
-        allowances: row.allowances || [],
-        customDeductions: getCustomDeductionsFromRow(row),
-        terminationDetails: row.termination_details || undefined,
-        onboardingToken: row.onboarding_token || undefined
-      } as Employee,
-      companyName: row.companies?.name || 'Unknown',
-      companyId: row.company_id
-    };
+      return {
+        employee: {
+          id: row.id,
+          firstName: row.first_name,
+          lastName: row.last_name,
+          email: row.email,
+          trn: row.trn || '',
+          nis: row.nis || '',
+          employeeId: row.employee_number || row.employee_id || undefined,
+          status: toEmployeeStatus(row.status),
+          role: toRole(row.role),
+          hireDate: row.hire_date,
+          jobTitle: row.job_title || undefined,
+          department: row.department || undefined,
+          phone: row.phone || undefined,
+          address: row.address || undefined,
+          emergencyContact: row.emergency_contact || undefined,
+          grossSalary: payData?.grossSalary || 0,
+          hourlyRate: payData?.hourlyRate,
+          payType: toPayType(payData?.payType),
+          payFrequency: toPayFrequency(payData?.payFrequency),
+          bankDetails: row.bank_details || undefined,
+          leaveBalance: row.leave_balance || undefined,
+          allowances: row.allowances || [],
+          customDeductions: getCustomDeductionsFromRow(row),
+          terminationDetails: row.termination_details || undefined,
+          onboardingToken: row.onboarding_token || undefined
+        } as Employee,
+        companyName: row.companies?.name || 'Unknown',
+        companyId: row.company_id
+      };
+    } catch (err) {
+      console.error('Error in getEmployeeByToken:', err);
+      return null;
+    }
   },
 
   // --- Leave & Docs ---
@@ -452,10 +460,21 @@ export const EmployeeService = {
   },
 
   saveLeaveRequest: async (req: LeaveRequest, companyId: string) => {
-    if (!supabase) return;
-    const { error } = await supabase
-      .from('leave_requests')
-      .upsert({ ...req, company_id: companyId });
-    if (error) throw error;
+    const client = requireSupabase();
+
+    const { error } = await client.functions.invoke('admin-handler', {
+      body: {
+        action: 'save-leave-request',
+        payload: {
+          companyId,
+          leaveRequest: req,
+        },
+      },
+    });
+
+    if (error) {
+      console.error('Error saving leave request via admin-handler:', error);
+      throw error;
+    }
   }
 };
