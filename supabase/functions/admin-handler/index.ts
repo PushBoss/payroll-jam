@@ -236,6 +236,7 @@ const buildEmployeePayload = (employee: Record<string, any>, companyId: string, 
         joining_date: employee.joiningDate || employee.hireDate,
         job_title: employee.jobTitle || null,
         department: employee.department || null,
+        employee_type: employee.employeeType || 'STAFF',
         emergency_contact: employee.emergencyContact || null,
         bank_details: employee.bankDetails || null,
         leave_balance: employee.leaveBalance || null,
@@ -605,6 +606,10 @@ serve(async (req: Request) => {
                 if (!companyId) {
                     throw new Error('companyId is required');
                 }
+
+                if (!authUser) throw new Error('Unauthorized');
+                const callerProfile = await getCallerProfile(adminClient, authUser);
+                const callerRole = normalizeRole(callerProfile.role);
 
                 // Security check: callerProfile.company_id must match companyId OR they must be a Super Admin
                 // Resellers can edit their client's companies via the SA interface if needed, or if properly linked.
@@ -1385,7 +1390,7 @@ serve(async (req: Request) => {
                 if (!employee || typeof employee !== 'object') throw new Error('employee payload required');
                 if (!['insert', 'update', 'upsert'].includes(mode)) throw new Error('Invalid employee save mode');
 
-                await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'RESELLER', 'SUPER_ADMIN']);
+                await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'MANAGER', 'RESELLER', 'SUPER_ADMIN']);
 
                 // Ensure empty strings are converted to null to avoid unique constraint violations
                 const cleanEmployee = { ...employee } as Record<string, any>;
@@ -1396,7 +1401,7 @@ serve(async (req: Request) => {
                 let result;
 
                 // Fallback loop for schema mismatches
-                let nextPayload = { ...employeeRecord };
+                let nextPayload: Record<string, any> = { ...employeeRecord };
                 for (let attempt = 0; attempt < 8; attempt++) {
                     switch (mode) {
                         case 'insert':

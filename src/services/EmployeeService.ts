@@ -284,7 +284,7 @@ export const EmployeeService = {
     const client = requireSupabase();
 
     if (options.useAdminHandler) {
-      const { error } = await client.functions.invoke('admin-handler', {
+      const { data, error } = await client.functions.invoke('admin-handler', {
         body: {
           action: 'save-employee-for-company',
           payload: {
@@ -296,8 +296,28 @@ export const EmployeeService = {
       });
 
       if (error) {
-        console.error('Admin handler employee save failed:', error);
-        throw error;
+        // supabase-js wraps non-2xx responses as FunctionsHttpError.
+        // The actual error message is in the response body JSON.
+        let errorMessage = 'Failed to save employee';
+        try {
+          if (error.context?.body) {
+            const reader = error.context.body.getReader();
+            const { value } = await reader.read();
+            const text = new TextDecoder().decode(value);
+            const parsed = JSON.parse(text);
+            errorMessage = parsed?.error || errorMessage;
+          }
+        } catch {
+          // Fallback: use the raw error message
+          errorMessage = error.message || errorMessage;
+        }
+        console.error('Admin handler employee save failed:', errorMessage);
+        throw new Error(errorMessage);
+      }
+      
+      if (data?.error) {
+        console.error('Admin handler returned error in data:', data.error);
+        throw new Error(data.error);
       }
 
       return;
