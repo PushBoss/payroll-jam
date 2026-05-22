@@ -298,55 +298,16 @@ export const CompanyService = {
 
   acceptResellerInvite: async (token: string, companyId: string) => {
     if (!supabase) return false;
-    
     try {
-      // 1. Get the invite using the new secure RPC. If the RPC migration has
-      // not reached the database yet, fall back to the legacy public token read.
-      const { data: invites, error: inviteError } = await supabase
-        .rpc('get_reseller_invite_by_token', { p_invite_token: token });
-
-      let invite = invites?.[0];
-
-      if ((inviteError || !invite) && token) {
-        console.warn('Reseller invite RPC unavailable or empty; falling back to direct invite lookup:', inviteError);
-        const { data: legacyInvite, error: legacyInviteError } = await supabase
-          .from('reseller_invites')
-          .select('*')
-          .eq('invite_token', token)
-          .maybeSingle();
-
-        if (!legacyInviteError && legacyInvite) {
-          invite = legacyInvite;
-        }
-      }
-
-      if (!invite) {
-        console.error('Invalid or expired invite token');
+      const { data, error } = await supabase.rpc('accept_reseller_invite', {
+        p_invite_token: token,
+        p_company_id: companyId,
+      });
+      if (error) {
+        console.error('Failed to accept reseller invite:', error);
         return false;
       }
-      
-      // 2. Link the client company to the reseller
-      const { error: clientError } = await supabase
-        .from('reseller_clients')
-        .upsert({
-          reseller_id: invite.reseller_id,
-          client_company_id: companyId,
-          status: 'ACTIVE',
-          access_level: 'FULL'
-        }, { onConflict: 'reseller_id,client_company_id' });
-        
-      if (clientError) {
-        console.error('Failed to link reseller client:', clientError);
-        return false;
-      }
-      
-      // 3. Mark the invite as accepted (or delete it)
-      await supabase.from('reseller_invites').delete().eq('id', invite.id);
-      
-      // 4. Update the company to track the reseller
-      await supabase.from('companies').update({ reseller_id: invite.reseller_id }).eq('id', companyId);
-      
-      return true;
+      return data === true;
     } catch (e) {
       console.error('Exception in acceptResellerInvite:', e);
       return false;

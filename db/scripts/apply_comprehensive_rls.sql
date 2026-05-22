@@ -482,6 +482,41 @@ REVOKE EXECUTE ON FUNCTION public.get_reseller_invite_by_token(TEXT) FROM PUBLIC
 GRANT EXECUTE ON FUNCTION public.get_reseller_invite_by_token(TEXT) TO authenticated, anon;
 
 
+-- Accept invite RPC — handles the full acceptance flow atomically with SECURITY DEFINER
+-- so the accepting company owner (who is not the reseller) can link themselves and clean up
+-- the invite row without needing direct RLS access to reseller_invites or reseller_clients.
+CREATE OR REPLACE FUNCTION public.accept_reseller_invite(p_invite_token TEXT, p_company_id UUID)
+RETURNS BOOLEAN
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = '' AS $$
+DECLARE
+  v_invite public.reseller_invites%ROWTYPE;
+BEGIN
+  SELECT * INTO v_invite
+  FROM public.reseller_invites
+  WHERE invite_token = p_invite_token
+  LIMIT 1;
+
+  IF v_invite.id IS NULL THEN
+    RETURN FALSE;
+  END IF;
+
+  INSERT INTO public.reseller_clients (reseller_id, client_company_id, status, access_level)
+  VALUES (v_invite.reseller_id, p_company_id, 'ACTIVE', 'FULL')
+  ON CONFLICT (reseller_id, client_company_id)
+  DO UPDATE SET status = 'ACTIVE', access_level = 'FULL';
+
+  DELETE FROM public.reseller_invites WHERE id = v_invite.id;
+
+  UPDATE public.companies SET reseller_id = v_invite.reseller_id WHERE id = p_company_id;
+
+  RETURN TRUE;
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION public.accept_reseller_invite(TEXT, UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.accept_reseller_invite(TEXT, UUID) TO authenticated;
+
+
 
 
 -- ==========================================
