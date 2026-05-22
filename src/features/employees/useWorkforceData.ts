@@ -22,6 +22,17 @@ interface EmployeeMutationOptions {
   refreshAfterSave?: boolean;
 }
 
+const EMPLOYEE_SAVE_TIMEOUT_MS = 10000;
+
+const withEmployeeSaveTimeout = async <T,>(promise: Promise<T>, label: string): Promise<T> => {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      window.setTimeout(() => reject(new Error(`${label} timed out. Please check your connection and try again.`)), EMPLOYEE_SAVE_TIMEOUT_MS);
+    }),
+  ]);
+};
+
 export const useWorkforceData = ({ user, isSupabaseMode, activeCompanyId }: UseWorkforceDataArgs) => {
   const [employees, setEmployees] = useState<Employee[]>(() => storage.getEmployees() || []);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(() => storage.getLeaveRequests() || []);
@@ -74,9 +85,12 @@ export const useWorkforceData = ({ user, isSupabaseMode, activeCompanyId }: UseW
     if (!isSupabaseMode || !targetCompanyId) return true;
 
     try {
-      await EmployeeService.saveEmployee(employee, targetCompanyId, 'insert');
+      await withEmployeeSaveTimeout(
+        EmployeeService.saveEmployee(employee, targetCompanyId, 'insert', { useAdminHandler: false }),
+        'Employee save'
+      );
       if (refreshAfterSave) {
-        const freshEmployees = await EmployeeService.getEmployees(targetCompanyId);
+        const freshEmployees = await withEmployeeSaveTimeout(EmployeeService.getEmployees(targetCompanyId), 'Employee refresh');
         setEmployees(freshEmployees);
       }
       return true;
@@ -100,9 +114,12 @@ export const useWorkforceData = ({ user, isSupabaseMode, activeCompanyId }: UseW
     if (!isSupabaseMode || !targetCompanyId) return true;
 
     try {
-      await EmployeeService.saveEmployee(employee, targetCompanyId, 'update');
+      await withEmployeeSaveTimeout(
+        EmployeeService.saveEmployee(employee, targetCompanyId, 'update', { useAdminHandler: false }),
+        'Employee update'
+      );
       if (refreshAfterSave) {
-        const freshEmployees = await EmployeeService.getEmployees(targetCompanyId);
+        const freshEmployees = await withEmployeeSaveTimeout(EmployeeService.getEmployees(targetCompanyId), 'Employee refresh');
         setEmployees(freshEmployees);
       }
       return true;
