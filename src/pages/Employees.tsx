@@ -721,8 +721,8 @@ export const Employees: React.FC<EmployeesProps> = ({
                     </button>
                     <button
                         onClick={handleDownloadTemplate}
-                        className="text-gray-500 hover:text-gray-700 px-3 py-2 flex items-center text-sm font-semibold transition-colors"
-                        title="Legacy template file for manual formatting"
+                        className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 flex items-center shadow-sm"
+                        title="Download a sample CSV with the expected employee columns. Fill it in, then use Import CSV to upload and map the data."
                     >
                         <Icons.Download className="w-4 h-4 mr-2" /> Download Template
                     </button>
