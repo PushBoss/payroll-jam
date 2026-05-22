@@ -44,8 +44,8 @@ export const generateNCBFile = (payRun: PayRun, company: CompanySettings, employ
             errors.push(`${line.employeeName}: Missing Bank Account`);
             return false;
         }
-        // Only include employees with NCB accounts
-        if (emp.bankDetails.bankName !== 'NCB') {
+        // Only include employees with NCB accounts (case-insensitive)
+        if ((emp.bankDetails.bankName || '').toUpperCase() !== 'NCB') {
             return false; // Skip non-NCB accounts
         }
         const acct = cleanAccountNumber(emp.bankDetails.accountNumber);
@@ -57,7 +57,24 @@ export const generateNCBFile = (payRun: PayRun, company: CompanySettings, employ
     });
 
     if (validLines.length === 0) {
-        toast.error("No NCB accounts found in this pay run");
+        // Collect bank names for diagnostic
+        const bankNames = new Set<string>();
+        const noBankCount = { count: 0 };
+        payRun.lineItems.forEach(line => {
+            const emp = employees.find(e => e.id === line.employeeId);
+            if (emp?.bankDetails?.bankName) {
+                bankNames.add(emp.bankDetails.bankName);
+            } else {
+                noBankCount.count++;
+            }
+        });
+        const bankInfo = bankNames.size > 0
+            ? `Banks found: ${[...bankNames].join(', ')}.`
+            : '';
+        const noBankInfo = noBankCount.count > 0
+            ? ` ${noBankCount.count} employee(s) have no bank details configured.`
+            : '';
+        toast.error(`No NCB accounts found in this pay run. ${bankInfo}${noBankInfo} Set bank details in Employee settings.`);
         return;
     }
 

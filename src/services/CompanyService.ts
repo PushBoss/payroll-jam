@@ -65,31 +65,61 @@ export const CompanyService = {
 
     const existingSettings = existingCompany?.settings || {};
 
-    const { data, error } = await supabase
+    const updatedSettings = {
+      ...existingSettings,
+      email: settings.email ?? existingSettings.email,
+      phone: settings.phone,
+      bankName: settings.bankName,
+      accountNumber: settings.accountNumber,
+      branchCode: settings.branchCode,
+      paymentMethod: settings.paymentMethod,
+      city: settings.city ?? existingSettings.city,
+      parish: settings.parish ?? existingSettings.parish,
+      signupDetails: settings.signupDetails ?? existingSettings.signupDetails,
+      payFrequency: settings.payFrequency ?? existingSettings.payFrequency,
+      defaultPayDate: settings.defaultPayDate ?? existingSettings.defaultPayDate,
+      policies: settings.policies ?? existingSettings.policies,
+      reseller_defaults: settings.reseller_defaults ?? existingSettings.reseller_defaults,
+      taxConfig: settings.taxConfig ?? existingSettings.taxConfig,
+      departments: settings.departments ?? existingSettings.departments ?? [],
+      designations: settings.designations ?? existingSettings.designations ?? []
+    };
+
+    const payload = {
+      companyId,
+      name: settings.name,
+      trn: settings.trn,
+      address: settings.address,
+      settings: updatedSettings,
+      status: (settings as any).status || settings.subscriptionStatus || 'ACTIVE',
+      plan: normalizePlanToDatabase(settings.plan),
+      billingCycle: settings.billingCycle || 'MONTHLY',
+      employeeLimit: parseEmployeeLimit(settings.employeeLimit)
+    };
+
+    // Prefer admin-handler to bypass RLS constraints. Fall back to the direct
+    // update path so settings remain editable if the frontend deploys before
+    // the matching edge function version is redeployed.
+    const { data, error } = await supabase.functions.invoke('admin-handler', {
+      body: {
+        action: 'update-company',
+        payload
+      }
+    });
+
+    if (!error && data?.company) {
+      return data.company;
+    }
+
+    console.warn('Admin-handler company update failed; falling back to direct update:', error || data);
+
+    const { data: fallbackData, error: fallbackError } = await supabase
       .from('companies')
       .update({
         name: settings.name,
         trn: settings.trn,
         address: settings.address,
-        settings: {
-          ...existingSettings,
-          email: settings.email ?? existingSettings.email,
-          phone: settings.phone,
-          bankName: settings.bankName,
-          accountNumber: settings.accountNumber,
-          branchCode: settings.branchCode,
-          paymentMethod: settings.paymentMethod,
-          city: settings.city ?? existingSettings.city,
-          parish: settings.parish ?? existingSettings.parish,
-          signupDetails: settings.signupDetails ?? existingSettings.signupDetails,
-          payFrequency: settings.payFrequency ?? existingSettings.payFrequency,
-          defaultPayDate: settings.defaultPayDate ?? existingSettings.defaultPayDate,
-          policies: settings.policies ?? existingSettings.policies,
-          reseller_defaults: settings.reseller_defaults ?? existingSettings.reseller_defaults,
-          taxConfig: settings.taxConfig ?? existingSettings.taxConfig,
-          departments: settings.departments ?? existingSettings.departments ?? [],
-          designations: settings.designations ?? existingSettings.designations ?? []
-        },
+        settings: updatedSettings,
         status: (settings as any).status || settings.subscriptionStatus || 'ACTIVE',
         plan: normalizePlanToDatabase(settings.plan),
         billing_cycle: settings.billingCycle || 'MONTHLY',
@@ -98,8 +128,9 @@ export const CompanyService = {
       .eq('id', companyId)
       .select('*')
       .single();
-    if (error) throw error;
-    return data;
+
+    if (fallbackError) throw fallbackError;
+    return fallbackData;
   },
 
   savePaymentGatewaySettings: async (companyId: string, paymentConfig: Record<string, unknown>) => {
@@ -267,12 +298,58 @@ export const CompanyService = {
 
   acceptResellerInvite: async (token: string, companyId: string) => {
     if (!supabase) return false;
-    const { error } = await supabase
-      .from('reseller_clients')
-      .update({ status: 'ACTIVE' })
-      .eq('token', token)
-      .eq('client_company_id', companyId);
     
-    return !error;
+    try {
+      // 1. Get the invite using the new secure RPC. If the RPC migration has
+      // not reached the database yet, fall back to the legacy public token read.
+      const { data: invites, error: inviteError } = await supabase
+        .rpc('get_reseller_invite_by_token', { p_invite_token: token });
+
+      let invite = invites?.[0];
+
+      if ((inviteError || !invite) && token) {
+        console.warn('Reseller invite RPC unavailable or empty; falling back to direct invite lookup:', inviteError);
+        const { data: legacyInvite, error: legacyInviteError } = await supabase
+          .from('reseller_invites')
+          .select('*')
+          .eq('invite_token', token)
+          .maybeSingle();
+
+        if (!legacyInviteError && legacyInvite) {
+          invite = legacyInvite;
+        }
+      }
+
+      if (!invite) {
+        console.error('Invalid or expired invite token');
+        return false;
+      }
+      
+      // 2. Link the client company to the reseller
+      const { error: clientError } = await supabase
+        .from('reseller_clients')
+        .upsert({
+          reseller_id: invite.reseller_id,
+          client_company_id: companyId,
+          status: 'ACTIVE',
+          access_level: 'FULL'
+        }, { onConflict: 'reseller_id,client_company_id' });
+        
+      if (clientError) {
+        console.error('Failed to link reseller client:', clientError);
+        return false;
+      }
+      
+      // 3. Mark the invite as accepted (or delete it)
+      await supabase.from('reseller_invites').delete().eq('id', invite.id);
+      
+      // 4. Update the company to track the reseller
+      await supabase.from('companies').update({ reseller_id: invite.reseller_id }).eq('id', companyId);
+      
+      return true;
+    } catch (e) {
+      console.error('Exception in acceptResellerInvite:', e);
+      return false;
+    }
   }
 };

@@ -1,7 +1,7 @@
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **payroll-jam** (1048 symbols, 1991 relationships, 43 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **payroll-jam** (1215 symbols, 2398 relationships, 65 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -99,3 +99,18 @@ To check whether embeddings exist, inspect `.gitnexus/meta.json` — the `stats.
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
+
+---
+
+# Payroll-Jam — Claude Context Extension
+
+> The GitNexus block above is Claude-specific. For shared project context, architecture, dead code warnings, docs routing, and shared rules applicable to all AI tools, read **`AGENTS.md`** (the section below the GitNexus block).
+
+## Quick Reference for Claude Sessions
+
+- **Before any edit**: run `gitnexus_impact` on the target symbol, read the relevant doc from the routing table in `AGENTS.md`.
+- **Debugging**: `gitnexus_query` → `gitnexus_context` → read process resource → read source file.
+- **Dead code warning**: `src/middleware.ts` and `src/app/api/cron/expiry-check/route.ts` do not execute — see `AGENTS.md` for details.
+- **Auth bug pattern**: "account setup incomplete" = user exists in `auth.users` but not in `app_users`. Recovery path is `ensureSelfProfile()` in `AuthContext.tsx:53`.
+- **Docs index**: `docs/AI_INDEX.md` — annotated list of all docs by feature area.
+- **Env vars**: `.env.example` — full list with descriptions and layer guidance.

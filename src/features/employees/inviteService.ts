@@ -524,18 +524,22 @@ export async function declineInvitation(accountId: string, userId: string): Prom
   if (!supabase) return false;
 
   try {
-    const { error } = await supabase
-      .from('account_members')
-      .update({ status: 'declined' })
-      .eq('account_id', accountId)
-      .eq('user_id', userId);
+    // Route through admin-handler because the declining user's company_id
+    // won't match the account_id they're declining — so the RLS policy
+    // on account_members blocks the direct UPDATE.
+    const { data, error } = await supabase.functions.invoke('admin-handler', {
+      body: {
+        action: 'decline-invitation',
+        payload: { accountId, userId },
+      },
+    });
 
     if (error) {
       console.error('Error declining invitation:', error);
       return false;
     }
 
-    return true;
+    return data?.success || false;
   } catch (error) {
     console.error('Error in declineInvitation:', error);
     return false;
