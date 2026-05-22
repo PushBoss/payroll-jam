@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { User, Role, ResellerClient } from '../core/types';
 import { storage } from '../services/storage';
 import { EmployeeService } from '../services/EmployeeService';
@@ -14,6 +14,7 @@ import { AppRoute, getPathForRoute } from '../app/routes';
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
+  isRevalidating: boolean;
   login: (email: string, password: string) => Promise<void>;
   signup: (user: User & {
     password: string;
@@ -47,8 +48,9 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(() => storage.getUser());
+  const [isLoading, setIsLoading] = useState(() => !Boolean(storage.getUser()));
+  const [isRevalidating, setIsRevalidating] = useState(() => Boolean(storage.getUser()));
 
   const ensureSelfProfile = async (sessionEmail: string) => {
     if (!supabase) return null;
@@ -79,6 +81,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     // Check for existing Supabase session
     const initAuth = async () => {
+      const done = () => {
+        if (isMounted) {
+          setIsLoading(false);
+          setIsRevalidating(false);
+        }
+      };
+
       try {
         if (!supabase) {
           // Fallback to localStorage if Supabase not available
@@ -86,7 +95,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           if (storedUser && isMounted) {
             setUser(storedUser);
           }
-          if (isMounted) setIsLoading(false);
+          done();
           return;
         }
 
@@ -99,7 +108,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           if (storedUser && isMounted) {
             setUser(storedUser);
           }
-          if (isMounted) setIsLoading(false);
+          done();
           return;
         }
 
@@ -114,7 +123,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             } catch (signOutError) {
               console.warn('Sign out failed:', signOutError);
             }
-            if (isMounted) setIsLoading(false);
+            done();
             return;
           }
 
@@ -162,14 +171,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
           }
         } else {
-          // Fallback to localStorage
-          const storedUser = storage.getUser();
-          if (storedUser && isMounted) {
-            setUser(storedUser);
+          // No active session — clear stale cached user if present
+          if (isMounted) {
+            setUser(null);
+            storage.saveUser(null);
           }
         }
 
-        if (isMounted) setIsLoading(false);
+        done();
       } catch (error) {
         console.error('Auth initialization error:', error);
         // Fallback to localStorage on any error
@@ -177,7 +186,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (storedUser && isMounted) {
           setUser(storedUser);
         }
-        if (isMounted) setIsLoading(false);
+        done();
       }
     };
 
@@ -664,14 +673,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     storage.saveUser(null);
   };
 
-  const updateUser = (updates: Partial<User>) => {
-    if (!user) return;
-    const updatedUser = { ...user, ...updates };
-    setUser(updatedUser);
-    storage.saveUser(updatedUser);
-    // Attempt background sync
-    EmployeeService.saveUser(updatedUser).catch(err => console.warn("Auth update sync failed", err));
-  };
+  const updateUser = useCallback((updates: Partial<User>) => {
+    setUser(prev => {
+      if (!prev) return null;
+      const updatedUser = { ...prev, ...updates };
+      storage.saveUser(updatedUser);
+      EmployeeService.saveUser(updatedUser).catch(err => console.warn("Auth update sync failed", err));
+      return updatedUser;
+    });
+  }, []);
 
   const impersonate = (client: any) => {
     if (!user) return;
@@ -730,7 +740,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, signup, logout, updateUser, impersonate, stopImpersonation }}>
+    <AuthContext.Provider value={{ user, isLoading, isRevalidating, login, signup, logout, updateUser, impersonate, stopImpersonation }}>
       {children}
     </AuthContext.Provider>
   );

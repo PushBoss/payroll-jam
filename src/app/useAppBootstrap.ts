@@ -135,7 +135,7 @@ export const useAppBootstrap = ({
     return () => {
       isCancelled = true;
     };
-  }, [applyLoadedCompany, isSupabaseMode, setEmployees, setLeaveRequests, setPayRunHistory, setUsers, user?.companyId, user?.originalRole, user?.role]);
+  }, [applyLoadedCompany, isSupabaseMode, setEmployees, setLeaveRequests, setPayRunHistory, setUsers, user?.companyId, user?.originalRole]);
 
   return {
     dataLoading,

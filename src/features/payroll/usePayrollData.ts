@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { PayRun as PayRunType, User, WeeklyTimesheet } from '../../core/types';
 import { storage } from '../../services/storage';
@@ -11,14 +11,19 @@ interface UsePayrollDataArgs {
 }
 
 export const usePayrollData = ({ user, isSupabaseMode, activeCompanyId }: UsePayrollDataArgs) => {
-  const [payRunHistory, setPayRunHistory] = useState<PayRunType[]>(storage.getPayRuns() || []);
-  const [timesheets, setTimesheets] = useState<WeeklyTimesheet[]>(storage.getTimesheets() || []);
+  const [payRunHistory, setPayRunHistory] = useState<PayRunType[]>(() => storage.getPayRuns() || []);
+  const [timesheets, setTimesheets] = useState<WeeklyTimesheet[]>(() => storage.getTimesheets() || []);
+
+  const didMountPayRuns = useRef(false);
+  const didMountTimesheets = useRef(false);
 
   useEffect(() => {
+    if (!didMountPayRuns.current) { didMountPayRuns.current = true; return; }
     storage.savePayRuns(payRunHistory);
   }, [payRunHistory]);
 
   useEffect(() => {
+    if (!didMountTimesheets.current) { didMountTimesheets.current = true; return; }
     storage.saveTimesheets(timesheets);
   }, [timesheets]);
 

@@ -83,7 +83,7 @@ export const useAppData = ({ user, updateUser, impersonate, navigateTo }: UseApp
         );
       }
     }
-  }, [companyData, user, updateUser]);
+  }, [companyData, user]);
 
   const workforce = useWorkforceData({
     user,

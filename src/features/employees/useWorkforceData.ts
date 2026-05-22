@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Asset, Employee, LeaveRequest, User, PerformanceReview } from '../../core/types';
 import { storage } from '../../services/storage';
@@ -23,35 +23,47 @@ interface EmployeeMutationOptions {
 }
 
 export const useWorkforceData = ({ user, isSupabaseMode, activeCompanyId }: UseWorkforceDataArgs) => {
-  const [employees, setEmployees] = useState<Employee[]>(storage.getEmployees() || []);
-  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(storage.getLeaveRequests() || []);
-  const [assets, setAssets] = useState<Asset[]>(storage.getAssets() || []);
-  const [reviews, setReviews] = useState<PerformanceReview[]>(storage.getReviews() || []);
-  const [users, setUsers] = useState<User[]>(storage.getCompanyUsers() || []);
+  const [employees, setEmployees] = useState<Employee[]>(() => storage.getEmployees() || []);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(() => storage.getLeaveRequests() || []);
+  const [assets, setAssets] = useState<Asset[]>(() => storage.getAssets() || []);
+  const [reviews, setReviews] = useState<PerformanceReview[]>(() => storage.getReviews() || []);
+  const [users, setUsers] = useState<User[]>(() => storage.getCompanyUsers() || []);
   const [employeeAccountSetup, setEmployeeAccountSetup] = useState<EmployeeAccountSetupState | null>(null);
 
+  // Mount guards: skip the first effect run so we don't serialize data we just read from localStorage
+  const didMountEmployees = useRef(false);
+  const didMountLeave = useRef(false);
+  const didMountAssets = useRef(false);
+  const didMountReviews = useRef(false);
+  const didMountUsers = useRef(false);
+
   useEffect(() => {
+    if (!didMountEmployees.current) { didMountEmployees.current = true; return; }
     storage.saveEmployees(employees);
   }, [employees]);
 
   useEffect(() => {
+    if (!didMountLeave.current) { didMountLeave.current = true; return; }
     storage.saveLeaveRequests(leaveRequests);
   }, [leaveRequests]);
 
   useEffect(() => {
+    if (!didMountAssets.current) { didMountAssets.current = true; return; }
     storage.saveAssets(assets);
   }, [assets]);
 
   useEffect(() => {
+    if (!didMountReviews.current) { didMountReviews.current = true; return; }
     storage.saveReviews(reviews);
   }, [reviews]);
 
   useEffect(() => {
+    if (!didMountUsers.current) { didMountUsers.current = true; return; }
     storage.saveCompanyUsers(users);
   }, [users]);
 
   const handleAddEmployee = async (employee: Employee, options: EmployeeMutationOptions = {}): Promise<boolean> => {
-    const { refreshAfterSave = true } = options;
+    const { refreshAfterSave = false } = options;
     let previousEmployees: Employee[] | null = null;
     setEmployees((prev) => {
       previousEmployees = prev;
@@ -77,7 +89,7 @@ export const useWorkforceData = ({ user, isSupabaseMode, activeCompanyId }: UseW
   };
 
   const handleUpdateEmployee = async (employee: Employee, options: EmployeeMutationOptions = {}): Promise<boolean> => {
-    const { refreshAfterSave = true } = options;
+    const { refreshAfterSave = false } = options;
     let previousEmployees: Employee[] | null = null;
     setEmployees((prev) => {
       previousEmployees = prev;
@@ -124,17 +136,16 @@ export const useWorkforceData = ({ user, isSupabaseMode, activeCompanyId }: UseW
   };
 
   const handleUpdateLeaveStatus = async (id: string, status: 'APPROVED' | 'REJECTED', dates?: string[]) => {
-    const updated = leaveRequests.map((request) =>
-      request.id === id ? { ...request, status, approvedDates: dates } : request
-    );
-    setLeaveRequests(updated);
+    let target: LeaveRequest | undefined;
+    setLeaveRequests(prev => {
+      const updated = prev.map(r => r.id === id ? { ...r, status, approvedDates: dates } : r);
+      target = updated.find(r => r.id === id);
+      return updated;
+    });
 
     const targetCompanyId = activeCompanyId || user?.companyId;
-    if (isSupabaseMode && targetCompanyId) {
-      const target = updated.find((request) => request.id === id);
-      if (target) {
-        await EmployeeService.saveLeaveRequest(target, targetCompanyId);
-      }
+    if (isSupabaseMode && targetCompanyId && target) {
+      await EmployeeService.saveLeaveRequest(target, targetCompanyId);
     }
   };
 

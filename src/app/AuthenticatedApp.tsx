@@ -1,4 +1,4 @@
-import React, { Suspense } from 'react';
+import React, { Suspense, useEffect, useMemo } from 'react';
 import { Toaster, toast } from 'sonner';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Layout } from '../components/Layout';
@@ -49,6 +49,26 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
   const navigate = (path: string) => navigateTo(path as AppRoute);
   const navigateWithEditRun = (path: string, params?: { editRunId?: string }) =>
     navigateTo(path as AppRoute, params);
+
+  // Gate check: redirect + toast once per path change, never during render
+  useEffect(() => {
+    const gates: Partial<Record<AppRoute, string>> = {
+      'documents': 'Documents',
+      'compliance': 'Compliance',
+      'ai-assistant': 'AI Assistant',
+    };
+    const featureName = gates[currentPath];
+    if (featureName && !hasFeatureAccess(appData.companyData || undefined, featureName)) {
+      toast.error(getFeatureUpgradeMessage(featureName, appData.companyData?.plan));
+      navigateTo('dashboard', { replace: true });
+    }
+  }, [currentPath, appData.companyData, navigateTo]);
+
+  // Resolve the current user's employee record once per employee list change
+  const portalEmployee = useMemo(
+    () => appData.employees.find(e => e.email === user.email),
+    [appData.employees, user.email]
+  );
 
   const renderPage = () => {
     if (appData.dataLoading) return <AppLoadingFallback />;
@@ -132,11 +152,7 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
           />
         );
       case 'documents':
-        if (!hasFeatureAccess(appData.companyData || undefined, 'Documents')) {
-          toast.error(getFeatureUpgradeMessage('Documents', appData.companyData?.plan));
-          navigateTo('dashboard', { replace: true });
-          return null;
-        }
+        if (!hasFeatureAccess(appData.companyData || undefined, 'Documents')) return null;
         return (
           <DocumentsPage
             templates={appData.templates}
@@ -158,18 +174,10 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
           />
         );
       case 'compliance':
-        if (!hasFeatureAccess(appData.companyData || undefined, 'Compliance')) {
-          toast.error(getFeatureUpgradeMessage('Compliance', appData.companyData?.plan));
-          navigateTo('dashboard', { replace: true });
-          return null;
-        }
+        if (!hasFeatureAccess(appData.companyData || undefined, 'Compliance')) return null;
         return <CompliancePage payRunHistory={appData.payRunHistory} companyData={appData.companyData!} />;
       case 'ai-assistant':
-        if (!hasFeatureAccess(appData.companyData || undefined, 'AI Assistant')) {
-          toast.error(getFeatureUpgradeMessage('AI Assistant', appData.companyData?.plan));
-          navigateTo('dashboard', { replace: true });
-          return null;
-        }
+        if (!hasFeatureAccess(appData.companyData || undefined, 'AI Assistant')) return null;
         return <AiAssistantPage />;
       case 'settings':
         return (
@@ -202,7 +210,7 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
         return (
           <EmployeePortalPage
             user={user}
-            employee={appData.employees.find((employee) => employee.email === user.email)}
+            employee={portalEmployee}
             view="home"
             leaveRequests={appData.leaveRequests}
             onRequestLeave={appData.handleSaveLeaveRequest}
@@ -215,7 +223,7 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
         return (
           <EmployeePortalPage
             user={user}
-            employee={appData.employees.find((employee) => employee.email === user.email)}
+            employee={portalEmployee}
             view="timesheets"
             leaveRequests={appData.leaveRequests}
             onRequestLeave={appData.handleSaveLeaveRequest}
@@ -226,7 +234,7 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
         return (
           <EmployeePortalPage
             user={user}
-            employee={appData.employees.find((employee) => employee.email === user.email)}
+            employee={portalEmployee}
             view="leave"
             leaveRequests={appData.leaveRequests}
             onRequestLeave={appData.handleSaveLeaveRequest}
@@ -237,7 +245,7 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
         return (
           <EmployeePortalPage
             user={user}
-            employee={appData.employees.find((employee) => employee.email === user.email)}
+            employee={portalEmployee}
             view="documents"
             leaveRequests={appData.leaveRequests}
             onRequestLeave={appData.handleSaveLeaveRequest}
@@ -250,7 +258,7 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
         return (
           <EmployeePortalPage
             user={user}
-            employee={appData.employees.find((employee) => employee.email === user.email)}
+            employee={portalEmployee}
             view="profile"
             leaveRequests={appData.leaveRequests}
             onRequestLeave={appData.handleSaveLeaveRequest}

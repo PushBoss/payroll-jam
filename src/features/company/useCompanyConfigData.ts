@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   CompanySettings,
@@ -17,48 +17,69 @@ import { INITIAL_PLANS } from '../../services/planService';
 import { DEFAULT_TAX_CONFIG } from '../payroll/payrollConfig';
 
 export const useCompanyConfigData = () => {
-  const [globalConfig, setGlobalConfig] = useState<GlobalConfig | null>(() => storage.getGlobalConfig());
-  const [companyData, setCompanyData] = useState<CompanySettings | null>(storage.getCompanyData());
-  const [taxConfig, setTaxConfig] = useState<TaxConfig>(storage.getTaxConfig() || DEFAULT_TAX_CONFIG);
-  const [integrationConfig, setIntegrationConfig] = useState<IntegrationConfig>(
-    storage.getIntegrationConfig() || { provider: 'CSV', mappings: [] }
-  );
-  const [templates, setTemplates] = useState<DocumentTemplate[]>(storage.getTemplates() || []);
-  const [plans, setPlans] = useState<PricingPlan[]>(() => storage.getPricingPlans() || INITIAL_PLANS);
-  const [departments, setDepartments] = useState<Department[]>(storage.getDepartments() || []);
-  const [designations, setDesignations] = useState<Designation[]>(storage.getDesignations() || []);
-
   const hasSupabaseEnv = Boolean(import.meta.env?.VITE_SUPABASE_URL && import.meta.env?.VITE_SUPABASE_ANON_KEY);
 
-  useEffect(() => {
-    if (!hasSupabaseEnv || globalConfig?.dataSource === 'SUPABASE') return;
-    const updatedConfig = { ...(globalConfig || {}), dataSource: 'SUPABASE' } as GlobalConfig;
-    storage.saveGlobalConfig(updatedConfig);
-    setGlobalConfig(updatedConfig);
-  }, [globalConfig, hasSupabaseEnv]);
+  // Initialise globalConfig: if Supabase env is present, stamp dataSource immediately so no
+  // extra render is needed to fix it up after mount.
+  const [globalConfig, setGlobalConfig] = useState<GlobalConfig | null>(() => {
+    const cached = storage.getGlobalConfig();
+    if (hasSupabaseEnv && cached && cached.dataSource !== 'SUPABASE') {
+      const stamped = { ...cached, dataSource: 'SUPABASE' } as GlobalConfig;
+      storage.saveGlobalConfig(stamped);
+      return stamped;
+    }
+    if (hasSupabaseEnv && !cached) {
+      const fresh = { dataSource: 'SUPABASE' } as GlobalConfig;
+      storage.saveGlobalConfig(fresh);
+      return fresh;
+    }
+    return cached;
+  });
+
+  const [companyData, setCompanyData] = useState<CompanySettings | null>(() => storage.getCompanyData());
+  const [taxConfig, setTaxConfig] = useState<TaxConfig>(() => storage.getTaxConfig() || DEFAULT_TAX_CONFIG);
+  const [integrationConfig, setIntegrationConfig] = useState<IntegrationConfig>(
+    () => storage.getIntegrationConfig() || { provider: 'CSV', mappings: [] }
+  );
+  const [templates, setTemplates] = useState<DocumentTemplate[]>(() => storage.getTemplates() || []);
+  const [plans, setPlans] = useState<PricingPlan[]>(() => storage.getPricingPlans() || INITIAL_PLANS);
+  const [departments, setDepartments] = useState<Department[]>(() => storage.getDepartments() || []);
+  const [designations, setDesignations] = useState<Designation[]>(() => storage.getDesignations() || []);
 
   const isSupabaseMode = useMemo(() => {
     if (hasSupabaseEnv) return true;
     return globalConfig?.dataSource === 'SUPABASE';
   }, [globalConfig?.dataSource, hasSupabaseEnv]);
 
+  // Mount guards: skip first effect fire so we never write back data we just read from localStorage
+  const didMountTax = useRef(false);
+  const didMountIntegration = useRef(false);
+  const didMountTemplates = useRef(false);
+  const didMountDepts = useRef(false);
+  const didMountDesigs = useRef(false);
+
   useEffect(() => {
+    if (!didMountTax.current) { didMountTax.current = true; return; }
     storage.saveTaxConfig(taxConfig);
   }, [taxConfig]);
 
   useEffect(() => {
+    if (!didMountIntegration.current) { didMountIntegration.current = true; return; }
     storage.saveIntegrationConfig(integrationConfig);
   }, [integrationConfig]);
 
   useEffect(() => {
+    if (!didMountTemplates.current) { didMountTemplates.current = true; return; }
     storage.saveTemplates(templates);
   }, [templates]);
 
   useEffect(() => {
+    if (!didMountDepts.current) { didMountDepts.current = true; return; }
     storage.saveDepartments(departments);
   }, [departments]);
 
   useEffect(() => {
+    if (!didMountDesigs.current) { didMountDesigs.current = true; return; }
     storage.saveDesignations(designations);
   }, [designations]);
 
