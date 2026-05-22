@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { CompanySettings, Employee, LeaveRequest, PayRun, User } from '../core/types';
 import { AdminService } from '../services/AdminService';
@@ -6,7 +6,7 @@ import { CompanyService } from '../services/CompanyService';
 import { EmployeeService } from '../services/EmployeeService';
 import { PayrollService } from '../services/PayrollService';
 
-const BOOTSTRAP_QUERY_TIMEOUT_MS = 8000;
+const BOOTSTRAP_QUERY_TIMEOUT_MS = 5000;
 const ADMIN_BOOTSTRAP_ROLES = new Set(['OWNER', 'ADMIN', 'RESELLER']);
 
 const withTimeout = async <T,>(promise: Promise<T>, label: string, timeoutMs = BOOTSTRAP_QUERY_TIMEOUT_MS): Promise<T> => {
@@ -21,6 +21,7 @@ const withTimeout = async <T,>(promise: Promise<T>, label: string, timeoutMs = B
 interface UseAppBootstrapArgs {
   user: User | null;
   isSupabaseMode: boolean;
+  cachedCompany: CompanySettings | null;
   applyLoadedCompany: (company: CompanySettings | null) => void;
   setEmployees: (employees: Employee[]) => void;
   setPayRunHistory: (runs: PayRun[]) => void;
@@ -31,6 +32,7 @@ interface UseAppBootstrapArgs {
 export const useAppBootstrap = ({
   user,
   isSupabaseMode,
+  cachedCompany,
   applyLoadedCompany,
   setEmployees,
   setPayRunHistory,
@@ -38,6 +40,11 @@ export const useAppBootstrap = ({
   setUsers,
 }: UseAppBootstrapArgs) => {
   const [dataLoading, setDataLoading] = useState(false);
+  const cachedCompanyRef = useRef(cachedCompany);
+
+  useEffect(() => {
+    cachedCompanyRef.current = cachedCompany;
+  }, [cachedCompany]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -45,7 +52,8 @@ export const useAppBootstrap = ({
     async function loadData() {
       if (!isSupabaseMode || !user?.companyId) return;
 
-      setDataLoading(true);
+      const hasUsableCachedCompany = cachedCompanyRef.current?.id === user.companyId;
+      setDataLoading(!hasUsableCachedCompany);
       try {
         const isImpersonating = Boolean(user.originalRole);
 

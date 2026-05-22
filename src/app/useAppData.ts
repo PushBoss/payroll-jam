@@ -141,6 +141,7 @@ export const useAppData = ({ user, updateUser, impersonate, navigateTo }: UseApp
   const { dataLoading } = useAppBootstrap({
     user,
     isSupabaseMode,
+    cachedCompany: companyData,
     applyLoadedCompany,
     setEmployees,
     setPayRunHistory,
