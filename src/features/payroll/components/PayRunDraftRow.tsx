@@ -8,6 +8,7 @@ interface PayRunDraftRowProps {
   updateLineItemGross: (id: string, val: string, period?: string) => void;
   openAdHocModal: (id: string, type: 'ADDITIONS' | 'DEDUCTIONS') => void;
   openTaxModal: (item: PayRunLineItem) => void;
+  openEmployerTaxModal: (item: PayRunLineItem) => void;
   removeEmployeeFromRun: (id: string) => void;
   removeAdHocItem: (employeeId: string, itemId: string, period?: string) => void;
 }
@@ -18,12 +19,14 @@ export const PayRunDraftRow: React.FC<PayRunDraftRowProps> = ({
   updateLineItemGross,
   openAdHocModal,
   openTaxModal,
+  openEmployerTaxModal,
   removeEmployeeFromRun,
   removeAdHocItem
 }) => {
   const hasAdditions = item.additions > 0;
   const hasDeductions = item.deductions > 0;
   const isManualTax = item.isTaxOverridden === true;
+  const isManualEmployerTax = item.isEmployerTaxOverridden === true;
   const [showAdditionsMenu, setShowAdditionsMenu] = React.useState(false);
   const [showDeductionsMenu, setShowDeductionsMenu] = React.useState(false);
 
@@ -180,7 +183,7 @@ export const PayRunDraftRow: React.FC<PayRunDraftRowProps> = ({
           )}
         </div>
       </td>
-      <td className="px-6 py-4 text-right">
+      <td className="px-6 py-4 text-right relative">
         <div className="text-xs text-gray-500 space-y-0.5">
           <div className="flex justify-end space-x-2"><span>NIS:</span> <span className="font-medium text-gray-700">{(item.employerContributions?.employerNIS || 0).toLocaleString()}</span></div>
           <div className="flex justify-end space-x-2"><span>NHT:</span> <span className="font-medium text-gray-700">{(item.employerContributions?.employerNHT || 0).toLocaleString()}</span></div>
@@ -189,6 +192,16 @@ export const PayRunDraftRow: React.FC<PayRunDraftRowProps> = ({
           <div className="mt-1 flex justify-end font-bold text-gray-700 text-[10px] uppercase tracking-wider">
             Total: ${(item.employerContributions?.totalEmployerCost || 0).toLocaleString()}
           </div>
+          <div className="mt-1 flex justify-end">
+            <button onClick={() => openEmployerTaxModal(item)} className="text-[10px] bg-blue-50 hover:bg-blue-100 text-blue-700 px-2 py-0.5 rounded flex items-center" title="Manually Override Employer Taxes">
+              <Icons.FileEdit className="w-3 h-3 mr-1" /> Edit Taxes
+            </button>
+          </div>
+          {isManualEmployerTax && (
+            <div className="absolute top-2 right-2">
+              <span className="bg-blue-100 text-blue-600 text-[9px] font-bold px-1 rounded border border-blue-200">MANUAL</span>
+            </div>
+          )}
         </div>
       </td>
       <td className="px-6 py-4 text-right">

@@ -60,6 +60,38 @@ const toDbPeriodEnd = (value?: string | null): string | null => {
 const normalizeRole = (role?: string | null): string => (role || '').trim().toUpperCase();
 const allowedAppRoles = new Set(['OWNER', 'ADMIN', 'MANAGER', 'EMPLOYEE', 'RESELLER', 'SUPER_ADMIN']);
 
+const normalizeEmployeeStatus = (status?: string | null): string => {
+    const normalized = (status || '')
+        .trim()
+        .toUpperCase()
+        .replace(/[\s-]+/g, '_');
+
+    const statusMap: Record<string, string> = {
+        ACTIVE: 'ACTIVE',
+        ACT: 'ACTIVE',
+        CURRENT: 'ACTIVE',
+        YES: 'ACTIVE',
+        TRUE: 'ACTIVE',
+        EMPLOYED: 'ACTIVE',
+        ARCHIVED: 'ARCHIVED',
+        ARCHIVE: 'ARCHIVED',
+        INACTIVE: 'ARCHIVED',
+        PENDING: 'PENDING_ONBOARDING',
+        PENDING_ONBOARDING: 'PENDING_ONBOARDING',
+        ONBOARDING: 'PENDING_ONBOARDING',
+        PENDING_VERIFICATION: 'PENDING_VERIFICATION',
+        VERIFICATION: 'PENDING_VERIFICATION',
+        TERMINATED: 'TERMINATED',
+        TERMINATE: 'TERMINATED',
+        SEPARATED: 'TERMINATED',
+        FORMER: 'TERMINATED',
+        NO: 'TERMINATED',
+        FALSE: 'TERMINATED'
+    };
+
+    return statusMap[normalized] || 'ACTIVE';
+};
+
 const assertSuperAdminCaller = async (adminClient: any, authUser: any) => {
     const callerProfile = await getCallerProfile(adminClient, authUser);
     if (normalizeRole(callerProfile.role) !== 'SUPER_ADMIN') {
@@ -231,7 +263,7 @@ const buildEmployeePayload = (employee: Record<string, any>, companyId: string, 
         phone: employee.phone || null,
         address: employee.address || null,
         role: employee.role,
-        status: employee.status,
+        status: normalizeEmployeeStatus(employee.status),
         hire_date: employee.hireDate,
         joining_date: employee.joiningDate || employee.hireDate,
         job_title: employee.jobTitle || null,

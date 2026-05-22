@@ -282,6 +282,7 @@ export interface PayRunLineItem extends StatutoryDeductions {
 
   // Tax Override Flags (for editable calculations)
   isTaxOverridden?: boolean;
+  isEmployerTaxOverridden?: boolean;
   isGrossOverridden?: boolean;
   originalCalculatedGross?: number;
   taxOverrideReason?: string;
@@ -743,6 +744,34 @@ export const toCompanyStatus = (value: string | null | undefined): CompanyStatus
     .includes(value as CompanyStatus) ? (value as CompanyStatus) : 'ACTIVE';
 
 export type EmployeeStatus = 'ACTIVE' | 'ARCHIVED' | 'PENDING_ONBOARDING' | 'PENDING_VERIFICATION' | 'TERMINATED';
-export const toEmployeeStatus = (value: string | null | undefined): EmployeeStatus =>
-  (['ACTIVE', 'ARCHIVED', 'PENDING_ONBOARDING', 'PENDING_VERIFICATION', 'TERMINATED'] as const)
-    .includes(value as EmployeeStatus) ? (value as EmployeeStatus) : 'ACTIVE';
+export const toEmployeeStatus = (value: string | null | undefined): EmployeeStatus => {
+  const normalized = (value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+
+  const statusMap: Record<string, EmployeeStatus> = {
+    ACTIVE: 'ACTIVE',
+    ACT: 'ACTIVE',
+    CURRENT: 'ACTIVE',
+    YES: 'ACTIVE',
+    TRUE: 'ACTIVE',
+    EMPLOYED: 'ACTIVE',
+    ARCHIVED: 'ARCHIVED',
+    ARCHIVE: 'ARCHIVED',
+    INACTIVE: 'ARCHIVED',
+    PENDING: 'PENDING_ONBOARDING',
+    PENDING_ONBOARDING: 'PENDING_ONBOARDING',
+    ONBOARDING: 'PENDING_ONBOARDING',
+    PENDING_VERIFICATION: 'PENDING_VERIFICATION',
+    VERIFICATION: 'PENDING_VERIFICATION',
+    TERMINATED: 'TERMINATED',
+    TERMINATE: 'TERMINATED',
+    SEPARATED: 'TERMINATED',
+    FORMER: 'TERMINATED',
+    NO: 'TERMINATED',
+    FALSE: 'TERMINATED'
+  };
+
+  return statusMap[normalized] || 'ACTIVE';
+};

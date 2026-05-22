@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { auditService } from '../../core/auditService';
-import { PayRunLineItem, StatutoryDeductions, User } from '../../core/types';
+import { EmployerContributions, PayRunLineItem, StatutoryDeductions, User } from '../../core/types';
 import { toast } from 'sonner';
 
 interface AdHocModalState {
@@ -18,6 +18,7 @@ interface UsePayRunUiStateParams {
         period?: string
     ) => void;
     updateLineItemTaxes: (employeeId: string, updates: Partial<StatutoryDeductions>) => void;
+    updateLineItemEmployerContributions: (employeeId: string, updates: Partial<EmployerContributions>) => void;
     payPeriod?: string;
 }
 
@@ -25,6 +26,7 @@ export const usePayRunUiState = ({
     currentUser,
     addAdHocItem,
     updateLineItemTaxes,
+    updateLineItemEmployerContributions,
     payPeriod
 }: UsePayRunUiStateParams) => {
     const [adHocModal, setAdHocModal] = useState<AdHocModalState>({
@@ -38,6 +40,8 @@ export const usePayRunUiState = ({
     const [viewingPayslip, setViewingPayslip] = useState<PayRunLineItem | null>(null);
     const [taxModalOpen, setTaxModalOpen] = useState(false);
     const [selectedTaxItem, setSelectedTaxItem] = useState<PayRunLineItem | null>(null);
+    const [employerTaxModalOpen, setEmployerTaxModalOpen] = useState(false);
+    const [selectedEmployerTaxItem, setSelectedEmployerTaxItem] = useState<PayRunLineItem | null>(null);
     const [taxOverrideForm, setTaxOverrideForm] = useState<StatutoryDeductions>({
         nis: 0,
         nht: 0,
@@ -46,6 +50,13 @@ export const usePayRunUiState = ({
         pension: 0,
         totalDeductions: 0,
         netPay: 0
+    });
+    const [employerTaxOverrideForm, setEmployerTaxOverrideForm] = useState<EmployerContributions>({
+        employerNIS: 0,
+        employerNHT: 0,
+        employerEdTax: 0,
+        employerHEART: 0,
+        totalEmployerCost: 0
     });
 
     const openAdHocModal = (employeeId: string, type: 'ADDITIONS' | 'DEDUCTIONS') => {
@@ -96,6 +107,23 @@ export const usePayRunUiState = ({
         setTaxModalOpen(false);
     };
 
+    const openEmployerTaxModal = (item: PayRunLineItem) => {
+        const employerContributions = item.employerContributions || {
+            employerNIS: 0,
+            employerNHT: 0,
+            employerEdTax: 0,
+            employerHEART: 0,
+            totalEmployerCost: 0
+        };
+        setSelectedEmployerTaxItem(item);
+        setEmployerTaxOverrideForm(employerContributions);
+        setEmployerTaxModalOpen(true);
+    };
+
+    const closeEmployerTaxModal = () => {
+        setEmployerTaxModalOpen(false);
+    };
+
     const submitTaxOverride = (event: React.FormEvent) => {
         event.preventDefault();
         if (!selectedTaxItem) return;
@@ -112,6 +140,22 @@ export const usePayRunUiState = ({
         toast.success('Tax override applied');
     };
 
+    const submitEmployerTaxOverride = (event: React.FormEvent) => {
+        event.preventDefault();
+        if (!selectedEmployerTaxItem) return;
+
+        updateLineItemEmployerContributions(selectedEmployerTaxItem.employeeId, {
+            employerNIS: parseFloat(employerTaxOverrideForm.employerNIS.toString()) || 0,
+            employerNHT: parseFloat(employerTaxOverrideForm.employerNHT.toString()) || 0,
+            employerEdTax: parseFloat(employerTaxOverrideForm.employerEdTax.toString()) || 0,
+            employerHEART: parseFloat(employerTaxOverrideForm.employerHEART.toString()) || 0,
+        });
+
+        auditService.log(currentUser, 'UPDATE', 'PayRun', `Manually overrode employer taxes for ${selectedEmployerTaxItem.employeeName}`);
+        closeEmployerTaxModal();
+        toast.success('Employer tax override applied');
+    };
+
     return {
         adHocModal,
         newItemName,
@@ -120,17 +164,24 @@ export const usePayRunUiState = ({
         viewingPayslip,
         taxModalOpen,
         selectedTaxItem,
+        employerTaxModalOpen,
+        selectedEmployerTaxItem,
         taxOverrideForm,
+        employerTaxOverrideForm,
         setNewItemName,
         setNewItemAmount,
         setAddEmployeeModalOpen,
         setViewingPayslip,
         setTaxOverrideForm,
+        setEmployerTaxOverrideForm,
         openAdHocModal,
         closeAdHocModal,
         submitAdHocItem,
         openTaxModal,
         closeTaxModal,
-        submitTaxOverride
+        submitTaxOverride,
+        openEmployerTaxModal,
+        closeEmployerTaxModal,
+        submitEmployerTaxOverride
     };
 };

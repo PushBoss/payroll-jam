@@ -339,6 +339,16 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
     const handleAccountSubmit = (e: React.FormEvent) => {
         e.preventDefault();
 
+        if (!formData.email.trim()) {
+            toast.error("Please enter your work email to continue.");
+            return;
+        }
+
+        if (!formData.phone.trim()) {
+            toast.error("Please enter your phone number to continue.");
+            return;
+        }
+
         if (!legalConsent) {
             toast.error("Please agree to the Terms and Privacy Policy to continue.");
             return;
@@ -383,8 +393,8 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
             const newUser = {
                 id: generateUUID(),
                 name: formData.name,
-                email: formData.email,
-                phone: formData.phone.trim() || undefined,
+                email: formData.email.trim(),
+                phone: formData.phone.trim(),
                 password: formData.password,
                 role: role,
                 // Use the same pre-generated companyId passed to DimePay so webhook subscription rows
@@ -631,15 +641,15 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                         <label className="block text-sm font-medium text-gray-700">Work Email</label>
                                         <input required type="email" autoComplete="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
                                     </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">Phone</label>
+                                        <input required type="tel" autoComplete="tel" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
+                                    </div>
                                     {!isTeamInvitation && (
                                         <>
                                             <div>
                                                 <label className="block text-sm font-medium text-gray-700">Company Name</label>
                                                 <input required type="text" value={formData.companyName} onChange={(e) => setFormData({ ...formData, companyName: e.target.value })} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
-                                            </div>
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700">Phone</label>
-                                                <input type="tel" autoComplete="tel" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
                                             </div>
                                             <div>
                                                 <label className="block text-sm font-medium text-gray-700">Business Address</label>

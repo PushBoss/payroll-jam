@@ -346,7 +346,7 @@ export const EmployeeService = {
       phone: emp.phone || null,
       address: emp.address || null,
       role: emp.role,
-      status: emp.status,
+      status: toEmployeeStatus(emp.status),
       hire_date: emp.hireDate,
       joining_date: emp.joiningDate || emp.hireDate,
       job_title: emp.jobTitle || null,

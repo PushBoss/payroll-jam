@@ -76,6 +76,7 @@ export const PayRun: React.FC<PayRunProps> = ({
         initializeRun,
         updateLineItemGross,
         updateLineItemTaxes,
+        updateLineItemEmployerContributions,
         addAdHocItem,
         addEmployeeToRun,
         removeEmployeeFromRun,
@@ -92,22 +93,30 @@ export const PayRun: React.FC<PayRunProps> = ({
         viewingPayslip,
         taxModalOpen,
         selectedTaxItem,
+        employerTaxModalOpen,
+        selectedEmployerTaxItem,
         taxOverrideForm,
+        employerTaxOverrideForm,
         setNewItemName,
         setNewItemAmount,
         setAddEmployeeModalOpen,
         setViewingPayslip,
         setTaxOverrideForm,
+        setEmployerTaxOverrideForm,
         openAdHocModal,
         closeAdHocModal,
         submitAdHocItem,
         openTaxModal,
         closeTaxModal,
-        submitTaxOverride
+        submitTaxOverride,
+        openEmployerTaxModal,
+        closeEmployerTaxModal,
+        submitEmployerTaxOverride
     } = usePayRunUiState({
         currentUser,
         addAdHocItem,
         updateLineItemTaxes,
+        updateLineItemEmployerContributions,
         payPeriod
     });
 
@@ -599,6 +608,32 @@ export const PayRun: React.FC<PayRunProps> = ({
                         </div>
                     </div>
                 )}
+                {/* Employer Tax Modal */}
+                {employerTaxModalOpen && selectedEmployerTaxItem && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                        <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden animate-scale-in">
+                            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-blue-50">
+                                <div>
+                                    <h3 className="font-bold text-blue-900">Override Employer Taxes</h3>
+                                    <p className="text-xs text-blue-700">{selectedEmployerTaxItem.employeeName}</p>
+                                </div>
+                                <button onClick={closeEmployerTaxModal}><Icons.Close className="w-5 h-5 text-blue-400" /></button>
+                            </div>
+                            <form onSubmit={submitEmployerTaxOverride} className="p-6 space-y-4">
+                                <div className="bg-yellow-50 border border-yellow-200 rounded p-3 text-xs text-yellow-800 mb-4">
+                                    <Icons.Alert className="w-3 h-3 inline mr-1" /> Editing these employer values stops automatic calculation for this row.
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Employer NIS</label><input type="number" className="w-full border border-gray-300 rounded p-2" value={employerTaxOverrideForm.employerNIS} onChange={e => setEmployerTaxOverrideForm({ ...employerTaxOverrideForm, employerNIS: parseFloat(e.target.value) })} /></div>
+                                    <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Employer NHT</label><input type="number" className="w-full border border-gray-300 rounded p-2" value={employerTaxOverrideForm.employerNHT} onChange={e => setEmployerTaxOverrideForm({ ...employerTaxOverrideForm, employerNHT: parseFloat(e.target.value) })} /></div>
+                                    <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Employer Ed</label><input type="number" className="w-full border border-gray-300 rounded p-2" value={employerTaxOverrideForm.employerEdTax} onChange={e => setEmployerTaxOverrideForm({ ...employerTaxOverrideForm, employerEdTax: parseFloat(e.target.value) })} /></div>
+                                    <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">HEART</label><input type="number" className="w-full border border-gray-300 rounded p-2" value={employerTaxOverrideForm.employerHEART} onChange={e => setEmployerTaxOverrideForm({ ...employerTaxOverrideForm, employerHEART: parseFloat(e.target.value) })} /></div>
+                                </div>
+                                <button type="submit" className="w-full bg-jam-black text-white py-2 rounded-lg font-bold hover:bg-gray-800 mt-4">Apply Override</button>
+                            </form>
+                        </div>
+                    </div>
+                )}
                 {/* Add Missing Employee Modal */}
                 {addEmployeeModalOpen && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -703,6 +738,7 @@ export const PayRun: React.FC<PayRunProps> = ({
                                     updateLineItemGross={updateLineItemGross}
                                     openAdHocModal={openAdHocModal}
                                     openTaxModal={openTaxModal}
+                                    openEmployerTaxModal={openEmployerTaxModal}
                                     removeEmployeeFromRun={removeEmployeeFromRun}
                                     removeAdHocItem={removeAdHocItem}
                                 />

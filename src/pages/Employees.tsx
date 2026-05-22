@@ -549,25 +549,43 @@ export const Employees: React.FC<EmployeesProps> = ({
                         const newCount = employeesToSave.filter(e => !employees.some(existing => existing.id === e.id)).length;
                         if (!checkPlanLimit(newCount)) {
                             setIsCsvWizardOpen(false);
-                            return;
+                            return false;
                         }
 
                         let inserted = 0;
                         let updated = 0;
+                        let failed = 0;
                         for (const emp of employeesToSave) {
                             const isExisting = employees.some(existing => existing.id === emp.id);
                             if (isExisting) {
-                                await onUpdateEmployee(emp);
-                                updated++;
+                                const updateResult = await Promise.resolve(onUpdateEmployee(emp));
+                                if (updateResult === false) {
+                                    failed++;
+                                } else {
+                                    updated++;
+                                }
                             } else {
-                                await onAddEmployee(emp);
-                                inserted++;
+                                const addResult = await Promise.resolve(onAddEmployee(emp));
+                                if (addResult === false) {
+                                    failed++;
+                                } else {
+                                    inserted++;
+                                }
                             }
                         }
 
-                        auditService.log(currentUser, 'CREATE', 'Employee', `Bulk imported ${inserted} and updated ${updated} employees via CSV Mapping Wizard`);
+                        if (inserted > 0 || updated > 0) {
+                            auditService.log(currentUser, 'CREATE', 'Employee', `Bulk imported ${inserted} and updated ${updated} employees via CSV Mapping Wizard`);
+                        }
+
+                        if (failed > 0) {
+                            toast.error(`Import finished with errors: ${inserted} added, ${updated} updated, ${failed} failed, ${skippedCount} duplicates skipped.`);
+                            return false;
+                        }
+
                         toast.success(`Successfully processed employees: ${inserted} added, ${updated} updated, ${skippedCount} duplicates skipped.`);
                         setIsCsvWizardOpen(false);
+                        return true;
                     }}
                 />
             )}

@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { Employee, PayRunLineItem, PayFrequency, WeeklyTimesheet, LeaveRequest, PayrollItemDetail, StatutoryDeductions, PayRun, CompanySettings } from '../../core/types';
+import { Employee, PayRunLineItem, PayFrequency, WeeklyTimesheet, LeaveRequest, PayrollItemDetail, StatutoryDeductions, PayRun, CompanySettings, EmployerContributions } from '../../core/types';
 import {
     calculatePayrollTotals,
     calculatePayRunLineItem,
@@ -65,6 +65,31 @@ export const usePayroll = (
                 totalDeductions: newTotal,
                 netPay: (item.grossPay + item.additions) - newTotal,
                 isTaxOverridden: true
+            };
+        }));
+    };
+
+    const updateLineItemEmployerContributions = (employeeId: string, updates: Partial<EmployerContributions>) => {
+        setDraftItems(prev => prev.map(item => {
+            if (item.employeeId !== employeeId) return item;
+            const current = item.employerContributions || {
+                employerNIS: 0,
+                employerNHT: 0,
+                employerEdTax: 0,
+                employerHEART: 0,
+                totalEmployerCost: 0
+            };
+            const employerContributions = { ...current, ...updates };
+            employerContributions.totalEmployerCost =
+                employerContributions.employerNIS +
+                employerContributions.employerNHT +
+                employerContributions.employerEdTax +
+                employerContributions.employerHEART;
+
+            return {
+                ...item,
+                employerContributions,
+                isEmployerTaxOverridden: true
             };
         }));
     };
@@ -145,6 +170,7 @@ export const usePayroll = (
         removeEmployeeFromRun,
         updateLineItemGross,
         updateLineItemTaxes,
+        updateLineItemEmployerContributions,
         addAdHocItem,
         removeAdHocItem,
         clearDraft,

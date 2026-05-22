@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Papa from 'papaparse';
-import { Employee, Role, PayType, PayFrequency, Department, EmployeeType } from '../../core/types';
+import { Employee, Role, PayType, PayFrequency, Department, EmployeeType, toEmployeeStatus } from '../../core/types';
 import { Icons } from '../../components/Icons';
 import { generateUUID } from '../../utils/uuid';
 import { isValidEmail, isValidTRN, isValidNIS } from '../../utils/validators';
@@ -11,7 +11,7 @@ interface CsvImportWizardProps {
   existingEmployees: Employee[];
   departments: Department[];
   onUpdateDepartments?: (depts: Department[]) => void;
-  onImportComplete: (employeesToSave: Employee[], skippedCount: number) => void;
+  onImportComplete: (employeesToSave: Employee[], skippedCount: number) => void | boolean | Promise<void | boolean>;
 }
 
 interface MappingField {
@@ -97,6 +97,7 @@ export const CsvImportWizard: React.FC<CsvImportWizardProps> = ({
   const [selectedTemplateName, setSelectedTemplateName] = useState<string>('');
   const [saveTemplate, setSaveTemplate] = useState<boolean>(false);
   const [newTemplateName, setNewTemplateName] = useState<string>('');
+  const [isImporting, setIsImporting] = useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -255,7 +256,10 @@ export const CsvImportWizard: React.FC<CsvImportWizardProps> = ({
         data.employeeType = EmployeeType.STAFF;
       }
 
-      // 4. Normalization: Pay Type
+      // 4. Normalization: Employee Status
+      data.status = toEmployeeStatus(data.status);
+
+      // 5. Normalization: Pay Type
       if (data.payType) {
         const typeLower = data.payType.toLowerCase().replace(/[\s-_]/g, '');
         if (['hourly'].includes(typeLower)) {
@@ -269,7 +273,7 @@ export const CsvImportWizard: React.FC<CsvImportWizardProps> = ({
         data.payType = data.employeeType === EmployeeType.HOURLY ? PayType.HOURLY : PayType.SALARIED;
       }
 
-      // 5. Normalization: Pay Frequency
+      // 6. Normalization: Pay Frequency
       if (data.payFrequency) {
         const freqLower = data.payFrequency.toLowerCase().replace(/[\s-_]/g, '');
         if (['weekly', 'wk'].includes(freqLower)) {
@@ -283,12 +287,12 @@ export const CsvImportWizard: React.FC<CsvImportWizardProps> = ({
         data.payFrequency = PayFrequency.MONTHLY;
       }
 
-      // 6. Normalization: Clean TRN
+      // 7. Normalization: Clean TRN
       if (data.trn) {
         data.trn = data.trn.replace(/[^\d-]/g, '');
       }
 
-      // 7. Normalization: Hourly Rate and Pension Rate
+      // 8. Normalization: Hourly Rate and Pension Rate
       if (data.hourlyRate && typeof data.hourlyRate === 'string') {
         const cleaned = data.hourlyRate.replace(/[^\d.]/g, '');
         data.hourlyRate = parseFloat(cleaned) || 0;
@@ -408,6 +412,9 @@ export const CsvImportWizard: React.FC<CsvImportWizardProps> = ({
           delete errors.nis;
         }
       }
+      if (field === 'status') {
+        updatedData.status = toEmployeeStatus(value);
+      }
 
       return {
         ...rec,
@@ -435,7 +442,9 @@ export const CsvImportWizard: React.FC<CsvImportWizardProps> = ({
     setValidatedRecords(prev => prev.filter(rec => rec.id !== recordId));
   };
 
-  const handleSaveAndImport = () => {
+  const handleSaveAndImport = async () => {
+    if (isImporting) return;
+
     // Check if there are any remaining unresolved errors
     const recordsWithErrors = validatedRecords.filter(rec => {
       // If duplicateAction is 'skip', we don't count errors since we skip it anyway
@@ -559,8 +568,14 @@ export const CsvImportWizard: React.FC<CsvImportWizardProps> = ({
       handleSaveTemplate();
     }
 
-    onImportComplete(finalEmployees, skippedCount);
-    setStep(4);
+    setIsImporting(true);
+    try {
+      const importResult = await Promise.resolve(onImportComplete(finalEmployees, skippedCount));
+      if (importResult === false) return;
+      setStep(4);
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   return (
@@ -780,17 +795,18 @@ export const CsvImportWizard: React.FC<CsvImportWizardProps> = ({
                 <p className="text-xs text-gray-500 mt-1">Review format errors, internal duplicates, and existing database matches before inserting. Fix problems inline below.</p>
               </div>
 
-              <div className="border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
-                <table className="w-full text-left border-collapse text-xs">
+              <div className="border border-gray-200 rounded-xl overflow-x-auto bg-white shadow-sm">
+                <table className="min-w-[1120px] w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="bg-gray-50 text-gray-700 border-b border-gray-200 font-bold uppercase tracking-wider text-[10px]">
                       <th className="p-3 border-r border-gray-200 w-12 text-center">Row</th>
-                      <th className="p-3 border-r border-gray-200">First Name</th>
-                      <th className="p-3 border-r border-gray-200">Last Name</th>
-                      <th className="p-3 border-r border-gray-200">Email Address</th>
-                      <th className="p-3 border-r border-gray-200">TRN</th>
+                      <th className="p-3 border-r border-gray-200 w-36">First Name</th>
+                      <th className="p-3 border-r border-gray-200 w-36">Last Name</th>
+                      <th className="p-3 border-r border-gray-200 w-56">Email Address</th>
+                      <th className="p-3 border-r border-gray-200 w-32">TRN</th>
+                      <th className="p-3 border-r border-gray-200 w-32">NIS</th>
                       <th className="p-3 border-r border-gray-200 w-36">Gross Salary</th>
-                      <th className="p-3 border-r border-gray-200">Match Action / Validation status</th>
+                      <th className="p-3 border-r border-gray-200 w-56">Match Action / Validation status</th>
                       <th className="p-3 text-center w-20">Skip</th>
                     </tr>
                   </thead>
@@ -855,6 +871,20 @@ export const CsvImportWizard: React.FC<CsvImportWizardProps> = ({
                             {rec.errors.trn && <span className="text-[10px] text-red-600 block mt-0.5">{rec.errors.trn}</span>}
                           </td>
 
+                          {/* NIS */}
+                          <td className="p-3 border-r border-gray-200">
+                            <input
+                              type="text"
+                              maxLength={7}
+                              placeholder="e.g. A123456"
+                              value={rec.data.nis || ''}
+                              onChange={(e) => handleUpdateRecordField(rec.id, 'nis', e.target.value)}
+                              className={`w-full border rounded p-1.5 focus:ring-1 focus:ring-jam-orange
+                                ${rec.errors.nis ? 'border-red-400 bg-red-50 text-red-900' : 'border-gray-300'}`}
+                            />
+                            {rec.errors.nis && <span className="text-[10px] text-red-600 block mt-0.5">{rec.errors.nis}</span>}
+                          </td>
+
                           {/* Gross Salary */}
                           <td className="p-3 border-r border-gray-200">
                             <div className="relative">
@@ -910,7 +940,7 @@ export const CsvImportWizard: React.FC<CsvImportWizardProps> = ({
                                 </span>
                                 {Object.entries(rec.errors).map(([key, msg]) => {
                                   // Only show errors for fields not editable inline in this view
-                                  if (['firstName', 'lastName', 'email', 'trn', 'grossSalary'].includes(key)) return null;
+                                  if (['firstName', 'lastName', 'email', 'trn', 'nis', 'grossSalary'].includes(key)) return null;
                                   return (
                                     <span key={key} className="text-[10px] text-red-600 block leading-tight border-l-2 border-red-300 pl-1">
                                       {key.toUpperCase()}: {msg}
@@ -954,9 +984,10 @@ export const CsvImportWizard: React.FC<CsvImportWizardProps> = ({
                 </button>
                 <button
                   onClick={handleSaveAndImport}
-                  className="px-6 py-2.5 bg-jam-orange text-jam-black hover:bg-yellow-500 font-bold rounded-lg transition-colors shadow-md text-sm"
+                  disabled={isImporting}
+                  className="px-6 py-2.5 bg-jam-orange text-jam-black hover:bg-yellow-500 font-bold rounded-lg transition-colors shadow-md text-sm disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  Save & Import
+                  {isImporting ? 'Importing...' : 'Save & Import'}
                 </button>
               </div>
             </div>
