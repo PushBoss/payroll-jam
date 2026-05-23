@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Asset, Employee, LeaveRequest, User, PerformanceReview } from '../../core/types';
+import { Asset, Employee, LeaveRequest, User, PerformanceReview, Role } from '../../core/types';
 import { storage } from '../../services/storage';
 import { EmployeeService } from '../../services/EmployeeService';
 import { supabase } from '../../services/supabaseClient';
@@ -22,16 +22,20 @@ interface EmployeeMutationOptions {
   refreshAfterSave?: boolean;
 }
 
-const EMPLOYEE_SAVE_TIMEOUT_MS = 10000;
+const EMPLOYEE_SAVE_TIMEOUT_MS = 15000;
+const EMPLOYEE_ADMIN_FALLBACK_TIMEOUT_MS = 20000;
+const EMPLOYEE_ADMIN_FALLBACK_ROLES = new Set<Role>([Role.OWNER, Role.ADMIN, Role.MANAGER, Role.RESELLER, Role.SUPER_ADMIN]);
 
-const withEmployeeSaveTimeout = async <T,>(promise: Promise<T>, label: string): Promise<T> => {
+const withEmployeeSaveTimeout = async <T,>(promise: Promise<T>, label: string, timeoutMs = EMPLOYEE_SAVE_TIMEOUT_MS): Promise<T> => {
   return Promise.race([
     promise,
     new Promise<T>((_, reject) => {
-      window.setTimeout(() => reject(new Error(`${label} timed out. Please check your connection and try again.`)), EMPLOYEE_SAVE_TIMEOUT_MS);
+      window.setTimeout(() => reject(new Error(`${label} timed out. Please check your connection and try again.`)), timeoutMs);
     }),
   ]);
 };
+
+const canUseEmployeeAdminFallback = (user: User | null) => Boolean(user?.role && EMPLOYEE_ADMIN_FALLBACK_ROLES.has(user.role));
 
 export const useWorkforceData = ({ user, isSupabaseMode, activeCompanyId }: UseWorkforceDataArgs) => {
   const [employees, setEmployees] = useState<Employee[]>(() => storage.getEmployees() || []);
@@ -124,6 +128,27 @@ export const useWorkforceData = ({ user, isSupabaseMode, activeCompanyId }: UseW
       }
       return true;
     } catch (error: any) {
+      if (canUseEmployeeAdminFallback(user)) {
+        try {
+          console.warn('Direct employee update failed. Retrying via admin-handler fallback...', error);
+          await withEmployeeSaveTimeout(
+            EmployeeService.saveEmployee(employee, targetCompanyId, 'update', { useAdminHandler: true }),
+            'Employee update fallback',
+            EMPLOYEE_ADMIN_FALLBACK_TIMEOUT_MS
+          );
+          if (refreshAfterSave) {
+            const freshEmployees = await withEmployeeSaveTimeout(EmployeeService.getEmployees(targetCompanyId), 'Employee refresh');
+            setEmployees(freshEmployees);
+          }
+          return true;
+        } catch (fallbackError: any) {
+          console.error('Admin-handler employee update fallback failed:', fallbackError);
+          toast.error(fallbackError?.message || error?.message || 'Failed to save employee to database.');
+          if (previousEmployees) setEmployees(previousEmployees);
+          return false;
+        }
+      }
+
       console.error('Failed to save employee to Supabase:', error);
       toast.error(error?.message || 'Failed to save employee to database.');
       if (previousEmployees) setEmployees(previousEmployees);
