@@ -63,17 +63,24 @@ const invokeAdminHandler = async <T,>(payload: { action: string; payload: Record
   return data as T;
 };
 
+const PAY_RUN_SUMMARY_SELECT = 'id,period_start,period_end,pay_date,pay_frequency,status,total_gross,total_net,employee_count';
+
+interface GetPayRunsOptions {
+  includeLineItems?: boolean;
+}
+
 export const PayrollService = {
-  getPayRuns: async (companyId: string): Promise<PayRun[]> => {
+  getPayRuns: async (companyId: string, options: GetPayRunsOptions = {}): Promise<PayRun[]> => {
     if (!supabase) return [];
-    const { data, error } = await supabase
+    const includeLineItems = options.includeLineItems ?? true;
+    const { data, error } = await (supabase
       .from('pay_runs')
-      .select('*')
+      .select(includeLineItems ? '*' : PAY_RUN_SUMMARY_SELECT)
       .eq('company_id', companyId)
-      .order('period_start', { ascending: false });
+      .order('period_start', { ascending: false }) as any);
 
     if (error) return [];
-    return data.map((r: DbPayRunRow) => ({
+    return (data || []).map((r: DbPayRunRow) => ({
       id: r.id,
       ...normalizeDbPeriodToApp(r.period_start, r.period_end),
       payDate: r.pay_date,

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { PayRun as PayRunType, User, WeeklyTimesheet } from '../../core/types';
 import { storage } from '../../services/storage';
@@ -13,9 +13,15 @@ interface UsePayrollDataArgs {
 export const usePayrollData = ({ user, isSupabaseMode, activeCompanyId }: UsePayrollDataArgs) => {
   const [payRunHistory, setPayRunHistory] = useState<PayRunType[]>(() => storage.getPayRuns() || []);
   const [timesheets, setTimesheets] = useState<WeeklyTimesheet[]>(() => storage.getTimesheets() || []);
+  const [payRunDetailsLoaded, setPayRunDetailsLoaded] = useState(false);
+  const [payRunDetailsLoading, setPayRunDetailsLoading] = useState(false);
 
   const didMountPayRuns = useRef(false);
   const didMountTimesheets = useRef(false);
+
+  useEffect(() => {
+    setPayRunDetailsLoaded(false);
+  }, [activeCompanyId, user?.companyId]);
 
   useEffect(() => {
     if (!didMountPayRuns.current) { didMountPayRuns.current = true; return; }
@@ -79,12 +85,32 @@ export const usePayrollData = ({ user, isSupabaseMode, activeCompanyId }: UsePay
     }
   };
 
+  const loadFullPayRunHistory = useCallback(async () => {
+    const targetCompanyId = activeCompanyId || user?.companyId;
+    if (!isSupabaseMode || !targetCompanyId || payRunDetailsLoaded || payRunDetailsLoading) return;
+
+    setPayRunDetailsLoading(true);
+    try {
+      const fullHistory = await PayrollService.getPayRuns(targetCompanyId, { includeLineItems: true });
+      setPayRunHistory(fullHistory);
+      setPayRunDetailsLoaded(true);
+    } catch (error) {
+      console.error('Failed to load detailed pay run history:', error);
+      toast.error('Could not load detailed pay run history. Reports may be incomplete.');
+    } finally {
+      setPayRunDetailsLoading(false);
+    }
+  }, [activeCompanyId, isSupabaseMode, payRunDetailsLoaded, payRunDetailsLoading, user?.companyId]);
+
   return {
     payRunHistory,
     setPayRunHistory,
+    payRunDetailsLoaded,
+    payRunDetailsLoading,
     timesheets,
     setTimesheets,
     handleSavePayRun,
     handleDeletePayRun,
+    loadFullPayRunHistory,
   };
 };

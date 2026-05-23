@@ -1314,10 +1314,13 @@ serve(async (req: Request) => {
             }
 
             case 'get-company-context': {
-                const { companyId } = payload;
+                const { companyId, includePayRunLineItems = false } = payload;
                 if (!companyId) throw new Error('companyId required');
 
                 await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'RESELLER', 'SUPER_ADMIN']);
+                const payRunSelect = includePayRunLineItems
+                    ? '*'
+                    : 'id, company_id, period_start, period_end, pay_date, pay_frequency, status, total_gross, total_net, employee_count';
 
                 // 3. Fetch all data in parallel
                 const [
@@ -1329,7 +1332,7 @@ serve(async (req: Request) => {
                 ] = await Promise.all([
                     adminClient.from('companies').select('*').eq('id', companyId).maybeSingle(),
                     adminClient.from('employees').select('*').eq('company_id', companyId),
-                    adminClient.from('pay_runs').select('*').eq('company_id', companyId).order('period_start', { ascending: false }),
+                    adminClient.from('pay_runs').select(payRunSelect).eq('company_id', companyId).order('period_start', { ascending: false }),
                     adminClient.from('leave_requests').select('*').eq('company_id', companyId),
                     adminClient.from('app_users').select('*').eq('company_id', companyId)
                 ]);

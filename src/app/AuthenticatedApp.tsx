@@ -70,6 +70,20 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
     [appData.employees, user.email]
   );
 
+  useEffect(() => {
+    const needsDetailedPayRuns = new Set<AppRoute>([
+      'employees',
+      'reports',
+      'compliance',
+      'portal-home',
+      'portal-docs',
+    ]);
+
+    if (needsDetailedPayRuns.has(currentPath) || (currentPath === 'payrun' && editRunId)) {
+      appData.loadFullPayRunHistory();
+    }
+  }, [currentPath, editRunId, appData.loadFullPayRunHistory]);
+
   const renderPage = () => {
     if (appData.dataLoading) return <AppLoadingFallback />;
 

@@ -38,7 +38,7 @@ export const AdminService = {
     try {
       if (!supabase) throw new Error('Supabase client not initialized');
       const { data, error } = await supabase.functions.invoke('admin-handler', {
-        body: { action: 'get-company-context', payload: { companyId } }
+        body: { action: 'get-company-context', payload: { companyId, includePayRunLineItems: false } }
       });
 
       if (error || !data) throw error || new Error('No data returned');

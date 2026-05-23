@@ -116,7 +116,7 @@ export const useAppBootstrap = ({
 
         const results = await Promise.allSettled([
           withTimeout(EmployeeService.getEmployees(user.companyId), 'Employees', BOOTSTRAP_BACKGROUND_TIMEOUT_MS),
-          withTimeout(PayrollService.getPayRuns(user.companyId), 'Pay runs', BOOTSTRAP_BACKGROUND_TIMEOUT_MS),
+          withTimeout(PayrollService.getPayRuns(user.companyId, { includeLineItems: false }), 'Pay runs', BOOTSTRAP_BACKGROUND_TIMEOUT_MS),
           withTimeout(EmployeeService.getLeaveRequests(user.companyId), 'Leave requests', BOOTSTRAP_BACKGROUND_TIMEOUT_MS),
           withTimeout(EmployeeService.getCompanyUsers(user.companyId), 'Company users', BOOTSTRAP_BACKGROUND_TIMEOUT_MS),
         ]);

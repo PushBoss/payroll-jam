@@ -121,10 +121,13 @@ export const useAppData = ({ user, updateUser, impersonate, navigateTo }: UseApp
   const {
     payRunHistory,
     setPayRunHistory,
+    payRunDetailsLoaded,
+    payRunDetailsLoading,
     timesheets,
     setTimesheets,
     handleSavePayRun,
     handleDeletePayRun,
+    loadFullPayRunHistory,
   } = payroll;
 
   const subscription = useSubscription(employees, companyData || ({ plan: 'Free' } as CompanySettings), plans, users);
@@ -199,6 +202,9 @@ export const useAppData = ({ user, updateUser, impersonate, navigateTo }: UseApp
     setEmployees,
     payRunHistory,
     setPayRunHistory,
+    payRunDetailsLoaded,
+    payRunDetailsLoading,
+    loadFullPayRunHistory,
     leaveRequests,
     setLeaveRequests,
     timesheets,
