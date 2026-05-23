@@ -240,6 +240,15 @@ const normalizeCustomDeductions = (value: unknown) => {
         .filter((deduction) => deduction.name && coerceFiniteNumber(deduction.amount, 0) > 0);
 };
 
+const isMissingRpcError = (error: { code?: string; message?: string; details?: string; hint?: string } | null | undefined) => {
+    const code = String(error?.code || '').toUpperCase();
+    const message = `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`.toLowerCase();
+    return code === 'PGRST202'
+        || code === '42883'
+        || message.includes('could not find the function')
+        || message.includes('function') && message.includes('does not exist');
+};
+
 const normalizeSimpleDeductions = (value: unknown) => {
     const arr = parseJsonArrayIfNeeded(value) ?? (Array.isArray(value) ? value : []);
     return arr
@@ -1367,6 +1376,97 @@ serve(async (req: Request) => {
                 if (saveError) throw saveError;
 
                 return new Response(JSON.stringify({ success: true, payRun: savedPayRun }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'bulk-update-employee-deductions': {
+                const { companyId, updates } = payload || {};
+                if (!companyId) throw new Error('companyId required');
+                if (!Array.isArray(updates)) throw new Error('updates array required');
+                if (updates.length === 0) {
+                    return new Response(JSON.stringify({ success: true, updatedCount: 0 }), {
+                        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                    });
+                }
+
+                await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'RESELLER', 'SUPER_ADMIN']);
+
+                const updatesById = new Map<string, { id: string; customDeductions: unknown[] }>();
+                for (const rawUpdate of updates) {
+                    if (!rawUpdate || typeof rawUpdate !== 'object') throw new Error('Each update must be an object');
+                    const id = String((rawUpdate as Record<string, unknown>).id || '').trim();
+                    if (!id) throw new Error('Each update requires an employee id');
+                    updatesById.set(id, {
+                        id,
+                        customDeductions: normalizeCustomDeductions((rawUpdate as Record<string, unknown>).customDeductions),
+                    });
+                }
+
+                const normalizedUpdates = [...updatesById.values()];
+
+                const { data: rpcUpdatedCount, error: rpcError } = await adminClient.rpc('bulk_update_employee_deductions', {
+                    p_company_id: companyId,
+                    p_updates: normalizedUpdates,
+                });
+
+                if (!rpcError) {
+                    return new Response(JSON.stringify({ success: true, updatedCount: Number(rpcUpdatedCount || 0) }), {
+                        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                    });
+                }
+
+                if (!isMissingRpcError(rpcError)) throw rpcError;
+
+                const employeeIds = normalizedUpdates.map((update) => update.id);
+                const { data: existingEmployees, error: lookupError } = await adminClient
+                    .from('employees')
+                    .select('id')
+                    .eq('company_id', companyId)
+                    .in('id', employeeIds);
+
+                if (lookupError) throw lookupError;
+                if ((existingEmployees || []).length !== employeeIds.length) {
+                    throw new Error('One or more employees do not belong to this company');
+                }
+
+                const rows = normalizedUpdates.map((update) => ({
+                    id: update.id,
+                    company_id: companyId,
+                    custom_deductions: update.customDeductions,
+                    deductions: update.customDeductions,
+                }));
+
+                const { data: updatedRows, error: bulkError } = await adminClient
+                    .from('employees')
+                    .upsert(rows, { onConflict: 'id' })
+                    .select('id');
+
+                if (bulkError) throw bulkError;
+
+                return new Response(JSON.stringify({ success: true, updatedCount: updatedRows?.length || rows.length }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'get-payroll-ytd-summary': {
+                const { companyId, year } = payload || {};
+                if (!companyId) throw new Error('companyId required');
+                const taxYear = Number(year);
+                if (!Number.isInteger(taxYear) || taxYear < 2000 || taxYear > 2100) {
+                    throw new Error('Valid payroll year required');
+                }
+
+                await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'MANAGER', 'RESELLER', 'SUPER_ADMIN']);
+
+                const { data: summaries, error: summaryError } = await adminClient.rpc('get_payroll_ytd_summary', {
+                    p_company_id: companyId,
+                    p_year: taxYear,
+                });
+
+                if (summaryError) throw summaryError;
+
+                return new Response(JSON.stringify({ success: true, summaries: summaries || [] }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });
             }

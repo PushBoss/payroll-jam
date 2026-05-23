@@ -104,6 +104,79 @@ describe('payroll write hardening', () => {
     });
   });
 
+  it('bulk updates employee deductions through admin-handler', async () => {
+    const updates = [
+      {
+        id: 'emp-1',
+        customDeductions: [
+          { id: 'ded-1', name: 'Loan', amount: 1000, periodType: 'FIXED_TERM' as const, remainingTerm: 1 },
+        ],
+      },
+      {
+        id: 'emp-2',
+        customDeductions: [
+          { id: 'ded-2', name: 'Advance', amount: 500, periodType: 'TARGET_BALANCE' as const, currentBalance: 1500, targetBalance: 3000 },
+        ],
+      },
+    ];
+
+    invoke.mockResolvedValueOnce({ data: { success: true, updatedCount: 2 }, error: null });
+
+    const updatedCount = await PayrollService.bulkUpdateEmployeeDeductions(companyId, updates);
+
+    expect(updatedCount).toBe(2);
+    expect(invoke).toHaveBeenCalledWith('admin-handler', {
+      body: {
+        action: 'bulk-update-employee-deductions',
+        payload: {
+          companyId,
+          updates,
+        },
+      },
+    });
+  });
+
+  it('fetches thin payroll YTD summaries through admin-handler', async () => {
+    invoke.mockResolvedValueOnce({
+      data: {
+        success: true,
+        summaries: [
+          {
+            employee_id: 'emp-1',
+            ytd_gross: '500000',
+            ytd_nis: '15000',
+            ytd_tax_paid: '75000',
+            ytd_pension: '0',
+            ytd_statutory_income: '485000',
+          },
+        ],
+      },
+      error: null,
+    });
+
+    const summaries = await PayrollService.getPayrollYtdSummary(companyId, 2026);
+
+    expect(summaries).toEqual([
+      {
+        employeeId: 'emp-1',
+        ytdGross: 500000,
+        ytdNIS: 15000,
+        ytdTaxPaid: 75000,
+        ytdPension: 0,
+        ytdStatutoryIncome: 485000,
+      },
+    ]);
+    expect(invoke).toHaveBeenCalledWith('admin-handler', {
+      body: {
+        action: 'get-payroll-ytd-summary',
+        payload: {
+          companyId,
+          year: 2026,
+        },
+      },
+    });
+  });
+
   it('saves audit logs through admin-handler', async () => {
     await AuditService.saveAuditLog(makeAuditLog(), companyId);
 

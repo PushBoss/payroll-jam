@@ -8,6 +8,7 @@ import {
   PayRun,
   PayRunLineItem,
   PayType,
+  PayrollYtdSummary,
   WeeklyTimesheet
 } from '../../core/types';
 import {
@@ -27,6 +28,7 @@ export interface PayrollEngineContext {
   timesheets: WeeklyTimesheet[];
   leaveRequests: LeaveRequest[];
   payRunHistory?: PayRun[];
+  ytdSummaries?: Record<string, PayrollYtdSummary>;
   companyData?: CompanySettings;
 }
 
@@ -158,7 +160,7 @@ const calculateComputedAmounts = ({
   const currentGross = Math.max(0, safeGrossPay + taxableAdditions);
   const taxOverrides = getEmployeeTaxOverrides(context.companyData, employee);
   const standardTaxes = calculateTaxes(currentGross, employee.payFrequency, taxOverrides);
-  const ytdData = getEmployeeYTD(context.payRunHistory || [], employee.id, period.year);
+  const ytdData = context.ytdSummaries?.[employee.id] || getEmployeeYTD(context.payRunHistory || [], employee.id, period.year);
   const periodNumber = calculatePeriodNumber(
     employee,
     ytdData.ytdStatutoryIncome,

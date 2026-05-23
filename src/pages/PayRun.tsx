@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Icons } from '../components/Icons';
-import { Employee, WeeklyTimesheet, LeaveRequest, PayRun as PayRunType, CompanySettings, IntegrationConfig, PayFrequency } from '../core/types';
+import { Employee, WeeklyTimesheet, LeaveRequest, PayRun as PayRunType, CompanySettings, IntegrationConfig, PayFrequency, PayrollYtdSummary } from '../core/types';
 import { usePayroll } from '../features/payroll/usePayroll';
 import { usePayRunUiState } from '../features/payroll/usePayRunUiState';
 import { PayRunDraftRow } from '../features/payroll/components/PayRunDraftRow';
@@ -19,8 +19,8 @@ import {
 } from '../features/payroll/payrunWorkflow';
 import { generateNCBFile, generateBNSFile, generateGLCSV } from '../utils/exportHelpers';
 import { auditService } from '../core/auditService';
-import { EmployeeService } from '../services/EmployeeService';
 import { emailService } from '../services/emailService';
+import { PayrollService } from '../services/PayrollService';
 import { PayslipView } from '../components/PayslipView';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
@@ -69,6 +69,32 @@ export const PayRun: React.FC<PayRunProps> = ({
     const [isEmailing, setIsEmailing] = useState(false);
     const [currentRun, setCurrentRun] = useState<PayRunType | null>(null);
     const [isPayRunConfirmed, setIsPayRunConfirmed] = useState(false);
+    const [ytdSummaries, setYtdSummaries] = useState<Record<string, PayrollYtdSummary>>({});
+
+    useEffect(() => {
+        const targetCompanyId = currentUser?.companyId || companyData.id;
+        const taxYear = Number(payPeriod.slice(0, 4));
+        if (!targetCompanyId || !Number.isInteger(taxYear)) {
+            setYtdSummaries({});
+            return;
+        }
+
+        let isCancelled = false;
+        PayrollService.getPayrollYtdSummary(targetCompanyId, taxYear)
+            .then((summaries) => {
+                if (isCancelled) return;
+                setYtdSummaries(Object.fromEntries(summaries.map((summary) => [summary.employeeId, summary])));
+            })
+            .catch((error) => {
+                if (isCancelled) return;
+                console.warn('Payroll YTD summary unavailable; falling back to loaded pay run history.', error);
+                setYtdSummaries({});
+            });
+
+        return () => {
+            isCancelled = true;
+        };
+    }, [currentUser?.companyId, companyData.id, payPeriod]);
 
     const {
         draftItems,
@@ -83,7 +109,7 @@ export const PayRun: React.FC<PayRunProps> = ({
         clearDraft,
         loadDraftItems,
         removeAdHocItem
-    } = usePayroll(employees, timesheets, leaveRequests, payRunHistory, companyData);
+    } = usePayroll(employees, timesheets, leaveRequests, payRunHistory, companyData, ytdSummaries);
 
     const {
         adHocModal,
@@ -344,26 +370,26 @@ export const PayRun: React.FC<PayRunProps> = ({
 
         auditService.log(currentUser, 'CREATE', 'PayRun', `Finalized payroll for ${payPeriod}`);
         
-        // Update custom deductions for employees in this payrun
-        // FIXED_TERM deductions: decrement remainingTerm
-        // TARGET_BALANCE deductions: increment currentBalance
-        for (const lineItem of draftItems) {
+        const deductionUpdates = draftItems.flatMap((lineItem) => {
             const employee = employees.find(e => e.id === lineItem.employeeId);
-            if (!employee || !employee.customDeductions || employee.customDeductions.length === 0) continue;
+            if (!employee || !employee.customDeductions || employee.customDeductions.length === 0) return [];
 
-            // Process custom deductions
             const updatedEmployee = applyFinalizedCustomDeductions(employee, lineItem);
+            return [{
+                id: employee.id,
+                customDeductions: updatedEmployee.customDeductions || []
+            }];
+        });
 
+        if (deductionUpdates.length > 0) {
+            const targetCompanyId = currentUser?.companyId || companyData.id;
             try {
-                await EmployeeService.saveEmployee(
-                    updatedEmployee,
-                    currentUser?.companyId || '',
-                    'update',
-                    { useAdminHandler: true }
-                );
-                console.log(`✅ Updated custom deductions for ${employee.firstName} ${employee.lastName}`);
+                if (!targetCompanyId) throw new Error('Company ID is required to update employee deductions.');
+                const updatedCount = await PayrollService.bulkUpdateEmployeeDeductions(targetCompanyId, deductionUpdates);
+                console.log(`✅ Updated custom deductions for ${updatedCount} employee(s)`);
             } catch (error) {
-                console.error(`❌ Failed to update custom deductions for ${employee.firstName} ${employee.lastName}:`, error);
+                console.error('❌ Failed to update custom deductions in bulk:', error);
+                toast.warning('Payroll finalized, but some deduction balances could not be updated. Please review employee deductions.');
             }
         }
 

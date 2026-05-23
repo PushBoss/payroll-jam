@@ -307,6 +307,15 @@ export interface PayRun {
   payFrequency?: 'WEEKLY' | 'FORTNIGHTLY' | 'MONTHLY'; // Optional for backward compatibility
 }
 
+export interface PayrollYtdSummary {
+  employeeId: string;
+  ytdGross: number;
+  ytdNIS: number;
+  ytdTaxPaid: number;
+  ytdPension: number;
+  ytdStatutoryIncome: number;
+}
+
 export interface BillingGift {
   giftedUntil: string;
   grantedAt: string;

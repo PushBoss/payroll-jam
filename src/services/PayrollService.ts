@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { PayRun, WeeklyTimesheet, DbPayRunRow, toPayFrequency } from '../core/types';
+import { CustomDeduction, PayRun, PayrollYtdSummary, WeeklyTimesheet, DbPayRunRow, toPayFrequency } from '../core/types';
 
 const isYearMonth = (value: string) => /^\d{4}-\d{2}$/.test(value);
 const isDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
@@ -111,6 +111,42 @@ export const PayrollService = {
         },
       },
     });
+  },
+
+  bulkUpdateEmployeeDeductions: async (
+    companyId: string,
+    updates: { id: string; customDeductions: CustomDeduction[] }[]
+  ): Promise<number> => {
+    if (updates.length === 0) return 0;
+
+    const result = await invokeAdminHandler<{ success: boolean; updatedCount?: number }>({
+      action: 'bulk-update-employee-deductions',
+      payload: {
+        companyId,
+        updates,
+      },
+    });
+
+    return result.updatedCount ?? updates.length;
+  },
+
+  getPayrollYtdSummary: async (companyId: string, year: number): Promise<PayrollYtdSummary[]> => {
+    const result = await invokeAdminHandler<{ success: boolean; summaries?: Record<string, unknown>[] }>({
+      action: 'get-payroll-ytd-summary',
+      payload: {
+        companyId,
+        year,
+      },
+    });
+
+    return (result.summaries || []).map((row) => ({
+      employeeId: String(row.employee_id || row.employeeId || ''),
+      ytdGross: Number(row.ytd_gross ?? row.ytdGross ?? 0),
+      ytdNIS: Number(row.ytd_nis ?? row.ytdNIS ?? 0),
+      ytdTaxPaid: Number(row.ytd_tax_paid ?? row.ytdTaxPaid ?? 0),
+      ytdPension: Number(row.ytd_pension ?? row.ytdPension ?? 0),
+      ytdStatutoryIncome: Number(row.ytd_statutory_income ?? row.ytdStatutoryIncome ?? 0),
+    })).filter((summary) => summary.employeeId);
   },
 
   deletePayRun: async (runId: string, companyId: string) => {

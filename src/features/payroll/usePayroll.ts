@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { Employee, PayRunLineItem, PayFrequency, WeeklyTimesheet, LeaveRequest, PayrollItemDetail, StatutoryDeductions, PayRun, CompanySettings, EmployerContributions } from '../../core/types';
+import { Employee, PayRunLineItem, PayFrequency, WeeklyTimesheet, LeaveRequest, PayrollItemDetail, StatutoryDeductions, PayRun, CompanySettings, EmployerContributions, PayrollYtdSummary } from '../../core/types';
 import {
     calculatePayrollTotals,
     calculatePayRunLineItem,
@@ -12,7 +12,8 @@ export const usePayroll = (
     timesheets: WeeklyTimesheet[],
     leaveRequests: LeaveRequest[],
     payRunHistory: PayRun[] = [],
-    companyData?: CompanySettings
+    companyData?: CompanySettings,
+    ytdSummaries: Record<string, PayrollYtdSummary> = {}
 ) => {
     const [draftItems, setDraftItems] = useState<PayRunLineItem[]>([]);
 
@@ -20,8 +21,9 @@ export const usePayroll = (
         timesheets,
         leaveRequests,
         payRunHistory,
+        ytdSummaries,
         companyData
-    }), [timesheets, leaveRequests, payRunHistory, companyData]);
+    }), [timesheets, leaveRequests, payRunHistory, ytdSummaries, companyData]);
 
     const totals = useMemo(() => {
         return calculatePayrollTotals(draftItems);
