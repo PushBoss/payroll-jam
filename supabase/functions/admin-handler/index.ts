@@ -103,16 +103,29 @@ const assertSuperAdminCaller = async (adminClient: any, authUser: any) => {
 const getCallerProfile = async (adminClient: any, authUser: any) => {
     if (!authUser?.id) throw new Error('Unauthorized');
 
-    const { data: callerProfile, error } = await adminClient
+    const { data: callerProfileById, error } = await adminClient
         .from('app_users')
         .select('id, name, email, role, company_id')
         .eq('id', authUser.id)
         .maybeSingle();
 
     if (error) throw error;
-    if (!callerProfile) throw new Error('Unauthorized');
+    if (callerProfileById) return callerProfileById;
 
-    return callerProfile;
+    const email = (authUser.email || '').toString().trim().toLowerCase();
+    if (!email) throw new Error('Unauthorized');
+
+    const { data: profilesByEmail, error: emailLookupError } = await adminClient
+        .from('app_users')
+        .select('id, name, email, role, company_id')
+        .ilike('email', email)
+        .limit(2);
+
+    if (emailLookupError) throw emailLookupError;
+    if (!profilesByEmail || profilesByEmail.length === 0) throw new Error('Unauthorized');
+    if (profilesByEmail.length > 1) throw new Error('Multiple app profiles found for authenticated email');
+
+    return profilesByEmail[0];
 };
 
 const assertCompanyAccess = async (

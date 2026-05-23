@@ -6,7 +6,9 @@ import { CompanyService } from '../services/CompanyService';
 import { EmployeeService } from '../services/EmployeeService';
 import { PayrollService } from '../services/PayrollService';
 
-const BOOTSTRAP_QUERY_TIMEOUT_MS = 5000;
+const BOOTSTRAP_QUERY_TIMEOUT_MS = 12000;
+const BOOTSTRAP_BACKGROUND_TIMEOUT_MS = 15000;
+const ADMIN_CONTEXT_TIMEOUT_MS = 15000;
 const ADMIN_BOOTSTRAP_ROLES = new Set(['OWNER', 'ADMIN', 'RESELLER']);
 
 const withTimeout = async <T,>(promise: Promise<T>, label: string, timeoutMs = BOOTSTRAP_QUERY_TIMEOUT_MS): Promise<T> => {
@@ -58,7 +60,11 @@ export const useAppBootstrap = ({
         const isImpersonating = Boolean(user.originalRole);
 
         if (isImpersonating) {
-          const context = await withTimeout(AdminService.getCompanyContext(user.companyId), 'Admin company context');
+          const context = await withTimeout(
+            AdminService.getCompanyContext(user.companyId),
+            'Admin company context',
+            ADMIN_CONTEXT_TIMEOUT_MS
+          );
           if (isCancelled) return;
           if (context.company) applyLoadedCompany(context.company);
           if (context.employees) setEmployees(context.employees);
@@ -76,40 +82,43 @@ export const useAppBootstrap = ({
           dbCompany = await withTimeout(CompanyService.getCompany(user.companyId), 'Company settings');
         } catch (companyError) {
           console.error('Company bootstrap query failed:', companyError);
+        }
 
-          if (canUseAdminFallback) {
-            try {
-              const fallbackContext = await withTimeout(
-                AdminService.getCompanyContext(user.companyId),
-                'Owner/Admin company context'
-              );
+        if (!dbCompany && canUseAdminFallback && !hasUsableCachedCompany) {
+          try {
+            const fallbackContext = await withTimeout(
+              AdminService.getCompanyContext(user.companyId),
+              'Owner/Admin company context',
+              ADMIN_CONTEXT_TIMEOUT_MS
+            );
 
-              if (isCancelled) return;
-              if (fallbackContext.company) applyLoadedCompany(fallbackContext.company);
-              if (fallbackContext.employees) setEmployees(fallbackContext.employees);
-              if (fallbackContext.payRuns) setPayRunHistory(fallbackContext.payRuns);
-              if (fallbackContext.leaveRequests) setLeaveRequests(fallbackContext.leaveRequests);
-              if (fallbackContext.users) setUsers(fallbackContext.users);
-              return;
-            } catch (fallbackError) {
-              console.error('Bootstrap owner/admin fallback failed:', fallbackError);
-            }
+            if (isCancelled) return;
+            if (fallbackContext.company) applyLoadedCompany(fallbackContext.company);
+            if (fallbackContext.employees) setEmployees(fallbackContext.employees);
+            if (fallbackContext.payRuns) setPayRunHistory(fallbackContext.payRuns);
+            if (fallbackContext.leaveRequests) setLeaveRequests(fallbackContext.leaveRequests);
+            if (fallbackContext.users) setUsers(fallbackContext.users);
+            return;
+          } catch (fallbackError) {
+            console.error('Bootstrap owner/admin fallback failed:', fallbackError);
           }
+        } else if (!dbCompany && hasUsableCachedCompany) {
+          console.warn('Using cached company settings while cloud bootstrap refresh recovers.');
         }
 
         if (dbCompany) {
           applyLoadedCompany(dbCompany);
-        } else {
+        } else if (!hasUsableCachedCompany) {
           toast.error("Couldn't load company settings. Please try refreshing.");
         }
 
         setDataLoading(false);
 
         const results = await Promise.allSettled([
-          withTimeout(EmployeeService.getEmployees(user.companyId), 'Employees'),
-          withTimeout(PayrollService.getPayRuns(user.companyId), 'Pay runs'),
-          withTimeout(EmployeeService.getLeaveRequests(user.companyId), 'Leave requests'),
-          withTimeout(EmployeeService.getCompanyUsers(user.companyId), 'Company users'),
+          withTimeout(EmployeeService.getEmployees(user.companyId), 'Employees', BOOTSTRAP_BACKGROUND_TIMEOUT_MS),
+          withTimeout(PayrollService.getPayRuns(user.companyId), 'Pay runs', BOOTSTRAP_BACKGROUND_TIMEOUT_MS),
+          withTimeout(EmployeeService.getLeaveRequests(user.companyId), 'Leave requests', BOOTSTRAP_BACKGROUND_TIMEOUT_MS),
+          withTimeout(EmployeeService.getCompanyUsers(user.companyId), 'Company users', BOOTSTRAP_BACKGROUND_TIMEOUT_MS),
         ]);
 
         if (isCancelled) return;
@@ -135,7 +144,7 @@ export const useAppBootstrap = ({
     return () => {
       isCancelled = true;
     };
-  }, [applyLoadedCompany, isSupabaseMode, setEmployees, setLeaveRequests, setPayRunHistory, setUsers, user?.companyId, user?.originalRole]);
+  }, [applyLoadedCompany, isSupabaseMode, setEmployees, setLeaveRequests, setPayRunHistory, setUsers, user?.companyId, user?.originalRole, user?.role]);
 
   return {
     dataLoading,
