@@ -77,6 +77,31 @@ export const useAppBootstrap = ({
         const normalizedRole = String(user.role || '').toUpperCase();
         const canUseAdminFallback = ADMIN_BOOTSTRAP_ROLES.has(normalizedRole);
 
+        if (canUseAdminFallback) {
+          try {
+            const context = await withTimeout(
+              AdminService.getCompanyContext(user.companyId),
+              'Owner/Admin company context',
+              ADMIN_CONTEXT_TIMEOUT_MS
+            );
+
+            if (isCancelled) return;
+            if (context.company) applyLoadedCompany(context.company);
+            if (context.employees) setEmployees(context.employees);
+            if (context.payRuns) setPayRunHistory(context.payRuns);
+            if (context.leaveRequests) setLeaveRequests(context.leaveRequests);
+            if (context.users) setUsers(context.users);
+            return;
+          } catch (fallbackError) {
+            console.error('Bootstrap owner/admin context failed:', fallbackError);
+            if (hasUsableCachedCompany) {
+              console.warn('Using cached company settings while owner/admin bootstrap recovers.');
+              setDataLoading(false);
+              return;
+            }
+          }
+        }
+
         let dbCompany: CompanySettings | null = null;
         try {
           dbCompany = await withTimeout(CompanyService.getCompany(user.companyId), 'Company settings');
@@ -84,25 +109,7 @@ export const useAppBootstrap = ({
           console.error('Company bootstrap query failed:', companyError);
         }
 
-        if (!dbCompany && canUseAdminFallback && !hasUsableCachedCompany) {
-          try {
-            const fallbackContext = await withTimeout(
-              AdminService.getCompanyContext(user.companyId),
-              'Owner/Admin company context',
-              ADMIN_CONTEXT_TIMEOUT_MS
-            );
-
-            if (isCancelled) return;
-            if (fallbackContext.company) applyLoadedCompany(fallbackContext.company);
-            if (fallbackContext.employees) setEmployees(fallbackContext.employees);
-            if (fallbackContext.payRuns) setPayRunHistory(fallbackContext.payRuns);
-            if (fallbackContext.leaveRequests) setLeaveRequests(fallbackContext.leaveRequests);
-            if (fallbackContext.users) setUsers(fallbackContext.users);
-            return;
-          } catch (fallbackError) {
-            console.error('Bootstrap owner/admin fallback failed:', fallbackError);
-          }
-        } else if (!dbCompany && hasUsableCachedCompany) {
+        if (!dbCompany && hasUsableCachedCompany) {
           console.warn('Using cached company settings while cloud bootstrap refresh recovers.');
         }
 
