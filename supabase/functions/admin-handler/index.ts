@@ -8,7 +8,7 @@ declare const Deno: any;
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-correlation-id',
 }
 
 const normalizePlanToFrontend = (plan?: string | null): string => {
@@ -1568,12 +1568,34 @@ serve(async (req: Request) => {
             }
 
             case 'save-employee-for-company': {
+                const correlationId = req.headers.get('x-correlation-id') || '';
                 const { companyId, employee, mode = 'upsert' } = payload || {};
+
+                const edgeLog = (step: string, status: string, detail: Record<string, unknown> = {}) => {
+                    if (!correlationId) return;
+                    adminClient.from('diagnostic_logs').insert({
+                        correlation_id: correlationId,
+                        source: 'edge',
+                        step,
+                        status,
+                        duration_ms: typeof detail.durationMs === 'number' ? detail.durationMs : null,
+                        employee_id: (employee as any)?.id || null,
+                        company_id: companyId || null,
+                        user_id: authUser?.id || null,
+                        user_role: null,
+                        detail,
+                    }).then(null, () => {});
+                };
+
+                const t0 = Date.now();
+                edgeLog('edge-request-received', 'start', { mode });
+
                 if (!companyId) throw new Error('companyId required');
                 if (!employee || typeof employee !== 'object') throw new Error('employee payload required');
                 if (!['insert', 'update', 'upsert'].includes(mode)) throw new Error('Invalid employee save mode');
 
                 await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'MANAGER', 'RESELLER', 'SUPER_ADMIN']);
+                edgeLog('edge-company-access-checked', 'ok', { durationMs: Date.now() - t0 });
 
                 // Ensure empty strings are converted to null to avoid unique constraint violations
                 const cleanEmployee = { ...employee } as Record<string, any>;
@@ -1581,11 +1603,13 @@ serve(async (req: Request) => {
                 if (cleanEmployee.nis === '') cleanEmployee.nis = null;
 
                 const employeeRecord = buildEmployeePayload(cleanEmployee, companyId, mode);
+                edgeLog('edge-payload-built', 'ok', { keysInPayload: Object.keys(employeeRecord as object).length });
                 let result;
 
                 // Fallback loop for schema mismatches
                 let nextPayload: Record<string, any> = { ...employeeRecord };
                 for (let attempt = 0; attempt < 8; attempt++) {
+                    const tAttempt = Date.now();
                     switch (mode) {
                         case 'insert':
                             result = await adminClient.from('employees').insert(nextPayload);
@@ -1602,13 +1626,21 @@ serve(async (req: Request) => {
                             break;
                     }
 
-                    if (!result.error) break;
+                    if (!result.error) {
+                        edgeLog(`edge-schema-attempt-${attempt}`, 'ok', { durationMs: Date.now() - tAttempt, keysInPayload: Object.keys(nextPayload).length });
+                        break;
+                    }
+
+                    edgeLog(`edge-schema-attempt-${attempt}`, 'error', {
+                        durationMs: Date.now() - tAttempt,
+                        errorCode: result.error.code,
+                    });
 
                     const message = (result.error.message || '').toLowerCase();
                     const details = (result.error.details || '').toLowerCase();
                     const code = String(result.error.code || '').toUpperCase();
 
-                    const isSchemaMismatch = code === 'PGRST204' 
+                    const isSchemaMismatch = code === 'PGRST204'
                         || (message.includes('column') && message.includes('does not exist'))
                         || message.includes('could not find the');
 
@@ -1630,6 +1662,8 @@ serve(async (req: Request) => {
 
                 if (result?.error) throw result.error;
 
+                edgeLog('edge-write-complete', 'ok', { durationMs: Date.now() - t0 });
+                edgeLog('edge-response-sent', 'ok');
                 return new Response(JSON.stringify({ success: true }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });
