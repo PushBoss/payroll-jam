@@ -47,3 +47,21 @@ do-not-change: Employee statuses are uppercase app-domain values and employees w
 - **Unit Tests**: Test logic rendering tab changes based on missing `TRN`/`NIS` constraints.
 - **Integration Tests**: Verify successful Employee insertion triggering a valid `app_users` table sync.
 - **Manual Verification**: Test terminating an active employee and ensuring they are instantly isolated to the "Archived" tab.
+
+## 9. Diagnostic Logging (2026-05-26)
+
+An end-to-end trace logger was added to diagnose an intermittent infinite loading bug in the employee edit save flow (occurs after a pay run completes).
+
+**New files:**
+- `src/utils/employeeEditTrace.ts` — `TraceLogger` utility and `createEmployeeEditTrace` factory
+- `db/migrations/20260526_diagnostic_logs.sql` — `diagnostic_logs` table
+
+**Instrumented functions:**
+- `handleEmployeeManagerSave` (`src/pages/Employees.tsx`) — creates trace, logs 6 events, flushes in `finally`
+- `handleUpdateEmployee` (`src/features/employees/useWorkforceData.ts`) — logs primary-save, fallback-check, fallback-save, refresh
+- `saveEmployee` (`src/services/EmployeeService.ts`) — passes `x-correlation-id` header to admin-handler
+- `save-employee-for-company` (`supabase/functions/admin-handler/index.ts`) — logs 8 events, writes to `diagnostic_logs` via service_role
+
+**Reading traces:** filter browser console by `[EMP-EDIT`, copy the `correlationId`, query `diagnostic_logs` in Supabase dashboard.
+
+**Security:** never logs TRN, NIS, bank details, payroll amounts, passwords, or full employee records. See `docs/superpowers/specs/2026-05-23-employee-edit-diagnostic-logging-design.md` for full spec.
