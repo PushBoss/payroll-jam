@@ -47,6 +47,15 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const SIGN_OUT_TIMEOUT_MS = 3000;
+const AUTH_USER_LOOKUP_TIMEOUT_MS = 8000;
+
+const withAuthTimeout = <T,>(promise: Promise<T>): Promise<T> =>
+  Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      window.setTimeout(() => reject(new Error('User lookup timed out')), AUTH_USER_LOOKUP_TIMEOUT_MS)
+    ),
+  ]);
 
 const clearLocalAuthState = () => {
   storage.saveUser(null);
@@ -182,10 +191,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               } catch (error) {
                 console.warn('Sign out failed during profile recovery:', error);
               }
-              // Force clear Supabase session from localStorage
-              if (typeof window !== 'undefined') {
-                localStorage.removeItem('sb-arqbxlaudfbmiqvwwmnt-auth-token');
-              }
               setUser(null);
               storage.saveUser(null);
             }
@@ -234,7 +239,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             return;
           }
 
-          const appUser = await EmployeeService.getUserByEmail(session.user.email!);
+          const appUser = await withAuthTimeout(EmployeeService.getUserByEmail(session.user.email!));
           if (appUser && isMounted) {
             setUser(appUser);
             storage.saveUser(appUser);

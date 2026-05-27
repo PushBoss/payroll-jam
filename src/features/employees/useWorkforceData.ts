@@ -28,6 +28,9 @@ const EMPLOYEE_SAVE_TIMEOUT_MS = 15000;
 const EMPLOYEE_ADMIN_FALLBACK_TIMEOUT_MS = 20000;
 const EMPLOYEE_ADMIN_FALLBACK_ROLES = new Set<Role>([Role.OWNER, Role.ADMIN, Role.MANAGER, Role.RESELLER, Role.SUPER_ADMIN]);
 
+const toUserMessage = (msg: string | undefined, fallback: string): string =>
+  msg?.includes('timed out') ? 'Employee update timed out. Please check your connection and try again.' : (msg || fallback);
+
 const withEmployeeSaveTimeout = async <T,>(promise: Promise<T>, label: string, timeoutMs = EMPLOYEE_SAVE_TIMEOUT_MS): Promise<T> => {
   return Promise.race([
     promise,
@@ -151,14 +154,14 @@ export const useWorkforceData = ({ user, isSupabaseMode, activeCompanyId }: UseW
           return true;
         } catch (fallbackError: any) {
           console.error('Admin-handler employee update fallback failed:', fallbackError);
-          toast.error(fallbackError?.message || error?.message || 'Failed to save employee to database.');
+          toast.error(toUserMessage(fallbackError?.message || error?.message, 'Failed to save employee to database.'));
           if (previousEmployees) setEmployees(previousEmployees);
           return false;
         }
       }
 
       console.error('Failed to save employee to Supabase:', error);
-      toast.error(error?.message || 'Failed to save employee to database.');
+      toast.error(toUserMessage(error?.message, 'Failed to save employee to database.'));
       if (previousEmployees) setEmployees(previousEmployees);
       return false;
     }

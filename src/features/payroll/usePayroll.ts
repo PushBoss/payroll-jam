@@ -60,7 +60,7 @@ export const usePayroll = (
         setDraftItems(prev => prev.map(item => {
             if (item.employeeId !== employeeId) return item;
             const newTaxes = { ...item, ...updates };
-            const newTotal = newTaxes.nis + newTaxes.nht + newTaxes.edTax + newTaxes.paye + item.deductions;
+            const newTotal = (newTaxes.nis ?? 0) + (newTaxes.nht ?? 0) + (newTaxes.edTax ?? 0) + (newTaxes.paye ?? 0) + (item.deductions ?? 0);
             return {
                 ...item,
                 ...updates,

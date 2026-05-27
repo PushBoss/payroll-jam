@@ -347,7 +347,7 @@ export const PayRun: React.FC<PayRunProps> = ({
         }
 
         setIsFinalizing(true);
-
+        try {
         const newRun: PayRunType = buildPayRunRecord({
             id: editingRun?.id || currentRun?.id || generateUUID(),
             payPeriod,
@@ -363,13 +363,12 @@ export const PayRun: React.FC<PayRunProps> = ({
 
         const saved = await onSave(newRun);
         if (!saved) {
-            setIsFinalizing(false);
             toast.error('Could not finalize pay run because the database save failed.');
             return;
         }
 
         auditService.log(currentUser, 'CREATE', 'PayRun', `Finalized payroll for ${payPeriod}`);
-        
+
         const deductionUpdates = draftItems.flatMap((lineItem) => {
             const employee = employees.find(e => e.id === lineItem.employeeId);
             if (!employee || !employee.customDeductions || employee.customDeductions.length === 0) return [];
@@ -395,8 +394,10 @@ export const PayRun: React.FC<PayRunProps> = ({
 
         setCurrentRun(newRun);
         setIsPayRunConfirmed(true);
-        setIsFinalizing(false);
         toast.success("Payroll finalized successfully! You can now download, email, or print payslips.");
+        } finally {
+            setIsFinalizing(false);
+        }
     };
 
     const handleDownloadBankFile = (type: 'NCB' | 'BNS') => {
