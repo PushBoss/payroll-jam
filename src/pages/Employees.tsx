@@ -11,6 +11,7 @@ import { useAuth } from '../context/AuthContext';
 import { isValidEmail } from '../utils/validators';
 import { generateUUID } from '../utils/uuid';
 import { isResellerEquivalentPlan, normalizePlanToFrontend } from '../utils/planNames';
+import { createEmployeeEditTrace, TraceLogger } from '../utils/employeeEditTrace';
 
 
 interface EmployeesProps {
@@ -18,7 +19,7 @@ interface EmployeesProps {
     payRunHistory: PayRun[];
     companyData: CompanySettings;
     onAddEmployee: (emp: Employee, options?: { refreshAfterSave?: boolean }) => void | boolean | Promise<boolean>;
-    onUpdateEmployee: (emp: Employee, options?: { refreshAfterSave?: boolean }) => void | boolean | Promise<boolean>;
+    onUpdateEmployee: (emp: Employee, options?: { refreshAfterSave?: boolean; _trace?: TraceLogger }) => void | boolean | Promise<boolean>;
     onDeleteEmployee?: (id: string) => void;
     onSimulateOnboarding?: (emp: Employee) => void;
     departments?: Department[];
@@ -267,7 +268,18 @@ export const Employees: React.FC<EmployeesProps> = ({
     };
 
     const handleEmployeeManagerSave = async (employee: Employee) => {
+        const trace = employeeManagerMode === 'edit' && currentUser
+            ? createEmployeeEditTrace({
+                employeeId: employee.id || '',
+                companyId: currentUser.companyId || '',
+                userId: currentUser.id || '',
+                userRole: currentUser.role || '',
+              })
+            : null;
+
+        trace?.log('action-start', 'start', { mode: employeeManagerMode });
         setIsSavingEmployee(true);
+        trace?.log('loading-state-set', 'ok');
         try {
             if (employeeManagerMode === 'add') {
                 const newEmp: Employee = {
@@ -289,17 +301,22 @@ export const Employees: React.FC<EmployeesProps> = ({
             }
 
             // Edit mode
-            const updateResult = await Promise.resolve(onUpdateEmployee(employee));
+            trace?.log('save-dispatched', 'start');
+            const updateResult = await Promise.resolve(onUpdateEmployee(employee, { _trace: trace ?? undefined }));
+            trace?.log('save-result', updateResult === false ? 'error' : 'ok', { success: updateResult !== false });
             if (updateResult === false) {
                 // App-level handler should already toast an error.
                 return;
             }
             auditService.log(currentUser, 'UPDATE', 'Employee', `Updated employee: ${employee.firstName} ${employee.lastName}`);
             toast.success("Employee updated successfully");
+            trace?.log('modal-close', 'ok');
             setIsEmployeeManagerOpen(false);
             setSelectedEmployee(null);
         } finally {
+            trace?.log('loading-reset', 'ok');
             setIsSavingEmployee(false);
+            trace?.flush();
         }
     };
 
