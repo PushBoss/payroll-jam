@@ -5,6 +5,7 @@ import { storage } from '../../services/storage';
 import { EmployeeService } from '../../services/EmployeeService';
 import { supabase } from '../../services/supabaseClient';
 import { getAuthRedirectUrl } from '../../utils/domainConfig';
+import { TraceLogger } from '../../utils/employeeEditTrace';
 
 export interface EmployeeAccountSetupState {
   employee: Employee;
@@ -20,6 +21,7 @@ interface UseWorkforceDataArgs {
 
 interface EmployeeMutationOptions {
   refreshAfterSave?: boolean;
+  _trace?: TraceLogger;
 }
 
 const EMPLOYEE_SAVE_TIMEOUT_MS = 15000;
@@ -107,7 +109,7 @@ export const useWorkforceData = ({ user, isSupabaseMode, activeCompanyId }: UseW
   };
 
   const handleUpdateEmployee = async (employee: Employee, options: EmployeeMutationOptions = {}): Promise<boolean> => {
-    const { refreshAfterSave = false } = options;
+    const { refreshAfterSave = false, _trace } = options;
     let previousEmployees: Employee[] | null = null;
     setEmployees((prev) => {
       previousEmployees = prev;
@@ -118,26 +120,32 @@ export const useWorkforceData = ({ user, isSupabaseMode, activeCompanyId }: UseW
     if (!isSupabaseMode || !targetCompanyId) return true;
 
     try {
-      await withEmployeeSaveTimeout(
-        EmployeeService.saveEmployee(employee, targetCompanyId, 'update', { useAdminHandler: false }),
-        'Employee update'
-      );
+      const primarySave = EmployeeService.saveEmployee(employee, targetCompanyId, 'update', { useAdminHandler: false, _trace });
+      await (_trace
+        ? _trace.withTrace(primarySave, 'primary-save', EMPLOYEE_SAVE_TIMEOUT_MS)
+        : withEmployeeSaveTimeout(primarySave, 'Employee update'));
       if (refreshAfterSave) {
-        const freshEmployees = await withEmployeeSaveTimeout(EmployeeService.getEmployees(targetCompanyId), 'Employee refresh');
+        const refreshPromise = EmployeeService.getEmployees(targetCompanyId);
+        const freshEmployees = await (_trace
+          ? _trace.withTrace(refreshPromise, 'refresh', EMPLOYEE_SAVE_TIMEOUT_MS)
+          : withEmployeeSaveTimeout(refreshPromise, 'Employee refresh'));
         setEmployees(freshEmployees);
       }
       return true;
     } catch (error: any) {
       if (canUseEmployeeAdminFallback(user)) {
         try {
+          _trace?.log('fallback-check', 'start', { role: user?.role });
           console.warn('Direct employee update failed. Retrying via admin-handler fallback...', error);
-          await withEmployeeSaveTimeout(
-            EmployeeService.saveEmployee(employee, targetCompanyId, 'update', { useAdminHandler: true }),
-            'Employee update fallback',
-            EMPLOYEE_ADMIN_FALLBACK_TIMEOUT_MS
-          );
+          const fallbackSave = EmployeeService.saveEmployee(employee, targetCompanyId, 'update', { useAdminHandler: true, _trace });
+          await (_trace
+            ? _trace.withTrace(fallbackSave, 'fallback-save', EMPLOYEE_ADMIN_FALLBACK_TIMEOUT_MS)
+            : withEmployeeSaveTimeout(fallbackSave, 'Employee update fallback', EMPLOYEE_ADMIN_FALLBACK_TIMEOUT_MS));
           if (refreshAfterSave) {
-            const freshEmployees = await withEmployeeSaveTimeout(EmployeeService.getEmployees(targetCompanyId), 'Employee refresh');
+            const refreshPromise = EmployeeService.getEmployees(targetCompanyId);
+            const freshEmployees = await (_trace
+              ? _trace.withTrace(refreshPromise, 'refresh', EMPLOYEE_SAVE_TIMEOUT_MS)
+              : withEmployeeSaveTimeout(refreshPromise, 'Employee refresh'));
             setEmployees(freshEmployees);
           }
           return true;

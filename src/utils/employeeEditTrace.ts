@@ -89,7 +89,7 @@ export function createEmployeeEditTrace(ctx: TraceContext): TraceLogger {
 
   function flush() {
     if (!import.meta.env.DEV || !supabase || events.length === 0) return;
-    supabase.from('diagnostic_logs').insert(events).then().catch(() => {});
+    supabase.from('diagnostic_logs').insert(events).then(null, () => {});
   }
 
   return { correlationId, log, logError, withTrace, flush };
