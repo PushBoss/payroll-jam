@@ -4,6 +4,7 @@ import { Employee, User, LeaveRequest, DbAppUserRow, DbEmployeeRow, toRole, toPa
 type EmployeeSaveMode = 'insert' | 'update' | 'upsert';
 type EmployeeSaveOptions = {
   useAdminHandler?: boolean;
+  _trace?: { correlationId: string };
 };
 
 const requireSupabase = () => {
@@ -293,6 +294,7 @@ export const EmployeeService = {
             mode,
           },
         },
+        ...(options._trace ? { headers: { 'x-correlation-id': options._trace.correlationId } } : {}),
       });
 
       if (error) {
@@ -389,6 +391,7 @@ export const EmployeeService = {
               mode,
             },
           },
+          ...(options._trace ? { headers: { 'x-correlation-id': options._trace.correlationId } } : {}),
         });
         if (!adminError) {
           console.log('Employee saved successfully via admin-handler fallback.');
