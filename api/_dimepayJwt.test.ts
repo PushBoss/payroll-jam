@@ -5,7 +5,7 @@ import {
   normalizeDimePayWebhookPayload,
   signDimePayJwt,
   verifyDimePayJwt
-} from './_dimepayJwt';
+} from './_dimepayJwt.js';
 
 describe('DimePay JWT utilities', () => {
   it('signs and verifies HS256 payloads', () => {

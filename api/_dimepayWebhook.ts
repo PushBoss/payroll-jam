@@ -1,17 +1,17 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createHmac, timingSafeEqual } from 'crypto';
-import { supabaseAdmin as supabase } from './_supabaseAdmin';
+import { supabaseAdmin as supabase } from './_supabaseAdmin.js';
 import {
   createDimePayRecurringSubscription,
   parseCardReferenceId,
   resolveDimePayEnvironment,
   updateDimePaySubscriptionCard
-} from './_dimepay';
+} from './_dimepay.js';
 import {
   extractDimePayJwt,
   normalizeDimePayWebhookPayload,
   verifyDimePayJwt
-} from './_dimepayJwt';
+} from './_dimepayJwt.js';
 
 const monthFromNow = () => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 

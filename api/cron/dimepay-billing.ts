@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabaseAdmin as supabase } from '../_supabaseAdmin';
-import { createDimePayRecurringSubscription, resolveDimePayEnvironment } from '../_dimepay';
+import { supabaseAdmin as supabase } from '../_supabaseAdmin.js';
+import { createDimePayRecurringSubscription, resolveDimePayEnvironment } from '../_dimepay.js';
 
 const monthFromNow = () => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 

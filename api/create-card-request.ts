@@ -1,1 +1,1 @@
-export { default } from './_dimepayCardRequest';
+export { default } from './_dimepayCardRequest.js';

@@ -1,5 +1,5 @@
 import type { VercelRequest } from '@vercel/node';
-import { signDimePayJwt } from './_dimepayJwt';
+import { signDimePayJwt } from './_dimepayJwt.js';
 
 export type DimePayEnvironment = 'sandbox' | 'production';
 

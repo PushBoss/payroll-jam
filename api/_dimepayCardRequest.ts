@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { randomUUID } from 'crypto';
-import { supabaseAdmin } from './_supabaseAdmin';
+import { supabaseAdmin } from './_supabaseAdmin.js';
 import {
   buildAbsoluteUrl,
   buildCardReferenceId,
@@ -8,7 +8,7 @@ import {
   normalizeDimePayExternalUrl,
   postSignedDimePayRequest,
   resolveDimePayEnvironment
-} from './_dimepay';
+} from './_dimepay.js';
 
 type BillingFlow = 'signup' | 'card_update' | 'subscription_update';
 
