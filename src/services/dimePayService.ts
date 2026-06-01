@@ -371,7 +371,7 @@ export const dimePayService = {
                 plan_name: params.planName,
                 plan_type: params.planType,
                 amount: params.amount,
-                currency: params.currency,
+                currency: params.currency || 'JMD',
                 metadata: params.metadata,
                 redirect_url: params.redirectUrl,
                 environment

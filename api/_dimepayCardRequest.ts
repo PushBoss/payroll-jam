@@ -72,6 +72,7 @@ export default async function cardRequestHandler(req: VercelRequest, res: Vercel
     const resolvedSubscriptionId = subscription_id || subscriptionId || null;
     const resolvedPlanName = plan_name || planName || metadata?.plan_name || metadata?.planName || null;
     const resolvedPlanType = plan_type || planType || metadata?.plan_type || metadata?.planType || null;
+    const resolvedCurrency = String(currency || metadata?.currency || 'JMD').trim().toUpperCase();
     const numericAmount = typeof amount === 'number' ? amount : Number(amount);
 
     if (!resolvedCompanyId && resolvedUserId) {
@@ -117,7 +118,7 @@ export default async function cardRequestHandler(req: VercelRequest, res: Vercel
       plan_name: resolvedPlanName,
       plan_type: resolvedPlanType,
       amount: Number.isFinite(numericAmount) ? numericAmount : null,
-      currency: currency || 'JMD',
+      currency: resolvedCurrency,
       status: 'pending',
       idempotency_key: idempotencyKey,
       metadata: metadata || {}
@@ -140,6 +141,7 @@ export default async function cardRequestHandler(req: VercelRequest, res: Vercel
         webhook_url: webhookUrl,
         redirectUrl: resolvedRedirectUrl,
         redirect_url: resolvedRedirectUrl,
+        currency: resolvedCurrency,
         metadata: {
           ...(metadata || {}),
           flow: billingFlow,
@@ -148,7 +150,8 @@ export default async function cardRequestHandler(req: VercelRequest, res: Vercel
           local_subscription_id: resolvedLocalSubscriptionId,
           dime_subscription_id: resolvedSubscriptionId,
           plan_name: resolvedPlanName,
-          plan_type: resolvedPlanType
+          plan_type: resolvedPlanType,
+          currency: resolvedCurrency
         }
       },
       dimePayEnvironment

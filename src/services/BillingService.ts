@@ -84,7 +84,7 @@ export const BillingService = {
         plan_name: subscription?.planName,
         plan_type: subscription?.planType,
         amount: subscription?.amount,
-        currency: subscription?.currency,
+        currency: subscription?.currency || 'JMD',
         redirect_url: `${window.location.origin}/dashboard/billing`
       })
     });
