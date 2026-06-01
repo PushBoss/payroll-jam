@@ -195,6 +195,24 @@ const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({ currentUser, cu
     const [verificationStatus, setVerificationStatus] = useState<string>('Initializing secure card form...');
     const appliedRef = useRef(false);
 
+    const persistVerifiedCard = async (details: any) => {
+        const cardToken = details.token || details.card_token;
+        if (!cardToken || !currentUser?.companyId) {
+            throw new Error('Verified card token was not returned by DimePay.');
+        }
+
+        await dimePayService.updateSubscriptionPaymentMethod({
+            companyId: currentUser.companyId,
+            localSubscriptionId: currentSubscription?.id,
+            subscriptionId: currentSubscription?.dimepaySubscriptionId,
+            cardToken,
+            cardRequestToken: details.card_request_token || cardRequestToken || undefined,
+            cardLast4: details.last_four_digits || details.card_last4 || details.card_last_four,
+            cardBrand: details.card_scheme || details.card_brand,
+            cardExpiry: details.card_expiry
+        });
+    };
+
     useEffect(() => {
         let cancelled = false;
 
@@ -251,9 +269,10 @@ const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({ currentUser, cu
                 if (details.status === 'SUCCESS' && details.token && !appliedRef.current) {
                     appliedRef.current = true;
                     setIsApplying(true);
+                    await persistVerifiedCard(details);
 
                     if (!cancelled) {
-                        toast.success('Payment method verification completed.');
+                        toast.success('Payment method saved successfully.');
                         await onSuccess();
                     }
                 }
@@ -314,7 +333,10 @@ const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({ currentUser, cu
                     onSuccess: async () => {
                         if (cancelled || appliedRef.current) return;
                         appliedRef.current = true;
-                        toast.success('Payment method verification completed.');
+                        setIsApplying(true);
+                        const details = await dimePayService.getCardDetails(cardRequestToken, cardEnvironment);
+                        await persistVerifiedCard(details);
+                        toast.success('Payment method saved successfully.');
                         await onSuccess();
                     },
                     onFailed: (err: any) => {
