@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { buildAbsoluteUrl, getDimePayCredentials, normalizeDimePayExternalUrl, resolveDimePayEnvironment } from './_dimepay.ts';
-import { signDimePayJwt } from './_dimepayJwt.ts';
+import { getDimePayCredentials, normalizeDimePayExternalUrl, resolveDimePayEnvironment } from './_dimepay';
+import { signDimePayJwt } from './_dimepayJwt';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': process.env.NODE_ENV === 'production'

@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabaseAdmin as supabase } from '../_supabaseAdmin.ts';
-import { createDimePayRecurringSubscription, resolveDimePayEnvironment } from '../_dimepay.ts';
+import { supabaseAdmin as supabase } from '../_supabaseAdmin';
+import { createDimePayRecurringSubscription, resolveDimePayEnvironment } from '../_dimepay';
 
 const monthFromNow = () => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -121,4 +121,3 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ success: false, error: error.message || 'Cron failed' });
   }
 }
-

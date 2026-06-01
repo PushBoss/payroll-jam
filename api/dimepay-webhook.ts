@@ -1,1 +1,1 @@
-export { default } from './_dimepayWebhook.ts';
+export { default } from './_dimepayWebhook';

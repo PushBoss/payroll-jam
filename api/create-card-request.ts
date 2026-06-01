@@ -1,1 +1,1 @@
-export { default } from './_dimepayCardRequest.ts';
+export { default } from './_dimepayCardRequest';
