@@ -1,16 +1,22 @@
-ûá'i¹^QB-- Add DimePay Subscription Tracking Fields
+-- Add DimePay Subscription Tracking Fields
 -- Migration for recurring billing integration
 -- Date: 2025-01-09
 
 -- Add subscription tracking fields to subscriptions table
 ALTER TABLE subscriptions 
 ADD COLUMN IF NOT EXISTS dimepay_subscription_id TEXT UNIQUE,
-ADD COLUMN IF NOT EXISTS dimepay_customer_id TEXT;
+ADD COLUMN IF NOT EXISTS dimepay_customer_id TEXT,
+ADD COLUMN IF NOT EXISTS dime_subscription_id TEXT,
+ADD COLUMN IF NOT EXISTS dime_customer_id TEXT,
+ADD COLUMN IF NOT EXISTS dime_card_token TEXT,
+ADD COLUMN IF NOT EXISTS access_until TIMESTAMPTZ;
 
 -- Add payment method details for display
 ALTER TABLE subscriptions
 ADD COLUMN IF NOT EXISTS payment_method_last4 TEXT,
-ADD COLUMN IF NOT EXISTS payment_method_brand TEXT;
+ADD COLUMN IF NOT EXISTS payment_method_brand TEXT,
+ADD COLUMN IF NOT EXISTS card_last_four TEXT,
+ADD COLUMN IF NOT EXISTS card_brand TEXT;
 
 -- Create index for fast lookups by DimePay subscription ID
 CREATE INDEX IF NOT EXISTS idx_subscriptions_dimepay_id ON subscriptions(dimepay_subscription_id);
@@ -245,15 +251,25 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
     plan_name TEXT NOT NULL,
-    plan_type TEXT NOT NULL CHECK (plan_type IN ('free', 'starter', 'professional', 'enterprise')),
-    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'cancelled', 'expired', 'past_due')),
-    billing_frequency TEXT NOT NULL DEFAULT 'monthly' CHECK (billing_frequency IN ('monthly', 'yearly')),
+    plan_type TEXT NOT NULL CHECK (plan_type IN ('free', 'starter', 'professional', 'enterprise', 'reseller', 'subscription', 'pro')),
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'cancelled', 'expired', 'past_due', 'paused', 'pending', 'failed')),
+    billing_frequency TEXT NOT NULL DEFAULT 'monthly' CHECK (billing_frequency IN ('monthly', 'yearly', 'annual')),
     amount DECIMAL(10,2) NOT NULL DEFAULT 0,
     currency TEXT NOT NULL DEFAULT 'JMD',
     start_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     end_date TIMESTAMPTZ,
     next_billing_date TIMESTAMPTZ,
+    access_until TIMESTAMPTZ,
     auto_renew BOOLEAN NOT NULL DEFAULT true,
+    dimepay_subscription_id TEXT UNIQUE,
+    dimepay_customer_id TEXT,
+    dime_subscription_id TEXT,
+    dime_customer_id TEXT,
+    dime_card_token TEXT,
+    payment_method_last4 TEXT,
+    payment_method_brand TEXT,
+    card_last_four TEXT,
+    card_brand TEXT,
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

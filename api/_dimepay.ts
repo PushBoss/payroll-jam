@@ -1,5 +1,5 @@
 import type { VercelRequest } from '@vercel/node';
-import { createHmac } from 'crypto';
+import { signDimePayJwt } from './_dimepayJwt.ts';
 
 export type DimePayEnvironment = 'sandbox' | 'production';
 
@@ -9,14 +9,6 @@ interface DimePayCredentials {
   secretKey: string;
   baseUrl: string;
 }
-
-const base64url = (source: string) => {
-  return Buffer.from(source)
-    .toString('base64')
-    .replace(/=/g, '')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_');
-};
 
 export const resolveDimePayEnvironment = (
   requested?: string,
@@ -36,6 +28,7 @@ export const resolveDimePayEnvironment = (
 export const getDimePayCredentials = (environment: DimePayEnvironment): DimePayCredentials => {
   const clientKey = environment === 'production'
     ? (
+      process.env.DIMEPAY_CLIENT_KEY ||
       process.env.DIMEPAY_CLIENT_ID_PROD ||
       process.env.DIMEPAY_API_KEY_PROD ||
       process.env.VITE_DIMEPAY_CLIENT_ID_PROD ||
@@ -46,6 +39,7 @@ export const getDimePayCredentials = (environment: DimePayEnvironment): DimePayC
       ''
     )
     : (
+      process.env.DIMEPAY_CLIENT_KEY ||
       process.env.DIMEPAY_CLIENT_ID_SANDBOX ||
       process.env.DIMEPAY_API_KEY_SANDBOX ||
       process.env.VITE_DIMEPAY_CLIENT_ID_SANDBOX ||
@@ -57,8 +51,8 @@ export const getDimePayCredentials = (environment: DimePayEnvironment): DimePayC
     );
 
   const secretKey = environment === 'production'
-    ? (process.env.DIMEPAY_SECRET_KEY_PROD || process.env.VITE_DIMEPAY_SECRET_KEY_PROD || process.env.DIMEPAY_SECRET_KEY || process.env.VITE_DIMEPAY_SECRET_KEY || '')
-    : (process.env.DIMEPAY_SECRET_KEY_SANDBOX || process.env.VITE_DIMEPAY_SECRET_KEY_SANDBOX || process.env.DIMEPAY_SECRET_KEY || process.env.VITE_DIMEPAY_SECRET_KEY || '');
+    ? (process.env.DIMEPAY_SECRET_KEY || process.env.DIMEPAY_SECRET_KEY_PROD || process.env.VITE_DIMEPAY_SECRET_KEY_PROD || process.env.VITE_DIMEPAY_SECRET_KEY || '')
+    : (process.env.DIMEPAY_SECRET_KEY || process.env.DIMEPAY_SECRET_KEY_SANDBOX || process.env.VITE_DIMEPAY_SECRET_KEY_SANDBOX || process.env.VITE_DIMEPAY_SECRET_KEY || '');
 
   if (!clientKey || !secretKey) {
     throw new Error(`Missing DimePay credentials for ${environment}`);
@@ -75,18 +69,7 @@ export const getDimePayCredentials = (environment: DimePayEnvironment): DimePayC
 };
 
 export const signDimePayPayload = (payload: Record<string, any>, secretKey: string) => {
-  const header = { alg: 'HS256', typ: 'JWT' };
-  const encodedHeader = base64url(JSON.stringify(header));
-  const encodedPayload = base64url(JSON.stringify(payload));
-  const signatureInput = `${encodedHeader}.${encodedPayload}`;
-  const signature = createHmac('sha256', secretKey)
-    .update(signatureInput)
-    .digest('base64')
-    .replace(/=/g, '')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_');
-
-  return `${encodedHeader}.${encodedPayload}.${signature}`;
+  return signDimePayJwt(payload, secretKey);
 };
 
 export const postSignedDimePayRequest = async (
@@ -123,33 +106,89 @@ export const getDimePayRequest = async (path: string, environment: DimePayEnviro
 };
 
 export const buildAbsoluteUrl = (req: VercelRequest, path: string) => {
+  const externalBaseUrl = getConfiguredExternalBaseUrl();
+  if (externalBaseUrl) {
+    return `${externalBaseUrl}${path.startsWith('/') ? path : `/${path}`}`;
+  }
+
   const proto = (req.headers['x-forwarded-proto'] as string) || 'https';
   const host = (req.headers['x-forwarded-host'] as string) || req.headers.host;
+  const normalizedHost = String(host || '').split(':')[0].toLowerCase();
+
+  if (isLocalHost(normalizedHost)) {
+    return `https://www.payrolljam.com${path.startsWith('/') ? path : `/${path}`}`;
+  }
+
   return `${proto}://${host}${path}`;
+};
+
+const isLocalHost = (host?: string) => {
+  const normalized = String(host || '').split(':')[0].toLowerCase();
+  return normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '0.0.0.0' || normalized === '::1';
+};
+
+const getConfiguredExternalBaseUrl = () => {
+  const raw = (
+    process.env.DIMEPAY_PUBLIC_BASE_URL ||
+    process.env.PUBLIC_SITE_URL ||
+    process.env.SITE_URL ||
+    process.env.APP_URL ||
+    process.env.VITE_PUBLIC_SITE_URL ||
+    process.env.VITE_SITE_URL ||
+    process.env.VITE_APP_URL ||
+    ''
+  ).trim();
+
+  if (!raw) return null;
+  return raw.replace(/\/$/, '');
+};
+
+export const normalizeDimePayExternalUrl = (req: VercelRequest, url: string | undefined, fallbackPath: string) => {
+  if (!url) return buildAbsoluteUrl(req, fallbackPath);
+
+  try {
+    const parsed = new URL(url);
+    if (isLocalHost(parsed.hostname)) {
+      return buildAbsoluteUrl(req, parsed.pathname + parsed.search + parsed.hash);
+    }
+    return url;
+  } catch {
+    return buildAbsoluteUrl(req, fallbackPath);
+  }
 };
 
 export const buildCardReferenceId = (params: {
   companyId: string;
+  flow?: string;
   localSubscriptionId?: string;
   dimepaySubscriptionId?: string;
+  intentId?: string;
 }) => {
   return [
+    params.flow || 'card_update',
     params.companyId,
     params.localSubscriptionId || 'none',
     params.dimepaySubscriptionId || 'none',
+    params.intentId || 'none',
     Date.now().toString()
   ].join('__');
 };
 
 export const parseCardReferenceId = (referenceId?: string) => {
   if (!referenceId) return null;
-  const [companyId, localSubscriptionId, dimepaySubscriptionId] = referenceId.split('__');
+  const parts = referenceId.split('__');
+  const hasFlowPrefix = ['signup', 'card_update', 'subscription_update'].includes(parts[0]);
+  const [flow, companyId, localSubscriptionId, dimepaySubscriptionId, intentId] = hasFlowPrefix
+    ? parts
+    : ['card_update', parts[0], parts[1], parts[2], undefined];
   if (!companyId) return null;
 
   return {
+    flow,
     companyId,
     localSubscriptionId: localSubscriptionId && localSubscriptionId !== 'none' ? localSubscriptionId : undefined,
-    dimepaySubscriptionId: dimepaySubscriptionId && dimepaySubscriptionId !== 'none' ? dimepaySubscriptionId : undefined
+    dimepaySubscriptionId: dimepaySubscriptionId && dimepaySubscriptionId !== 'none' ? dimepaySubscriptionId : undefined,
+    intentId: intentId && intentId !== 'none' ? intentId : undefined
   };
 };
 
@@ -205,6 +244,78 @@ export const updateDimePaySubscriptionCard = async (params: {
       } catch (error: any) {
         lastError = `${method} ${path} failed: ${error.message}`;
       }
+    }
+  }
+
+  return { ok: false, error: lastError };
+};
+
+export const createDimePayRecurringSubscription = async (params: {
+  environment: DimePayEnvironment;
+  companyId: string;
+  planName: string;
+  planType?: string;
+  amount: number;
+  currency?: string;
+  customerId?: string;
+  cardToken: string;
+  billingFrequency?: string;
+  billingCycles?: number;
+  metadata?: Record<string, any>;
+}) => {
+  const overridePath = params.environment === 'production'
+    ? process.env.DIMEPAY_SUBSCRIPTION_CREATE_PATH_PROD || process.env.DIMEPAY_SUBSCRIPTION_CREATE_PATH
+    : process.env.DIMEPAY_SUBSCRIPTION_CREATE_PATH_SANDBOX || process.env.DIMEPAY_SUBSCRIPTION_CREATE_PATH;
+
+  const candidatePaths = unique([
+    overridePath || '',
+    '/subscriptions',
+    '/subscriptions/create',
+    '/subscription/create',
+    '/recurring/subscriptions'
+  ]);
+
+  const payload = {
+    customer_id: params.customerId,
+    card_token: params.cardToken,
+    payment_method_token: params.cardToken,
+    amount: params.amount,
+    currency: params.currency || 'JMD',
+    recurring: true,
+    recurring_frequency: params.billingFrequency || 'monthly',
+    frequency: params.billingFrequency || 'monthly',
+    billing_cycles: params.billingCycles || 9999,
+    description: `${params.planName} recurring subscription`,
+    metadata: {
+      ...(params.metadata || {}),
+      company_id: params.companyId,
+      plan_name: params.planName,
+      plan_type: params.planType || params.planName.toLowerCase()
+    }
+  };
+
+  let lastError = 'No DimePay subscription creation endpoint succeeded.';
+
+  for (const path of candidatePaths) {
+    try {
+      const response = await postSignedDimePayRequest(path, payload, params.environment);
+
+      if (response.ok) {
+        return {
+          ok: true,
+          path,
+          data: await response.json().catch(() => null)
+        };
+      }
+
+      const errorText = await response.text();
+      lastError = `POST ${path} failed with ${response.status}: ${errorText}`;
+
+      if (![404, 405].includes(response.status)) {
+        return { ok: false, path, error: lastError };
+      }
+    } catch (error: any) {
+      lastError = `POST ${path} failed: ${error.message}`;
     }
   }
 

@@ -33,13 +33,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!resolvedSubscriptionId || !localSubscriptionId) {
       const { data: subscription } = await supabaseAdmin
         .from('subscriptions')
-        .select('id, dimepay_subscription_id')
+        .select('id, dime_subscription_id, dimepay_subscription_id')
         .eq('company_id', company_id)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
 
-      resolvedSubscriptionId = resolvedSubscriptionId || subscription?.dimepay_subscription_id;
+      resolvedSubscriptionId = resolvedSubscriptionId || subscription?.dime_subscription_id || subscription?.dimepay_subscription_id;
       localSubscriptionId = localSubscriptionId || subscription?.id;
     }
 
@@ -81,6 +81,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .update({
         payment_method_last4: card_last4 || null,
         payment_method_brand: card_brand || null,
+        card_last_four: card_last4 || null,
+        card_brand: card_brand || null,
+        dime_card_token: card_token,
         metadata,
         ...(remoteUpdate.ok ? { status: 'active' } : {}),
         updated_at: new Date().toISOString()

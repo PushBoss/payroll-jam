@@ -31,3 +31,4 @@ env.md
 *.sln
 *.sw?
 .gitnexus
+.vercel

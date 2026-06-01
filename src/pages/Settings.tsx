@@ -190,6 +190,8 @@ const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({ currentUser, cu
     const [error, setError] = useState<string | null>(null);
     const [cardUrl, setCardUrl] = useState<string | null>(null);
     const [cardRequestToken, setCardRequestToken] = useState<string | null>(null);
+    const [cardClientKey, setCardClientKey] = useState<string | null>(null);
+    const [cardEnvironment, setCardEnvironment] = useState<'sandbox' | 'production'>('sandbox');
     const [verificationStatus, setVerificationStatus] = useState<string>('Initializing secure card form...');
     const appliedRef = useRef(false);
 
@@ -204,17 +206,17 @@ const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({ currentUser, cu
             }
 
             try {
-                const data = await dimePayService.createCardRequest({
+                const data = await BillingService.initiateCardUpdate(currentUser.id, {
                     companyId: currentUser.companyId,
-                    localSubscriptionId: currentSubscription?.id,
-                    subscriptionId: currentSubscription?.dimepaySubscriptionId,
-                    redirectUrl: window.location.href
+                    subscription: currentSubscription
                 });
 
                 if (cancelled) return;
 
                 setCardUrl(data.card_url);
-                setCardRequestToken(data.token);
+                setCardRequestToken(data.card_request_token || data.token);
+                setCardClientKey(data.client_key || data.client_id || null);
+                setCardEnvironment(data.environment === 'production' ? 'production' : 'sandbox');
                 setVerificationStatus('Complete verification in the secure form below.');
             } catch (requestError: any) {
                 if (!cancelled) {
@@ -241,9 +243,6 @@ const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({ currentUser, cu
 
         const poll = async () => {
             try {
-                const companyId = currentUser?.companyId;
-                if (!companyId) return;
-
                 const details = await dimePayService.getCardDetails(cardRequestToken);
                 if (cancelled) return;
 
@@ -253,19 +252,8 @@ const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({ currentUser, cu
                     appliedRef.current = true;
                     setIsApplying(true);
 
-                    await dimePayService.updateSubscriptionPaymentMethod({
-                        companyId,
-                        localSubscriptionId: currentSubscription?.id,
-                        subscriptionId: currentSubscription?.dimepaySubscriptionId,
-                        cardToken: details.token,
-                        cardRequestToken: details.card_request_token || cardRequestToken,
-                        cardLast4: details.last_four_digits,
-                        cardBrand: details.card_scheme,
-                        cardExpiry: details.card_expiry
-                    });
-
                     if (!cancelled) {
-                        toast.success('Payment method updated successfully.');
+                        toast.success('Payment method verification completed.');
                         await onSuccess();
                     }
                 }
@@ -288,6 +276,73 @@ const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({ currentUser, cu
             window.clearInterval(interval);
         };
     }, [cardRequestToken, currentSubscription?.dimepaySubscriptionId, currentSubscription?.id, currentUser?.companyId, onSuccess]);
+
+    useEffect(() => {
+        if (!cardRequestToken || !cardClientKey || cardUrl || isLoading || error) return;
+
+        let cancelled = false;
+        let timer: number | undefined;
+        const mountId = 'dimepay-card-widget';
+
+        const mountCardWidget = () => {
+            if (cancelled) return;
+
+            const mountElement = document.getElementById(mountId);
+            const dimepaySDK = (window as any).dimepay || (window as any).DimePay;
+
+            if (!mountElement || !dimepaySDK?.initCard) {
+                timer = window.setTimeout(mountCardWidget, 150);
+                return;
+            }
+
+            try {
+                dimepaySDK.initCard({
+                    mountId,
+                    card_request_token: cardRequestToken,
+                    client_id: cardClientKey,
+                    origin: window.location.origin,
+                    test: cardEnvironment !== 'production',
+                    styles: {
+                        primaryColor: '#FFA500',
+                        buttonColor: '#000000',
+                        buttonTextColor: '#FFFFFF',
+                        backgroundColor: '#FFFFFF'
+                    },
+                    onReady: () => {
+                        if (!cancelled) setVerificationStatus('Complete verification in the secure form below.');
+                    },
+                    onSuccess: async () => {
+                        if (cancelled || appliedRef.current) return;
+                        appliedRef.current = true;
+                        toast.success('Payment method verification completed.');
+                        await onSuccess();
+                    },
+                    onFailed: (err: any) => {
+                        if (!cancelled) setVerificationStatus(err?.message || 'Card verification failed.');
+                    },
+                    onError: (err: any) => {
+                        if (!cancelled) setVerificationStatus(err?.message || 'Card verification could not be completed.');
+                    },
+                    onLoading: () => {
+                        if (!cancelled) setVerificationStatus('Loading secure card form...');
+                    }
+                });
+            } catch (sdkError: any) {
+                if (!cancelled) {
+                    setError(sdkError.message || 'Failed to load secure card form.');
+                }
+            }
+        };
+
+        mountCardWidget();
+
+        return () => {
+            cancelled = true;
+            if (timer) window.clearTimeout(timer);
+            const mountElement = document.getElementById(mountId);
+            if (mountElement) mountElement.innerHTML = '';
+        };
+    }, [cardRequestToken, cardClientKey, cardUrl, cardEnvironment, isLoading, error, onSuccess]);
 
     return (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -338,7 +393,20 @@ const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({ currentUser, cu
                                 </a>
                             </div>
                         </>
-                    ) : null}
+                    ) : cardRequestToken && cardClientKey ? (
+                        <div
+                            id="dimepay-card-widget"
+                            className="w-full min-h-[520px] rounded-lg border border-gray-200 bg-white overflow-hidden"
+                        />
+                    ) : (
+                        <div className="h-[240px] flex flex-col items-center justify-center text-center">
+                            <Icons.Alert className="w-10 h-10 text-yellow-500 mb-3" />
+                            <p className="text-gray-800 font-medium mb-2">Card form is not ready yet</p>
+                            <p className="text-xs text-gray-500 max-w-md">
+                                DimePay returned no hosted form URL or SDK client key. Check the card-request response and DimePay credentials.
+                            </p>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

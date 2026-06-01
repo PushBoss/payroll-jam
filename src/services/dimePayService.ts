@@ -203,7 +203,10 @@ export const dimePayService = {
             },
 
             // Fee routing
-            pass_fees_to: passFeesTo === 'CUSTOMER' ? 'CUSTOMER' : 'MERCHANT'
+            pass_fees_to: passFeesTo === 'CUSTOMER' ? 'CUSTOMER' : 'MERCHANT',
+
+            webhookUrl: `${window.location.origin}/api/webhooks/dimepay`,
+            webhook_url: `${window.location.origin}/api/webhooks/dimepay`
         };
 
         // Add Recurring properties if appropriate
@@ -343,19 +346,33 @@ export const dimePayService = {
 
     createCardRequest: async (params: {
         companyId: string;
+        userId?: string;
+        flow?: 'signup' | 'card_update' | 'subscription_update';
         localSubscriptionId?: string;
         subscriptionId?: string;
+        planName?: string;
+        planType?: string;
+        amount?: number;
+        currency?: string;
+        metadata?: Record<string, any>;
         redirectUrl?: string;
         environment?: 'sandbox' | 'production';
     }) => {
         const environment = params.environment || getBrowserDimePayEnvironment();
-        const response = await fetch('/api/create-card-request', {
+        const response = await fetch('/api/billing/dimepay/card-request', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+                flow: params.flow,
+                user_id: params.userId,
                 company_id: params.companyId,
                 local_subscription_id: params.localSubscriptionId,
                 subscription_id: params.subscriptionId,
+                plan_name: params.planName,
+                plan_type: params.planType,
+                amount: params.amount,
+                currency: params.currency,
+                metadata: params.metadata,
                 redirect_url: params.redirectUrl,
                 environment
             })

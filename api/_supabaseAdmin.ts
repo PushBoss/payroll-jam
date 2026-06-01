@@ -1,4 +1,32 @@
 import { createClient } from '@supabase/supabase-js';
+import fs from 'fs';
+import path from 'path';
+
+const loadLocalEnvFile = (fileName: string) => {
+  if (process.env.VERCEL_ENV || process.env.NODE_ENV === 'production') return;
+
+  const filePath = path.join(process.cwd(), fileName);
+  if (!fs.existsSync(filePath)) return;
+
+  const lines = fs.readFileSync(filePath, 'utf8').split(/\r?\n/);
+  for (const line of lines) {
+    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+    if (!match) continue;
+
+    const [, key, rawValue] = match;
+    if (process.env[key] !== undefined) continue;
+
+    const value = rawValue
+      .replace(/\s+#.*$/, '')
+      .trim()
+      .replace(/^['"]|['"]$/g, '');
+
+    process.env[key] = value;
+  }
+};
+
+loadLocalEnvFile('.env.local');
+loadLocalEnvFile('.env');
 
 const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY;

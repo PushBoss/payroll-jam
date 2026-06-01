@@ -14,6 +14,7 @@ const resolveDimePayEnvironment = (requested: string | undefined, req: VercelReq
 const getDimePayCredentials = (environment: DimePayEnvironment) => {
   const clientKey = environment === 'production'
     ? (
+      process.env.DIMEPAY_CLIENT_KEY ||
       process.env.DIMEPAY_CLIENT_ID_PROD ||
       process.env.DIMEPAY_API_KEY_PROD ||
       process.env.VITE_DIMEPAY_CLIENT_ID_PROD ||
@@ -24,6 +25,7 @@ const getDimePayCredentials = (environment: DimePayEnvironment) => {
       ''
     )
     : (
+      process.env.DIMEPAY_CLIENT_KEY ||
       process.env.DIMEPAY_CLIENT_ID_SANDBOX ||
       process.env.DIMEPAY_API_KEY_SANDBOX ||
       process.env.VITE_DIMEPAY_CLIENT_ID_SANDBOX ||
