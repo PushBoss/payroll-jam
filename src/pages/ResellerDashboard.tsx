@@ -18,9 +18,27 @@ interface ResellerDashboardProps {
     plans?: PricingPlan[];
 }
 
+const getActiveEmployeeCount = async (companyId: string) => {
+    if (!supabase) return 0;
+
+    const { count, error } = await supabase
+        .from('employees')
+        .select('id', { count: 'exact', head: true })
+        .eq('company_id', companyId)
+        .eq('status', 'ACTIVE');
+
+    if (error) {
+        console.error('Error loading active employee count:', error);
+        return 0;
+    }
+
+    return count || 0;
+};
+
 export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageClient, plans = [] }) => {
     const { user } = useAuth();
     const [clients, setClients] = useState<ResellerClient[]>([]);
+    const [resellerOwnEmployeeCount, setResellerOwnEmployeeCount] = useState(0);
     const [pendingInvites, setPendingInvites] = useState<any[]>([]);
     const [financialData, setFinancialData] = useState<any[]>([]);
     const [billingHistory, setBillingHistory] = useState<any[]>([]);
@@ -45,8 +63,12 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
             try {
                 // If user has companyId, load reseller clients from reseller_clients table
                 if (user?.companyId) {
-                    const resellerClients = await ResellerService.getResellerClients(user.companyId);
+                    const [resellerClients, ownActiveEmployeeCount] = await Promise.all([
+                        ResellerService.getResellerClients(user.companyId),
+                        getActiveEmployeeCount(user.companyId)
+                    ]);
                     setClients(Array.isArray(resellerClients) ? resellerClients : []);
+                    setResellerOwnEmployeeCount(ownActiveEmployeeCount);
 
                     // Load pending invites
                     const invites = await ResellerService.getResellerInvites(user.companyId);
@@ -100,6 +122,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                 } else {
                     console.warn('ResellerDashboard: No companyId found for user. Cannot load clients.');
                     setClients([]);
+                    setResellerOwnEmployeeCount(0);
                     setFinancialData([]);
                     setBillingHistory([]);
                 }
@@ -107,6 +130,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                 console.error('Error loading data:', error);
                 toast.error('Failed to load data');
                 setClients([]);
+                setResellerOwnEmployeeCount(0);
                 setFinancialData([]);
                 setBillingHistory([]);
             } finally {
@@ -143,7 +167,6 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
 
     // 2. Calculate Reseller's Own Bill
     const RESELLER_OWN_BASE = 5000; // User specified $5000
-    const resellerOwnEmployeeCount = 1; // Defaulting to 1 as specified in example
     const RESELLER_PER_EMP = 500; // Assuming same as standard per-user fee
 
     const resellerOwnBill = RESELLER_OWN_BASE + (resellerOwnEmployeeCount * RESELLER_PER_EMP);
@@ -156,7 +179,9 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
     const totalPayable = (resellerOwnBill + totalClientRevenue) - commissionCredit;
 
     // Stats for Display
-    const totalEmployees = clients.reduce((acc, curr) => acc + curr.employeeCount, 0) + resellerOwnEmployeeCount;
+    const totalEmployees = clients
+        .filter(client => client.status === 'ACTIVE')
+        .reduce((acc, curr) => acc + curr.employeeCount, 0) + resellerOwnEmployeeCount;
     // Old calculation code removed - now using calculateClientMonthlyBill function below
 
     // Get compliance status - use real data map if available
@@ -278,8 +303,12 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                 if (data.syncedCount > 0) {
                     toast.success(`Synced ${data.syncedCount} companies to your portfolio!`, { id: 'sync-portfolio' });
                     if (user.companyId) {
-                        const resellerClients = await ResellerService.getResellerClients(user.companyId);
+                        const [resellerClients, ownActiveEmployeeCount] = await Promise.all([
+                            ResellerService.getResellerClients(user.companyId),
+                            getActiveEmployeeCount(user.companyId)
+                        ]);
                         setClients(Array.isArray(resellerClients) ? resellerClients : []);
+                        setResellerOwnEmployeeCount(ownActiveEmployeeCount);
                     }
                 } else {
                     toast.info('Portfolio is already up to date.', { id: 'sync-portfolio' });
@@ -337,8 +366,12 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
 
                 if (!joinError && joinData?.success) {
                     toast.success(`${formData.companyName || 'Company'} added to your portfolio!`);
-                    const resellerClients = await ResellerService.getResellerClients(user.companyId);
+                    const [resellerClients, ownActiveEmployeeCount] = await Promise.all([
+                        ResellerService.getResellerClients(user.companyId),
+                        getActiveEmployeeCount(user.companyId)
+                    ]);
                     setClients(Array.isArray(resellerClients) ? resellerClients : []);
+                    setResellerOwnEmployeeCount(ownActiveEmployeeCount);
                 } else {
                     toast.error('Failed to link existing company to your portfolio');
                 }
@@ -708,7 +741,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                             <tr key={client.id} className="hover:bg-gray-50 group">
                                 <td className="px-6 py-4">
                                     <div className="font-medium text-gray-900">{client.companyName}</div>
-                                    <div className="text-xs text-gray-500">{client.employeeCount} Employees</div>
+                                    <div className="text-xs text-gray-500">{client.employeeCount} Active Employees</div>
                                 </td>
                                 <td className="px-6 py-4">
                                     <div className="text-sm text-gray-900">{client.contactName}</div>
@@ -1215,7 +1248,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                                     <div className="flex justify-between items-start">
                                         <div>
-                                            <p className="text-sm text-gray-500 uppercase font-bold">Total Employees</p>
+                                            <p className="text-sm text-gray-500 uppercase font-bold">Active Employees</p>
                                             <h3 className="text-3xl font-bold text-gray-900 mt-2">
                                                 {totalEmployees}
                                             </h3>
@@ -1225,7 +1258,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                                         </div>
                                     </div>
                                     <div className="mt-4 text-sm text-gray-500">
-                                        Across all managed entities
+                                        Own company plus active client companies
                                     </div>
                                 </div>
                             </div>

@@ -6,16 +6,22 @@ import { normalizePlanToFrontend } from '../utils/planNames';
 const mapResellerClient = (row: Record<string, unknown>): ResellerClient => {
   const company = (row.client_company || row.client_company_id || row.companies || row.company || {}) as Record<string, unknown>;
   const companySettings = (company?.settings || {}) as Record<string, unknown>;
-  const employees = company?.employees as Array<{ count?: number }> | undefined;
+  const employees = company?.employees as Array<{ status?: string | null }> | undefined;
+  const employeeCount = Array.isArray(employees)
+    ? employees.filter(employee => String(employee.status || '').toUpperCase() === 'ACTIVE').length
+    : ((companySettings?.employeeCount as number) || (row.employeeCount as number) || 0);
+  const monthlyBaseFee = (row.monthly_base_fee as number) || 0;
+  const perEmployeeFee = (row.per_employee_fee as number) || 0;
+
   return {
     id: (company?.id as string) || (row.client_company_id as string),
     companyName: (company?.name as string) || (company?.companyName as string) || 'Unknown Company',
     contactName: (company?.email as string) || (row.contact_name as string) || '',
     email: (company?.email as string) || (row.email as string) || '',
     plan: toPlanLabel(normalizePlanToFrontend((company?.plan as string) || (row.plan as string) || 'Free')),
-    employeeCount: employees?.[0]?.count || (companySettings?.employeeCount as number) || (row.employeeCount as number) || 0,
+    employeeCount,
     status: ((row.status as string) || (company?.status as string) || 'ACTIVE') as ResellerClient['status'],
-    mrr: ((row.monthly_base_fee as number) || 0) + (((row.per_employee_fee as number) || 0) * ((companySettings?.employeeCount as number) || (row.employeeCount as number) || 0)),
+    mrr: monthlyBaseFee + (perEmployeeFee * employeeCount),
     createdAt: row.created_at as string,
   };
 };
@@ -106,7 +112,7 @@ export const ResellerService = {
             plan,
             status,
             settings,
-            employees(count)
+            employees(status)
           )
         `)
         .eq('reseller_id', resellerId)

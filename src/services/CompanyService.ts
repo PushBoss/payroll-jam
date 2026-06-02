@@ -165,21 +165,27 @@ export const CompanyService = {
   getAllCompanies: async (): Promise<ResellerClient[]> => {
     if (!supabase) return [];
 
-    const { data, error } = await supabase.from('companies').select('*');
+    const { data, error } = await supabase
+      .from('companies')
+      .select('*, employees(status)');
     if (error || !data) {
       console.error('Error fetching companies:', error);
       return [];
     }
 
     return data.map((company: DbCompanyRow) => {
+      const companyWithEmployees = company as DbCompanyRow & { employees?: Array<{ status?: string | null }> };
       const settings = (company.settings || {}) as Record<string, unknown>;
+      const activeEmployeeCount = Array.isArray(companyWithEmployees.employees)
+        ? companyWithEmployees.employees.filter(employee => String(employee.status || '').toUpperCase() === 'ACTIVE').length
+        : ((settings.employeeCount as number) || 0);
       const billingGift = toBillingGift(settings.billingGift);
       return {
       id: company.id,
       companyName: company.name,
       contactName: (settings.contactName as string) || 'Admin',
       email: (settings.email as string) || '',
-      employeeCount: (settings.employeeCount as number) || 0,
+      employeeCount: activeEmployeeCount,
       plan: toPlanLabel(normalizePlanToFrontend(company.plan || 'Free')),
       status: toCompanyStatus(company.status) as ResellerClient['status'],
       billingGift,

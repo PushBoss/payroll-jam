@@ -64,6 +64,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ employees, leaveRequests, 
   };
 
   const pendingLeaveCount = leaveRequests.filter(r => r.status === 'PENDING').length;
+  const activeEmployeeCount = employees.filter(employee => employee.status === 'ACTIVE').length;
 
   // Get available years from pay run history
   const availableYears = useMemo(() => {
@@ -218,8 +219,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ employees, leaveRequests, 
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-500">Total Employees</p>
-              <p className="text-3xl font-bold text-gray-900 mt-2">{employees.length}</p>
+              <p className="text-sm font-medium text-gray-500">Active Employees</p>
+              <p className="text-3xl font-bold text-gray-900 mt-2">{activeEmployeeCount}</p>
             </div>
             <div className="p-3 bg-jam-orange/10 rounded-full">
               <Icons.Users className="w-6 h-6 text-jam-orange" />
