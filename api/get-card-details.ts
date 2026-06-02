@@ -79,17 +79,19 @@ const getDimePayMessage = (data: any) => {
 
 const normalizeCardDetails = (data: any) => {
   const source = unwrapDimePayResponse(data);
+  const card = source.card || source;
+  const status = source.status || card.status || (card.token || card.card_token ? 'SUCCESS' : data?.status);
 
   return {
     ...data,
     ...source,
-    status: source.status || data?.status,
-    token: source.token || source.card_token || data?.token,
-    card_token: source.card_token || source.token || data?.card_token,
-    card_request_token: source.card_request_token || data?.card_request_token,
-    last_four_digits: source.last_four_digits || source.card_last4 || source.card_last_four || data?.last_four_digits,
-    card_scheme: source.card_scheme || source.card_brand || data?.card_scheme,
-    card_expiry: source.card_expiry || data?.card_expiry
+    status,
+    token: card.token || card.card_token || source.token || source.card_token || data?.token,
+    card_token: card.card_token || card.token || source.card_token || source.token || data?.card_token,
+    card_request_token: card.card_request_token || source.card_request_token || data?.card_request_token,
+    last_four_digits: card.last_four_digits || card.card_last4 || card.card_last_four || source.last_four_digits || source.card_last4 || source.card_last_four || data?.last_four_digits,
+    card_scheme: card.card_scheme || card.card_brand || source.card_scheme || source.card_brand || data?.card_scheme,
+    card_expiry: card.card_expiry || source.card_expiry || data?.card_expiry
   };
 };
 

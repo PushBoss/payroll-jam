@@ -75,19 +75,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (!subscription?.id) {
+      const now = new Date().toISOString();
+      const nextBillingDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      const subscriptionAmount = latestIntent?.amount ?? 0;
       const { data: inserted, error: insertError } = await supabaseAdmin
         .from('subscriptions')
         .insert(compact({
           company_id,
           plan_name: latestIntent?.plan_name || 'Subscription',
+          billing_cycle: 'MONTHLY',
+          base_price: subscriptionAmount,
+          employee_count: 0,
+          total_amount: subscriptionAmount,
           plan_type: latestIntent?.plan_type || 'subscription',
           status: 'active',
           billing_frequency: 'monthly',
-          amount: latestIntent?.amount ?? 0,
+          amount: subscriptionAmount,
           currency: latestIntent?.currency || 'JMD',
-          start_date: new Date().toISOString(),
-          access_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-          next_billing_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          start_date: now,
+          access_until: nextBillingDate,
+          next_billing_date: nextBillingDate,
+          next_payment_date: nextBillingDate,
           auto_renew: true,
           metadata: {}
         }))
