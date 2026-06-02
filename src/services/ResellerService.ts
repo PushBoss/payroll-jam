@@ -26,6 +26,16 @@ const mapResellerClient = (row: Record<string, unknown>): ResellerClient => {
   };
 };
 
+const isSchemaMismatchError = (error: { message?: string; details?: string; hint?: string; code?: string }) => {
+  const message = `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`.toLowerCase();
+  const code = String(error?.code || '').toUpperCase();
+
+  return code === 'PGRST204'
+    || (message.includes('column') && message.includes('does not exist'))
+    || message.includes('could not find the')
+    || message.includes('schema cache');
+};
+
 export const ResellerService = {
 
   getResellerInvites: async (resellerId: string): Promise<Record<string, unknown>[]> => {
@@ -44,9 +54,14 @@ export const ResellerService = {
     clientEmail: string,
     inviteToken?: string,
     contactName?: string,
-    companyName?: string
+    companyName?: string,
+    details?: { planName?: string; estimatedEmployeeCount?: number }
   ): Promise<boolean> => {
     if (!supabase) return false;
+    const metadata = {
+      plan_name: details?.planName || null,
+      estimated_employee_count: details?.estimatedEmployeeCount ?? null
+    };
     const payload: Record<string, any> = {
       reseller_id: resellerId,
       invite_email: clientEmail.toLowerCase(),
@@ -54,6 +69,9 @@ export const ResellerService = {
       invite_token: inviteToken || null,
       contact_name: contactName || null,
       company_name: companyName || null,
+      plan_name: details?.planName || null,
+      estimated_employee_count: details?.estimatedEmployeeCount ?? null,
+      metadata,
       status: 'PENDING',
       created_at: new Date().toISOString(),
     };
@@ -63,13 +81,27 @@ export const ResellerService = {
       .upsert(payload, { onConflict: 'reseller_id,invite_email' });
 
     if (!error) return true;
+    if (isSchemaMismatchError(error)) {
+      delete payload.plan_name;
+      delete payload.estimated_employee_count;
+      delete payload.metadata;
+
+      const { error: retryError } = await supabase
+        .from('reseller_invites')
+        .upsert(payload, { onConflict: 'reseller_id,invite_email' });
+
+      if (!retryError) return true;
+    }
 
     console.warn('Primary reseller invite upsert failed, retrying with fallback columns:', error);
     const { error: fallbackError } = await supabase
       .from('reseller_invites')
       .upsert({
         reseller_id: resellerId,
+        invite_email: clientEmail.toLowerCase(),
         client_email: clientEmail.toLowerCase(),
+        invite_token: inviteToken || null,
+        contact_name: contactName || null,
         company_name: companyName || null,
         status: 'PENDING',
         created_at: new Date().toISOString(),

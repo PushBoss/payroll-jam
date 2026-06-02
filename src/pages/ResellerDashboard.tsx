@@ -164,6 +164,8 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
     };
 
     const totalClientRevenue = clients.reduce((sum, client) => sum + calculateClientMonthlyBill(client), 0);
+    const activeClientCompanyCount = clients.filter(client => client.status === 'ACTIVE').length;
+    const managedCompanyCount = activeClientCompanyCount + 1;
 
     // 2. Calculate Reseller's Own Bill
     const RESELLER_OWN_BASE = 5000; // User specified $5000
@@ -398,7 +400,11 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                     clientEmail,
                     inviteToken,
                     formData.contactName,
-                    formData.companyName
+                    formData.companyName,
+                    {
+                        planName: formData.plan,
+                        estimatedEmployeeCount: Number(formData.employeeCount) || undefined
+                    }
                 );
 
                 if (!inviteSaved) {
@@ -552,7 +558,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                             </thead>
                             <tbody>
                                 <tr style="background-color: #fef3c7;">
-                                    <td><strong>${user?.email || 'Your Company'}</strong><br/><span style="font-size: 12px; color: #6b7280;">(Reseller Account)</span></td>
+                                    <td><strong>${user?.email || 'Your Company'}</strong><br/><span style="font-size: 12px; color: #6b7280;">(Reseller Account, 1 managed company)</span></td>
                                     <td style="color: #6b7280;">Reseller Plan<br/>${resellerOwnEmployeeCount} employee${resellerOwnEmployeeCount !== 1 ? 's' : ''} × $${RESELLER_PER_EMP.toLocaleString()}</td>
                                     <td class="amount">$${resellerOwnBill.toLocaleString()}</td>
                                 </tr>
@@ -577,6 +583,10 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                                 <div class="total-row">
                                     <span class="total-label">Subtotal</span>
                                     <span>$${(resellerOwnBill + totalClientRevenue).toLocaleString()}</span>
+                                </div>
+                                <div class="total-row">
+                                    <span class="total-label">Managed Companies</span>
+                                    <span>${managedCompanyCount.toLocaleString()}</span>
                                 </div>
                                 <div class="total-row" style="color: #10b981;">
                                     <span class="total-label">Less: Commission (20% on client revenue)</span>
@@ -638,18 +648,28 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
 
     const handleResendInvite = async (invite: any) => {
         try {
-            const inviteLink = `${window.location.origin}/?token=${invite.invite_token}&email=${encodeURIComponent(invite.invite_email || '')}&reseller=true`;
+            const invitePlan = invite.plan_name || invite.metadata?.plan_name || 'Starter';
+            const inviteEmail = invite.invite_email || invite.client_email || '';
+            const inviteLink = buildAppUrl('signup', {
+                token: invite.invite_token,
+                resellerUserId: user?.id,
+                resellerEmail: user?.email,
+                resellerCompanyId: user?.companyId,
+                email: inviteEmail,
+                reseller: 'true',
+                plan: invitePlan
+            });
 
             // Use the specific Reseller Invite method, not the generic employee one
             const emailResult = await emailService.sendResellerInvite(
-                invite.invite_email,
+                inviteEmail,
                 invite.contact_name || 'Valued Client',
                 (user as any)?.companyName || 'Our Partner',
                 inviteLink
             );
 
             if (emailResult.success) {
-                toast.success(`Invitation resent to ${invite.invite_email}`);
+                toast.success(`Invitation resent to ${inviteEmail}`);
             } else {
                 toast.error('Failed to resend invitation email');
             }
@@ -678,10 +698,18 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                                         {invite.company_name || 'Company'}
                                     </p>
                                     <p className="text-xs text-gray-600">
-                                        {invite.invite_email} • {invite.contact_name || 'Contact'}
+                                        {(invite.invite_email || invite.client_email) || 'No email'} • {invite.contact_name || 'Contact'}
                                     </p>
+                                    {(invite.plan_name || invite.metadata?.plan_name || invite.estimated_employee_count || invite.metadata?.estimated_employee_count) && (
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            {invite.plan_name || invite.metadata?.plan_name || 'Starter'} plan
+                                            {(invite.estimated_employee_count || invite.metadata?.estimated_employee_count)
+                                                ? ` • ${invite.estimated_employee_count || invite.metadata?.estimated_employee_count} estimated employees`
+                                                : ''}
+                                        </p>
+                                    )}
                                     <p className="text-xs text-gray-500 mt-1">
-                                        Invited {new Date(invite.invited_at).toLocaleDateString()}
+                                        Invited {new Date(invite.invited_at || invite.created_at).toLocaleDateString()}
                                     </p>
                                 </div>
                                 <div className="flex items-center space-x-2">
@@ -696,7 +724,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                                         <Icons.Refresh className="w-4 h-4" />
                                     </button>
                                     <button
-                                        onClick={() => handleCancelInvite(invite.id, invite.invite_email)}
+                                        onClick={() => handleCancelInvite(invite.id, invite.invite_email || invite.client_email)}
                                         className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
                                         title="Cancel invitation"
                                     >
@@ -947,11 +975,11 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
 
                     <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 text-sm text-gray-600 mb-6 space-y-2">
                         <div className="flex justify-between">
-                            <span>Your Company Bill</span>
+                            <span>Your Company Bill (1 company)</span>
                             <span className="font-medium">${resellerOwnBill.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between">
-                            <span>Client Invoices (Total)</span>
+                            <span>Client Invoices ({activeClientCompanyCount} active)</span>
                             <span className="font-medium">${totalClientRevenue.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between text-green-600">
@@ -1212,7 +1240,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                                         </div>
                                     </div>
                                     <div className="mt-4 text-sm text-gray-400">
-                                        From client billing
+                                        From {activeClientCompanyCount} active client compan{activeClientCompanyCount === 1 ? 'y' : 'ies'}
                                     </div>
                                 </div>
 
@@ -1261,6 +1289,22 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                                         Own company plus active client companies
                                     </div>
                                 </div>
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <p className="text-sm text-gray-500 uppercase font-bold">Managed Companies</p>
+                                            <h3 className="text-3xl font-bold text-gray-900 mt-2">
+                                                {managedCompanyCount}
+                                            </h3>
+                                        </div>
+                                        <div className="p-2 bg-gray-100 rounded-lg">
+                                            <Icons.Company className="w-6 h-6 text-gray-600" />
+                                        </div>
+                                    </div>
+                                    <div className="mt-4 text-sm text-gray-500">
+                                        1 own company + {activeClientCompanyCount} active client{activeClientCompanyCount === 1 ? '' : 's'}
+                                    </div>
+                                </div>
                             </div>
                             {renderClientsTab()}
                         </>
@@ -1289,7 +1333,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                                     <span className="text-gray-600">Total Amount Due</span>
                                     <span className="text-2xl font-bold text-gray-900">${totalPayable.toLocaleString()}</span>
                                 </div>
-                                <p className="text-xs text-gray-500">Includes 20% platform commission fees</p>
+                                <p className="text-xs text-gray-500">Includes {activeClientCompanyCount} active client compan{activeClientCompanyCount === 1 ? 'y' : 'ies'} and 20% commission credit.</p>
                             </div>
 
                             <div

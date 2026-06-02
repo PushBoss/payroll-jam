@@ -119,6 +119,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
         const rUserId = params.get('resellerUserId');
         const rEmail = params.get('resellerEmail');
         const rCompanyId = params.get('resellerCompanyId');
+        const invitedPlan = params.get('plan');
         const isResellerInvite = params.get('reseller') === 'true';
         const teamInvite = params.get('invitation') === 'true';
 
@@ -144,6 +145,10 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
             if (rUserId) setResellerUserId(rUserId);
             if (rEmail) setResellerEmail(decodeURIComponent(rEmail));
             if (rCompanyId) setResellerCompanyId(rCompanyId);
+            if (invitedPlan) {
+                setFormData(prev => ({ ...prev, plan: invitedPlan }));
+            }
+            setPaymentMethod('reseller-billing');
             toast.info('You\'re signing up through a reseller invitation!', { duration: 5000 });
         }
 
