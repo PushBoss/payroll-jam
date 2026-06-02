@@ -85,7 +85,7 @@ export const BillingService = {
         plan_type: subscription?.planType,
         amount: subscription?.amount,
         currency: subscription?.currency || 'JMD',
-        redirect_url: `${window.location.origin}/dashboard/billing`
+        redirect_url: `${window.location.origin}/api/billing/dimepay/card-return`
       })
     });
 

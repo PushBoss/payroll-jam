@@ -193,6 +193,7 @@ const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({ currentUser, cu
     const [cardClientKey, setCardClientKey] = useState<string | null>(null);
     const [cardEnvironment, setCardEnvironment] = useState<'sandbox' | 'production'>('sandbox');
     const [verificationStatus, setVerificationStatus] = useState<string>('Initializing secure card form...');
+    const [verificationSignal, setVerificationSignal] = useState(0);
     const appliedRef = useRef(false);
 
     const persistVerifiedCard = async (details: any) => {
@@ -264,9 +265,14 @@ const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({ currentUser, cu
                 const details = await dimePayService.getCardDetails(cardRequestToken);
                 if (cancelled) return;
 
-                setVerificationStatus(`Card status: ${details.status}`);
+                const status = details.status || 'PENDING';
+                setVerificationStatus(
+                    status === 'SUCCESS'
+                        ? 'Card verified. Saving payment method...'
+                        : 'Waiting for DimePay verification...'
+                );
 
-                if (details.status === 'SUCCESS' && details.token && !appliedRef.current) {
+                if (status === 'SUCCESS' && details.token && !appliedRef.current) {
                     appliedRef.current = true;
                     setIsApplying(true);
                     await persistVerifiedCard(details);
@@ -294,7 +300,20 @@ const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({ currentUser, cu
             cancelled = true;
             window.clearInterval(interval);
         };
-    }, [cardRequestToken, currentSubscription?.dimepaySubscriptionId, currentSubscription?.id, currentUser?.companyId, onSuccess]);
+    }, [cardRequestToken, currentSubscription?.dimepaySubscriptionId, currentSubscription?.id, currentUser?.companyId, onSuccess, verificationSignal]);
+
+    useEffect(() => {
+        if (!cardRequestToken) return;
+
+        const handleCardReturn = (event: MessageEvent) => {
+            if (event.data?.type !== 'dimepay-card-return') return;
+            setVerificationStatus('Verification submitted. Saving card details...');
+            setVerificationSignal(Date.now());
+        };
+
+        window.addEventListener('message', handleCardReturn);
+        return () => window.removeEventListener('message', handleCardReturn);
+    }, [cardRequestToken]);
 
     useEffect(() => {
         if (!cardRequestToken || !cardClientKey || cardUrl || isLoading || error) return;
@@ -599,7 +618,7 @@ export const Settings: React.FC<SettingsProps> = ({
     const waitForBillingSync = async (companyId: string, attempts = 6, delayMs = 1500) => {
         for (let attempt = 0; attempt < attempts; attempt++) {
             const subscription = await refreshBillingData(companyId);
-            if (subscription?.dimepaySubscriptionId || subscription?.metadata?.card_last4) {
+            if (subscription?.dimepaySubscriptionId || subscription?.paymentMethodLast4 || subscription?.dimeCardToken || subscription?.metadata?.card_last4 || subscription?.metadata?.dime_card_token) {
                 return true;
             }
 
@@ -611,7 +630,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
     const storedCardLast4 = currentSubscription?.paymentMethodLast4 || currentSubscription?.metadata?.card_last4;
     const storedCardBrand = currentSubscription?.paymentMethodBrand || currentSubscription?.metadata?.card_brand;
-    const hasStoredBillingMethod = !!storedCardLast4 || !!currentSubscription?.metadata?.dime_card_token;
+    const hasStoredBillingMethod = !!storedCardLast4 || !!currentSubscription?.dimeCardToken || !!currentSubscription?.metadata?.dime_card_token;
     const BILLING_GRACE_DAYS = 7;
     const currentRetryCount = Number(currentSubscription?.metadata?.retry_count || 0);
     const failedAtRaw = currentSubscription?.metadata?.last_failed_date;

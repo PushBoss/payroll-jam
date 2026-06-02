@@ -59,6 +59,40 @@ const getDimePayRequest = async (path: string, environment: DimePayEnvironment) 
   });
 };
 
+const safeJsonParse = (value: string) => {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+};
+
+const unwrapDimePayResponse = (data: any) => {
+  const body = typeof data?.body === 'string' ? safeJsonParse(data.body) : data?.body;
+  return data?.data?.response || data?.data || body?.response || data?.response || data || {};
+};
+
+const getDimePayMessage = (data: any) => {
+  const body = typeof data?.body === 'string' ? safeJsonParse(data.body) : data?.body;
+  return data?.message || body?.message || data?.details?.body?.message || '';
+};
+
+const normalizeCardDetails = (data: any) => {
+  const source = unwrapDimePayResponse(data);
+
+  return {
+    ...data,
+    ...source,
+    status: source.status || data?.status,
+    token: source.token || source.card_token || data?.token,
+    card_token: source.card_token || source.token || data?.card_token,
+    card_request_token: source.card_request_token || data?.card_request_token,
+    last_four_digits: source.last_four_digits || source.card_last4 || source.card_last_four || data?.last_four_digits,
+    card_scheme: source.card_scheme || source.card_brand || data?.card_scheme,
+    card_expiry: source.card_expiry || data?.card_expiry
+  };
+};
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -77,10 +111,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const data = await response.json().catch(() => null);
 
     if (!response.ok) {
+      const message = getDimePayMessage(data);
+      if (/not verified/i.test(message)) {
+        return res.status(200).json({
+          status: 'PENDING',
+          token: null,
+          card_request_token: token,
+          message
+        });
+      }
+
       return res.status(response.status).json({ error: 'Failed to load card details', details: data });
     }
 
-    return res.status(200).json(data);
+    return res.status(200).json(normalizeCardDetails(data));
   } catch (error: any) {
     console.error('❌ Error getting card details:', error);
     return res.status(500).json({ error: error.message || 'Failed to get card details' });
