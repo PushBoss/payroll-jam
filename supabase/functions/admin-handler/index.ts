@@ -30,6 +30,24 @@ const normalizePlanToFrontend = (plan?: string | null): string => {
 const isResellerEquivalentPlan = (plan?: string | null): boolean =>
     normalizePlanToFrontend(plan) === 'Reseller';
 
+const getPlanMonthlyPricing = (plan?: string | null) => {
+    switch (normalizePlanToFrontend(plan)) {
+        case 'Starter':
+            return { baseFee: 5000, perEmployeeFee: 0 };
+        case 'Pro':
+            return { baseFee: 10000, perEmployeeFee: 500 };
+        case 'Reseller':
+            return { baseFee: 3000, perEmployeeFee: 500 };
+        default:
+            return { baseFee: 0, perEmployeeFee: 0 };
+    }
+};
+
+const calculatePlanMRR = (plan: string | null | undefined, activeEmployeeCount: number) => {
+    const { baseFee, perEmployeeFee } = getPlanMonthlyPricing(plan);
+    return baseFee + (Math.max(0, activeEmployeeCount || 0) * perEmployeeFee);
+};
+
 const normalizeMemberRole = (role?: string | null): string => {
     if (!role) return 'EMPLOYEE';
     const upper = role.trim().toUpperCase();
@@ -995,7 +1013,11 @@ serve(async (req: Request) => {
                     const { count: empCount } = await adminClient
                         .from('employees')
                         .select('*', { count: 'exact', head: true })
-                        .eq('company_id', c.id);
+                        .eq('company_id', c.id)
+                        .eq('status', 'ACTIVE');
+
+                    const activeEmployeeCount = empCount || 0;
+                    const mrr = calculatePlanMRR(c.plan, activeEmployeeCount);
 
                     return {
                         id: c.id,
@@ -1006,8 +1028,8 @@ serve(async (req: Request) => {
                         status: c.status || 'ACTIVE',
                         billingGift,
                         hasActiveBillingGift: isBillingGiftActive(billingGift),
-                        employeeCount: empCount || 0,
-                        mrr: c.settings?.mrr || 0,
+                        employeeCount: activeEmployeeCount,
+                        mrr,
                         createdAt: c.created_at
                     };
                 }));
@@ -1681,17 +1703,27 @@ serve(async (req: Request) => {
                     { count: activeTenants },
                     { count: pendingApprovals },
                     { count: totalEmployees },
-                    { data: activeCompanies }
+                    { data: activeCompanies },
+                    { data: activeEmployees }
                 ] = await Promise.all([
                     adminClient.from('companies').select('*', { count: 'exact', head: true }),
                     adminClient.from('companies').select('*', { count: 'exact', head: true }).eq('status', 'ACTIVE'),
                     adminClient.from('companies').select('*', { count: 'exact', head: true }).in('status', ['PENDING_PAYMENT', 'PENDING_APPROVAL']),
-                    adminClient.from('employees').select('*', { count: 'exact', head: true }),
-                    adminClient.from('companies').select('settings').eq('status', 'ACTIVE')
+                    adminClient.from('employees').select('*', { count: 'exact', head: true }).eq('status', 'ACTIVE'),
+                    adminClient.from('companies').select('id, plan').eq('status', 'ACTIVE'),
+                    adminClient.from('employees').select('company_id').eq('status', 'ACTIVE')
                 ]);
 
-                // Sum up MRR from settings
-                const totalMRR = (activeCompanies || []).reduce((sum: number, c: any) => sum + (c.settings?.mrr || 0), 0);
+                const activeEmployeeCounts = (activeEmployees || []).reduce((acc: Record<string, number>, employee: any) => {
+                    if (employee.company_id) {
+                        acc[employee.company_id] = (acc[employee.company_id] || 0) + 1;
+                    }
+                    return acc;
+                }, {});
+
+                const totalMRR = (activeCompanies || []).reduce((sum: number, company: any) => (
+                    sum + calculatePlanMRR(company.plan, activeEmployeeCounts[company.id] || 0)
+                ), 0);
 
                 return new Response(JSON.stringify({
                     totalTenants: totalTenants || 0,

@@ -11,6 +11,7 @@ import { checkDbConnection, testManualConnection, saveManualConfig, isUsingLocal
 import { CompanyService } from '../services/CompanyService';
 import { toast } from 'sonner';
 import { UserService } from '../services/UserService';
+import { getPlanPriceDetails } from '../utils/pricing';
 
 interface SuperAdminProps {
     plans: PricingPlan[];
@@ -87,6 +88,11 @@ const formatGiftedUntil = (value?: string) => {
         month: 'short',
         day: 'numeric',
     });
+};
+
+const isActiveBillingStatus = (status?: string) => {
+    const normalized = String(status || '').trim().toLowerCase();
+    return normalized === 'active' || normalized === 'trialing';
 };
 
 export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, onImpersonate, initialTab }) => {
@@ -167,7 +173,16 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
 
     // Stats - These are now primarily fetched via Edge Function for accuracy across pages
     // We fall back to local count if edge function isn't used
-    const totalMRR = (platformStats.totalMRR > 0) ? platformStats.totalMRR : tenants.reduce((acc, t) => t.status === 'ACTIVE' ? acc + t.mrr : acc, 0);
+    const calculateTenantMRR = (tenant: ResellerClient) => {
+        if (tenant.status !== 'ACTIVE') return 0;
+        const plan = plans.find(p => p.name === tenant.plan);
+        if (!plan) return Number(tenant.mrr || 0);
+        const { baseFee, perEmpFee } = getPlanPriceDetails(plan, 'monthly');
+        return baseFee + ((Number(tenant.employeeCount) || 0) * perEmpFee);
+    };
+
+    const derivedTenantMRR = tenants.reduce((acc, tenant) => acc + calculateTenantMRR(tenant), 0);
+    const totalMRR = (platformStats.totalMRR > 0) ? platformStats.totalMRR : derivedTenantMRR;
     const totalTenants = (platformStats.totalTenants > 0) ? platformStats.totalTenants : tenants.length;
     const activeTenants = (platformStats.activeTenants > 0) ? platformStats.activeTenants : tenants.filter(t => t.status === 'ACTIVE').length;
     const totalEmployees = (platformStats.totalEmployees > 0) ? platformStats.totalEmployees : tenants.reduce((acc, t) => acc + (t.employeeCount || 0), 0);
@@ -327,17 +342,22 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             try {
                 // Fetch all subscriptions via BillingService (no admin client needed)
                 const subscriptions = await BillingService.getAllSubscriptions();
-                const activeSubs = subscriptions.filter((s: any) => s.status === 'active');
+                const activeSubs = subscriptions.filter((s: any) => isActiveBillingStatus(s.status));
 
                 // Calculate MRR from active subscriptions
-                const mrr = activeSubs.reduce((sum: number, sub: any) => {
-                    if (sub.billing_frequency === 'monthly') {
-                        return sum + Number(sub.amount || 0);
-                    } else if (sub.billing_frequency === 'yearly') {
-                        return sum + (Number(sub.amount || 0) / 12);
+                const subscriptionMRR = activeSubs.reduce((sum: number, sub: any) => {
+                    const frequency = String(sub.billing_frequency || sub.billing_cycle || '').toLowerCase();
+                    const amount = Number(sub.amount || sub.base_price || 0);
+                    if (frequency === 'monthly') {
+                        return sum + amount;
+                    } else if (frequency === 'yearly' || frequency === 'annual') {
+                        return sum + (amount / 12);
                     }
                     return sum;
                 }, 0);
+
+                const tenantMRR = tenants.reduce((sum, tenant) => sum + calculateTenantMRR(tenant), 0);
+                const mrr = subscriptionMRR > 0 ? subscriptionMRR : tenantMRR;
                 
                 const arr = mrr * 12;
 

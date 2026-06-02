@@ -167,9 +167,11 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
     const activeClientCompanyCount = clients.filter(client => client.status === 'ACTIVE').length;
     const managedCompanyCount = activeClientCompanyCount + 1;
 
-    // 2. Calculate Reseller's Own Bill
-    const RESELLER_OWN_BASE = 5000; // User specified $5000
-    const RESELLER_PER_EMP = 500; // Assuming same as standard per-user fee
+    // 2. Calculate Reseller's Own Bill from current plan pricing.
+    const resellerPlan = plans.find(plan => plan.name === 'Reseller');
+    const { baseFee: RESELLER_OWN_BASE, perEmpFee: RESELLER_PER_EMP } = resellerPlan
+        ? getPlanPriceDetails(resellerPlan, 'monthly')
+        : { baseFee: 3000, perEmpFee: 500 };
 
     const resellerOwnBill = RESELLER_OWN_BASE + (resellerOwnEmployeeCount * RESELLER_PER_EMP);
 
