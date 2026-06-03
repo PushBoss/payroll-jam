@@ -33,6 +33,7 @@ export const APP_ROUTES = [
   'portal-profile',
   'sa-overview',
   'sa-tenants',
+  'sa-paying-clients',
   'sa-pending-payments',
   'sa-billing',
   'sa-health',
@@ -78,6 +79,7 @@ export const ROUTE_PATHS: Record<AppRoute, string> = {
   'portal-profile': '/portal/profile',
   'sa-overview': '/admin/overview',
   'sa-tenants': '/admin/tenants',
+  'sa-paying-clients': '/admin/paying-clients',
   'sa-pending-payments': '/admin/pending-payments',
   'sa-billing': '/admin/billing',
   'sa-health': '/admin/health',
@@ -114,6 +116,7 @@ export const AUTH_ENTRY_ROUTES: AppRoute[] = ['login', 'signup', 'verify-email']
 export const SUPER_ADMIN_ROUTES: AppRoute[] = [
   'sa-overview',
   'sa-tenants',
+  'sa-paying-clients',
   'sa-pending-payments',
   'sa-billing',
   'sa-health',

@@ -20,6 +20,31 @@ interface SuperAdminProps {
     initialTab?: string;
 }
 
+interface PayingClient {
+    id: string;
+    companyName: string;
+    adminName: string;
+    adminEmail: string;
+    adminPhone?: string;
+    plan: ResellerClient['plan'];
+    status: string;
+    subscriptionStatus?: string | null;
+    activeEmployees: number;
+    mrr: number;
+    arr: number;
+    currency?: string;
+    paymentMethod: string;
+    dimeSubscriptionId?: string | null;
+    accessUntil?: string | null;
+    lastPaymentDate?: string | null;
+    lastPaymentAmount?: number | null;
+    lastPaymentStatus?: string | null;
+    latestLedgerState?: string | null;
+    latestLedgerEventType?: string | null;
+    risk: 'ok' | 'attention' | 'critical';
+    createdAt?: string;
+}
+
 const DEFAULT_PAYMENT_CONFIG: GlobalConfig = {
     dataSource: 'SUPABASE', // Always use Supabase - no mock data
     currency: 'JMD',
@@ -38,9 +63,9 @@ const DEFAULT_PAYMENT_CONFIG: GlobalConfig = {
         enabled: true,
         environment: 'sandbox',
         sandbox: {
-            apiKey: 'ck_LGKMlNpFiRr63ce0s621VuGLjYdey',
-            secretKey: 'sk_rYoMG45jVM2gvhE-pm4to9EZoW9tD',
-            merchantId: 'mQn_iBSUd-KNq3K',
+            apiKey: '',
+            secretKey: '',
+            merchantId: '',
             domain: 'https://staging.api.dimepay.app'
         },
         production: {
@@ -96,7 +121,7 @@ const isActiveBillingStatus = (status?: string) => {
 };
 
 export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, onImpersonate, initialTab }) => {
-    const [activeTab, setActiveTab] = useState<'overview' | 'tenants' | 'users' | 'plans' | 'logs' | 'settings' | 'health' | 'billing' | 'pending-payments'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'tenants' | 'users' | 'plans' | 'logs' | 'settings' | 'health' | 'billing' | 'pending-payments' | 'paying-clients'>('overview');
 
     // Payment Settings State
     const [paymentConfig, setPaymentConfig] = useState<GlobalConfig>(() => storage.getGlobalConfig() || DEFAULT_PAYMENT_CONFIG);
@@ -154,6 +179,13 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     // Pending Payments State
     const [pendingPayments, setPendingPayments] = useState<any[]>([]);
     const [isLoadingPending, setIsLoadingPending] = useState(false);
+
+    // Paying Clients State
+    const [payingClients, setPayingClients] = useState<PayingClient[]>([]);
+    const [isLoadingPayingClients, setIsLoadingPayingClients] = useState(false);
+    const [payingClientSearch, setPayingClientSearch] = useState('');
+    const [payingClientPlanFilter, setPayingClientPlanFilter] = useState<'ALL' | ResellerClient['plan']>('ALL');
+    const [payingClientRiskFilter, setPayingClientRiskFilter] = useState<'ALL' | PayingClient['risk']>('ALL');
 
     // Database Connection State & Wizard
     const [dbStatus, setDbStatus] = useState<{ connected: boolean; message: string; details?: string } | null>(null);
@@ -263,6 +295,27 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             }
         };
         loadPendingPayments();
+    }, [activeTab]);
+
+    // Load paying clients when tab is active
+    useEffect(() => {
+        const loadPayingClients = async () => {
+            if (activeTab !== 'paying-clients') return;
+            setIsLoadingPayingClients(true);
+            try {
+                const { data, error } = await supabase!.functions.invoke('admin-handler', {
+                    body: { action: 'get-paying-clients', payload: {} }
+                });
+                if (error) throw error;
+                setPayingClients(data?.clients || []);
+            } catch (error) {
+                console.error('Error loading paying clients:', error);
+                toast.error('Failed to load paying clients');
+            } finally {
+                setIsLoadingPayingClients(false);
+            }
+        };
+        loadPayingClients();
     }, [activeTab]);
 
     // Load super admins from Supabase when users tab is active
@@ -747,6 +800,39 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             console.error('Error approving payment:', error);
             toast.error(error.message || 'Failed to approve payment');
         }
+    };
+
+    const handleCreateClientEmail = (client: PayingClient) => {
+        const subject = '[SaaS Admin Update] Regarding Your Workspace Subscription';
+        const body = [
+            `Hi ${client.adminName || 'there'},`,
+            '',
+            `I am reaching out about ${client.companyName}'s Payroll-Jam subscription.`,
+            '',
+            `Plan: ${client.plan}`,
+            `Status: ${client.subscriptionStatus || client.status}`,
+            `Monthly recurring amount: JMD ${client.mrr.toLocaleString()}`,
+            '',
+            'Regards,',
+            'Payroll-Jam Admin'
+        ].join('\n');
+
+        window.location.href = `mailto:${encodeURIComponent(client.adminEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    };
+
+    const handleManagePayingClient = (client: PayingClient) => {
+        onImpersonate({
+            id: client.id,
+            companyName: client.companyName,
+            contactName: client.adminName,
+            email: client.adminEmail,
+            employeeCount: client.activeEmployees,
+            plan: client.plan,
+            status: client.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE',
+            subscriptionStatus: client.subscriptionStatus?.toUpperCase() as any,
+            mrr: client.mrr,
+            createdAt: client.createdAt
+        });
     };
 
     const handlePushTaxUpdate = () => {
@@ -1361,6 +1447,193 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             </div>
         </div>
     );
+
+    const renderPayingClients = () => {
+        const filteredClients = payingClients.filter((client) => {
+            const query = payingClientSearch.trim().toLowerCase();
+            const matchesSearch = !query
+                || client.companyName.toLowerCase().includes(query)
+                || client.adminEmail.toLowerCase().includes(query)
+                || client.adminName.toLowerCase().includes(query);
+            const matchesPlan = payingClientPlanFilter === 'ALL' || client.plan === payingClientPlanFilter;
+            const matchesRisk = payingClientRiskFilter === 'ALL' || client.risk === payingClientRiskFilter;
+            return matchesSearch && matchesPlan && matchesRisk;
+        });
+
+        const totalClientMRR = filteredClients.reduce((sum, client) => sum + Number(client.mrr || 0), 0);
+        const clientsNeedingAttention = filteredClients.filter((client) => client.risk !== 'ok').length;
+        const clientsWithCards = filteredClients.filter((client) => client.paymentMethod !== 'No card on file').length;
+
+        const riskClasses: Record<PayingClient['risk'], string> = {
+            ok: 'bg-green-100 text-green-800',
+            attention: 'bg-amber-100 text-amber-800',
+            critical: 'bg-red-100 text-red-800'
+        };
+
+        return (
+            <div className="space-y-6 animate-fade-in">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                        <p className="text-xs text-gray-500 uppercase font-bold mb-1">Paying Clients</p>
+                        <p className="text-2xl font-bold text-gray-900">{filteredClients.length}</p>
+                    </div>
+                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                        <p className="text-xs text-gray-500 uppercase font-bold mb-1">Filtered MRR</p>
+                        <p className="text-2xl font-bold text-jam-orange">JMD {totalClientMRR.toLocaleString()}</p>
+                    </div>
+                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                        <p className="text-xs text-gray-500 uppercase font-bold mb-1">Cards On File</p>
+                        <p className="text-2xl font-bold text-green-600">{clientsWithCards}</p>
+                    </div>
+                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                        <p className="text-xs text-gray-500 uppercase font-bold mb-1">Needs Attention</p>
+                        <p className={`text-2xl font-bold ${clientsNeedingAttention > 0 ? 'text-amber-600' : 'text-gray-900'}`}>{clientsNeedingAttention}</p>
+                    </div>
+                </div>
+
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div className="p-4 border-b border-gray-100 bg-gray-50 flex flex-col lg:flex-row lg:items-center gap-3 justify-between">
+                        <div>
+                            <h3 className="font-bold text-gray-900">Paying Clients</h3>
+                            <p className="text-sm text-gray-600 mt-1">Operational billing view for active paid workspaces, card status, access dates, and DimePay ledger state.</p>
+                        </div>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                            <div className="relative min-w-[260px]">
+                                <Icons.Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+                                <input
+                                    type="text"
+                                    placeholder="Search company or admin..."
+                                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-jam-orange"
+                                    value={payingClientSearch}
+                                    onChange={(event) => setPayingClientSearch(event.target.value)}
+                                />
+                            </div>
+                            <select
+                                className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-jam-orange"
+                                value={payingClientPlanFilter}
+                                onChange={(event) => setPayingClientPlanFilter(event.target.value as any)}
+                            >
+                                <option value="ALL">All Plans</option>
+                                <option value="Starter">Starter</option>
+                                <option value="Pro">Pro</option>
+                                <option value="Enterprise">Enterprise</option>
+                                <option value="Reseller">Reseller</option>
+                            </select>
+                            <select
+                                className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-jam-orange"
+                                value={payingClientRiskFilter}
+                                onChange={(event) => setPayingClientRiskFilter(event.target.value as any)}
+                            >
+                                <option value="ALL">All Risk</option>
+                                <option value="ok">Healthy</option>
+                                <option value="attention">Attention</option>
+                                <option value="critical">Critical</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead className="bg-gray-50 border-b border-gray-200">
+                                <tr>
+                                    <th className="px-5 py-4 text-xs font-bold text-gray-500 uppercase">Company</th>
+                                    <th className="px-5 py-4 text-xs font-bold text-gray-500 uppercase">Admin</th>
+                                    <th className="px-5 py-4 text-xs font-bold text-gray-500 uppercase">Plan</th>
+                                    <th className="px-5 py-4 text-xs font-bold text-gray-500 uppercase">MRR</th>
+                                    <th className="px-5 py-4 text-xs font-bold text-gray-500 uppercase">Payment</th>
+                                    <th className="px-5 py-4 text-xs font-bold text-gray-500 uppercase">Access</th>
+                                    <th className="px-5 py-4 text-xs font-bold text-gray-500 uppercase">Ledger</th>
+                                    <th className="px-5 py-4 text-xs font-bold text-gray-500 uppercase text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {isLoadingPayingClients ? (
+                                    <tr>
+                                        <td colSpan={8} className="p-12 text-center text-gray-500">
+                                            <Icons.Refresh className="w-8 h-8 animate-spin text-jam-orange mx-auto mb-2" />
+                                            Loading paying clients...
+                                        </td>
+                                    </tr>
+                                ) : filteredClients.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={8} className="p-12 text-center text-gray-500">
+                                            No paying clients match the current filters.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    filteredClients.map((client) => (
+                                        <tr key={client.id} className="hover:bg-gray-50 border-b border-gray-100 last:border-0">
+                                            <td className="px-5 py-4">
+                                                <div className="font-medium text-gray-900">{client.companyName}</div>
+                                                <div className="text-xs text-gray-500">{client.activeEmployees} active employees</div>
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <div className="text-sm text-gray-900">{client.adminName}</div>
+                                                <div className="text-xs text-gray-500">{client.adminEmail}</div>
+                                                {client.adminPhone && <div className="text-xs text-gray-400">{client.adminPhone}</div>}
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                    {client.plan}
+                                                </span>
+                                                <div className="mt-2">
+                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${riskClasses[client.risk]}`}>
+                                                        {client.risk === 'ok' ? 'Healthy' : client.risk === 'attention' ? 'Attention' : 'Critical'}
+                                                    </span>
+                                                </div>
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <div className="text-sm font-bold text-gray-900">JMD {client.mrr.toLocaleString()}</div>
+                                                <div className="text-xs text-gray-500">ARR JMD {client.arr.toLocaleString()}</div>
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <div className="text-sm text-gray-900">{client.paymentMethod}</div>
+                                                <div className="text-xs text-gray-500">{client.dimeSubscriptionId ? `Sub ${client.dimeSubscriptionId}` : 'No DimePay schedule'}</div>
+                                                {client.lastPaymentDate && (
+                                                    <div className="text-xs text-gray-400">
+                                                        Last paid {new Date(client.lastPaymentDate).toLocaleDateString()}
+                                                    </div>
+                                                )}
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <div className="text-sm text-gray-900">{client.subscriptionStatus || client.status}</div>
+                                                <div className="text-xs text-gray-500">
+                                                    {client.accessUntil ? `Until ${new Date(client.accessUntil).toLocaleDateString()}` : 'No access date'}
+                                                </div>
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <div className="text-sm text-gray-900">{client.latestLedgerState || 'No events'}</div>
+                                                <div className="text-xs text-gray-500">{client.latestLedgerEventType || 'Awaiting DimePay event'}</div>
+                                            </td>
+                                            <td className="px-5 py-4 text-right">
+                                                <div className="flex justify-end gap-2">
+                                                    <button
+                                                        onClick={() => handleCreateClientEmail(client)}
+                                                        disabled={!client.adminEmail}
+                                                        className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-gray-200 text-gray-600 hover:text-jam-orange hover:border-jam-orange disabled:opacity-40"
+                                                        title="Create email"
+                                                    >
+                                                        <Icons.Mail className="w-4 h-4" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleManagePayingClient(client)}
+                                                        className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-gray-200 text-gray-600 hover:text-jam-orange hover:border-jam-orange"
+                                                        title="Manage company"
+                                                    >
+                                                        <Icons.ExternalLink className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        );
+    };
 
     const renderBilling = () => (
         <div className="space-y-6 animate-fade-in">
@@ -2375,6 +2648,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             <div className="min-h-[600px] mt-8">
                 {activeTab === 'overview' && renderOverview()}
                 {activeTab === 'tenants' && renderTenants()}
+                {activeTab === 'paying-clients' && renderPayingClients()}
                 {activeTab === 'pending-payments' && renderPendingPayments()}
                 {activeTab === 'users' && renderAdmins()}
                 {activeTab === 'logs' && renderLogs()}

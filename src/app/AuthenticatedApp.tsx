@@ -281,6 +281,7 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
         );
       case 'sa-overview':
       case 'sa-tenants':
+      case 'sa-paying-clients':
       case 'sa-pending-payments':
       case 'sa-billing':
       case 'sa-health':

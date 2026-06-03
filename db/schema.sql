@@ -129,9 +129,9 @@ VALUES (
       'enabled', true,
       'environment', 'sandbox',
       'sandbox', jsonb_build_object(
-        'apiKey', 'ck_LGKMlNpFiRr63ce0s621VuGLjYdey',
-        'secretKey', 'sk_rYoMG45jVM2gvhE-pm4to9EZoW9tD',
-        'merchantId', 'mQn_iBSUd-KNq3K',
+        'apiKey', '',
+        'secretKey', '',
+        'merchantId', '',
         'domain', 'https://staging.api.dimepay.app'
       ),
       'production', jsonb_build_object(
@@ -209,7 +209,7 @@ VALUES (
           'type', 'base',
           'monthly', 0,
           'annual', 0,
-          'baseFee', 5000,
+          'baseFee', 3000,
           'perUserFee', 500,
           'resellerCommission', 20
         ),

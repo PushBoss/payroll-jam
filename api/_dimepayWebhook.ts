@@ -12,6 +12,7 @@ import {
   normalizeDimePayWebhookPayload,
   verifyDimePayJwt
 } from './_dimepayJwt.js';
+import { appendDimePayLedgerEvent } from './_dimepayLedger.js';
 
 const monthFromNow = () => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -493,6 +494,11 @@ export default async function dimePayWebhookHandler(req: VercelRequest, res: Ver
       return res.status(200).json({ received: true, duplicate: true });
     }
 
+    const ledger = await appendDimePayLedgerEvent(event, redact(event));
+    if (!ledger.ok) {
+      console.warn('DimePay ledger append did not complete cleanly:', ledger.error);
+    }
+
     switch (event.type) {
       case 'subscription.created':
       case 'subscription.updated':
@@ -502,6 +508,10 @@ export default async function dimePayWebhookHandler(req: VercelRequest, res: Ver
         await applyPaymentSucceeded(event.data);
         break;
       case 'invoice.payment_failed':
+        if (ledger.derivedState === 'captured' || ledger.derivedState === 'refunded') {
+          console.log('Skipping failed projection because ledger derived state is terminal:', ledger.derivedState);
+          break;
+        }
         await applyPaymentFailed(event.data);
         break;
       case 'card_request.succeeded':

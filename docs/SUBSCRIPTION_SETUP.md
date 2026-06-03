@@ -1,3 +1,10 @@
+<!-- ai-context
+feature: billing/subscriptions
+status: current
+summary: Supabase setup and testing notes for subscription and payment history tables.
+do-not-change: DimePay secrets must never be committed to docs or source; use environment variables or secure admin settings.
+-->
+
 # Subscription & Payment Backend Setup
 
 ## Database Migration
@@ -53,9 +60,12 @@ When a user upgrades their plan:
 
 ## DimePay Production
 
-Updated `.env.local` with production credentials:
-- Secret Key: `sk_zPS5d7zPpXxcTEAecP5TUO3ZJHbOW`
-- Merchant ID: `m9yCMgXfdeDjRto`
+Production DimePay credentials must be configured through secure environment variables or Super Admin settings:
+- `DIMEPAY_CLIENT_KEY`
+- `DIMEPAY_SECRET_KEY`
+- Optional merchant/config values documented in `example.env`
+
+Do not commit live or sandbox DimePay secrets to docs or source files.
 
 ## Cache Issues Resolution
 

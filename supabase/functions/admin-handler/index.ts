@@ -1756,6 +1756,139 @@ serve(async (req: Request) => {
                 });
             }
 
+            case 'get-paying-clients': {
+                await assertSuperAdmin(adminClient, authUser);
+
+                const [
+                    { data: companies, error: companiesError },
+                    { data: owners, error: ownersError },
+                    { data: activeEmployees, error: employeesError },
+                    { data: subscriptions, error: subscriptionsError },
+                    { data: payments, error: paymentsError },
+                    { data: ledgerEvents }
+                ] = await Promise.all([
+                    adminClient
+                        .from('companies')
+                        .select('id, name, email, plan, status, settings, created_at')
+                        .order('created_at', { ascending: false }),
+                    adminClient
+                        .from('app_users')
+                        .select('id, company_id, name, email, phone, role')
+                        .in('role', ['OWNER', 'ADMIN']),
+                    adminClient
+                        .from('employees')
+                        .select('company_id')
+                        .eq('status', 'ACTIVE'),
+                    adminClient
+                        .from('subscriptions')
+                        .select('id, company_id, plan_name, status, amount, currency, billing_frequency, dime_subscription_id, dimepay_subscription_id, dime_card_token, card_last_four, card_brand, payment_method_last4, payment_method_brand, access_until, next_billing_date, updated_at, created_at')
+                        .order('created_at', { ascending: false }),
+                    adminClient
+                        .from('payment_history')
+                        .select('id, company_id, amount, currency, status, transaction_id, invoice_number, payment_date, created_at')
+                        .order('payment_date', { ascending: false }),
+                    adminClient
+                        .from('dimepay_ledger')
+                        .select('company_id, dimepay_reference_id, state, event_type, created_at')
+                        .order('created_at', { ascending: false })
+                        .limit(300)
+                ]);
+
+                if (companiesError) throw companiesError;
+                if (ownersError) throw ownersError;
+                if (employeesError) throw employeesError;
+                if (subscriptionsError) throw subscriptionsError;
+                if (paymentsError) throw paymentsError;
+
+                const employeeCounts = (activeEmployees || []).reduce((acc: Record<string, number>, employee: any) => {
+                    if (employee.company_id) acc[employee.company_id] = (acc[employee.company_id] || 0) + 1;
+                    return acc;
+                }, {});
+
+                const ownersByCompany = (owners || []).reduce((acc: Record<string, any>, user: any) => {
+                    if (!user.company_id) return acc;
+                    const existing = acc[user.company_id];
+                    if (!existing || user.role === 'OWNER') acc[user.company_id] = user;
+                    return acc;
+                }, {});
+
+                const subscriptionByCompany = (subscriptions || []).reduce((acc: Record<string, any>, subscription: any) => {
+                    if (subscription.company_id && !acc[subscription.company_id]) acc[subscription.company_id] = subscription;
+                    return acc;
+                }, {});
+
+                const paymentByCompany = (payments || []).reduce((acc: Record<string, any>, payment: any) => {
+                    if (payment.company_id && !acc[payment.company_id]) acc[payment.company_id] = payment;
+                    return acc;
+                }, {});
+
+                const ledgerByCompany = (ledgerEvents || []).reduce((acc: Record<string, any>, event: any) => {
+                    if (event.company_id && !acc[event.company_id]) acc[event.company_id] = event;
+                    return acc;
+                }, {});
+
+                const payingClients = (companies || [])
+                    .filter((company: any) => normalizePlanToFrontend(company.plan) !== 'Free')
+                    .map((company: any) => {
+                        const employeeCount = employeeCounts[company.id] || 0;
+                        const subscription = subscriptionByCompany[company.id];
+                        const owner = ownersByCompany[company.id];
+                        const latestPayment = paymentByCompany[company.id];
+                        const latestLedgerEvent = ledgerByCompany[company.id];
+                        const mrr = calculatePlanMRR(company.plan, employeeCount);
+                        const hasCard = Boolean(
+                            subscription?.dime_card_token ||
+                            subscription?.card_last_four ||
+                            subscription?.payment_method_last4
+                        );
+                        const subscriptionStatus = String(subscription?.status || '').toLowerCase();
+                        const companyStatus = String(company.status || 'ACTIVE').toUpperCase();
+                        const accessUntil = subscription?.access_until || subscription?.next_billing_date || null;
+                        const accessDate = accessUntil ? new Date(accessUntil) : null;
+                        const daysUntilAccessEnds = accessDate && !Number.isNaN(accessDate.getTime())
+                            ? Math.ceil((accessDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+                            : null;
+
+                        let risk: 'ok' | 'attention' | 'critical' = 'ok';
+                        if (companyStatus === 'SUSPENDED' || subscriptionStatus === 'past_due' || subscriptionStatus === 'failed') {
+                            risk = 'critical';
+                        } else if (!hasCard || companyStatus === 'PENDING_PAYMENT' || (typeof daysUntilAccessEnds === 'number' && daysUntilAccessEnds <= 7)) {
+                            risk = 'attention';
+                        }
+
+                        return {
+                            id: company.id,
+                            companyName: company.name,
+                            adminName: owner?.name || company.settings?.contactName || 'N/A',
+                            adminEmail: owner?.email || company.email || '',
+                            adminPhone: owner?.phone || company.settings?.phone || company.settings?.contactPhone || '',
+                            plan: normalizePlanToFrontend(company.plan),
+                            status: companyStatus,
+                            subscriptionStatus: subscription?.status || null,
+                            activeEmployees: employeeCount,
+                            mrr,
+                            arr: mrr * 12,
+                            currency: subscription?.currency || 'JMD',
+                            paymentMethod: hasCard
+                                ? `${subscription?.card_brand || subscription?.payment_method_brand || 'Card'} ${subscription?.card_last_four || subscription?.payment_method_last4 || ''}`.trim()
+                                : 'No card on file',
+                            dimeSubscriptionId: subscription?.dime_subscription_id || subscription?.dimepay_subscription_id || null,
+                            accessUntil,
+                            lastPaymentDate: latestPayment?.payment_date || null,
+                            lastPaymentAmount: latestPayment?.amount || null,
+                            lastPaymentStatus: latestPayment?.status || null,
+                            latestLedgerState: latestLedgerEvent?.state || null,
+                            latestLedgerEventType: latestLedgerEvent?.event_type || null,
+                            risk,
+                            createdAt: company.created_at
+                        };
+                    });
+
+                return new Response(JSON.stringify({ clients: payingClients }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
             case 'get-all-payments': {
                 if (!authUser) throw new Error('Unauthorized');
                 

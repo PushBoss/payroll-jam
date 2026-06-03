@@ -79,6 +79,7 @@ export const Layout: React.FC<LayoutProps> = ({
   const superAdminNavItems = [
     { id: 'sa-overview', label: 'Overview', icon: Icons.Dashboard, feature: null },
     { id: 'sa-tenants', label: 'Tenants', icon: Icons.Company, feature: null },
+    { id: 'sa-paying-clients', label: 'Paying Clients', icon: Icons.CreditCard, feature: null },
     { id: 'sa-pending-payments', label: 'Pending Payments', icon: Icons.Clock, feature: null },
     { id: 'sa-billing', label: 'Billing', icon: Icons.Bank, feature: null },
     { id: 'sa-health', label: 'System Health', icon: Icons.Zap, feature: null },

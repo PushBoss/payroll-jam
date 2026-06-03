@@ -21,9 +21,9 @@ const DEMO_CONFIG = {
     enabled: true,
     environment: 'sandbox' as const,
     sandbox: {
-        apiKey: import.meta.env.VITE_DIMEPAY_API_KEY_SANDBOX || 'ck_LGKMlNpFiRr63ce0s621VuGLjYdey',
-        secretKey: 'sk_rYoMG45jVM2gvhE-pm4to9EZoW9tD',
-        merchantId: 'mQn_iBSUd-KNq3K',
+        apiKey: import.meta.env.VITE_DIMEPAY_API_KEY_SANDBOX || '',
+        secretKey: '',
+        merchantId: import.meta.env.VITE_DIMEPAY_MERCHANT_ID_SANDBOX || '',
         domain: 'https://staging.api.dimepay.app'
     },
     production: {

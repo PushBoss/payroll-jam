@@ -1,3 +1,10 @@
+<!-- ai-context
+feature: payments/dimepay
+status: current
+summary: Configuration and operational notes for DimePay sandbox/production credentials, webhook security, and billing lifecycle support.
+do-not-change: DimePay secrets must stay in environment variables or secure admin settings, never committed docs or source files.
+-->
+
 # DimePay Configuration Guide
 
 ## Overview
@@ -45,10 +52,10 @@ The DimePay payment gateway now supports separate credentials for **Sandbox (Tes
 └─ API URL: https://staging.api.dimepay.app (auto-set)
 ```
 
-**Default Sandbox Credentials (Pre-filled):**
-- Client Key: `ck_LGKMlNpFiRr63ce0s621VuGLjYdey`
-- Secret Key: `sk_rYoMG45jVM2gvhE-pm4to9EZoW9tD`
-- Merchant ID: `mQn_iBSUd-KNq3K`
+**Sandbox Credential Handling:**
+- Store sandbox values in secure environment variables or the Super Admin settings UI.
+- Do not commit real sandbox or production secrets to docs or source files.
+- Use `example.env` placeholders when documenting variable names.
 
 ### 4. Configure Production Credentials (Green Section)
 
@@ -233,5 +240,5 @@ For DimePay-specific issues:
 
 ---
 
-**Last Updated:** January 2025  
-**Version:** 2.0 (Separate Environment Credentials)
+**Last Updated:** June 2026
+**Version:** 2.1 (Secure Credential Documentation)
