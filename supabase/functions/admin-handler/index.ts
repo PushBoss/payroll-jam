@@ -638,6 +638,7 @@ serve(async (req: Request) => {
                         id: companyId,
                         owner_id: ownerId,
                         name: (name || '').trim(),
+                        email: email ? String(email).trim().toLowerCase() : null,
                         trn: trn || '',
                         address: address || '',
                         plan: plan || 'FREE',

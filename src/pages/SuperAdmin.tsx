@@ -803,6 +803,11 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     };
 
     const handleCreateClientEmail = (client: PayingClient) => {
+        if (!client.adminEmail) {
+            toast.error('No admin email found for this client');
+            return;
+        }
+
         const subject = '[SaaS Admin Update] Regarding Your Workspace Subscription';
         const body = [
             `Hi ${client.adminName || 'there'},`,
@@ -817,7 +822,13 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             'Payroll-Jam Admin'
         ].join('\n');
 
-        window.location.href = `mailto:${encodeURIComponent(client.adminEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        const mailto = `mailto:${client.adminEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        const link = document.createElement('a');
+        link.href = mailto;
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
     };
 
     const handleManagePayingClient = (client: PayingClient) => {
@@ -1461,6 +1472,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         });
 
         const totalClientMRR = filteredClients.reduce((sum, client) => sum + Number(client.mrr || 0), 0);
+        const totalClientARR = totalClientMRR * 12;
         const clientsNeedingAttention = filteredClients.filter((client) => client.risk !== 'ok').length;
         const clientsWithCards = filteredClients.filter((client) => client.paymentMethod !== 'No card on file').length;
 
@@ -1472,7 +1484,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
 
         return (
             <div className="space-y-6 animate-fade-in">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                     <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
                         <p className="text-xs text-gray-500 uppercase font-bold mb-1">Paying Clients</p>
                         <p className="text-2xl font-bold text-gray-900">{filteredClients.length}</p>
@@ -1480,6 +1492,10 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
                         <p className="text-xs text-gray-500 uppercase font-bold mb-1">Filtered MRR</p>
                         <p className="text-2xl font-bold text-jam-orange">JMD {totalClientMRR.toLocaleString()}</p>
+                    </div>
+                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                        <p className="text-xs text-gray-500 uppercase font-bold mb-1">Filtered ARR</p>
+                        <p className="text-2xl font-bold text-jam-orange">JMD {totalClientARR.toLocaleString()}</p>
                     </div>
                     <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
                         <p className="text-xs text-gray-500 uppercase font-bold mb-1">Cards On File</p>
@@ -1588,7 +1604,14 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                             </td>
                                             <td className="px-5 py-4">
                                                 <div className="text-sm text-gray-900">{client.paymentMethod}</div>
-                                                <div className="text-xs text-gray-500">{client.dimeSubscriptionId ? `Sub ${client.dimeSubscriptionId}` : 'No DimePay schedule'}</div>
+                                                <div
+                                                    className="text-xs text-gray-500"
+                                                    title={client.dimeSubscriptionId
+                                                        ? 'DimePay has an active recurring subscription schedule for this company.'
+                                                        : 'No automated recurring DimePay subscription schedule is attached yet. This usually means the company is on manual, reseller, legacy, or pending card-binding billing.'}
+                                                >
+                                                    {client.dimeSubscriptionId ? `Schedule ${client.dimeSubscriptionId}` : 'No recurring DimePay schedule'}
+                                                </div>
                                                 {client.lastPaymentDate && (
                                                     <div className="text-xs text-gray-400">
                                                         Last paid {new Date(client.lastPaymentDate).toLocaleDateString()}
@@ -1609,8 +1632,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                                 <div className="flex justify-end gap-2">
                                                     <button
                                                         onClick={() => handleCreateClientEmail(client)}
-                                                        disabled={!client.adminEmail}
-                                                        className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-gray-200 text-gray-600 hover:text-jam-orange hover:border-jam-orange disabled:opacity-40"
+                                                        className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-gray-200 text-gray-600 hover:text-jam-orange hover:border-jam-orange"
                                                         title="Create email"
                                                     >
                                                         <Icons.Mail className="w-4 h-4" />

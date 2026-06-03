@@ -425,6 +425,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           password: userData.password,
           options: {
             emailRedirectTo: getAuthRedirectUrl('/verify-email'),
+            data: {
+              full_name: userData.name,
+              name: userData.name,
+              phone: userData.phone || undefined,
+            },
           },
         });
         authData = response.data;
@@ -575,6 +580,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               settings: {
                 email:          userData.email,
                 phone:          userData.phone || '',
+                contactName:    userData.name,
+                companyName:    userData.companyName,
                 city:           userData.city,
                 parish:         userData.parish,
                 paymentMethod:  (userData as any).paymentMethod,

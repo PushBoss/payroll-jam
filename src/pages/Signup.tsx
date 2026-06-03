@@ -378,6 +378,11 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
             return;
         }
 
+        if (!isTeamInvitation && !formData.companyName.trim()) {
+            toast.error("Company name is required.");
+            return;
+        }
+
         if (!isTeamInvitation && formData.plan !== 'Free') {
             const employeeCount = Number(formData.numEmployees);
             if (!Number.isInteger(employeeCount) || employeeCount < 1) {
@@ -451,7 +456,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                 // are written against the exact company created at signup.
                 companyId: isTeamInvitation ? undefined : companyId,
                 isOnboarded: isTeamInvitation, // Team members are considered "onboarded" manually
-                companyName: isTeamInvitation ? undefined : (formData.companyName.trim() || `${formData.name}'s Company`),
+                companyName: isTeamInvitation ? undefined : formData.companyName.trim(),
                 address: formData.address.trim() || undefined,
                 city: formData.city.trim() || undefined,
                 parish: formData.parish,
