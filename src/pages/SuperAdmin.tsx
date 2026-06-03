@@ -45,6 +45,13 @@ interface PayingClient {
     createdAt?: string;
 }
 
+interface EmailDraft {
+    to: string;
+    subject: string;
+    body: string;
+    companyName: string;
+}
+
 const DEFAULT_PAYMENT_CONFIG: GlobalConfig = {
     dataSource: 'SUPABASE', // Always use Supabase - no mock data
     currency: 'JMD',
@@ -186,6 +193,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     const [payingClientSearch, setPayingClientSearch] = useState('');
     const [payingClientPlanFilter, setPayingClientPlanFilter] = useState<'ALL' | ResellerClient['plan']>('ALL');
     const [payingClientRiskFilter, setPayingClientRiskFilter] = useState<'ALL' | PayingClient['risk']>('ALL');
+    const [emailDraft, setEmailDraft] = useState<EmailDraft | null>(null);
 
     // Database Connection State & Wizard
     const [dbStatus, setDbStatus] = useState<{ connected: boolean; message: string; details?: string } | null>(null);
@@ -215,6 +223,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
 
     const derivedTenantMRR = tenants.reduce((acc, tenant) => acc + calculateTenantMRR(tenant), 0);
     const totalMRR = (platformStats.totalMRR > 0) ? platformStats.totalMRR : derivedTenantMRR;
+    const totalARR = totalMRR * 12;
     const totalTenants = (platformStats.totalTenants > 0) ? platformStats.totalTenants : tenants.length;
     const activeTenants = (platformStats.activeTenants > 0) ? platformStats.activeTenants : tenants.filter(t => t.status === 'ACTIVE').length;
     const totalEmployees = (platformStats.totalEmployees > 0) ? platformStats.totalEmployees : tenants.reduce((acc, t) => acc + (t.employeeCount || 0), 0);
@@ -822,13 +831,31 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             'Payroll-Jam Admin'
         ].join('\n');
 
-        const mailto = `mailto:${client.adminEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-        const link = document.createElement('a');
-        link.href = mailto;
-        link.rel = 'noopener noreferrer';
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
+        setEmailDraft({
+            to: client.adminEmail,
+            subject,
+            body,
+            companyName: client.companyName
+        });
+    };
+
+    const handleOpenEmailDraft = () => {
+        if (!emailDraft) return;
+        const mailto = `mailto:${encodeURIComponent(emailDraft.to)}?subject=${encodeURIComponent(emailDraft.subject)}&body=${encodeURIComponent(emailDraft.body)}`;
+        window.location.assign(mailto);
+        toast.success('Opening your email app...');
+    };
+
+    const handleCopyEmailDraft = async () => {
+        if (!emailDraft) return;
+        const draft = `To: ${emailDraft.to}\nSubject: ${emailDraft.subject}\n\n${emailDraft.body}`;
+        try {
+            await navigator.clipboard.writeText(draft);
+            toast.success('Email draft copied');
+        } catch (error) {
+            console.error('Failed to copy email draft:', error);
+            toast.error('Could not copy draft automatically');
+        }
     };
 
     const handleManagePayingClient = (client: PayingClient) => {
@@ -957,7 +984,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
 
     const renderOverview = () => (
         <div className="space-y-6 animate-fade-in">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
                 <div className="bg-jam-black text-white p-6 rounded-xl shadow-lg relative overflow-hidden">
                     <div className="relative z-10">
                         <p className="text-sm text-gray-400 uppercase font-bold">Platform MRR</p>
@@ -967,6 +994,18 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                         </p>
                     </div>
                     <Icons.Trending className="absolute right-4 bottom-4 w-24 h-24 text-white opacity-5 transform rotate-12" />
+                </div>
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-sm text-gray-500 uppercase font-bold">Platform ARR</p>
+                            <h3 className="text-3xl font-bold text-gray-900 mt-2">${totalARR.toLocaleString()}</h3>
+                        </div>
+                        <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg">
+                            <Icons.Trending className="w-6 h-6" />
+                        </div>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-2">Projected annual recurring revenue</p>
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                     <div className="flex items-center justify-between">
@@ -2679,6 +2718,62 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 {activeTab === 'billing' && renderBilling()}
                 {activeTab === 'plans' && renderPlans()}
             </div>
+            {emailDraft && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-scale-in">
+                        <div className="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-start">
+                            <div>
+                                <h3 className="text-xl font-bold text-gray-900">Email Draft</h3>
+                                <p className="text-sm text-gray-500 mt-1">Prepared for {emailDraft.companyName}</p>
+                            </div>
+                            <button onClick={() => setEmailDraft(null)} className="text-gray-400 hover:text-gray-600">
+                                <Icons.Close className="w-6 h-6" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">To</label>
+                                <input
+                                    readOnly
+                                    value={emailDraft.to}
+                                    className="w-full rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Subject</label>
+                                <input
+                                    readOnly
+                                    value={emailDraft.subject}
+                                    className="w-full rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Message</label>
+                                <textarea
+                                    readOnly
+                                    rows={9}
+                                    value={emailDraft.body}
+                                    className="w-full rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700"
+                                />
+                            </div>
+                        </div>
+                        <div className="p-6 border-t border-gray-100 flex flex-col sm:flex-row justify-end gap-3 bg-gray-50">
+                            <button
+                                onClick={handleCopyEmailDraft}
+                                className="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-white"
+                            >
+                                <Icons.Copy className="w-4 h-4 mr-2" /> Copy Draft
+                            </button>
+                            <button
+                                onClick={handleOpenEmailDraft}
+                                className="inline-flex items-center justify-center px-5 py-2 rounded-lg bg-jam-black text-white font-bold hover:bg-gray-800"
+                            >
+                                <Icons.Mail className="w-4 h-4 mr-2" /> Open Mail App
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {editingPlan && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                     <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in">
