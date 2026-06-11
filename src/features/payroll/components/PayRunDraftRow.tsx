@@ -1,11 +1,13 @@
 import React from 'react';
 import { Icons } from '../../../components/Icons';
-import { PayRunLineItem } from '../../../core/types';
+import { Employee, PayRunLineItem, PayType } from '../../../core/types';
 
 interface PayRunDraftRowProps {
   item: PayRunLineItem;
+  employee?: Employee;
   payPeriod?: string;
   updateLineItemGross: (id: string, val: string, period?: string) => void;
+  updateLineItemPieceCount: (id: string, val: string, period?: string) => void;
   openAdHocModal: (id: string, type: 'ADDITIONS' | 'DEDUCTIONS') => void;
   openTaxModal: (item: PayRunLineItem) => void;
   openEmployerTaxModal: (item: PayRunLineItem) => void;
@@ -15,8 +17,10 @@ interface PayRunDraftRowProps {
 
 export const PayRunDraftRow: React.FC<PayRunDraftRowProps> = ({
   item,
+  employee,
   payPeriod,
   updateLineItemGross,
+  updateLineItemPieceCount,
   openAdHocModal,
   openTaxModal,
   openEmployerTaxModal,
@@ -27,6 +31,8 @@ export const PayRunDraftRow: React.FC<PayRunDraftRowProps> = ({
   const hasDeductions = item.deductions > 0;
   const isManualTax = item.isTaxOverridden === true;
   const isManualEmployerTax = item.isEmployerTaxOverridden === true;
+  const isPieceRate = employee?.payType === PayType.PIECE_RATE || item.pieceRateAmount !== undefined || item.pieceCount !== undefined;
+  const pieceRateAmount = item.pieceRateAmount ?? employee?.pieceRateAmount ?? 0;
   const [showAdditionsMenu, setShowAdditionsMenu] = React.useState(false);
   const [showDeductionsMenu, setShowDeductionsMenu] = React.useState(false);
 
@@ -37,14 +43,34 @@ export const PayRunDraftRow: React.FC<PayRunDraftRowProps> = ({
         <p className="text-xs text-gray-400">{item.employeeCustomId || 'No ID'}</p>
       </td>
       <td className="px-6 py-4 text-right">
-        <div className="flex items-center justify-end">
-          <input
-            type="number"
-            value={item.grossPay}
-            onChange={(e) => updateLineItemGross(item.employeeId, e.target.value, payPeriod)}
-            className="w-28 text-right border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-jam-orange focus:border-jam-orange bg-white shadow-sm"
-          />
-        </div>
+        {isPieceRate ? (
+          <div className="flex flex-col items-end gap-1">
+            <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Pieces</label>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={item.pieceCount ?? ''}
+              onChange={(e) => updateLineItemPieceCount(item.employeeId, e.target.value, payPeriod)}
+              className="w-24 text-right border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-jam-orange focus:border-jam-orange bg-white shadow-sm"
+            />
+            <div className="text-[10px] text-gray-500">
+              ${pieceRateAmount.toLocaleString()} / piece
+            </div>
+            <div className="text-sm font-bold text-gray-900">
+              ${item.grossPay.toLocaleString()}
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-end">
+            <input
+              type="number"
+              value={item.grossPay}
+              onChange={(e) => updateLineItemGross(item.employeeId, e.target.value, payPeriod)}
+              className="w-28 text-right border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-jam-orange focus:border-jam-orange bg-white shadow-sm"
+            />
+          </div>
+        )}
       </td>
       <td className="px-6 py-4 text-center overflow-visible">
         <div className="flex flex-col items-center relative">

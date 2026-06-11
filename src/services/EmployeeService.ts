@@ -73,6 +73,7 @@ const getPayDataFromRow = (row: DbEmployeeRow | null) => {
   return {
     grossSalary: row.gross_salary,
     hourlyRate: row.hourly_rate,
+    pieceRateAmount: row.pay_data && typeof row.pay_data === 'object' ? (row.pay_data as any).pieceRateAmount : undefined,
     payType: row.pay_type,
     payFrequency: row.pay_frequency
   };
@@ -259,6 +260,7 @@ export const EmployeeService = {
 
       grossSalary: payData?.grossSalary || 0,
       hourlyRate: payData?.hourlyRate,
+      pieceRateAmount: payData?.pieceRateAmount,
       payType: toPayType(payData?.payType),
       payFrequency: toPayFrequency(payData?.payFrequency),
 
@@ -328,6 +330,7 @@ export const EmployeeService = {
     const payData = {
       grossSalary: emp.grossSalary,
       hourlyRate: emp.hourlyRate,
+      pieceRateAmount: emp.payType === 'PIECE_RATE' ? emp.pieceRateAmount : undefined,
       payType: emp.payType,
       payFrequency: emp.payFrequency
     };

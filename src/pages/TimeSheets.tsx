@@ -43,7 +43,9 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
     }
   };
 
-  const filteredSheets = timesheets.filter(ts => {
+  const weekSheets = timesheets.filter(ts => ts.weekStartDate === currentWeekStart);
+
+  const filteredSheets = weekSheets.filter(ts => {
     if (filter === 'ALL') return true;
     if (filter === 'PENDING') return ts.status === 'SUBMITTED';
     return ts.status === filter;
@@ -67,8 +69,10 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
   weekEnd.setDate(weekEnd.getDate() + 6);
   const weekDisplay = `${new Date(currentWeekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
 
-  const pendingCount = timesheets.filter(t => t.status === 'SUBMITTED').length;
-  const totalOvertime = timesheets.reduce((acc, t) => acc + t.totalOvertimeHours, 0);
+  const pendingCount = weekSheets.filter(t => t.status === 'SUBMITTED').length;
+  const totalOvertime = filteredSheets.reduce((acc, t) => acc + t.totalOvertimeHours, 0);
+  const submittedOrApprovedCount = weekSheets.filter(t => t.status === 'SUBMITTED' || t.status === 'APPROVED').length;
+  const submissionRate = weekSheets.length > 0 ? Math.round((submittedOrApprovedCount / weekSheets.length) * 100) : 0;
   const selectedLocation = locations.find((location) => location.id === selectedLocationId) || locations[0];
 
   useEffect(() => {
@@ -229,8 +233,8 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
         <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-green-500">
           <div className="flex justify-between items-start">
              <div>
-                <p className="text-xs text-gray-500 uppercase font-bold">On-Time Submission</p>
-                <p className="text-3xl font-bold text-gray-900 mt-2">92%</p>
+                <p className="text-xs text-gray-500 uppercase font-bold">Submitted / Approved</p>
+                <p className="text-3xl font-bold text-gray-900 mt-2">{submissionRate}%</p>
              </div>
              <div className="p-2 bg-green-50 rounded-lg">
                  <Icons.CheckCircle className="w-6 h-6 text-green-500" />

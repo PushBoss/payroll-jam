@@ -22,8 +22,11 @@ export enum EmployeeType {
 export enum PayType {
   SALARIED = 'SALARIED',
   HOURLY = 'HOURLY',
-  COMMISSION = 'COMMISSION'
+  COMMISSION = 'COMMISSION',
+  PIECE_RATE = 'PIECE_RATE'
 }
+
+export type PayRunCycleFilter = PayFrequency | PayType.PIECE_RATE | 'ALL';
 
 export interface User {
   id: string;
@@ -171,6 +174,7 @@ export interface Employee {
   employeeId?: string; // User-defined Employee ID (e.g., "EMP001", "12345")
   grossSalary: number; // Base Salary for Salaried/Commission
   hourlyRate?: number; // For hourly employees
+  pieceRateAmount?: number; // Rate paid per completed piece/unit
   payType: PayType;
   payFrequency: PayFrequency;
   role: Role;
@@ -265,6 +269,8 @@ export interface PayRunLineItem extends StatutoryDeductions {
   employeeName: string;
   employeeCustomId?: string; // User-defined Employee ID (e.g., "EMP001")
   grossPay: number;
+  pieceRateAmount?: number;
+  pieceCount?: number;
   additions: number; // Total Bonuses
   deductions: number; // Total Other deductions
 
@@ -678,6 +684,7 @@ export interface DbEmployeeRow {
   pay_data?: {
     grossSalary?: number;
     hourlyRate?: number;
+    pieceRateAmount?: number;
     payType?: string;
     payFrequency?: string;
   } | null;

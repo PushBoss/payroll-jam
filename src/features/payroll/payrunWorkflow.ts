@@ -1,4 +1,4 @@
-import { CustomDeduction, Employee, PayFrequency, PayRun, PayRunLineItem } from '../../core/types';
+import { CustomDeduction, Employee, PayFrequency, PayRun, PayRunCycleFilter, PayRunLineItem } from '../../core/types';
 
 interface BuildPayRunRecordParams {
   id: string;
@@ -36,7 +36,7 @@ export const buildPayRunRecord = ({
   lineItems
 });
 
-export const getPayFrequencyForCycle = (payCycle: PayFrequency | 'ALL'): PayFrequency => {
+export const getPayFrequencyForCycle = (payCycle: PayRunCycleFilter): PayFrequency => {
   if (payCycle === PayFrequency.WEEKLY) return PayFrequency.WEEKLY;
   if (payCycle === PayFrequency.FORTNIGHTLY) return PayFrequency.FORTNIGHTLY;
   return PayFrequency.MONTHLY;

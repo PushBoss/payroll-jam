@@ -175,7 +175,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ employees, leaveRequests, 
       } else if (emp.payType === PayType.HOURLY && emp.hourlyRate) {
         // Estimate 160 hours (40hr week * 4)
         return sum + (emp.hourlyRate * 160);
-      } else if (emp.payType === PayType.COMMISSION) {
+      } else if (emp.payType === PayType.COMMISSION || emp.payType === PayType.PIECE_RATE) {
         // Conservative estimate or 0 if unknown
         return sum + (emp.grossSalary || 0);
       }

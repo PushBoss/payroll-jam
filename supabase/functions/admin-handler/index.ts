@@ -283,6 +283,7 @@ const buildEmployeePayload = (employee: Record<string, any>, companyId: string, 
     const payData = {
         grossSalary: employee.grossSalary,
         hourlyRate: employee.hourlyRate,
+        pieceRateAmount: employee.payType === 'PIECE_RATE' ? employee.pieceRateAmount : undefined,
         payType: employee.payType,
         payFrequency: employee.payFrequency
     };

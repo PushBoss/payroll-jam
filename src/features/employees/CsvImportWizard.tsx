@@ -280,7 +280,9 @@ export const CsvImportWizard: React.FC<CsvImportWizardProps> = ({
       // 5. Normalization: Pay Type
       if (data.payType) {
         const typeLower = data.payType.toLowerCase().replace(/[\s-_]/g, '');
-        if (['hourly'].includes(typeLower)) {
+        if (['piecerate', 'piece', 'unitrate'].includes(typeLower)) {
+          data.payType = PayType.PIECE_RATE;
+        } else if (['hourly'].includes(typeLower)) {
           data.payType = PayType.HOURLY;
         } else if (['commission'].includes(typeLower)) {
           data.payType = PayType.COMMISSION;

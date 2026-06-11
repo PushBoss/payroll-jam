@@ -78,6 +78,7 @@ export const AdminService = {
         lastName: e.last_name,
         grossSalary: (e.pay_data as Record<string, unknown>)?.grossSalary ?? e.gross_salary,
         hourlyRate: (e.pay_data as Record<string, unknown>)?.hourlyRate ?? e.hourly_rate,
+        pieceRateAmount: (e.pay_data as Record<string, unknown>)?.pieceRateAmount,
         payFrequency: toPayFrequency(((e.pay_data as Record<string, unknown>)?.payFrequency ?? e.pay_frequency) as string),
         payType: toPayType(((e.pay_data as Record<string, unknown>)?.payType ?? e.pay_type) as string),
         employeeId: e.employee_number || e.employee_id,

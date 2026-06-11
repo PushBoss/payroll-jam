@@ -25,7 +25,7 @@ type TabType = 'identity' | 'org' | 'compliance' | 'banking' | 'statutory' | 'de
 const TAB_FIELDS: Record<TabType, string[]> = {
   identity:   ['firstName', 'lastName', 'email', 'phone', 'address', 'hireDate', 'joiningDate', 'emergencyContact'],
   org:        ['jobTitle', 'department', 'role', 'status'],
-  compliance: ['employeeType', 'payType', 'payFrequency', 'grossSalary', 'hourlyRate'],
+  compliance: ['employeeType', 'payType', 'payFrequency', 'grossSalary', 'hourlyRate', 'pieceRateAmount'],
   banking:    ['bankDetails'],
   statutory:  ['trn', 'nis', 'pensionContributionRate', 'pensionProvider'],
   deductions: ['customDeductions', 'deductionError'],
@@ -98,10 +98,22 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
   }
 
   const handleInputChange = (field: keyof Employee, value: any) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
+    setFormData(prev => {
+      const next = {
+        ...prev,
+        [field]: value
+      };
+
+      if (field === 'payType' && value !== PayType.HOURLY) {
+        next.hourlyRate = undefined;
+      }
+
+      if (field === 'payType' && value !== PayType.PIECE_RATE) {
+        next.pieceRateAmount = undefined;
+      }
+
+      return next;
+    });
     // Clear error for this field
     if (errors[field]) {
       setErrors(prev => {
@@ -133,7 +145,13 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
     if (formData.nis && formData.nis !== 'PENDING' && !isValidNIS(formData.nis)) {
       newErrors.nis = 'Invalid NIS format';
     }
-    if (formData.grossSalary <= 0) newErrors.grossSalary = 'Gross salary must be greater than 0';
+    if (formData.grossSalary <= 0) newErrors.grossSalary = 'Gross salary/rate must be greater than 0';
+    if (formData.payType === PayType.HOURLY && (!formData.hourlyRate || formData.hourlyRate <= 0)) {
+      newErrors.hourlyRate = 'Hourly rate must be greater than 0';
+    }
+    if (formData.payType === PayType.PIECE_RATE && (!formData.pieceRateAmount || formData.pieceRateAmount <= 0)) {
+      newErrors.pieceRateAmount = 'Rate per piece must be greater than 0';
+    }
     if (!formData.hireDate) newErrors.hireDate = 'Hire date is required';
     if (formData.joiningDate && !formData.hireDate) newErrors.hireDate = 'Hire date is required if joining date is set';
 
@@ -227,6 +245,8 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
 
         const employeeToSave: Employee = {
           ...formData,
+          hourlyRate: formData.payType === PayType.HOURLY ? formData.hourlyRate : undefined,
+          pieceRateAmount: formData.payType === PayType.PIECE_RATE ? formData.pieceRateAmount : undefined,
           customDeductions: [...(formData.customDeductions || []), pendingDeduction]
         };
 
@@ -237,7 +257,11 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
       }
 
       console.log('✅ Form validation passed, calling onSave');
-      onSave(formData);
+      onSave({
+        ...formData,
+        hourlyRate: formData.payType === PayType.HOURLY ? formData.hourlyRate : undefined,
+        pieceRateAmount: formData.payType === PayType.PIECE_RATE ? formData.pieceRateAmount : undefined
+      });
     } else {
       console.warn('❌ Form validation failed', newErrors);
       // Auto-navigate to the first tab that has errors, using the fresh newErrors (not stale state)
@@ -603,6 +627,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                     <option value={PayType.SALARIED}>Salaried</option>
                     <option value={PayType.HOURLY}>Hourly</option>
                     <option value={PayType.COMMISSION}>Commission</option>
+                    <option value={PayType.PIECE_RATE}>Piece-Rate</option>
                   </select>
                 </div>
 
@@ -623,7 +648,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Gross Salary/Rate *
+                    {formData.payType === PayType.PIECE_RATE ? 'Estimated Period Gross *' : 'Gross Salary/Rate *'}
                   </label>
                   <div className="flex items-center">
                     <span className="text-gray-600 mr-2">$</span>
@@ -661,6 +686,37 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                         placeholder="0.00"
                       />
                     </div>
+                    {errors.hourlyRate && (
+                      <p className="text-red-600 text-xs mt-1">{errors.hourlyRate}</p>
+                    )}
+                  </div>
+                )}
+
+                {formData.payType === PayType.PIECE_RATE && (
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Rate Per Piece ($)
+                    </label>
+                    <div className="flex items-center">
+                      <span className="text-gray-600 mr-2">$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={(formData.pieceRateAmount !== undefined && formData.pieceRateAmount !== null ? formData.pieceRateAmount : '') as any}
+                        onChange={e => handleInputChange('pieceRateAmount', e.target.value ? parseFloat(e.target.value) : undefined)}
+                        className={`flex-1 border rounded-lg p-3 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange transition-all ${
+                          errors.pieceRateAmount ? 'border-red-500 bg-red-50' : 'border-gray-300 bg-white'
+                        }`}
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Payroll currently uses the estimated period gross until piece counts are captured in a pay run.
+                    </p>
+                    {errors.pieceRateAmount && (
+                      <p className="text-red-600 text-xs mt-1">{errors.pieceRateAmount}</p>
+                    )}
                   </div>
                 )}
               </div>

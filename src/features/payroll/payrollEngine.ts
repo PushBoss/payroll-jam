@@ -6,6 +6,7 @@ import {
   PayFrequency,
   PayrollItemDetail,
   PayRun,
+  PayRunCycleFilter,
   PayRunLineItem,
   PayType,
   PayrollYtdSummary,
@@ -27,6 +28,7 @@ const toFiniteNumber = (value: unknown, fallback = 0): number => {
 export interface PayrollEngineContext {
   timesheets: WeeklyTimesheet[];
   leaveRequests: LeaveRequest[];
+  pieceCounts?: Record<string, number>;
   payRunHistory?: PayRun[];
   ytdSummaries?: Record<string, PayrollYtdSummary>;
   companyData?: CompanySettings;
@@ -223,6 +225,8 @@ export const calculatePayRunLineItem = ({
 
   const grossSalary = toFiniteNumber(employee.grossSalary);
   const hourlyRate = toFiniteNumber(employee.hourlyRate);
+  const pieceRateAmount = toFiniteNumber(employee.pieceRateAmount);
+  const pieceCount = toFiniteNumber(context.pieceCounts?.[employee.id]);
 
   const additionsBreakdown: PayrollItemDetail[] = [];
   const deductionsBreakdown: PayrollItemDetail[] = [];
@@ -310,6 +314,8 @@ export const calculatePayRunLineItem = ({
         });
       }
     }
+  } else if (employee.payType === PayType.PIECE_RATE) {
+    grossPay = pieceRateAmount * pieceCount;
   } else if (employee.payType === PayType.COMMISSION) {
     grossPay = grossSalary;
   } else {
@@ -341,6 +347,8 @@ export const calculatePayRunLineItem = ({
     employeeName: `${employee.firstName} ${employee.lastName}`,
     employeeCustomId: employee.employeeId,
     grossPay: toFiniteNumber(grossPay),
+    pieceRateAmount: employee.payType === PayType.PIECE_RATE ? pieceRateAmount : undefined,
+    pieceCount: employee.payType === PayType.PIECE_RATE ? pieceCount : undefined,
     prorationDetails,
     isTaxOverridden: false,
     isGrossOverridden: false,
@@ -359,14 +367,19 @@ export const initializePayRunLineItems = ({
   context
 }: {
   employees: Employee[];
-  payCycle: PayFrequency | 'ALL';
+  payCycle: PayRunCycleFilter;
   period: string;
   customStartDate?: string;
   customEndDate?: string;
   context: PayrollEngineContext;
 }) => {
   return employees
-    .filter(employee => employee.status === 'ACTIVE' && (payCycle === 'ALL' || employee.payFrequency === payCycle))
+    .filter(employee => {
+      if (employee.status !== 'ACTIVE') return false;
+      if (payCycle === 'ALL') return true;
+      if (payCycle === PayType.PIECE_RATE) return employee.payType === PayType.PIECE_RATE;
+      return employee.payFrequency === payCycle;
+    })
     .map(employee => calculatePayRunLineItem({
       employee,
       period,

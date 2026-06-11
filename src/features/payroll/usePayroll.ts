@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { Employee, PayRunLineItem, PayFrequency, WeeklyTimesheet, LeaveRequest, PayrollItemDetail, StatutoryDeductions, PayRun, CompanySettings, EmployerContributions, PayrollYtdSummary } from '../../core/types';
+import { Employee, PayRunLineItem, WeeklyTimesheet, LeaveRequest, PayrollItemDetail, StatutoryDeductions, PayRun, CompanySettings, EmployerContributions, PayrollYtdSummary, PayRunCycleFilter } from '../../core/types';
 import {
     calculatePayrollTotals,
     calculatePayRunLineItem,
@@ -30,7 +30,7 @@ export const usePayroll = (
     }, [draftItems]);
 
 
-    const initializeRun = (payCycle: PayFrequency | 'ALL', period: string, customStartDate?: string, customEndDate?: string) => {
+    const initializeRun = (payCycle: PayRunCycleFilter, period: string, customStartDate?: string, customEndDate?: string) => {
         const lines = initializePayRunLineItems({
             employees,
             payCycle,
@@ -68,6 +68,28 @@ export const usePayroll = (
                 netPay: (item.grossPay + item.additions) - newTotal,
                 isTaxOverridden: true
             };
+        }));
+    };
+
+    const updateLineItemPieceCount = (employeeId: string, newCountStr: string, period?: string) => {
+        const pieceCount = Math.max(0, parseFloat(newCountStr) || 0);
+        const employee = employees.find(e => e.id === employeeId);
+        const pieceRateAmount = Number(employee?.pieceRateAmount || 0);
+
+        setDraftItems(prev => prev.map(item => {
+            if (item.employeeId !== employeeId) return item;
+            return recalculateDraftLineItem({
+                item: {
+                    ...item,
+                    pieceCount,
+                    pieceRateAmount,
+                    grossPay: pieceRateAmount * pieceCount
+                },
+                employee,
+                companyData,
+                period,
+                payRunHistory
+            });
         }));
     };
 
@@ -171,6 +193,7 @@ export const usePayroll = (
         addEmployeeToRun,
         removeEmployeeFromRun,
         updateLineItemGross,
+        updateLineItemPieceCount,
         updateLineItemTaxes,
         updateLineItemEmployerContributions,
         addAdHocItem,

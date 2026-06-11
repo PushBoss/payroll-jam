@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Icons } from '../components/Icons';
-import { Employee, WeeklyTimesheet, LeaveRequest, PayRun as PayRunType, CompanySettings, IntegrationConfig, PayFrequency, PayrollYtdSummary } from '../core/types';
+import { Employee, WeeklyTimesheet, LeaveRequest, PayRun as PayRunType, CompanySettings, IntegrationConfig, PayFrequency, PayrollYtdSummary, PayRunCycleFilter, PayType } from '../core/types';
 import { usePayroll } from '../features/payroll/usePayroll';
 import { usePayRunUiState } from '../features/payroll/usePayRunUiState';
 import { PayRunDraftRow } from '../features/payroll/components/PayRunDraftRow';
@@ -52,7 +52,7 @@ export const PayRun: React.FC<PayRunProps> = ({
 }) => {
     const { user: currentUser } = useAuth();
     const [step, setStep] = useState<'SETUP' | 'DRAFT' | 'FINALIZE'>('SETUP');
-    const [payCycle, setPayCycle] = useState<PayFrequency | 'ALL'>('ALL');
+    const [payCycle, setPayCycle] = useState<PayRunCycleFilter>('ALL');
     const [payPeriod, setPayPeriod] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
     const [editingRun, setEditingRun] = useState<PayRunType | null>(null);
     const [hasLoadedEdit, setHasLoadedEdit] = useState(false);
@@ -101,6 +101,7 @@ export const PayRun: React.FC<PayRunProps> = ({
         totals,
         initializeRun,
         updateLineItemGross,
+        updateLineItemPieceCount,
         updateLineItemTaxes,
         updateLineItemEmployerContributions,
         addAdHocItem,
@@ -228,6 +229,13 @@ export const PayRun: React.FC<PayRunProps> = ({
         return getIncompletePayRunEmployees(draftItems, employees);
     }, [draftItems, employees]);
 
+    const pieceRateItemsMissingPieces = useMemo(() => {
+        return draftItems.filter(item => {
+            const employee = employees.find(e => e.id === item.employeeId);
+            return employee?.payType === PayType.PIECE_RATE && (item.pieceCount || 0) <= 0;
+        });
+    }, [draftItems, employees]);
+
     const handleInitializeSystem = () => {
         setIsCalculating(true);
         setTimeout(() => {
@@ -315,6 +323,12 @@ export const PayRun: React.FC<PayRunProps> = ({
             return;
         }
 
+        if (pieceRateItemsMissingPieces.length > 0) {
+            const names = pieceRateItemsMissingPieces.map(item => item.employeeName).join(', ');
+            toast.error(`Enter pieces completed before continuing for: ${names}`);
+            return;
+        }
+
         const draftRun = buildCurrentDraftRun('DRAFT');
         setIsSavingDraft(true);
         let saved = false;
@@ -343,6 +357,12 @@ export const PayRun: React.FC<PayRunProps> = ({
         if (incompleteEmployees.length > 0) {
             const names = incompleteEmployees.map(e => `${e!.firstName} ${e!.lastName}`).join(', ');
             toast.error(`Finalization blocked. Please complete data for: ${names}`);
+            return;
+        }
+
+        if (pieceRateItemsMissingPieces.length > 0) {
+            const names = pieceRateItemsMissingPieces.map(item => item.employeeName).join(', ');
+            toast.error(`Finalization blocked. Enter pieces completed for: ${names}`);
             return;
         }
 
@@ -747,7 +767,7 @@ export const PayRun: React.FC<PayRunProps> = ({
                         <thead className="bg-gray-50 border-b border-gray-200">
                             <tr>
                                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase w-64">Employee</th>
-                                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase text-right w-40">Gross</th>
+                                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase text-right w-48">Gross / Units</th>
                                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase text-center">Income / Bonus</th>
                                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase text-center">Other Deductions</th>
                                 <th className="px-6 py-4 text-xs font-bold text-red-500 uppercase text-right w-40">Employee Tax</th>
@@ -761,8 +781,10 @@ export const PayRun: React.FC<PayRunProps> = ({
                                 <PayRunDraftRow
                                     key={item.employeeId}
                                     item={item}
+                                    employee={employees.find(e => e.id === item.employeeId)}
                                     payPeriod={payPeriod}
                                     updateLineItemGross={updateLineItemGross}
+                                    updateLineItemPieceCount={updateLineItemPieceCount}
                                     openAdHocModal={openAdHocModal}
                                     openTaxModal={openTaxModal}
                                     openEmployerTaxModal={openEmployerTaxModal}

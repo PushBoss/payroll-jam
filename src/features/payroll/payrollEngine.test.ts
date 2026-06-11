@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CompanySettings, Employee, LeaveRequest, LeaveType, PayFrequency, PayRun, PayType, Role } from '../../core/types';
-import { calculatePayRunLineItem, calculatePayrollTotals, recalculateDraftLineItem } from './payrollEngine';
+import { calculatePayRunLineItem, calculatePayrollTotals, initializePayRunLineItems, recalculateDraftLineItem } from './payrollEngine';
 
 const defaultCompanyData: CompanySettings = {
   name: 'Payroll Jam',
@@ -181,6 +181,64 @@ describe('payrollEngine', () => {
 
     expect(lineItem.deductions).toBe(500);
     expect(lineItem.deductionsBreakdown?.some(d => d.name === 'Union Fee')).toBe(true);
+  });
+
+  it('calculates piece-rate gross from rate and pieces instead of profile gross', () => {
+    const pieceRateEmployee: Employee = {
+      ...defaultEmployee,
+      grossSalary: 999999,
+      payType: PayType.PIECE_RATE,
+      pieceRateAmount: 250
+    };
+
+    const lineItem = calculatePayRunLineItem({
+      employee: pieceRateEmployee,
+      period: '2026-01',
+      context: {
+        timesheets: [],
+        leaveRequests: [],
+        pieceCounts: { [pieceRateEmployee.id]: 12 },
+        payRunHistory: [],
+        companyData: defaultCompanyData
+      }
+    });
+
+    expect(lineItem.grossPay).toBe(3000);
+    expect(lineItem.pieceRateAmount).toBe(250);
+    expect(lineItem.pieceCount).toBe(12);
+  });
+
+  it('can initialize a piece-rate-only pay run', () => {
+    const pieceRateEmployee: Employee = {
+      ...defaultEmployee,
+      id: 'piece-1',
+      payType: PayType.PIECE_RATE,
+      pieceRateAmount: 150
+    };
+    const hourlyEmployee: Employee = {
+      ...defaultEmployee,
+      id: 'hourly-1',
+      payType: PayType.HOURLY,
+      payFrequency: PayFrequency.WEEKLY,
+      hourlyRate: 1200
+    };
+
+    const lineItems = initializePayRunLineItems({
+      employees: [pieceRateEmployee, hourlyEmployee],
+      payCycle: PayType.PIECE_RATE,
+      period: '2026-01',
+      context: {
+        timesheets: [],
+        leaveRequests: [],
+        pieceCounts: { [pieceRateEmployee.id]: 8 },
+        payRunHistory: [],
+        companyData: defaultCompanyData
+      }
+    });
+
+    expect(lineItems).toHaveLength(1);
+    expect(lineItems[0].employeeId).toBe(pieceRateEmployee.id);
+    expect(lineItems[0].grossPay).toBe(1200);
   });
 
   it('keeps cumulative PAYE when recalculating edited draft lines', () => {

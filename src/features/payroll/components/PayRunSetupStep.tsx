@@ -1,14 +1,14 @@
 import React from 'react';
 import { Icons } from '../../../components/Icons';
 import { PayRunDateRangeSelector } from '../../../components/PayRunDateRangeSelector';
-import { PayFrequency } from '../../../core/types';
+import { PayFrequency, PayRunCycleFilter, PayType } from '../../../core/types';
 
 interface PayRunSetupStepProps {
   payPeriod: string;
   payPeriodOptions: { value: string; label: string }[];
-  payCycle: PayFrequency | 'ALL';
+  payCycle: PayRunCycleFilter;
   setPayPeriod: (value: string) => void;
-  setPayCycle: (value: PayFrequency | 'ALL') => void;
+  setPayCycle: (value: PayRunCycleFilter) => void;
   isDateRangeSelectorOpen: boolean;
   setIsDateRangeSelectorOpen: (value: boolean) => void;
   periodStartDate: string | null;
@@ -65,12 +65,13 @@ export const PayRunSetupStep: React.FC<PayRunSetupStepProps> = ({
             <label className="block text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">Pay Cycle Filter</label>
             <select
               value={payCycle}
-              onChange={(e) => setPayCycle(e.target.value as PayFrequency | 'ALL')}
+              onChange={(e) => setPayCycle(e.target.value as PayRunCycleFilter)}
               className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange transition-shadow bg-white"
             >
               <option value={PayFrequency.MONTHLY}>Monthly (Salaried)</option>
               <option value={PayFrequency.FORTNIGHTLY}>Fortnightly</option>
               <option value={PayFrequency.WEEKLY}>Weekly</option>
+              <option value={PayType.PIECE_RATE}>Piece-Rate Only</option>
               <option value="ALL">All Employees (Mixed)</option>
             </select>
           </div>
@@ -120,7 +121,7 @@ export const PayRunSetupStep: React.FC<PayRunSetupStepProps> = ({
 
       {isDateRangeSelectorOpen && (
         <PayRunDateRangeSelector
-          payFrequency={payCycle === 'ALL' ? PayFrequency.MONTHLY : payCycle}
+          payFrequency={payCycle === 'ALL' || payCycle === PayType.PIECE_RATE ? PayFrequency.MONTHLY : payCycle}
           initialStartDate={periodStartDate || undefined}
           initialEndDate={periodEndDate || undefined}
           onDateRangeChange={(startDate, endDate) => {
