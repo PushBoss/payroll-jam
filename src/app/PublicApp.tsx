@@ -2,6 +2,7 @@ import React, { Suspense } from 'react';
 import { Toaster } from 'sonner';
 import { sendContactSupportClick } from '../services/supportService';
 import { CookieConsent } from '../components/CookieConsent';
+import { SupportWidget } from '../components/SupportWidget';
 import { ContactUs } from '../pages/ContactUs';
 import { User } from '../core/types';
 import { AppLoadingFallback } from './AppLoadingFallback';
@@ -195,6 +196,7 @@ export const PublicApp: React.FC<PublicAppProps> = ({ currentPath, navigateTo, a
       <Toaster richColors position="top-right" />
       <CookieConsent />
       {renderRoute()}
+      <SupportWidget config={appData.globalConfig?.supportWidget} />
     </Suspense>
   );
 };

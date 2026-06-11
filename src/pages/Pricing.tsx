@@ -44,6 +44,23 @@ export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onF
     );
   }
 
+  const CycleToggle = ({ compact = false }: { compact?: boolean }) => (
+    <div className={`flex items-center ${compact ? 'justify-between rounded-lg bg-gray-100 p-2 mb-5' : 'justify-center space-x-4'}`}>
+      <span className={`text-sm font-semibold ${cycle === 'monthly' ? 'text-gray-900' : 'text-gray-500'}`}>Monthly</span>
+      <button
+        type="button"
+        onClick={() => setCycle(cycle === 'monthly' ? 'annual' : 'monthly')}
+        className={`relative inline-flex h-8 w-14 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${cycle === 'annual' ? 'bg-jam-orange' : 'bg-gray-200'}`}
+        aria-label="Toggle monthly or yearly pricing"
+      >
+        <span className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${cycle === 'annual' ? 'translate-x-6' : 'translate-x-0'}`} />
+      </button>
+      <span className={`text-sm font-semibold ${cycle === 'annual' ? 'text-gray-900' : 'text-gray-500'}`}>
+        Yearly <span className="text-jam-orange text-xs ml-1 font-bold">(Save 10%)</span>
+      </span>
+    </div>
+  );
+
   const renderPrice = (plan: PricingPlan) => {
     const { formattedAmount, suffix, perEmpFee } = getPlanPriceDetails(plan, cycle);
     
@@ -84,17 +101,8 @@ export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onF
           </p>
 
           {/* Toggle */}
-          <div className="flex items-center justify-center space-x-4">
-            <span className={`text-sm font-semibold ${cycle === 'monthly' ? 'text-gray-900' : 'text-gray-500'}`}>Monthly</span>
-            <button
-              onClick={() => setCycle(cycle === 'monthly' ? 'annual' : 'monthly')}
-              className={`relative inline-flex h-8 w-14 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${cycle === 'annual' ? 'bg-jam-orange' : 'bg-gray-200'}`}
-            >
-              <span className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${cycle === 'annual' ? 'translate-x-6' : 'translate-x-0'}`} />
-            </button>
-            <span className={`text-sm font-semibold ${cycle === 'annual' ? 'text-gray-900' : 'text-gray-500'}`}>
-              Yearly <span className="text-jam-orange text-xs ml-1 font-bold">(Save 10%)</span>
-            </span>
+          <div className="hidden md:block">
+            <CycleToggle />
           </div>
         </div>
 
@@ -113,6 +121,9 @@ export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onF
                   {plan.limit.toLowerCase().includes('employee') ? plan.limit : `${plan.limit} Employees`}
                 </p>
                 <p className={`text-sm mb-6 opacity-80 min-h-[40px]`}>{plan.description}</p>
+                <div className="md:hidden">
+                  <CycleToggle compact />
+                </div>
 
                 <div className="mb-6">
                   {renderPrice(plan)}
@@ -149,12 +160,12 @@ export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onF
             <h2 className="text-3xl font-bold text-gray-900 mb-4">Still have questions?</h2>
             <p className="text-gray-500 mb-8">Our team is based in Kingston and ready to help you set up your payroll compliance.</p>
             <div className="flex justify-center space-x-4">
-              <button className="flex items-center text-jam-black font-semibold hover:text-jam-orange">
+              <button onClick={onContactClick} className="flex items-center text-jam-black font-semibold hover:text-jam-orange">
                 <Icons.Users className="w-5 h-5 mr-2" />
                 Contact Sales
               </button>
               <span className="text-gray-300">|</span>
-              <button className="flex items-center text-jam-black font-semibold hover:text-jam-orange">
+              <button onClick={onFaqClick} className="flex items-center text-jam-black font-semibold hover:text-jam-orange">
                 <Icons.File className="w-5 h-5 mr-2" />
                 Read Documentation
               </button>

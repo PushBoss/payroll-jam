@@ -340,6 +340,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ plans = [], onLogin, o
                   <p className={`text-sm mb-6 min-h-[48px] ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>
                     {plan.description}
                   </p>
+
+                  <ul className="space-y-3 mb-8">
+                    {plan.features.map((feature, i) => (
+                      <li key={i} className={`flex items-start text-sm ${plan.highlight ? 'text-gray-200' : 'text-gray-700'}`}>
+                        <Icons.CheckMark className={`w-4 h-4 mr-2 mt-0.5 flex-shrink-0 ${plan.highlight ? 'text-jam-orange' : 'text-green-600'}`} />
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
                   
                   <button 
                     onClick={() => onSignup(plan.name)}

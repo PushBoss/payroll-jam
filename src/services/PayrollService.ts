@@ -69,6 +69,41 @@ interface GetPayRunsOptions {
   includeLineItems?: boolean;
 }
 
+const mapTimesheetRow = (row: Record<string, any>): WeeklyTimesheet => ({
+  id: String(row.id || ''),
+  employeeId: String(row.employee_id || row.employeeId || ''),
+  employeeName: String(row.employee_name || row.employeeName || ''),
+  weekStartDate: String(row.week_start_date || row.weekStartDate || ''),
+  weekEndDate: String(row.week_end_date || row.weekEndDate || ''),
+  status: (row.status || 'DRAFT') as WeeklyTimesheet['status'],
+  totalRegularHours: Number(row.total_regular_hours ?? row.totalRegularHours ?? 0),
+  totalOvertimeHours: Number(row.total_overtime_hours ?? row.totalOvertimeHours ?? 0),
+  entries: Array.isArray(row.entries) ? row.entries : [],
+  source: (row.source || 'MANUAL') as WeeklyTimesheet['source'],
+  companyId: row.company_id || row.companyId || undefined,
+  locationId: row.location_id || row.locationId || undefined,
+  locationName: row.location_name || row.locationName || undefined,
+  clockInAt: row.clock_in_at || row.clockInAt || undefined,
+});
+
+const toTimesheetPayload = (timesheet: WeeklyTimesheet, companyId: string) => ({
+  id: timesheet.id,
+  company_id: companyId,
+  employee_id: timesheet.employeeId,
+  employee_name: timesheet.employeeName,
+  week_start_date: timesheet.weekStartDate,
+  week_end_date: timesheet.weekEndDate,
+  status: timesheet.status,
+  total_regular_hours: timesheet.totalRegularHours,
+  total_overtime_hours: timesheet.totalOvertimeHours,
+  entries: timesheet.entries,
+  source: timesheet.source || 'MANUAL',
+  location_id: timesheet.locationId || null,
+  location_name: timesheet.locationName || null,
+  clock_in_at: timesheet.clockInAt || null,
+  submitted_at: timesheet.status === 'SUBMITTED' ? new Date().toISOString() : null,
+});
+
 export const PayrollService = {
   getPayRuns: async (companyId: string, options: GetPayRunsOptions = {}): Promise<PayRun[]> => {
     if (!supabase) return [];
@@ -173,8 +208,23 @@ export const PayrollService = {
     const { data, error } = await supabase
       .from('timesheets')
       .select('*')
-      .eq('company_id', companyId);
+      .eq('company_id', companyId)
+      .order('week_start_date', { ascending: false });
     if (error) return [];
-    return (data || []) as WeeklyTimesheet[];
-  }
+    return (data || []).map(mapTimesheetRow).filter((timesheet) => timesheet.id);
+  },
+
+  saveTimesheet: async (timesheet: WeeklyTimesheet, companyId: string): Promise<WeeklyTimesheet> => {
+    const client = requireSupabase();
+    const payload = toTimesheetPayload(timesheet, companyId);
+
+    const { data, error } = await client
+      .from('timesheets')
+      .upsert(payload)
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    return mapTimesheetRow(data || payload);
+  },
 };

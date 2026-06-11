@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { Icons } from './Icons';
-import { Role, CompanySettings } from '../core/types';
+import { Role, CompanySettings, GlobalConfig } from '../core/types';
 import { useAuth } from '../context/AuthContext';
 import { hasFeatureAccess } from '../utils/featureAccess';
+import { SupportWidget } from './SupportWidget';
 
 
 interface LayoutProps {
@@ -19,6 +20,7 @@ interface LayoutProps {
   subscriptionStatus?: 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'PENDING_PAYMENT';
   isOverLimit?: boolean; // Soft Lock Prop
   companyData?: CompanySettings;
+  supportWidget?: GlobalConfig['supportWidget'];
 }
 
 export const Layout: React.FC<LayoutProps> = ({
@@ -30,7 +32,8 @@ export const Layout: React.FC<LayoutProps> = ({
   systemBanner,
   subscriptionStatus = 'ACTIVE',
   isOverLimit = false,
-  companyData
+  companyData,
+  supportWidget
 }) => {
   const { user, logout, stopImpersonation } = useAuth();
 
@@ -69,6 +72,7 @@ export const Layout: React.FC<LayoutProps> = ({
 
   const portalNavItems = [
     { id: 'portal-home', label: 'My Pay', icon: Icons.Payroll, feature: null },
+    { id: 'portal-clock-in', label: 'Clock In', icon: Icons.Clock, feature: null },
     { id: 'portal-timesheets', label: 'My Hours', icon: Icons.Clock, feature: null },
     { id: 'portal-leave', label: 'Time Off', icon: Icons.Plane, feature: null },
     { id: 'portal-docs', label: 'Documents', icon: Icons.Compliance, feature: null },
@@ -320,6 +324,7 @@ export const Layout: React.FC<LayoutProps> = ({
           </main>
         </div>
       </div>
+      <SupportWidget config={supportWidget} />
     </div>
   );
 };

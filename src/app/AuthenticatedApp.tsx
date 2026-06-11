@@ -215,8 +215,9 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
         return (
           <TimeSheetsPage
             timesheets={appData.timesheets}
+            companyData={appData.companyData || undefined}
             onUpdate={(timesheet: any) =>
-              appData.setTimesheets(appData.timesheets.map((saved) => (saved.id === timesheet.id ? timesheet : saved)))
+              void appData.handleSaveTimesheet(timesheet)
             }
           />
         );
@@ -233,6 +234,20 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
             onUpdateEmployee={appData.handleUpdateEmployee}
           />
         );
+      case 'portal-clock-in':
+        return (
+          <EmployeePortalPage
+            user={user}
+            employee={portalEmployee}
+            view="clock-in"
+            leaveRequests={appData.leaveRequests}
+            onRequestLeave={appData.handleSaveLeaveRequest}
+            payRunHistory={appData.payRunHistory}
+            companyData={appData.companyData || undefined}
+            onUpdateEmployee={appData.handleUpdateEmployee}
+            onClockIn={(timesheet: any) => void appData.handleSaveTimesheet(timesheet)}
+          />
+        );
       case 'portal-timesheets':
         return (
           <EmployeePortalPage
@@ -242,6 +257,7 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
             leaveRequests={appData.leaveRequests}
             onRequestLeave={appData.handleSaveLeaveRequest}
             onUpdateEmployee={appData.handleUpdateEmployee}
+            onClockIn={(timesheet: any) => void appData.handleSaveTimesheet(timesheet)}
           />
         );
       case 'portal-leave':
@@ -318,6 +334,7 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
         managingCompanyName={appData.companyData?.name || 'Your Company'}
         systemBanner={appData.globalConfig?.systemBanner}
         companyData={appData.companyData || undefined}
+        supportWidget={appData.globalConfig?.supportWidget}
         subscriptionStatus={appData.companyData?.subscriptionStatus}
         isOverLimit={appData.subscription.isOverLimit}
       >

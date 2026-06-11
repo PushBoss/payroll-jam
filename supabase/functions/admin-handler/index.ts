@@ -1003,7 +1003,7 @@ serve(async (req: Request) => {
                     const billingGift = toBillingGift(c.settings?.billingGift);
                     const { data: ownerData } = await adminClient
                         .from('app_users')
-                        .select('name, email')
+                        .select('name, email, phone')
                         .eq('company_id', c.id)
                         .in('role', ['OWNER', 'ADMIN'])
                         .order('role', { ascending: true }) // ADMIN < OWNER alphabetically, but OWNER preferred
@@ -1024,6 +1024,7 @@ serve(async (req: Request) => {
                         id: c.id,
                         companyName: c.name,
                         email: c.email || ownerData?.email || '',
+                        phone: c.settings?.phone || ownerData?.phone || '',
                         contactName: ownerData?.name || c.settings?.contactName || 'N/A',
                         plan: normalizePlanToFrontend(c.plan),
                         status: c.status || 'ACTIVE',

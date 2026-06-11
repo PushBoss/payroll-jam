@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { TAX_CONSTANTS } from '../../core/taxUtils';
 import { TaxConfig } from '../../core/types';
 
@@ -22,7 +22,7 @@ export const DEFAULT_ORG_TAX_CONFIG: TaxConfig = {
 
 interface TaxConfigCardProps {
   config?: TaxConfig;
-  onSave: (config: TaxConfig) => Promise<void>;
+  onSave: (config: TaxConfig) => void | Promise<void>;
   isSaving?: boolean;
 }
 
@@ -70,8 +70,14 @@ export const TaxConfigCard: React.FC<TaxConfigCardProps> = ({ config, onSave, is
       Object.entries(config).filter(([, v]) => typeof v === 'number' && Number.isFinite(v))
     ) : {}),
   };
+  const configSignature = JSON.stringify(mergedConfig);
   const [draft, setDraft] = useState<TaxConfig>(mergedConfig);
   const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setDraft(mergedConfig);
+    setSaved(false);
+  }, [configSignature]);
 
   const update = (key: keyof TaxConfig) => (val: number) =>
     setDraft(prev => ({ ...prev, [key]: val }));

@@ -85,6 +85,34 @@ export const usePayrollData = ({ user, isSupabaseMode, activeCompanyId }: UsePay
     }
   };
 
+  const upsertTimesheetLocally = (savedTimesheets: WeeklyTimesheet[], timesheet: WeeklyTimesheet) => {
+    const existingIndex = savedTimesheets.findIndex((saved) => saved.id === timesheet.id);
+    if (existingIndex >= 0) {
+      const updated = [...savedTimesheets];
+      updated[existingIndex] = timesheet;
+      return updated;
+    }
+    return [timesheet, ...savedTimesheets];
+  };
+
+  const handleSaveTimesheet = async (timesheet: WeeklyTimesheet): Promise<boolean> => {
+    const targetCompanyId = activeCompanyId || user?.companyId || timesheet.companyId;
+
+    if (isSupabaseMode && targetCompanyId) {
+      try {
+        const saved = await PayrollService.saveTimesheet(timesheet, targetCompanyId);
+        setTimesheets((prev) => upsertTimesheetLocally(prev, saved));
+        return true;
+      } catch (error: any) {
+        console.error('Failed to save timesheet to Supabase:', error);
+        toast.error(error?.message || 'Failed to save timesheet to database. Saved locally only.');
+      }
+    }
+
+    setTimesheets((prev) => upsertTimesheetLocally(prev, timesheet));
+    return false;
+  };
+
   const loadFullPayRunHistory = useCallback(async () => {
     const targetCompanyId = activeCompanyId || user?.companyId;
     if (!isSupabaseMode || !targetCompanyId || payRunDetailsLoaded || payRunDetailsLoading) return;
@@ -109,6 +137,7 @@ export const usePayrollData = ({ user, isSupabaseMode, activeCompanyId }: UsePay
     payRunDetailsLoading,
     timesheets,
     setTimesheets,
+    handleSaveTimesheet,
     handleSavePayRun,
     handleDeletePayRun,
     loadFullPayRunHistory,

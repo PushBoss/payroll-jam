@@ -345,6 +345,7 @@ export interface ResellerClient {
   companyName: string;
   contactName: string;
   email: string;
+  phone?: string;
   employeeCount: number;
   plan: 'Free' | 'Starter' | 'Pro' | 'Enterprise' | 'Reseller';
   status: 'ACTIVE' | 'PENDING' | 'SUSPENDED';
@@ -397,6 +398,14 @@ export interface TimeEntry {
   isOvertime: boolean;
 }
 
+export interface BranchLocation {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  geofenceRadiusMeters: number;
+}
+
 export interface WeeklyTimesheet {
   id: string;
   employeeId: string;
@@ -407,6 +416,11 @@ export interface WeeklyTimesheet {
   totalRegularHours: number;
   totalOvertimeHours: number;
   entries: TimeEntry[];
+  source?: 'MANUAL' | 'AUTO_QR';
+  companyId?: string;
+  locationId?: string;
+  locationName?: string;
+  clockInAt?: string;
 }
 
 // Accounting Integration Types
@@ -454,6 +468,7 @@ export interface CompanySettings {
   taxConfig?: TaxConfig;
   departments?: Department[];
   designations?: Designation[];
+  locations?: BranchLocation[];
   billingGift?: BillingGift;
 }
 
@@ -480,7 +495,14 @@ export interface GlobalConfig {
   dataSource?: 'LOCAL' | 'SUPABASE';
   currency: 'JMD' | 'USD';
   pricingPlans?: PricingPlan[];
+  taxConfig?: TaxConfig;
   supportEmail?: string;
+  supportWidget?: {
+    enabled: boolean;
+    whatsappUrl: string;
+    position: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+    customCss?: string;
+  };
   emailjs?: {
     serviceId: string;
     templateId: string;

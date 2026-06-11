@@ -16,13 +16,22 @@ import { CompanyService } from '../../services/CompanyService';
 import { INITIAL_PLANS } from '../../services/planService';
 import { DEFAULT_TAX_CONFIG } from '../payroll/payrollConfig';
 
+const validTaxConfigEntries = (config?: Partial<TaxConfig> | null): Partial<TaxConfig> => (
+  config
+    ? Object.fromEntries(
+      Object.entries(config).filter(([, v]) => typeof v === 'number' && Number.isFinite(v))
+    ) as Partial<TaxConfig>
+    : {}
+);
+
 export const useCompanyConfigData = () => {
   const hasSupabaseEnv = Boolean(import.meta.env?.VITE_SUPABASE_URL && import.meta.env?.VITE_SUPABASE_ANON_KEY);
+  const cachedGlobalConfig = storage.getGlobalConfig();
 
   // Initialise globalConfig: if Supabase env is present, stamp dataSource immediately so no
   // extra render is needed to fix it up after mount.
   const [globalConfig, setGlobalConfig] = useState<GlobalConfig | null>(() => {
-    const cached = storage.getGlobalConfig();
+    const cached = cachedGlobalConfig;
     if (hasSupabaseEnv && cached && cached.dataSource !== 'SUPABASE') {
       const stamped = { ...cached, dataSource: 'SUPABASE' } as GlobalConfig;
       storage.saveGlobalConfig(stamped);
@@ -37,7 +46,11 @@ export const useCompanyConfigData = () => {
   });
 
   const [companyData, setCompanyData] = useState<CompanySettings | null>(() => storage.getCompanyData());
-  const [taxConfig, setTaxConfig] = useState<TaxConfig>(() => storage.getTaxConfig() || DEFAULT_TAX_CONFIG);
+  const [taxConfig, setTaxConfig] = useState<TaxConfig>(() => ({
+    ...DEFAULT_TAX_CONFIG,
+    ...validTaxConfigEntries(cachedGlobalConfig?.taxConfig),
+    ...validTaxConfigEntries(storage.getTaxConfig()),
+  }));
   const [integrationConfig, setIntegrationConfig] = useState<IntegrationConfig>(
     () => storage.getIntegrationConfig() || { provider: 'CSV', mappings: [] }
   );
@@ -51,6 +64,11 @@ export const useCompanyConfigData = () => {
     return globalConfig?.dataSource === 'SUPABASE';
   }, [globalConfig?.dataSource, hasSupabaseEnv]);
 
+  const globalDefaultTaxConfig = useMemo(() => ({
+    ...DEFAULT_TAX_CONFIG,
+    ...validTaxConfigEntries(globalConfig?.taxConfig),
+  }), [globalConfig?.taxConfig]);
+
   // Mount guards: skip first effect fire so we never write back data we just read from localStorage
   const didMountTax = useRef(false);
   const didMountIntegration = useRef(false);
@@ -62,6 +80,12 @@ export const useCompanyConfigData = () => {
     if (!didMountTax.current) { didMountTax.current = true; return; }
     storage.saveTaxConfig(taxConfig);
   }, [taxConfig]);
+
+  useEffect(() => {
+    if (!companyData?.taxConfig) {
+      setTaxConfig(globalDefaultTaxConfig);
+    }
+  }, [companyData?.taxConfig, globalDefaultTaxConfig]);
 
   useEffect(() => {
     if (!didMountIntegration.current) { didMountIntegration.current = true; return; }
@@ -121,13 +145,14 @@ export const useCompanyConfigData = () => {
 
     setCompanyData(loadedCompany);
     // Merge DB config with defaults so every TaxConfig field has a valid number
-    setTaxConfig({ ...DEFAULT_TAX_CONFIG, ...Object.fromEntries(
-      Object.entries(loadedCompany.taxConfig || {}).filter(([, v]) => typeof v === 'number' && Number.isFinite(v))
-    ) });
+    setTaxConfig({
+      ...globalDefaultTaxConfig,
+      ...validTaxConfigEntries(loadedCompany.taxConfig),
+    });
     if (loadedCompany.departments) setDepartments(loadedCompany.departments);
     if (loadedCompany.designations) setDesignations(loadedCompany.designations);
     storage.saveCompanyData(loadedCompany);
-  }, []);
+  }, [globalDefaultTaxConfig]);
 
   const handleUpdatePlans = useCallback(async (updatedPlans: PricingPlan[]) => {
     setPlans(updatedPlans);

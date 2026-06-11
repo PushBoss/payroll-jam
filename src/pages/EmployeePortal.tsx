@@ -5,19 +5,22 @@ import { User, PayRunLineItem, LeaveType, WeeklyTimesheet, TimeEntry, LeaveReque
 import { PayslipView } from '../components/PayslipView';
 import { MultiDateCalendar } from '../components/MultiDateCalendar';
 import { generateP24CSV } from '../utils/exportHelpers';
+import { calculateHaversineDistanceMeters, createAutoQrTimesheet, decodeClockInPayload, getCompanyLocations } from '../utils/attendance';
+import { toast } from 'sonner';
 
 interface PortalProps {
     user: User;
     employee?: Employee;
-    view?: 'home' | 'documents' | 'profile' | 'leave' | 'timesheets';
+    view?: 'home' | 'documents' | 'profile' | 'leave' | 'timesheets' | 'clock-in';
     leaveRequests: LeaveRequest[];
     onRequestLeave: (req: LeaveRequest) => void;
     payRunHistory?: PayRun[];
     companyData?: CompanySettings;
     onUpdateEmployee?: (emp: Employee) => void | boolean | Promise<void | boolean>;
+    onClockIn?: (timesheet: WeeklyTimesheet) => void;
 }
 
-export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = 'home', leaveRequests, onRequestLeave, payRunHistory = [], companyData, onUpdateEmployee }) => {
+export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = 'home', leaveRequests, onRequestLeave, payRunHistory = [], companyData, onUpdateEmployee, onClockIn }) => {
     // Check if company plan allows Employee Portal access
     const hasPortalAccess = companyData && 
         (companyData.plan === 'Starter' || 
@@ -34,6 +37,7 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
     const [leaveReason, setLeaveReason] = useState('');
     const [selectedDates, setSelectedDates] = useState<string[]>([]);
     const [leaveSubmitted, setLeaveSubmitted] = useState(false);
+    const [clockInStatus, setClockInStatus] = useState<'idle' | 'checking' | 'success' | 'error'>('idle');
 
     // Timesheet State
     const [currentWeek, setCurrentWeek] = useState<WeeklyTimesheet>({
@@ -43,6 +47,7 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
         weekStartDate: '2025-01-27',
         weekEndDate: '2025-02-02',
         status: 'DRAFT',
+        source: 'MANUAL',
         totalRegularHours: 0,
         totalOvertimeHours: 0,
         entries: [
@@ -121,6 +126,61 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
         setTimeout(() => setLeaveSubmitted(false), 3000); 
         setLeaveReason('');
         setSelectedDates([]);
+    };
+
+    const handleQrClockIn = () => {
+        const params = new URLSearchParams(window.location.search);
+        const payload = decodeClockInPayload(params.get('qr'));
+        if (!payload || !companyData?.id || payload.company_id !== companyData.id) {
+            toast.error('Clock-in rejected. This QR code is invalid for your company.');
+            setClockInStatus('error');
+            return;
+        }
+
+        const location = getCompanyLocations(companyData).find((item) => item.id === payload.location_id);
+        if (!location) {
+            toast.error('Clock-in rejected. This branch location is not active.');
+            setClockInStatus('error');
+            return;
+        }
+
+        if (!navigator.geolocation) {
+            toast.error('Clock-in rejected. Geolocation is not available on this device.');
+            setClockInStatus('error');
+            return;
+        }
+
+        setClockInStatus('checking');
+        navigator.geolocation.getCurrentPosition((position) => {
+            const distance = calculateHaversineDistanceMeters(
+                {
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude,
+                },
+                {
+                    latitude: location.latitude,
+                    longitude: location.longitude,
+                }
+            );
+
+            if (distance > location.geofenceRadiusMeters) {
+                toast.error('Clock-in rejected. You are outside your branch location boundary.');
+                setClockInStatus('error');
+                return;
+            }
+
+            const timesheet = createAutoQrTimesheet(user, employee, companyData.id!, location);
+            onClockIn?.(timesheet);
+            toast.success(`Clock-in accepted at ${location.name}.`);
+            setClockInStatus('success');
+        }, () => {
+            toast.error('Clock-in rejected. Location permission is required.');
+            setClockInStatus('error');
+        }, {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 0,
+        });
     };
 
     const handleTimeChange = (id: string, field: keyof TimeEntry, value: string) => {
@@ -273,6 +333,61 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                 payDate={selectedPayslip.date}
                 onClose={() => setSelectedPayslip(null)}
             />
+        );
+    }
+
+    if (view === 'clock-in') {
+        const payload = decodeClockInPayload(new URLSearchParams(window.location.search).get('qr'));
+        const location = payload
+            ? getCompanyLocations(companyData).find((item) => item.id === payload.location_id)
+            : undefined;
+
+        return (
+            <div className="mx-auto max-w-md space-y-6 animate-fade-in">
+                <div>
+                    <h2 className="text-3xl font-bold text-gray-900">QR Clock-in</h2>
+                    <p className="mt-1 text-gray-500">Validate your device location before submitting attendance.</p>
+                </div>
+
+                <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+                    <div className="mb-6 rounded-lg bg-gray-50 p-4">
+                        <p className="text-xs font-bold uppercase text-gray-500">Branch</p>
+                        <p className="mt-1 text-lg font-bold text-gray-900">{location?.name || 'Unknown branch'}</p>
+                        {location && (
+                            <p className="mt-1 text-sm text-gray-500">Allowed radius: {location.geofenceRadiusMeters} meters</p>
+                        )}
+                    </div>
+
+                    {clockInStatus === 'success' ? (
+                        <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-green-800">
+                            <p className="font-bold">Clock-in accepted</p>
+                            <p className="mt-1 text-sm">Your attendance has been submitted as AUTO_QR.</p>
+                        </div>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={handleQrClockIn}
+                            disabled={clockInStatus === 'checking' || !payload || !location}
+                            className="flex w-full items-center justify-center rounded-lg bg-jam-black px-4 py-3 font-bold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            {clockInStatus === 'checking' ? (
+                                <>
+                                    <Icons.Refresh className="mr-2 h-5 w-5 animate-spin" />
+                                    Checking location...
+                                </>
+                            ) : (
+                                'Validate Location & Clock In'
+                            )}
+                        </button>
+                    )}
+
+                    {(!payload || !location) && (
+                        <p className="mt-3 text-sm text-red-600">
+                            This clock-in link is invalid or no longer matches an active branch location.
+                        </p>
+                    )}
+                </div>
+            </div>
         );
     }
 

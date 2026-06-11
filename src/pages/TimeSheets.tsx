@@ -1,17 +1,27 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 import { Icons } from '../components/Icons';
-import { WeeklyTimesheet } from '../core/types';
+import { CompanySettings, WeeklyTimesheet } from '../core/types';
+import { buildAppUrl } from '../app/routes';
+import { encodeClockInPayload, getCompanyLocations } from '../utils/attendance';
 
 interface TimeSheetsProps {
   timesheets?: WeeklyTimesheet[];
   onUpdate?: (ts: WeeklyTimesheet) => void;
+  companyData?: CompanySettings;
 }
 
 export const TimeSheets: React.FC<TimeSheetsProps> = ({ 
   timesheets = [], 
-  onUpdate 
+  onUpdate,
+  companyData
 }) => {
   const [filter, setFilter] = useState<'ALL' | 'PENDING' | 'APPROVED'>('ALL');
+  const locations = getCompanyLocations(companyData);
+  const [qrModalOpen, setQrModalOpen] = useState(false);
+  const [kioskMode, setKioskMode] = useState(false);
+  const [selectedLocationId, setSelectedLocationId] = useState(locations[0]?.id || '');
+  const [qrImageUrl, setQrImageUrl] = useState('');
   const [currentWeekStart, setCurrentWeekStart] = useState<string>(() => {
     // Get Monday of current week
     const today = new Date();
@@ -59,6 +69,39 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
 
   const pendingCount = timesheets.filter(t => t.status === 'SUBMITTED').length;
   const totalOvertime = timesheets.reduce((acc, t) => acc + t.totalOvertimeHours, 0);
+  const selectedLocation = locations.find((location) => location.id === selectedLocationId) || locations[0];
+  const qrPayload = selectedLocation && companyData?.id ? encodeClockInPayload(companyData.id, selectedLocation.id) : '';
+  const clockInUrl = qrPayload ? buildAppUrl('portal-clock-in', { qr: qrPayload }) : '';
+
+  useEffect(() => {
+    let active = true;
+
+    if (!clockInUrl) {
+      setQrImageUrl('');
+      return () => {
+        active = false;
+      };
+    }
+
+    QRCode.toDataURL(clockInUrl, {
+      errorCorrectionLevel: 'M',
+      margin: 2,
+      scale: 10,
+      color: {
+        dark: '#000000',
+        light: '#ffffff',
+      },
+    }).then((dataUrl) => {
+      if (active) setQrImageUrl(dataUrl);
+    }).catch((error) => {
+      console.error('Failed to generate QR code:', error);
+      if (active) setQrImageUrl('');
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [clockInUrl]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -68,11 +111,85 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
           <p className="text-gray-500 mt-1">Review employee hours and overtime for the current pay cycle.</p>
         </div>
         <div className="mt-4 md:mt-0 flex space-x-3">
+          <button
+            onClick={() => setQrModalOpen(true)}
+            className="bg-jam-black text-white px-4 py-2 rounded-lg hover:bg-gray-800 flex items-center"
+          >
+            <Icons.Clock className="w-4 h-4 mr-2" /> Generate Clock-in QR
+          </button>
           <button className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 flex items-center">
             <Icons.Download className="w-4 h-4 mr-2" /> Export Report
           </button>
         </div>
       </div>
+
+      {qrModalOpen && selectedLocation && (
+        <div className={`${kioskMode ? 'fixed inset-0 z-[100] bg-white' : 'fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4'} print:static print:block print:bg-white`}>
+          <style>{`
+            @media print {
+              body * { visibility: hidden; }
+              .clock-in-qr-print, .clock-in-qr-print * { visibility: visible; }
+              .clock-in-qr-print { position: absolute; inset: 0; margin: auto; width: 100%; }
+              .no-print { display: none !important; }
+            }
+          `}</style>
+          <div className={`${kioskMode ? 'h-full w-full' : 'w-full max-w-lg rounded-xl bg-white shadow-2xl'} clock-in-qr-print overflow-hidden`}>
+            <div className="no-print flex items-center justify-between border-b border-gray-100 bg-gray-50 p-4">
+              <div>
+                <h3 className="font-bold text-gray-900">Generate Clock-in QR</h3>
+                <p className="text-xs text-gray-500">Choose a branch location for employee clock-in.</p>
+              </div>
+              <button onClick={() => setQrModalOpen(false)} className="text-gray-400 hover:text-gray-700">
+                <Icons.Close className="h-5 w-5" />
+              </button>
+            </div>
+            <div className={`${kioskMode ? 'flex h-full flex-col items-center justify-center p-10' : 'p-6'} text-center`}>
+              <div className="no-print mb-5 space-y-3 text-left">
+                <label className="block text-xs font-bold uppercase text-gray-500">Branch Location</label>
+                <select
+                  value={selectedLocation.id}
+                  onChange={(event) => setSelectedLocationId(event.target.value)}
+                  className="w-full rounded-lg border border-gray-300 p-2 text-sm"
+                >
+                  {locations.map((location) => (
+                    <option key={location.id} value={location.id}>
+                      {location.name} ({location.geofenceRadiusMeters}m)
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <h2 className={`${kioskMode ? 'text-4xl' : 'text-2xl'} font-bold text-gray-900`}>{selectedLocation.name}</h2>
+              <p className="mt-1 text-sm text-gray-500">Scan to clock in within {selectedLocation.geofenceRadiusMeters} meters.</p>
+              {qrImageUrl && (
+                <img
+                  src={qrImageUrl}
+                  alt={`Clock-in QR for ${selectedLocation.name}`}
+                  className={`${kioskMode ? 'mt-10 h-[65vh] w-[65vh]' : 'mx-auto mt-6 h-72 w-72'} border-4 border-black bg-white object-contain`}
+                />
+              )}
+              {!qrImageUrl && (
+                <p className="mt-6 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  QR code could not be generated. Confirm the company has an active branch location.
+                </p>
+              )}
+              <div className="no-print mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+                <button
+                  onClick={() => setKioskMode((value) => !value)}
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
+                >
+                  {kioskMode ? 'Exit Kiosk Mode' : 'Launch Kiosk Mode'}
+                </button>
+                <button
+                  onClick={() => window.print()}
+                  className="rounded-lg bg-jam-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+                >
+                  Print QR Code Badge
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -178,6 +295,12 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
                 <tr key={ts.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4">
                     <div className="font-medium text-gray-900">{ts.employeeName}</div>
+                    <div className="mt-1 flex items-center gap-2 text-xs text-gray-400">
+                      <span className={`rounded px-1.5 py-0.5 font-bold ${ts.source === 'AUTO_QR' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                        {ts.source || 'MANUAL'}
+                      </span>
+                      {ts.locationName && <span>{ts.locationName}</span>}
+                    </div>
                   </td>
                   <td className="px-6 py-4 text-center text-sm text-gray-500">
                     {ts.weekStartDate}

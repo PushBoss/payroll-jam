@@ -1,5 +1,9 @@
 import { PricingPlan } from '../core/types';
 
+const ANNUAL_DISCOUNT_RATE = 0.10;
+
+const annualizeWithDiscount = (monthlyAmount: number) => monthlyAmount * (1 - ANNUAL_DISCOUNT_RATE) * 12;
+
 export const getPlanPriceDetails = (plan: PricingPlan, cycle: 'monthly' | 'annual') => {
   const period = cycle === 'monthly' ? '/month' : '/year';
 
@@ -15,13 +19,19 @@ export const getPlanPriceDetails = (plan: PricingPlan, cycle: 'monthly' | 'annua
     };
   }
 
-  const amount = cycle === 'monthly' ? plan.priceConfig.monthly : (plan.priceConfig.annual || plan.priceConfig.monthly * 10);
+  const amount = cycle === 'monthly'
+    ? plan.priceConfig.monthly
+    : annualizeWithDiscount(plan.priceConfig.monthly || 0);
   const baseFee = plan.priceConfig.type === 'base'
-    ? (cycle === 'monthly' ? (plan.priceConfig.monthly || plan.priceConfig.baseFee || 0) : (plan.priceConfig.annual || (plan.priceConfig.baseFee || 0) * 10 || 0))
+    ? (cycle === 'monthly'
+      ? (plan.priceConfig.monthly || plan.priceConfig.baseFee || 0)
+      : annualizeWithDiscount(plan.priceConfig.monthly || plan.priceConfig.baseFee || 0))
     : amount;
 
   const perEmpFee = plan.priceConfig.type === 'base'
-    ? (cycle === 'monthly' ? (plan.priceConfig.perUserFee || 500) : ((plan.priceConfig.perUserFee || 500) * 10))
+    ? (cycle === 'monthly'
+      ? (plan.priceConfig.perUserFee || 500)
+      : annualizeWithDiscount(plan.priceConfig.perUserFee || 500))
     : (plan.priceConfig.type === 'per_emp' ? amount : 0);
 
   let suffix = period;
@@ -64,4 +74,3 @@ export const calculateProrationUpgrade = (
   const proratedAmount = (daysRemaining / totalDays) * priceDelta;
   return Math.max(0, parseFloat(proratedAmount.toFixed(2)));
 };
-

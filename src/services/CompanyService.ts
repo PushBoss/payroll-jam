@@ -46,6 +46,7 @@ export const CompanyService = {
       taxConfig: settings.taxConfig,
       departments: settings.departments || data.departments || [],
       designations: settings.designations || data.designations || [],
+      locations: settings.locations || [],
       billingGift,
     };
   },
@@ -82,7 +83,8 @@ export const CompanyService = {
       reseller_defaults: settings.reseller_defaults ?? existingSettings.reseller_defaults,
       taxConfig: settings.taxConfig ?? existingSettings.taxConfig,
       departments: settings.departments ?? existingSettings.departments ?? [],
-      designations: settings.designations ?? existingSettings.designations ?? []
+      designations: settings.designations ?? existingSettings.designations ?? [],
+      locations: settings.locations ?? existingSettings.locations ?? []
     };
 
     const payload = {

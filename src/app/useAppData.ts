@@ -125,6 +125,7 @@ export const useAppData = ({ user, updateUser, impersonate, navigateTo }: UseApp
     payRunDetailsLoading,
     timesheets,
     setTimesheets,
+    handleSaveTimesheet,
     handleSavePayRun,
     handleDeletePayRun,
     loadFullPayRunHistory,
@@ -148,6 +149,7 @@ export const useAppData = ({ user, updateUser, impersonate, navigateTo }: UseApp
     applyLoadedCompany,
     setEmployees,
     setPayRunHistory,
+    setTimesheets,
     setLeaveRequests,
     setUsers,
   });
@@ -232,6 +234,7 @@ export const useAppData = ({ user, updateUser, impersonate, navigateTo }: UseApp
     handleUpdateEmployee,
     handleDeleteEmployee,
     handleSavePayRun,
+    handleSaveTimesheet,
     handleDeletePayRun,
     handleSaveLeaveRequest,
     handleUpdateLeaveStatus,

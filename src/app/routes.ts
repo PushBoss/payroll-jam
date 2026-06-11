@@ -27,6 +27,7 @@ export const APP_ROUTES = [
   'onboarding',
   'employee-onboarding',
   'portal-home',
+  'portal-clock-in',
   'portal-timesheets',
   'portal-leave',
   'portal-docs',
@@ -73,6 +74,7 @@ export const ROUTE_PATHS: Record<AppRoute, string> = {
   onboarding: '/app/onboarding',
   'employee-onboarding': '/portal/onboarding',
   'portal-home': '/portal',
+  'portal-clock-in': '/portal/clock-in',
   'portal-timesheets': '/portal/timesheets',
   'portal-leave': '/portal/leave',
   'portal-docs': '/portal/documents',
@@ -128,6 +130,7 @@ export const SUPER_ADMIN_ROUTES: AppRoute[] = [
 
 export const PORTAL_ROUTES: AppRoute[] = [
   'portal-home',
+  'portal-clock-in',
   'portal-timesheets',
   'portal-leave',
   'portal-docs',

@@ -57,6 +57,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [paymentMethod, setPaymentMethod] = useState<'card' | 'direct-deposit' | 'reseller-billing'>('card');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [showMobileSummary, setShowMobileSummary] = useState(false);
     const [pendingInvitations, setPendingInvitations] = useState<(AccountMember & { company_name?: string; inviter_name?: string; company_plan?: string })[]>([]);
     const [newUserId, setNewUserId] = useState<string | null>(null);
 
@@ -240,6 +241,74 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
 
     // Recalculate pricing whenever formData changes (especially billingCycle, plan, or employee counts)
     const pricing = useMemo(() => getPricing(), [formData.plan, formData.billingCycle, formData.numEmployees, formData.numCompanies]);
+
+    const OrderSummaryBreakdown = () => (
+        <div className="space-y-2 text-sm">
+            {pricing.type === 'per_emp' && (
+                <div className="flex justify-between text-gray-600">
+                    <span>{formData.numEmployees || 1} Employee{(parseInt(formData.numEmployees) || 1) > 1 ? 's' : ''} x ${pricing.perEmpPrice.toLocaleString()}</span>
+                    <span>${pricing.subtotal.toLocaleString()}</span>
+                </div>
+            )}
+            {pricing.type === 'flat' && (
+                <div className="flex justify-between text-gray-600">
+                    <span>Base Plan</span>
+                    <span>${pricing.subtotal.toLocaleString()}</span>
+                </div>
+            )}
+            {pricing.type === 'base' && (
+                <>
+                    {formData.plan === 'Reseller' ? (
+                        <>
+                            <div className="flex justify-between text-gray-600">
+                                <span className="font-medium">Company Fees:</span>
+                                <span></span>
+                            </div>
+                            <div className="flex justify-between text-gray-600 text-sm pl-3">
+                                <span>{Math.max(1, parseInt(formData.numCompanies) || 1)} Compan{(Math.max(1, parseInt(formData.numCompanies) || 1)) > 1 ? 'ies' : 'y'} x ${pricing.basePrice.toLocaleString()}/ea</span>
+                                <span>${(Math.max(1, parseInt(formData.numCompanies) || 1) * pricing.basePrice).toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between text-gray-600 mt-2">
+                                <span className="font-medium">Employee Fees:</span>
+                                <span></span>
+                            </div>
+                            <div className="flex justify-between text-gray-600 text-sm pl-3">
+                                <span>{formData.numEmployees || 1} Employee{(parseInt(formData.numEmployees) || 1) > 1 ? 's' : ''} x ${pricing.perEmpPrice.toLocaleString()}/ea</span>
+                                <span>${((parseInt(formData.numEmployees) || 1) * pricing.perEmpPrice).toLocaleString()}</span>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div className="flex justify-between text-gray-600">
+                                <span>Base Fee</span>
+                                <span>${pricing.basePrice.toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between text-gray-600">
+                                <span>{formData.numEmployees || 1} Employee{(parseInt(formData.numEmployees) || 1) > 1 ? 's' : ''} x ${pricing.perEmpPrice.toLocaleString()}/ea</span>
+                                <span>${((parseInt(formData.numEmployees) || 1) * pricing.perEmpPrice).toLocaleString()}</span>
+                            </div>
+                        </>
+                    )}
+                </>
+            )}
+            {pricing.platformFees > 0 && (
+                <div className="flex justify-between text-gray-600">
+                    <span>Dime Platform Fees (3.5%)</span>
+                    <span>${pricing.platformFees.toLocaleString()}</span>
+                </div>
+            )}
+            {formData.plan === 'Reseller' && pricing.resellerCommissionAmount > 0 && (
+                <div className="flex justify-between text-gray-500 text-xs">
+                    <span>Partner commission payout ({Math.round(pricing.resellerCommissionRate * 100)}%)</span>
+                    <span>${pricing.resellerCommissionAmount.toLocaleString()}</span>
+                </div>
+            )}
+            <div className="flex justify-between font-bold text-gray-900 pt-2 border-t border-gray-200">
+                <span>Total</span>
+                <span>${pricing.total.toLocaleString()}</span>
+            </div>
+        </div>
+    );
 
     // Generate companyId early so it can be passed to DimePay for webhook linking
     const [companyId] = useState(() => generateUUID());
@@ -623,7 +692,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                 />
             )}
 
-            <div className="min-h-screen bg-gray-50 flex">
+            <div className="min-h-screen bg-gray-50 flex pb-24 lg:pb-0">
                 {/* Left Side - Form */}
                 <div className="flex-1 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-20 xl:px-24 bg-white">
                     <div className="mx-auto w-full max-w-sm lg:w-96">
@@ -1126,72 +1195,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                         </div>
                                     </div>
 
-                                    {/* Pricing Breakdown */}
-                                    <div className="space-y-2 text-sm">
-                                        {pricing.type === 'per_emp' && (
-                                            <div className="flex justify-between text-gray-600">
-                                                <span>{formData.numEmployees || 1} Employee{(parseInt(formData.numEmployees) || 1) > 1 ? 's' : ''} × ${pricing.perEmpPrice.toLocaleString()}</span>
-                                                <span>${pricing.subtotal.toLocaleString()}</span>
-                                            </div>
-                                        )}
-                                        {pricing.type === 'flat' && (
-                                            <div className="flex justify-between text-gray-600">
-                                                <span>Base Plan</span>
-                                                <span>${pricing.subtotal.toLocaleString()}</span>
-                                            </div>
-                                        )}
-                                        {pricing.type === 'base' && (
-                                            <>
-                                                {formData.plan === 'Reseller' ? (
-                                                    <>
-                                                        <div className="flex justify-between text-gray-600">
-                                                            <span className="font-medium">Company Fees:</span>
-                                                            <span></span>
-                                                        </div>
-                                                        <div className="flex justify-between text-gray-600 text-sm pl-3">
-                                                            <span>{Math.max(1, parseInt(formData.numCompanies) || 1)} Compan{(Math.max(1, parseInt(formData.numCompanies) || 1)) > 1 ? 'ies' : 'y'} × ${pricing.basePrice.toLocaleString()}/ea</span>
-                                                            <span>${(Math.max(1, parseInt(formData.numCompanies) || 1) * pricing.basePrice).toLocaleString()}</span>
-                                                        </div>
-                                                        <div className="flex justify-between text-gray-600 mt-2">
-                                                            <span className="font-medium">Employee Fees:</span>
-                                                            <span></span>
-                                                        </div>
-                                                        <div className="flex justify-between text-gray-600 text-sm pl-3">
-                                                            <span>{formData.numEmployees || 1} Employee{(parseInt(formData.numEmployees) || 1) > 1 ? 's' : ''} × ${pricing.perEmpPrice.toLocaleString()}/ea</span>
-                                                            <span>${((parseInt(formData.numEmployees) || 1) * pricing.perEmpPrice).toLocaleString()}</span>
-                                                        </div>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <div className="flex justify-between text-gray-600">
-                                                            <span>Base Fee</span>
-                                                            <span>${pricing.basePrice.toLocaleString()}</span>
-                                                        </div>
-                                                        <div className="flex justify-between text-gray-600">
-                                                            <span>{formData.numEmployees || 1} Employee{(parseInt(formData.numEmployees) || 1) > 1 ? 's' : ''} × ${pricing.perEmpPrice.toLocaleString()}/ea</span>
-                                                            <span>${((parseInt(formData.numEmployees) || 1) * pricing.perEmpPrice).toLocaleString()}</span>
-                                                        </div>
-                                                    </>
-                                                )}
-                                            </>
-                                        )}
-                                        {pricing.platformFees > 0 && (
-                                            <div className="flex justify-between text-gray-600">
-                                                <span>Dime Platform Fees (3.5%)</span>
-                                                <span>${pricing.platformFees.toLocaleString()}</span>
-                                            </div>
-                                        )}
-                                        {formData.plan === 'Reseller' && pricing.resellerCommissionAmount > 0 && (
-                                            <div className="flex justify-between text-gray-500 text-xs">
-                                                <span>Partner commission payout ({Math.round(pricing.resellerCommissionRate * 100)}%)</span>
-                                                <span>${pricing.resellerCommissionAmount.toLocaleString()}</span>
-                                            </div>
-                                        )}
-                                        <div className="flex justify-between font-bold text-gray-900 pt-2 border-t border-gray-200">
-                                            <span>Total</span>
-                                            <span>${pricing.total.toLocaleString()}</span>
-                                        </div>
-                                    </div>
+                                    <OrderSummaryBreakdown />
                                 </div>
                                 <div className="pt-6 text-xs text-gray-400 text-center">
                                     <p>Secure payment processing via {dimePayEnabled ? 'Dime Pay' : 'PayPal'}.</p>
@@ -1201,6 +1205,44 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                     </div>
                 )}
             </div>
+            {!isTeamInvitation && (
+                <div className="lg:hidden fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white shadow-2xl">
+                    {showMobileSummary && (
+                        <div className="max-h-[55vh] overflow-y-auto border-b border-gray-100 p-4">
+                            <div className="mb-3 flex items-start justify-between">
+                                <div>
+                                    <p className="font-bold text-gray-900">{formData.plan} Plan</p>
+                                    <p className="text-xs text-gray-500 capitalize">{formData.billingCycle} Subscription</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowMobileSummary(false)}
+                                    className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                                    aria-label="Close order summary"
+                                >
+                                    <Icons.Close className="h-5 w-5" />
+                                </button>
+                            </div>
+                            <OrderSummaryBreakdown />
+                        </div>
+                    )}
+                    <button
+                        type="button"
+                        onClick={() => setShowMobileSummary((value) => !value)}
+                        className="flex w-full items-center justify-between px-4 py-3 text-left"
+                        aria-expanded={showMobileSummary}
+                    >
+                        <div>
+                            <p className="text-xs font-bold uppercase text-gray-500">Estimated fees</p>
+                            <p className="text-sm font-medium text-gray-900">{formData.plan} - {formData.billingCycle}</p>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-lg font-bold text-jam-orange">JMD ${pricing.total.toLocaleString()}</p>
+                            <p className="text-xs text-gray-500">{showMobileSummary ? 'Hide details' : 'View breakdown'}</p>
+                        </div>
+                    </button>
+                </div>
+            )}
         </>
     );
 };

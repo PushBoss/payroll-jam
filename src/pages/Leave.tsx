@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Icons } from '../components/Icons';
-import { LeaveRequest, LeaveType, Employee } from '../core/types';
+import { LeaveRequest, LeaveType, Employee, Role } from '../core/types';
 import { MultiDateCalendar } from '../components/MultiDateCalendar';
 import { auditService } from '../core/auditService';
 import { useAuth } from '../context/AuthContext';
@@ -55,9 +55,27 @@ export const Leave: React.FC<LeaveProps> = ({ requests, employees, onStatusChang
       selectedDates: []
   });
 
+  const isEmployeeUser = currentUser?.role === Role.EMPLOYEE;
+  const currentEmployee = useMemo(() => {
+      if (!currentUser) return undefined;
+      return employees.find((employee) =>
+          employee.id === currentUser.id ||
+          employee.email?.toLowerCase() === currentUser.email.toLowerCase()
+      );
+  }, [currentUser, employees]);
+
+  useEffect(() => {
+      if (!isEmployeeUser || !currentEmployee) return;
+      setNewReq((prev) => prev.employeeId === currentEmployee.id ? prev : {
+          ...prev,
+          employeeId: currentEmployee.id
+      });
+  }, [currentEmployee, isEmployeeUser]);
+
   const handleRequestSubmit = (e: React.FormEvent) => {
       e.preventDefault();
-      const emp = employees.find(e => e.id === newReq.employeeId);
+      const selectedEmployeeId = isEmployeeUser ? currentEmployee?.id : newReq.employeeId;
+      const emp = employees.find(e => e.id === selectedEmployeeId);
       if (!emp) return;
 
       if (newReq.dates.length === 0) {
@@ -86,7 +104,7 @@ export const Leave: React.FC<LeaveProps> = ({ requests, employees, onStatusChang
       onAddRequest(request);
       auditService.log(currentUser, 'CREATE', 'LeaveRequest', `Logged manual leave for ${emp.firstName} ${emp.lastName} (${days} days)`);
       setIsModalOpen(false);
-      setNewReq({ employeeId: '', type: LeaveType.VACATION, dates: [], reason: '' });
+      setNewReq({ employeeId: isEmployeeUser ? emp.id : '', type: LeaveType.VACATION, dates: [], reason: '' });
   };
 
   const handleBalanceClick = (emp: Employee) => {
@@ -256,20 +274,29 @@ export const Leave: React.FC<LeaveProps> = ({ requests, employees, onStatusChang
                   </div>
                   <form onSubmit={handleRequestSubmit} className="p-6 space-y-4">
                       {/* Form fields unchanged ... */}
-                      <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Employee</label>
-                          <select 
-                             required
-                             className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-jam-orange focus:border-jam-orange bg-white"
-                             value={newReq.employeeId}
-                             onChange={e => setNewReq({...newReq, employeeId: e.target.value})}
-                          >
-                              <option value="">Select Employee</option>
-                              {employees.map(e => (
-                                  <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>
-                              ))}
-                          </select>
-                      </div>
+	                      {isEmployeeUser ? (
+	                          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+	                              <p className="text-xs font-bold uppercase text-gray-500">Employee</p>
+	                              <p className="mt-1 text-sm font-medium text-gray-900">
+	                                  {currentEmployee ? `${currentEmployee.firstName} ${currentEmployee.lastName}` : currentUser?.name}
+	                              </p>
+	                          </div>
+	                      ) : (
+	                          <div>
+	                              <label className="block text-sm font-medium text-gray-700 mb-1">Employee</label>
+	                              <select
+	                                 required
+	                                 className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-jam-orange focus:border-jam-orange bg-white"
+	                                 value={newReq.employeeId}
+	                                 onChange={e => setNewReq({...newReq, employeeId: e.target.value})}
+	                              >
+	                                  <option value="">Select Employee</option>
+	                                  {employees.map(e => (
+	                                      <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>
+	                                  ))}
+	                              </select>
+	                          </div>
+	                      )}
                       <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">Leave Type</label>
                           <select 
@@ -373,7 +400,12 @@ export const Leave: React.FC<LeaveProps> = ({ requests, employees, onStatusChang
           <p className="text-gray-500 mt-1">Manage time-off requests and view employee balances.</p>
         </div>
         <button 
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => {
+                if (isEmployeeUser && currentEmployee) {
+                    setNewReq((prev) => ({ ...prev, employeeId: currentEmployee.id }));
+                }
+                setIsModalOpen(true);
+            }}
             className="mt-4 md:mt-0 bg-jam-black text-white px-4 py-2 rounded-lg hover:bg-gray-800 flex items-center shadow-lg"
         >
             <Icons.Plus className="w-4 h-4 mr-2" />

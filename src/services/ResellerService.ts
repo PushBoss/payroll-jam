@@ -18,6 +18,7 @@ const mapResellerClient = (row: Record<string, unknown>): ResellerClient => {
     companyName: (company?.name as string) || (company?.companyName as string) || 'Unknown Company',
     contactName: (company?.email as string) || (row.contact_name as string) || '',
     email: (company?.email as string) || (row.email as string) || '',
+    phone: (companySettings?.phone as string) || (row.phone as string) || '',
     plan: toPlanLabel(normalizePlanToFrontend((company?.plan as string) || (row.plan as string) || 'Free')),
     employeeCount,
     status: ((row.status as string) || (company?.status as string) || 'ACTIVE') as ResellerClient['status'],

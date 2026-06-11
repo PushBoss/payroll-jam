@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { CompanySettings, Employee, LeaveRequest, PayRun, User } from '../core/types';
+import { CompanySettings, Employee, LeaveRequest, PayRun, User, WeeklyTimesheet } from '../core/types';
 import { AdminService } from '../services/AdminService';
 import { CompanyService } from '../services/CompanyService';
 import { EmployeeService } from '../services/EmployeeService';
@@ -27,6 +27,7 @@ interface UseAppBootstrapArgs {
   applyLoadedCompany: (company: CompanySettings | null) => void;
   setEmployees: (employees: Employee[]) => void;
   setPayRunHistory: (runs: PayRun[]) => void;
+  setTimesheets: (timesheets: WeeklyTimesheet[]) => void;
   setLeaveRequests: (requests: LeaveRequest[]) => void;
   setUsers: (users: User[]) => void;
 }
@@ -38,6 +39,7 @@ export const useAppBootstrap = ({
   applyLoadedCompany,
   setEmployees,
   setPayRunHistory,
+  setTimesheets,
   setLeaveRequests,
   setUsers,
 }: UseAppBootstrapArgs) => {
@@ -69,6 +71,9 @@ export const useAppBootstrap = ({
           if (context.company) applyLoadedCompany(context.company);
           if (context.employees) setEmployees(context.employees);
           if (context.payRuns) setPayRunHistory(context.payRuns);
+          void PayrollService.getTimesheets(user.companyId).then(setTimesheets).catch((error) => {
+            console.error('Failed to load timesheets for impersonated context:', error);
+          });
           if (context.leaveRequests) setLeaveRequests(context.leaveRequests);
           if (context.users) setUsers(context.users);
           return;
@@ -89,6 +94,9 @@ export const useAppBootstrap = ({
             if (context.company) applyLoadedCompany(context.company);
             if (context.employees) setEmployees(context.employees);
             if (context.payRuns) setPayRunHistory(context.payRuns);
+            void PayrollService.getTimesheets(user.companyId).then(setTimesheets).catch((error) => {
+              console.error('Failed to load timesheets for owner/admin context:', error);
+            });
             if (context.leaveRequests) setLeaveRequests(context.leaveRequests);
             if (context.users) setUsers(context.users);
             return;
@@ -124,6 +132,7 @@ export const useAppBootstrap = ({
         const results = await Promise.allSettled([
           withTimeout(EmployeeService.getEmployees(user.companyId), 'Employees', BOOTSTRAP_BACKGROUND_TIMEOUT_MS),
           withTimeout(PayrollService.getPayRuns(user.companyId, { includeLineItems: false }), 'Pay runs', BOOTSTRAP_BACKGROUND_TIMEOUT_MS),
+          withTimeout(PayrollService.getTimesheets(user.companyId), 'Timesheets', BOOTSTRAP_BACKGROUND_TIMEOUT_MS),
           withTimeout(EmployeeService.getLeaveRequests(user.companyId), 'Leave requests', BOOTSTRAP_BACKGROUND_TIMEOUT_MS),
           withTimeout(EmployeeService.getCompanyUsers(user.companyId), 'Company users', BOOTSTRAP_BACKGROUND_TIMEOUT_MS),
         ]);
@@ -131,8 +140,9 @@ export const useAppBootstrap = ({
         if (isCancelled) return;
         if (results[0].status === 'fulfilled') setEmployees(results[0].value);
         if (results[1].status === 'fulfilled') setPayRunHistory(results[1].value);
-        if (results[2].status === 'fulfilled') setLeaveRequests(results[2].value);
-        if (results[3].status === 'fulfilled') setUsers(results[3].value);
+        if (results[2].status === 'fulfilled') setTimesheets(results[2].value);
+        if (results[3].status === 'fulfilled') setLeaveRequests(results[3].value);
+        if (results[4].status === 'fulfilled') setUsers(results[4].value);
 
         const failures = results.filter((result) => result.status === 'rejected') as PromiseRejectedResult[];
         if (failures.length > 0) {
@@ -151,7 +161,7 @@ export const useAppBootstrap = ({
     return () => {
       isCancelled = true;
     };
-  }, [applyLoadedCompany, isSupabaseMode, setEmployees, setLeaveRequests, setPayRunHistory, setUsers, user?.companyId, user?.originalRole, user?.role]);
+  }, [applyLoadedCompany, isSupabaseMode, setEmployees, setLeaveRequests, setPayRunHistory, setTimesheets, setUsers, user?.companyId, user?.originalRole, user?.role]);
 
   return {
     dataLoading,

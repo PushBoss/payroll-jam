@@ -2,7 +2,7 @@ declare const process: any;
 
 import React, { useState, useEffect } from 'react';
 import { Icons } from '../components/Icons';
-import { PricingPlan, ResellerClient, GlobalConfig, User, Role, AuditLogEntry } from '../core/types';
+import { PricingPlan, ResellerClient, GlobalConfig, User, Role, AuditLogEntry, TaxConfig } from '../core/types';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { storage } from '../services/storage';
 import { auditService } from '../core/auditService';
@@ -12,6 +12,7 @@ import { CompanyService } from '../services/CompanyService';
 import { toast } from 'sonner';
 import { UserService } from '../services/UserService';
 import { getPlanPriceDetails } from '../utils/pricing';
+import { DEFAULT_ORG_TAX_CONFIG, TaxConfigCard } from '../features/employees/TaxConfigCard';
 
 interface SuperAdminProps {
     plans: PricingPlan[];
@@ -55,6 +56,13 @@ interface EmailDraft {
 const DEFAULT_PAYMENT_CONFIG: GlobalConfig = {
     dataSource: 'SUPABASE', // Always use Supabase - no mock data
     currency: 'JMD',
+    taxConfig: DEFAULT_ORG_TAX_CONFIG,
+    supportWidget: {
+        enabled: false,
+        whatsappUrl: 'https://wa.me/18765550123',
+        position: 'bottom-right',
+        customCss: ''
+    },
     emailjs: {
         serviceId: '',
         templateId: '',
@@ -98,6 +106,63 @@ const DEFAULT_PAYMENT_CONFIG: GlobalConfig = {
         message: `System Maintenance Scheduled for 2 AM.`,
         type: 'INFO'
     }
+};
+
+const getRuntimeDimePayEnvironment = (): 'sandbox' | 'production' => {
+    if (typeof window === 'undefined') return 'sandbox';
+    const hostname = window.location.hostname;
+    return hostname === 'www.payrolljam.com' || hostname === 'payrolljam.com'
+        ? 'production'
+        : 'sandbox';
+};
+
+const getDimePayEnvClientKey = (environment: 'sandbox' | 'production') => (
+    environment === 'production'
+        ? import.meta.env.VITE_DIMEPAY_CLIENT_ID_PROD || import.meta.env.VITE_DIMEPAY_API_KEY_PROD || import.meta.env.VITE_DIMEPAY_API_KEY
+        : import.meta.env.VITE_DIMEPAY_CLIENT_ID_SANDBOX || import.meta.env.VITE_DIMEPAY_API_KEY_SANDBOX || import.meta.env.VITE_DIMEPAY_API_KEY
+);
+
+const getDimePayStatus = (config: GlobalConfig) => {
+    const environment = getRuntimeDimePayEnvironment();
+    const dimepay = config.dimepay || DEFAULT_PAYMENT_CONFIG.dimepay;
+    const activeCredentials = environment === 'production' ? dimepay.production : dimepay.sandbox;
+    const hasEnvClientKey = Boolean(getDimePayEnvClientKey(environment));
+    const hasStoredClientKey = Boolean(activeCredentials?.apiKey);
+    const isRuntimeConfigured = hasEnvClientKey || hasStoredClientKey;
+    const envLabel = environment === 'production' ? 'Production' : 'Sandbox';
+
+    if (isRuntimeConfigured) {
+        return {
+            borderClass: 'bg-green-50 border-green-200',
+            iconClass: 'bg-green-100 text-green-600',
+            badgeClass: 'bg-green-100 text-green-700',
+            icon: 'check' as const,
+            label: 'Active',
+            description: hasEnvClientKey
+                ? `${envLabel} - Configured via environment`
+                : `${envLabel} - Configured in platform settings`
+        };
+    }
+
+    if (dimepay?.enabled === false) {
+        return {
+            borderClass: 'bg-gray-50 border-gray-200',
+            iconClass: 'bg-gray-100 text-gray-400',
+            badgeClass: 'bg-gray-100 text-gray-600',
+            icon: 'close' as const,
+            label: 'Inactive',
+            description: 'No DimePay client key configured'
+        };
+    }
+
+    return {
+        borderClass: 'bg-yellow-50 border-yellow-200',
+        iconClass: 'bg-yellow-100 text-yellow-600',
+        badgeClass: 'bg-yellow-100 text-yellow-700',
+        icon: 'alert' as const,
+        label: 'Incomplete',
+        description: `${envLabel} - Missing client key`
+    };
 };
 
 const MOCK_REVENUE_DATA = [
@@ -228,6 +293,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     const activeTenants = (platformStats.activeTenants > 0) ? platformStats.activeTenants : tenants.filter(t => t.status === 'ACTIVE').length;
     const totalEmployees = (platformStats.totalEmployees > 0) ? platformStats.totalEmployees : tenants.reduce((acc, t) => acc + (t.employeeCount || 0), 0);
     const pendingApprovals = platformStats.pendingApprovals;
+    const dimePayStatus = getDimePayStatus(paymentConfig);
 
     // --- Persistence Effects ---
     useEffect(() => {
@@ -873,11 +939,13 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         });
     };
 
-    const handlePushTaxUpdate = () => {
-        if (confirm("This will push the 2025 Default Tax Tables to all active tenants. Continue?")) {
-            auditService.log({ id: 'sys', name: 'Super Admin', email: 'sys', role: Role.SUPER_ADMIN }, 'UPDATE', 'System', 'Pushed Global Tax Update 2025');
-            toast.success("Tax update pushed successfully.");
-        }
+    const handleSaveGlobalTaxConfig = async (config: TaxConfig) => {
+        const nextConfig = { ...paymentConfig, taxConfig: config };
+        setPaymentConfig(nextConfig);
+        storage.saveGlobalConfig(nextConfig);
+        await CompanyService.saveGlobalConfig(nextConfig);
+        auditService.log({ id: 'sys', name: 'Super Admin', email: 'sys', role: Role.SUPER_ADMIN }, 'UPDATE', 'System', 'Updated global tax defaults');
+        toast.success('Global tax defaults saved');
     };
 
     const handleToggleMaintenance = (enabled: boolean) => {
@@ -1138,6 +1206,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                             <td className="px-6 py-4 text-sm text-gray-500">
                                                 {tenant.contactName}
                                                 <div className="text-xs text-gray-400">{tenant.email}</div>
+                                                <div className="text-xs text-gray-400">{tenant.phone || 'No phone on file'}</div>
                                             </td>
                                             <td className="px-6 py-4">
                                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
@@ -1403,10 +1472,10 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                         </button>
                     </div>
                     <button
-                        onClick={handlePushTaxUpdate}
+                        onClick={() => setActiveTab('settings')}
                         className="w-full py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center justify-center"
                     >
-                        <Icons.Refresh className="w-4 h-4 mr-2" /> Push 2025 Tax Update
+                        <Icons.Settings className="w-4 h-4 mr-2" /> Manage Global Tax Defaults
                     </button>
                 </div>
             </div>
@@ -1933,7 +2002,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     };
 
     const renderSettings = () => (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in">
+        <div className="grid grid-cols-1 gap-6 animate-fade-in">
             <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-200">
                 <h3 className="text-lg font-bold text-gray-900 mb-4">General Configuration</h3>
 
@@ -2002,61 +2071,21 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     </div>
                     <div className="space-y-3">
                         {/* DimePay Status */}
-                        <div className={`p-3 rounded-lg border ${(() => {
-                            if (!paymentConfig.dimepay?.enabled) return 'bg-gray-50 border-gray-200';
-                            const activeEnv = paymentConfig.dimepay.environment || 'sandbox';
-                            const activeCreds = activeEnv === 'production' ? paymentConfig.dimepay.production : paymentConfig.dimepay.sandbox;
-                            const isConfigured = activeCreds?.apiKey && activeCreds?.secretKey && activeCreds?.merchantId;
-                            return isConfigured ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200';
-                        })()
-                            }`}>
+                        <div className={`p-3 rounded-lg border ${dimePayStatus.borderClass}`}>
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center">
-                                    <div className={`p-1.5 rounded-full mr-2 ${(() => {
-                                        if (!paymentConfig.dimepay?.enabled) return 'bg-gray-100 text-gray-400';
-                                        const activeEnv = paymentConfig.dimepay.environment || 'sandbox';
-                                        const activeCreds = activeEnv === 'production' ? paymentConfig.dimepay.production : paymentConfig.dimepay.sandbox;
-                                        const isConfigured = activeCreds?.apiKey && activeCreds?.secretKey && activeCreds?.merchantId;
-                                        return isConfigured ? 'bg-green-100 text-green-600' : 'bg-yellow-100 text-yellow-600';
-                                    })()
-                                        }`}>
-                                        {(() => {
-                                            if (!paymentConfig.dimepay?.enabled) return <Icons.Close className="w-4 h-4" />;
-                                            const activeEnv = paymentConfig.dimepay.environment || 'sandbox';
-                                            const activeCreds = activeEnv === 'production' ? paymentConfig.dimepay.production : paymentConfig.dimepay.sandbox;
-                                            const isConfigured = activeCreds?.apiKey && activeCreds?.secretKey && activeCreds?.merchantId;
-                                            return isConfigured ? <Icons.CheckCircle className="w-4 h-4" /> : <Icons.Alert className="w-4 h-4" />;
-                                        })()}
+                                    <div className={`p-1.5 rounded-full mr-2 ${dimePayStatus.iconClass}`}>
+                                        {dimePayStatus.icon === 'check' && <Icons.CheckCircle className="w-4 h-4" />}
+                                        {dimePayStatus.icon === 'alert' && <Icons.Alert className="w-4 h-4" />}
+                                        {dimePayStatus.icon === 'close' && <Icons.Close className="w-4 h-4" />}
                                     </div>
                                     <div>
                                         <h4 className="font-semibold text-sm text-gray-900">DimePay</h4>
-                                        <p className="text-xs text-gray-600">
-                                            {(() => {
-                                                if (!paymentConfig.dimepay?.enabled) return 'Disabled';
-                                                const activeEnv = paymentConfig.dimepay.environment || 'sandbox';
-                                                const activeCreds = activeEnv === 'production' ? paymentConfig.dimepay.production : paymentConfig.dimepay.sandbox;
-                                                const isConfigured = activeCreds?.apiKey && activeCreds?.secretKey && activeCreds?.merchantId;
-                                                const envLabel = activeEnv === 'production' ? '🚀 Production' : '🧪 Sandbox';
-                                                return isConfigured ? `${envLabel} - Configured` : `${envLabel} - Missing credentials`;
-                                            })()}
-                                        </p>
+                                        <p className="text-xs text-gray-600">{dimePayStatus.description}</p>
                                     </div>
                                 </div>
-                                <span className={`text-xs px-2 py-1 rounded font-medium ${(() => {
-                                    if (!paymentConfig.dimepay?.enabled) return 'bg-gray-100 text-gray-600';
-                                    const activeEnv = paymentConfig.dimepay.environment || 'sandbox';
-                                    const activeCreds = activeEnv === 'production' ? paymentConfig.dimepay.production : paymentConfig.dimepay.sandbox;
-                                    const isConfigured = activeCreds?.apiKey && activeCreds?.secretKey && activeCreds?.merchantId;
-                                    return isConfigured ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700';
-                                })()
-                                    }`}>
-                                    {(() => {
-                                        if (!paymentConfig.dimepay?.enabled) return 'Inactive';
-                                        const activeEnv = paymentConfig.dimepay.environment || 'sandbox';
-                                        const activeCreds = activeEnv === 'production' ? paymentConfig.dimepay.production : paymentConfig.dimepay.sandbox;
-                                        const isConfigured = activeCreds?.apiKey && activeCreds?.secretKey && activeCreds?.merchantId;
-                                        return isConfigured ? 'Active' : 'Incomplete';
-                                    })()}
+                                <span className={`text-xs px-2 py-1 rounded font-medium ${dimePayStatus.badgeClass}`}>
+                                    {dimePayStatus.label}
                                 </span>
                             </div>
                         </div>
@@ -2223,8 +2252,107 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     </div>
                 </div>
 
+                {/* WhatsApp Support Widget Configuration */}
+                <div className="mb-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <div className="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 className="text-sm font-bold text-gray-900">WhatsApp Support Widget</h3>
+                            <p className="text-xs text-gray-500">Floating support shortcut shown inside the app</p>
+                        </div>
+                        <label className="flex items-center gap-2 text-xs font-bold uppercase text-gray-500">
+                            <input
+                                type="checkbox"
+                                checked={paymentConfig.supportWidget?.enabled || false}
+                                onChange={(e) => setPaymentConfig({
+                                    ...paymentConfig,
+                                    supportWidget: {
+                                        enabled: e.target.checked,
+                                        whatsappUrl: paymentConfig.supportWidget?.whatsappUrl || 'https://wa.me/18765550123',
+                                        position: paymentConfig.supportWidget?.position || 'bottom-right',
+                                        customCss: paymentConfig.supportWidget?.customCss || ''
+                                    }
+                                })}
+                                className="h-4 w-4 text-jam-orange focus:ring-jam-orange"
+                            />
+                            Visible
+                        </label>
+                    </div>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-xs font-bold text-gray-600 uppercase mb-1">WhatsApp Link Target</label>
+                            <input
+                                type="url"
+                                value={paymentConfig.supportWidget?.whatsappUrl || ''}
+                                onChange={(e) => setPaymentConfig({
+                                    ...paymentConfig,
+                                    supportWidget: {
+                                        enabled: paymentConfig.supportWidget?.enabled || false,
+                                        whatsappUrl: e.target.value,
+                                        position: paymentConfig.supportWidget?.position || 'bottom-right',
+                                        customCss: paymentConfig.supportWidget?.customCss || ''
+                                    }
+                                })}
+                                placeholder="https://wa.me/18765550123"
+                                className="w-full border border-gray-300 rounded p-2 text-sm"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Placement</label>
+                            <select
+                                value={paymentConfig.supportWidget?.position || 'bottom-right'}
+                                onChange={(e) => setPaymentConfig({
+                                    ...paymentConfig,
+                                    supportWidget: {
+                                        enabled: paymentConfig.supportWidget?.enabled || false,
+                                        whatsappUrl: paymentConfig.supportWidget?.whatsappUrl || 'https://wa.me/18765550123',
+                                        position: e.target.value as NonNullable<GlobalConfig['supportWidget']>['position'],
+                                        customCss: paymentConfig.supportWidget?.customCss || ''
+                                    }
+                                })}
+                                className="w-full border border-gray-300 rounded p-2 text-sm"
+                            >
+                                <option value="top-left">Top Left</option>
+                                <option value="top-right">Top Right</option>
+                                <option value="bottom-left">Bottom Left</option>
+                                <option value="bottom-right">Bottom Right</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Custom CSS</label>
+                            <textarea
+                                rows={5}
+                                value={paymentConfig.supportWidget?.customCss || ''}
+                                onChange={(e) => setPaymentConfig({
+                                    ...paymentConfig,
+                                    supportWidget: {
+                                        enabled: paymentConfig.supportWidget?.enabled || false,
+                                        whatsappUrl: paymentConfig.supportWidget?.whatsappUrl || 'https://wa.me/18765550123',
+                                        position: paymentConfig.supportWidget?.position || 'bottom-right',
+                                        customCss: e.target.value
+                                    }
+                                })}
+                                placeholder=".payroll-jam-support-widget { background: #25D366; }"
+                                className="w-full border border-gray-300 rounded p-2 text-sm font-mono"
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="mb-6">
+                    <div className="mb-3">
+                        <h3 className="text-sm font-bold text-gray-900">Global Tax Defaults</h3>
+                        <p className="text-xs text-gray-500">
+                            Platform-wide Jamaican statutory defaults used when a company has not saved its own tax override.
+                        </p>
+                    </div>
+                    <TaxConfigCard
+                        config={paymentConfig.taxConfig || DEFAULT_ORG_TAX_CONFIG}
+                        onSave={handleSaveGlobalTaxConfig}
+                    />
+                </div>
+
                 {/* Data Source Toggle */}
-                <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="hidden">
                     <div className="flex justify-between items-center mb-2">
                         <h4 className="font-bold text-blue-900">Data Source</h4>
                         <div className="text-xs bg-white border border-blue-200 px-2 py-1 rounded text-blue-800 font-mono">
@@ -2255,26 +2383,12 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     <div><h4 className="font-bold">Maintenance Mode</h4><p className="text-sm text-gray-500">Lockout non-admins.</p></div>
                     <input type="checkbox" checked={paymentConfig.maintenanceMode} onChange={(e) => handleToggleMaintenance(e.target.checked)} className="h-5 w-5 text-jam-orange focus:ring-jam-orange" />
                 </div>
-                <button onClick={handlePushTaxUpdate} className="w-full py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 mb-3">Push Global Tax Update</button>
-
                 {/* Added Save Button */}
                 <button
                     onClick={async () => {
-                        // Save to Supabase (this will also update localStorage via useEffect)
                         try {
                             await CompanyService.saveGlobalConfig(paymentConfig);
-
-                            // Also save payment gateway settings to each company's settings
-                            const allCompanies = await CompanyService.getAllCompanies();
-                            for (const company of allCompanies) {
-                                await CompanyService.savePaymentGatewaySettings(company.id, {
-                                    dimepay: paymentConfig.dimepay,
-                                    paypal: paymentConfig.paypal,
-                                    emailjs: paymentConfig.emailjs,
-                                    stripe: paymentConfig.stripe
-                                });
-                            }
-                            toast.success("Settings saved successfully to Supabase");
+                            toast.success("Platform settings saved successfully");
                         } catch (error) {
                             console.error("Error saving to Supabase:", error);
                             storage.saveGlobalConfig(paymentConfig);
@@ -2286,7 +2400,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     Save Global Settings
                 </button>
             </div>
-            <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-200">
+            <div className="hidden">
                 <h3 className="text-lg font-bold text-gray-900 mb-4">Payment Gateways</h3>
                 <div className="space-y-4">
                     {/* DimePay Config Input */}

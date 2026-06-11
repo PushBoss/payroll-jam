@@ -128,37 +128,19 @@ describe('Onboarding Wizard Integration Test', () => {
 
     // We should now be in Step 4: Success / You're All Set!
     expect(container.textContent).toContain("You're All Set!");
-    expect(container.textContent).toContain('Continue to Verify Email');
+    expect(container.textContent).toContain('Complete Setup');
 
-    // Find and click "Continue to Verify Email"
-    let continueVerifyBtn: HTMLButtonElement | null = null;
+    // Find and click "Complete Setup"
+    let completeSetupBtn: HTMLButtonElement | null = null;
     container.querySelectorAll('button').forEach((btn) => {
-      if (btn.textContent === 'Continue to Verify Email') {
-        continueVerifyBtn = btn as HTMLButtonElement;
+      if (btn.textContent?.includes('Complete Setup')) {
+        completeSetupBtn = btn as HTMLButtonElement;
       }
     });
-    expect(continueVerifyBtn).not.toBeNull();
+    expect(completeSetupBtn).not.toBeNull();
 
     await act(async () => {
-      continueVerifyBtn!.click();
-      await Promise.resolve();
-    });
-
-    // We should now be in Step 5: Verify Your Email
-    expect(container.textContent).toContain('Verify Your Email');
-    expect(container.textContent).toContain('Check Verification Status');
-
-    // Click Check Verification Status (test/mock mode will auto-resolve and call handleFinish)
-    let checkStatusBtn: HTMLButtonElement | null = null;
-    container.querySelectorAll('button').forEach((btn) => {
-      if (btn.textContent === 'Check Verification Status') {
-        checkStatusBtn = btn as HTMLButtonElement;
-      }
-    });
-    expect(checkStatusBtn).not.toBeNull();
-
-    await act(async () => {
-      checkStatusBtn!.click();
+      completeSetupBtn!.click();
       await Promise.resolve();
     });
 

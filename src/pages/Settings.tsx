@@ -1643,6 +1643,10 @@ export const Settings: React.FC<SettingsProps> = ({
                     </div>
                 );
             })()}
+
+            <p className="pt-6 text-center text-xs font-medium text-gray-400">
+                Version 1.0.0
+            </p>
         </div>
     );
 };
