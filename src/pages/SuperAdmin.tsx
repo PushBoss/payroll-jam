@@ -192,6 +192,20 @@ const isActiveBillingStatus = (status?: string) => {
     return normalized === 'active' || normalized === 'trialing';
 };
 
+const isRevenueActiveClient = (client: PayingClient) => {
+    const companyStatus = String(client.status || '').toUpperCase();
+    const subscriptionStatus = String(client.subscriptionStatus || '').toLowerCase();
+
+    if (companyStatus === 'SUSPENDED') return false;
+    if (subscriptionStatus && ['cancelled', 'canceled', 'failed', 'past_due'].includes(subscriptionStatus)) return false;
+
+    return true;
+};
+
+const getMonthKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+const getMonthEnd = (year: number, monthIndex: number) => new Date(year, monthIndex + 1, 0, 23, 59, 59, 999);
+
 export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, onImpersonate, initialTab }) => {
     const [activeTab, setActiveTab] = useState<'overview' | 'tenants' | 'users' | 'plans' | 'logs' | 'settings' | 'health' | 'billing' | 'pending-payments' | 'paying-clients'>('overview');
 
@@ -233,7 +247,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     // Billing State
     const [revenueData, setRevenueData] = useState<{ name: string; revenue: number }[]>([]);
     const [isLoadingBilling, setIsLoadingBilling] = useState(false);
-    const [revenueFilter, setRevenueFilter] = useState<'month' | 'quarter' | 'year' | 'all'>('6M' as any); // Default 6M to maintain current chart shape, but we'll add the new filters
+    const [revenueFilter, setRevenueFilter] = useState<'month' | 'quarter' | '6M' | 'year' | 'all'>('6M');
     
     const [billingStats, setBillingStats] = useState({
         totalRevenue: 0,
@@ -469,7 +483,16 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             setIsLoadingBilling(true);
             try {
                 // Fetch all subscriptions via BillingService (no admin client needed)
-                const subscriptions = await BillingService.getAllSubscriptions();
+                const [subscriptions, payingClientsResponse] = await Promise.all([
+                    BillingService.getAllSubscriptions(),
+                    supabase!.functions.invoke('admin-handler', {
+                        body: { action: 'get-paying-clients', payload: {} }
+                    })
+                ]);
+                if (payingClientsResponse.error) throw payingClientsResponse.error;
+
+                const billingPayingClients: PayingClient[] = payingClientsResponse.data?.clients || [];
+                setPayingClients(billingPayingClients);
                 const activeSubs = subscriptions.filter((s: any) => isActiveBillingStatus(s.status));
 
                 // Calculate MRR from active subscriptions
@@ -484,8 +507,11 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     return sum;
                 }, 0);
 
+                const payingClientMRR = billingPayingClients
+                    .filter(isRevenueActiveClient)
+                    .reduce((sum, client) => sum + Number(client.mrr || 0), 0);
                 const tenantMRR = tenants.reduce((sum, tenant) => sum + calculateTenantMRR(tenant), 0);
-                const mrr = subscriptionMRR > 0 ? subscriptionMRR : tenantMRR;
+                const mrr = Math.max(subscriptionMRR, payingClientMRR, tenantMRR);
                 
                 const arr = mrr * 12;
 
@@ -502,6 +528,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     
                     if (revenueFilter === 'month') return diffDays <= 30;
                     if (revenueFilter === 'quarter') return diffDays <= 90;
+                    if (revenueFilter === '6M') return diffDays <= 183;
                     if (revenueFilter === 'year') return diffDays <= 365;
                     return true;
                 });
@@ -513,7 +540,8 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 const monthlyRevenue: Record<string, number> = {};
                 filteredPayments.forEach((payment: any) => {
                     const date = new Date(payment.payment_date);
-                    const monthKey = date.toLocaleDateString('en-US', { month: 'short' });
+                    if (Number.isNaN(date.getTime())) return;
+                    const monthKey = getMonthKey(date);
                     if (!monthlyRevenue[monthKey]) {
                         monthlyRevenue[monthKey] = 0;
                     }
@@ -529,10 +557,22 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 
                 for (let i = lookBackMonths - 1; i >= 0; i--) {
                     const monthIndex = (currentMonth - i + 12) % 12;
+                    const monthYear = currentMonth - i < 0 ? new Date().getFullYear() - 1 : new Date().getFullYear();
                     const monthName = months[monthIndex];
+                    const monthKey = `${monthYear}-${String(monthIndex + 1).padStart(2, '0')}`;
+                    const monthEnd = getMonthEnd(monthYear, monthIndex);
+                    const projectedClientRevenue = billingPayingClients
+                        .filter(isRevenueActiveClient)
+                        .filter((client) => {
+                            if (!client.createdAt) return true;
+                            const createdAt = new Date(client.createdAt);
+                            return Number.isNaN(createdAt.getTime()) || createdAt <= monthEnd;
+                        })
+                        .reduce((sum, client) => sum + Number(client.mrr || 0), 0);
+
                     chartData.push({
                         name: monthName,
-                        revenue: monthlyRevenue[monthName] || 0
+                        revenue: monthlyRevenue[monthKey] || projectedClientRevenue
                     });
                 }
 
@@ -540,8 +580,8 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     totalRevenue,
                     monthlyRecurringRevenue: mrr,
                     annualRecurringRevenue: arr,
-                    totalSubscriptions: subscriptions.length,
-                    activeSubscriptions: activeSubs.length,
+                    totalSubscriptions: Math.max(subscriptions.length, billingPayingClients.length),
+                    activeSubscriptions: Math.max(activeSubs.length, billingPayingClients.filter(isRevenueActiveClient).length),
                     totalPayments: filteredPayments.length
                 });
 

@@ -70,18 +70,25 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
   const pendingCount = timesheets.filter(t => t.status === 'SUBMITTED').length;
   const totalOvertime = timesheets.reduce((acc, t) => acc + t.totalOvertimeHours, 0);
   const selectedLocation = locations.find((location) => location.id === selectedLocationId) || locations[0];
-  const qrPayload = selectedLocation && companyData?.id ? encodeClockInPayload(companyData.id, selectedLocation.id) : '';
-  const clockInUrl = qrPayload ? buildAppUrl('portal-clock-in', { qr: qrPayload }) : '';
+
+  useEffect(() => {
+    if (!selectedLocationId && locations[0]?.id) {
+      setSelectedLocationId(locations[0].id);
+    }
+  }, [locations, selectedLocationId]);
 
   useEffect(() => {
     let active = true;
 
-    if (!clockInUrl) {
+    if (!qrModalOpen || !selectedLocation || !companyData?.id) {
       setQrImageUrl('');
       return () => {
         active = false;
       };
     }
+
+    const qrPayload = encodeClockInPayload(companyData.id, selectedLocation.id);
+    const clockInUrl = buildAppUrl('portal-clock-in', { qr: qrPayload });
 
     QRCode.toDataURL(clockInUrl, {
       errorCorrectionLevel: 'M',
@@ -101,7 +108,7 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
     return () => {
       active = false;
     };
-  }, [clockInUrl]);
+  }, [companyData?.id, qrModalOpen, selectedLocation?.id]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -124,12 +131,15 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
       </div>
 
       {qrModalOpen && selectedLocation && (
-        <div className={`${kioskMode ? 'fixed inset-0 z-[100] bg-white' : 'fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4'} print:static print:block print:bg-white`}>
+        <div className={`${kioskMode ? 'fixed inset-0 z-[120] bg-white' : 'fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4'} print:static print:block print:bg-white`}>
           <style>{`
             @media print {
               body * { visibility: hidden; }
               .clock-in-qr-print, .clock-in-qr-print * { visibility: visible; }
-              .clock-in-qr-print { position: absolute; inset: 0; margin: auto; width: 100%; }
+              .clock-in-qr-print { position: absolute; inset: 0; margin: auto; width: 100%; display: flex; align-items: center; justify-content: center; }
+              .clock-in-qr-body { padding: 0 !important; }
+              .clock-in-qr-label { display: none !important; }
+              .clock-in-qr-image { width: 80vmin !important; height: 80vmin !important; margin: 0 !important; border: 0 !important; }
               .no-print { display: none !important; }
             }
           `}</style>
@@ -143,7 +153,7 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
                 <Icons.Close className="h-5 w-5" />
               </button>
             </div>
-            <div className={`${kioskMode ? 'flex h-full flex-col items-center justify-center p-10' : 'p-6'} text-center`}>
+            <div className={`${kioskMode ? 'flex h-full flex-col items-center justify-center p-10' : 'p-6'} clock-in-qr-body text-center`}>
               <div className="no-print mb-5 space-y-3 text-left">
                 <label className="block text-xs font-bold uppercase text-gray-500">Branch Location</label>
                 <select
@@ -158,13 +168,13 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
                   ))}
                 </select>
               </div>
-              <h2 className={`${kioskMode ? 'text-4xl' : 'text-2xl'} font-bold text-gray-900`}>{selectedLocation.name}</h2>
-              <p className="mt-1 text-sm text-gray-500">Scan to clock in within {selectedLocation.geofenceRadiusMeters} meters.</p>
+              <h2 className={`${kioskMode ? 'text-4xl' : 'text-2xl'} clock-in-qr-label font-bold text-gray-900`}>{selectedLocation.name}</h2>
+              <p className="clock-in-qr-label mt-1 text-sm text-gray-500">Scan to clock in within {selectedLocation.geofenceRadiusMeters} meters.</p>
               {qrImageUrl && (
                 <img
                   src={qrImageUrl}
                   alt={`Clock-in QR for ${selectedLocation.name}`}
-                  className={`${kioskMode ? 'mt-10 h-[65vh] w-[65vh]' : 'mx-auto mt-6 h-72 w-72'} border-4 border-black bg-white object-contain`}
+                  className={`${kioskMode ? 'mt-10 h-[65vh] w-[65vh]' : 'mx-auto mt-6 h-72 w-72'} clock-in-qr-image border-4 border-black bg-white object-contain`}
                 />
               )}
               {!qrImageUrl && (

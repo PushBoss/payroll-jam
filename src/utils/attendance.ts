@@ -9,7 +9,8 @@ export interface ClockInPayload {
 }
 
 const SIGNING_CONTEXT = 'payroll-jam-qr-attendance';
-const CLOCK_IN_QR_TTL_MS = 24 * 60 * 60 * 1000;
+const CLOCK_IN_QR_ISSUED_AT = '2026-01-01T00:00:00.000Z';
+const CLOCK_IN_QR_EXPIRES_AT = '2099-12-31T23:59:59.999Z';
 const DEFAULT_KINGSTON_LOCATION = {
   latitude: 18.0179,
   longitude: -76.8099,
@@ -22,8 +23,8 @@ export const createClockInSignature = (companyId: string, locationId: string, is
   encodeBase64(`${companyId}:${locationId}:${issuedAt}:${expiresAt}:${SIGNING_CONTEXT}`);
 
 export const encodeClockInPayload = (companyId: string, locationId: string) => {
-  const issuedAt = new Date().toISOString();
-  const expiresAt = new Date(Date.now() + CLOCK_IN_QR_TTL_MS).toISOString();
+  const issuedAt = CLOCK_IN_QR_ISSUED_AT;
+  const expiresAt = CLOCK_IN_QR_EXPIRES_AT;
   const payload: ClockInPayload = {
     company_id: companyId,
     location_id: locationId,

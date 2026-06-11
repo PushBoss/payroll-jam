@@ -2,7 +2,7 @@ declare const process: any;
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Icons } from '../components/Icons';
-import { GLMapping, IntegrationConfig, CompanySettings, TaxConfig, User, Role, Department, Designation, PricingPlan, PaymentRecord } from '../core/types';
+import { GLMapping, IntegrationConfig, CompanySettings, TaxConfig, User, Role, Department, Designation, PricingPlan, PaymentRecord, BranchLocation } from '../core/types';
 import { getPlanPriceDetails } from '../utils/pricing';
 import { storage } from '../services/storage';
 import { auditService } from '../core/auditService';
@@ -578,6 +578,12 @@ export const Settings: React.FC<SettingsProps> = ({
     const [newDept, setNewDept] = useState('');
     const [newDesig, setNewDesig] = useState('');
     const [newDesigDept, setNewDesigDept] = useState('');
+    const [newLocation, setNewLocation] = useState({
+        name: '',
+        latitude: '',
+        longitude: '',
+        geofenceRadiusMeters: '100',
+    });
 
     // DB State
     const [, setDbStatus] = useState<{ connected: boolean; message: string; details?: string } | null>(null);
@@ -702,6 +708,55 @@ export const Settings: React.FC<SettingsProps> = ({
 
 
     const handleCompanyUpdate = (newData: CompanySettings) => { onUpdateCompany(newData); };
+
+    const handleAddLocation = () => {
+        if (!companyData || !newLocation.name.trim()) {
+            toast.error('Enter a branch location name');
+            return;
+        }
+
+        const latitude = Number(newLocation.latitude);
+        const longitude = Number(newLocation.longitude);
+        const geofenceRadiusMeters = Number(newLocation.geofenceRadiusMeters);
+
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+            toast.error('Enter valid latitude and longitude');
+            return;
+        }
+
+        const nextLocation: BranchLocation = {
+            id: generateUUID(),
+            name: newLocation.name.trim(),
+            latitude,
+            longitude,
+            geofenceRadiusMeters: Number.isFinite(geofenceRadiusMeters) && geofenceRadiusMeters > 0 ? geofenceRadiusMeters : 100,
+        };
+
+        handleCompanyUpdate({
+            ...companyData,
+            locations: [...(companyData.locations || []), nextLocation],
+        });
+        setNewLocation({ name: '', latitude: '', longitude: '', geofenceRadiusMeters: '100' });
+        toast.success('Business location added');
+    };
+
+    const handleUpdateLocation = (locationId: string, updates: Partial<BranchLocation>) => {
+        if (!companyData) return;
+        handleCompanyUpdate({
+            ...companyData,
+            locations: (companyData.locations || []).map((location) =>
+                location.id === locationId ? { ...location, ...updates } : location
+            ),
+        });
+    };
+
+    const handleDeleteLocation = (locationId: string) => {
+        if (!companyData) return;
+        handleCompanyUpdate({
+            ...companyData,
+            locations: (companyData.locations || []).filter((location) => location.id !== locationId),
+        });
+    };
 
     const handleSaveCompany = async () => {
         if (!currentUser?.companyId || !companyData) {
@@ -1503,6 +1558,132 @@ export const Settings: React.FC<SettingsProps> = ({
                                 <input type="text" value={companyData.branchCode} onChange={e => handleCompanyUpdate({ ...companyData, branchCode: e.target.value })} className="w-full border rounded p-2" />
                             </div>
                         </div>
+                    </div>
+
+                    <div className="mt-8 border-t border-gray-100 pt-6">
+                        <div className="mb-4 flex items-start justify-between gap-4">
+                            <div>
+                                <h4 className="font-semibold">Business Locations</h4>
+                                <p className="text-sm text-gray-500">
+                                    These branches appear in the Time &amp; Attendance QR code location dropdown.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="mb-5 grid grid-cols-1 gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4 md:grid-cols-5">
+                            <div className="md:col-span-2">
+                                <label className="block text-xs font-bold text-gray-500 uppercase">Location Name</label>
+                                <input
+                                    type="text"
+                                    value={newLocation.name}
+                                    onChange={(event) => setNewLocation((prev) => ({ ...prev, name: event.target.value }))}
+                                    placeholder="Montego Bay Office"
+                                    className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase">Latitude</label>
+                                <input
+                                    type="number"
+                                    step="0.000001"
+                                    value={newLocation.latitude}
+                                    onChange={(event) => setNewLocation((prev) => ({ ...prev, latitude: event.target.value }))}
+                                    placeholder="18.0179"
+                                    className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase">Longitude</label>
+                                <input
+                                    type="number"
+                                    step="0.000001"
+                                    value={newLocation.longitude}
+                                    onChange={(event) => setNewLocation((prev) => ({ ...prev, longitude: event.target.value }))}
+                                    placeholder="-76.8099"
+                                    className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase">Radius (m)</label>
+                                <div className="mt-1 flex gap-2">
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        value={newLocation.geofenceRadiusMeters}
+                                        onChange={(event) => setNewLocation((prev) => ({ ...prev, geofenceRadiusMeters: event.target.value }))}
+                                        className="w-full rounded border border-gray-300 p-2 text-sm"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={handleAddLocation}
+                                        className="rounded bg-jam-black px-3 text-white hover:bg-gray-800"
+                                        title="Add business location"
+                                    >
+                                        <Icons.Plus className="h-4 w-4" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {(companyData.locations || []).length > 0 ? (
+                            <div className="space-y-3">
+                                {(companyData.locations || []).map((location) => (
+                                    <div key={location.id} className="grid grid-cols-1 gap-3 rounded-lg border border-gray-200 p-4 md:grid-cols-12 md:items-end">
+                                        <div className="md:col-span-4">
+                                            <label className="block text-xs font-bold text-gray-500 uppercase">Name</label>
+                                            <input
+                                                type="text"
+                                                value={location.name}
+                                                onChange={(event) => handleUpdateLocation(location.id, { name: event.target.value })}
+                                                className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
+                                            />
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className="block text-xs font-bold text-gray-500 uppercase">Latitude</label>
+                                            <input
+                                                type="number"
+                                                step="0.000001"
+                                                value={location.latitude}
+                                                onChange={(event) => handleUpdateLocation(location.id, { latitude: Number(event.target.value) })}
+                                                className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
+                                            />
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className="block text-xs font-bold text-gray-500 uppercase">Longitude</label>
+                                            <input
+                                                type="number"
+                                                step="0.000001"
+                                                value={location.longitude}
+                                                onChange={(event) => handleUpdateLocation(location.id, { longitude: Number(event.target.value) })}
+                                                className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
+                                            />
+                                        </div>
+                                        <div className="md:col-span-3">
+                                            <label className="block text-xs font-bold text-gray-500 uppercase">Geofence Radius</label>
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                value={location.geofenceRadiusMeters}
+                                                onChange={(event) => handleUpdateLocation(location.id, { geofenceRadiusMeters: Number(event.target.value) || 100 })}
+                                                className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
+                                            />
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDeleteLocation(location.id)}
+                                            className="rounded border border-red-200 p-2 text-red-600 hover:bg-red-50 md:col-span-1"
+                                            title="Delete location"
+                                        >
+                                            <Icons.Trash className="mx-auto h-4 w-4" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="rounded-lg border border-dashed border-gray-300 p-5 text-sm text-gray-500">
+                                No business locations saved yet. The QR tool will use a temporary Main Branch fallback until you add one here.
+                            </div>
+                        )}
                     </div>
 
                 </div>
