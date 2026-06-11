@@ -9,7 +9,8 @@ import {
   getIncompletePayRunEmployees,
   getMissingPayRunEmployees,
   getPayFrequencyForCycle,
-  hasEmployeePortalAccess
+  hasEmployeePortalAccess,
+  normalizeBankCode
 } from './payrunWorkflow';
 
 const baseEmployee: Employee = {
@@ -98,6 +99,33 @@ describe('payrunWorkflow', () => {
     };
 
     expect(calculateBankTotals(run, employees)).toEqual({ ncb: 70000, bns: 80000, other: 0, total: 150000 });
+  });
+
+  it('normalizes common bank labels for bank totals', () => {
+    expect(normalizeBankCode('National Commercial Bank')).toBe('NCB');
+    expect(normalizeBankCode('Scotiabank Jamaica')).toBe('BNS');
+
+    const run: PayRun = {
+      id: 'run-1',
+      periodStart: '2026-04',
+      periodEnd: '2026-04',
+      payDate: '2026-04-30',
+      status: 'FINALIZED',
+      totalGross: 100000,
+      totalNet: 70000,
+      lineItems: [
+        { employeeId: 'emp-1', employeeName: 'Jane Doe', grossPay: 100000, additions: 0, deductions: 0, nis: 0, nht: 0, edTax: 0, paye: 0, pension: 0, totalDeductions: 0, netPay: 70000 }
+      ]
+    };
+    const legacyEmployees: Employee[] = [{
+      ...baseEmployee,
+      bankDetails: {
+        ...baseEmployee.bankDetails!,
+        bankName: 'National Commercial Bank' as any
+      }
+    }];
+
+    expect(calculateBankTotals(run, legacyEmployees)).toEqual({ ncb: 70000, bns: 0, other: 0, total: 70000 });
   });
 
   it('finds active employees missing from the draft', () => {

@@ -1,4 +1,5 @@
 import { PayRun, CompanySettings, IntegrationConfig, Employee, User } from '../core/types';
+import { normalizeBankCode } from '../features/payroll/payrunWorkflow';
 import { toast } from 'sonner';
 
 export const downloadFile = (filename: string, content: string, type: string) => {
@@ -40,15 +41,15 @@ export const generateNCBFile = (payRun: PayRun, company: CompanySettings, employ
     const errors: string[] = [];
     const validLines = payRun.lineItems.filter(line => {
         const emp = employees.find(e => e.id === line.employeeId);
-        if (!emp?.bankDetails?.accountNumber) {
+        const accountNumber = emp?.bankDetails?.accountNumber || line.accountNumber;
+        if (!accountNumber) {
             errors.push(`${line.employeeName}: Missing Bank Account`);
             return false;
         }
-        // Only include employees with NCB accounts (case-insensitive)
-        if ((emp.bankDetails.bankName || '').toUpperCase() !== 'NCB') {
+        if (normalizeBankCode(emp?.bankDetails?.bankName || line.bankName) !== 'NCB') {
             return false; // Skip non-NCB accounts
         }
-        const acct = cleanAccountNumber(emp.bankDetails.accountNumber);
+        const acct = cleanAccountNumber(accountNumber);
         if (acct.length !== 9) {
             errors.push(`${line.employeeName}: Invalid NCB Account (Must be 9 digits)`);
             return false;
@@ -62,8 +63,9 @@ export const generateNCBFile = (payRun: PayRun, company: CompanySettings, employ
         const noBankCount = { count: 0 };
         payRun.lineItems.forEach(line => {
             const emp = employees.find(e => e.id === line.employeeId);
-            if (emp?.bankDetails?.bankName) {
-                bankNames.add(emp.bankDetails.bankName);
+            const bankName = emp?.bankDetails?.bankName || line.bankName;
+            if (bankName) {
+                bankNames.add(bankName);
             } else {
                 noBankCount.count++;
             }
@@ -92,7 +94,7 @@ export const generateNCBFile = (payRun: PayRun, company: CompanySettings, employ
     // Details: D,EmpAcct,Amount,EmpName,Ref
     validLines.forEach(line => {
         const emp = employees.find(e => e.id === line.employeeId);
-        const bankAcct = cleanAccountNumber(emp?.bankDetails?.accountNumber || '000000000');
+        const bankAcct = cleanAccountNumber(emp?.bankDetails?.accountNumber || line.accountNumber || '000000000');
         // Ensure name contains no commas
         const safeName = line.employeeName.replace(/,/g, ' ').substring(0, 30).toUpperCase();
         
@@ -115,7 +117,8 @@ export const generateBNSFile = (payRun: PayRun, company: CompanySettings, employ
 
     const validLines = payRun.lineItems.filter(line => {
         const emp = employees.find(e => e.id === line.employeeId);
-        return emp?.bankDetails?.accountNumber && emp?.bankDetails?.bankName === 'BNS';
+        return Boolean(emp?.bankDetails?.accountNumber || line.accountNumber)
+            && normalizeBankCode(emp?.bankDetails?.bankName || line.bankName) === 'BNS';
     });
 
     if (validLines.length === 0) {
@@ -138,7 +141,7 @@ export const generateBNSFile = (payRun: PayRun, company: CompanySettings, employ
         const bankCode = '020';
         
         const transit = emp?.bankDetails?.branchCode || '00000';
-        const acct = cleanAccountNumber(emp?.bankDetails?.accountNumber || '');
+        const acct = cleanAccountNumber(emp?.bankDetails?.accountNumber || line.accountNumber || '');
         const safeName = `"${line.employeeName.replace(/"/g, '')}"`;
         
         content += `${safeName},${bankCode},${transit},${acct},${line.netPay.toFixed(2)},Salary\n`;

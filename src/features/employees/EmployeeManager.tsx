@@ -729,19 +729,6 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Account Name
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.bankDetails?.bankName || 'NCB'}
-                    onChange={e => handleBankDetailsChange('bankName', e.target.value as any)}
-                    className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange bg-white transition-all"
-                    placeholder="Bank name"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
                     Bank Name *
                   </label>
                   <select

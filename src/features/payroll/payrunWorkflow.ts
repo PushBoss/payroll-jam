@@ -76,12 +76,26 @@ export interface BankTotals {
   total: number;
 }
 
+export const normalizeBankCode = (bankName?: string | null): 'NCB' | 'BNS' | 'JN' | 'SAGICOR' | 'OTHER' => {
+  const compact = String(bankName || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
+
+  if (!compact) return 'OTHER';
+  if (compact === 'NCB' || compact.includes('NATIONALCOMMERCIALBANK')) return 'NCB';
+  if (compact === 'BNS' || compact.includes('BANKOFNOVASCOTIA') || compact.includes('SCOTIABANK') || compact.includes('SCOTIA')) return 'BNS';
+  if (compact === 'JN' || compact.includes('JNBANK') || compact.includes('JAMAICANATIONAL')) return 'JN';
+  if (compact === 'SAGICOR' || compact.includes('SAGICORBANK')) return 'SAGICOR';
+  return 'OTHER';
+};
+
 export const calculateBankTotals = (run: PayRun | null, employees: Employee[]): BankTotals => {
   if (!run) return { ncb: 0, bns: 0, other: 0, total: 0 };
 
   const totals = run.lineItems.reduce((acc, line) => {
     const employee = employees.find(item => item.id === line.employeeId);
-    const bankName = employee?.bankDetails?.bankName || 'OTHER';
+    const bankName = normalizeBankCode(employee?.bankDetails?.bankName || line.bankName);
 
     if (bankName === 'NCB') acc.ncb += line.netPay;
     else if (bankName === 'BNS') acc.bns += line.netPay;
