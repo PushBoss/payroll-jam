@@ -108,6 +108,7 @@ export interface Jamaica2026TaxConfig {
 
 export interface BankAccount {
   bankName: 'NCB' | 'BNS' | 'JN' | 'SAGICOR' | 'OTHER';
+  accountName?: string;
   accountNumber: string;
   accountType: 'SAVINGS' | 'CHEQUING';
   branchCode?: string; // Essential for some banks

@@ -87,6 +87,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
       pensionProvider: '',
       bankDetails: {
         bankName: 'NCB',
+        accountName: '',
         accountNumber: '',
         accountType: 'SAVINGS',
         currency: 'JMD'
@@ -742,6 +743,19 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                     <option value="SAGICOR">Sagicor Bank</option>
                     <option value="OTHER">Other</option>
                   </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Account Name
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.bankDetails?.accountName || ''}
+                    onChange={e => handleBankDetailsChange('accountName', e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange bg-white transition-all"
+                    placeholder={`${formData.firstName || 'Employee'} ${formData.lastName || ''}`.trim()}
+                  />
                 </div>
 
                 <div className="md:col-span-2">

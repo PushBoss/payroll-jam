@@ -47,6 +47,7 @@ const SYSTEM_FIELDS: MappingField[] = [
 
   // Banking Tab
   { key: 'bankName', label: 'Bank Name', isMandatory: false, aliases: ['bank', 'bank name'] },
+  { key: 'bankAccountName', label: 'Bank Account Name', isMandatory: false, aliases: ['account name', 'account holder', 'account holder name', 'bank account name'] },
   { key: 'bankAccountNumber', label: 'Bank Account Number', isMandatory: false, aliases: ['account number', 'acc num', 'bank account', 'account no'] },
   { key: 'bankAccountType', label: 'Bank Account Type', isMandatory: false, aliases: ['account type', 'bank account type'] },
   { key: 'bankCurrency', label: 'Bank Currency', isMandatory: false, aliases: ['bank currency', 'currency'] },
@@ -535,6 +536,7 @@ export const CsvImportWizard: React.FC<CsvImportWizardProps> = ({
           pensionProvider: rec.data.pensionProvider || existing.pensionProvider || '',
           bankDetails: {
             bankName: rec.data.bankName || existing.bankDetails?.bankName || 'NCB',
+            accountName: rec.data.bankAccountName || existing.bankDetails?.accountName || '',
             accountNumber: rec.data.bankAccountNumber || existing.bankDetails?.accountNumber || '',
             accountType: rec.data.bankAccountType || existing.bankDetails?.accountType || 'SAVINGS',
             currency: rec.data.bankCurrency || existing.bankDetails?.currency || 'JMD'
@@ -570,6 +572,7 @@ export const CsvImportWizard: React.FC<CsvImportWizardProps> = ({
           customDeductions: [],
           bankDetails: {
             bankName: rec.data.bankName || 'NCB',
+            accountName: rec.data.bankAccountName || '',
             accountNumber: rec.data.bankAccountNumber || '',
             accountType: rec.data.bankAccountType || 'SAVINGS',
             currency: rec.data.bankCurrency || 'JMD'
