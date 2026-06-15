@@ -286,13 +286,20 @@ describe('Reports page E2E Integration tests', () => {
   });
 
   it('renders every payslip in one bulk print view from a pay run register', async () => {
+    const summaryHistory: PayRun[] = mockHistory.map((run) => ({
+      ...run,
+      lineItems: [],
+    }));
+    const loadFullPayRunHistory = vi.fn().mockResolvedValue(mockHistory);
+
     act(() => {
       root.render(
         <Reports
-          history={mockHistory}
+          history={summaryHistory}
           companyData={mockCompanyData}
           employees={mockEmployees}
           integrationConfig={{}}
+          onLoadFullPayRunHistory={loadFullPayRunHistory}
         />
       );
     });
@@ -322,6 +329,7 @@ describe('Reports page E2E Integration tests', () => {
       await new Promise((resolve) => window.setTimeout(resolve, 120));
     });
 
+    expect(loadFullPayRunHistory).toHaveBeenCalled();
     expect(container.textContent).toContain('Bulk Payslip Print');
     expect(container.querySelectorAll('.payslip-print-page')).toHaveLength(2);
     expect(window.print).toHaveBeenCalled();

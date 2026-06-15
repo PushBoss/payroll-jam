@@ -19,6 +19,8 @@ interface ReportsProps {
   onNavigate?: (path: string, params?: { editRunId?: string }) => void;
   employees?: Employee[];
   integrationConfig?: IntegrationConfig;
+  payRunDetailsLoading?: boolean;
+  onLoadFullPayRunHistory?: () => Promise<PayRun[] | undefined>;
 }
 
 export const Reports: React.FC<ReportsProps> = ({
@@ -27,7 +29,9 @@ export const Reports: React.FC<ReportsProps> = ({
   onDeletePayRun,
   onNavigate,
   employees = [],
-  integrationConfig
+  integrationConfig,
+  payRunDetailsLoading = false,
+  onLoadFullPayRunHistory
 }) => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'register' | 'statutory' | 'audit'>('register');
@@ -76,6 +80,18 @@ export const Reports: React.FC<ReportsProps> = ({
     if (statusFilter === 'ALL') return displayHistory;
     return displayHistory.filter(run => run.status === statusFilter);
   }, [displayHistory, statusFilter]);
+
+  useEffect(() => {
+    if (!selectedRun) return;
+    const refreshedRun = displayHistory.find((run) => run.id === selectedRun.id);
+    if (!refreshedRun || refreshedRun === selectedRun) return;
+
+    const selectedLineCount = selectedRun.lineItems?.length || 0;
+    const refreshedLineCount = refreshedRun.lineItems?.length || 0;
+    if (refreshedLineCount !== selectedLineCount || refreshedRun.status !== selectedRun.status) {
+      setSelectedRun(refreshedRun);
+    }
+  }, [displayHistory, selectedRun]);
 
   // Handle delete with confirmation
   const handleDelete = async (run: PayRun) => {
@@ -292,13 +308,30 @@ export const Reports: React.FC<ReportsProps> = ({
     }
   };
 
-  const handlePrintAllPayslips = (run: PayRun) => {
-    if (!run.lineItems || run.lineItems.length === 0) {
+  const resolvePrintableRun = async (run: PayRun) => {
+    if (run.lineItems?.length) return run;
+
+    const currentRun = displayHistory.find((historyRun) => historyRun.id === run.id);
+    if (currentRun?.lineItems?.length) return currentRun;
+
+    if (onLoadFullPayRunHistory) {
+      const detailedHistory = await onLoadFullPayRunHistory();
+      const detailedRun = detailedHistory?.find((historyRun) => historyRun.id === run.id);
+      if (detailedRun?.lineItems?.length) return detailedRun;
+    }
+
+    return currentRun || run;
+  };
+
+  const handlePrintAllPayslips = async (run: PayRun) => {
+    const printableRun = await resolvePrintableRun(run);
+    if (!printableRun.lineItems || printableRun.lineItems.length === 0) {
       toast.error('No payslips are available for this pay run.');
       return;
     }
 
-    setPrintingPayslipRun(run);
+    setSelectedRun(printableRun);
+    setPrintingPayslipRun(printableRun);
     window.setTimeout(() => window.print(), 100);
   };
 
@@ -448,9 +481,14 @@ export const Reports: React.FC<ReportsProps> = ({
             >
               Download CSV
             </button>
-            <button type="button" onClick={() => handlePrintAllPayslips(selectedRun)} className="px-4 py-2 bg-jam-black text-white rounded-lg hover:bg-gray-800 text-sm font-bold flex items-center">
+            <button
+              type="button"
+              onClick={() => void handlePrintAllPayslips(selectedRun)}
+              disabled={payRunDetailsLoading}
+              className="px-4 py-2 bg-jam-black text-white rounded-lg hover:bg-gray-800 text-sm font-bold flex items-center disabled:opacity-50"
+            >
               <Icons.Printer className="w-4 h-4 mr-2" />
-              Print Register
+              {payRunDetailsLoading ? 'Loading Payslips...' : 'Print Register'}
             </button>
           </div>
         </div>

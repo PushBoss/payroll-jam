@@ -115,20 +115,24 @@ export const usePayrollData = ({ user, isSupabaseMode, activeCompanyId }: UsePay
 
   const loadFullPayRunHistory = useCallback(async () => {
     const targetCompanyId = activeCompanyId || user?.companyId;
-    if (!isSupabaseMode || !targetCompanyId || payRunDetailsLoaded || payRunDetailsLoading) return;
+    if (!isSupabaseMode || !targetCompanyId) return payRunHistory;
+    if (payRunDetailsLoaded) return payRunHistory;
+    if (payRunDetailsLoading) return payRunHistory;
 
     setPayRunDetailsLoading(true);
     try {
       const fullHistory = await PayrollService.getPayRuns(targetCompanyId, { includeLineItems: true });
       setPayRunHistory(fullHistory);
       setPayRunDetailsLoaded(true);
+      return fullHistory;
     } catch (error) {
       console.error('Failed to load detailed pay run history:', error);
       toast.error('Could not load detailed pay run history. Reports may be incomplete.');
+      return payRunHistory;
     } finally {
       setPayRunDetailsLoading(false);
     }
-  }, [activeCompanyId, isSupabaseMode, payRunDetailsLoaded, payRunDetailsLoading, user?.companyId]);
+  }, [activeCompanyId, isSupabaseMode, payRunDetailsLoaded, payRunDetailsLoading, payRunHistory, user?.companyId]);
 
   return {
     payRunHistory,

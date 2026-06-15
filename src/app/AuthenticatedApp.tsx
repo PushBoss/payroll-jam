@@ -185,6 +185,8 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
             onNavigate={navigateWithEditRun}
             employees={appData.employees}
             integrationConfig={appData.integrationConfig}
+            payRunDetailsLoading={appData.payRunDetailsLoading}
+            onLoadFullPayRunHistory={appData.loadFullPayRunHistory}
           />
         );
       case 'compliance':
