@@ -182,14 +182,28 @@
           margin: 0 !important;
         }
 
-        .payslip-print-page {
-          break-after: page;
-          page-break-after: always;
+        .payslip-print-batch,
+        .payslip-print-batch-scroll {
+          display: block !important;
+          height: auto !important;
+          max-height: none !important;
+          overflow: visible !important;
+          background: white !important;
         }
 
-        .payslip-print-page:last-child {
-          break-after: auto;
-          page-break-after: auto;
+        .payslip-print-page {
+          display: block !important;
+          width: 100% !important;
+          max-width: none !important;
+          break-after: page !important;
+          page-break-after: always !important;
+          break-inside: avoid !important;
+          page-break-inside: avoid !important;
+        }
+
+        .payslip-print-page-last {
+          break-after: auto !important;
+          page-break-after: auto !important;
         }
       }
     </style>

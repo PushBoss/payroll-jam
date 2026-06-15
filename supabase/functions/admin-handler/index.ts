@@ -375,7 +375,13 @@ const addMonths = (date: Date, months: number) => {
 
 const normalizeSignupEmail = (email?: string | null) => String(email || '').trim().toLowerCase();
 
-const assertSignupAuthUser = async (adminClient: any, userId: string, email: string, signupFinalizeToken?: string | null) => {
+const assertSignupAuthUser = async (
+    adminClient: any,
+    userId: string,
+    email: string,
+    signupFinalizeToken?: string | null,
+    callerAuthUser?: any
+) => {
     const normalizedEmail = normalizeSignupEmail(email);
     if (!userId) throw new Error('userId is required');
     if (!normalizedEmail) throw new Error('email is required');
@@ -389,8 +395,12 @@ const assertSignupAuthUser = async (adminClient: any, userId: string, email: str
         throw new Error('Signup profile email mismatch');
     }
 
+    const isAuthenticatedSelfRecovery = callerAuthUser?.id === userId
+        && normalizeSignupEmail(callerAuthUser?.email) === normalizedEmail;
     const expectedToken = authUserResult.user.user_metadata?.signup_finalize_token;
-    if (!signupFinalizeToken || expectedToken !== signupFinalizeToken) {
+    const hasValidFinalizeToken = Boolean(signupFinalizeToken && expectedToken === signupFinalizeToken);
+
+    if (!hasValidFinalizeToken && !isAuthenticatedSelfRecovery) {
         throw new Error('Invalid signup finalization token');
     }
 
@@ -513,7 +523,7 @@ serve(async (req: Request) => {
                     resellerInviteToken,
                 } = payload || {};
 
-                const { normalizedEmail } = await assertSignupAuthUser(adminClient, userId, email, signupFinalizeToken);
+                const { normalizedEmail } = await assertSignupAuthUser(adminClient, userId, email, signupFinalizeToken, authUser);
                 const normalizedName = String(name || '').trim() || normalizedEmail.split('@')[0];
                 const normalizedPhone = phone ? String(phone).trim() : null;
                 const signupIntent = intent === 'company_signup' || company?.companyId ? 'company_signup' : 'invitation_signup';

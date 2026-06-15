@@ -303,7 +303,7 @@ export const PayslipPrintBatch: React.FC<PayslipPrintBatchProps> = ({ lineItems,
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto print-only-modal-overlay"
       onClick={handleBackdropClick}
     >
-      <div className="bg-white w-full max-w-4xl rounded-xl shadow-2xl overflow-hidden animate-scale-in my-8 relative flex flex-col max-h-[95vh] print-only-modal">
+      <div className="bg-white w-full max-w-4xl rounded-xl shadow-2xl overflow-hidden animate-scale-in my-8 relative flex flex-col max-h-[95vh] print-only-modal payslip-print-batch">
         <div className="bg-jam-black text-white px-6 py-4 flex justify-between items-center sticky top-0 z-10 shrink-0 print:hidden">
           <div>
             <h3 className="font-bold text-lg">Bulk Payslip Print</h3>
@@ -329,15 +329,15 @@ export const PayslipPrintBatch: React.FC<PayslipPrintBatchProps> = ({ lineItems,
           </div>
         </div>
 
-        <div className="overflow-y-auto flex-1 bg-gray-100 print:bg-white">
-          {lineItems.map((lineItem) => (
+        <div className="overflow-y-auto flex-1 bg-gray-100 print:bg-white payslip-print-batch-scroll">
+          {lineItems.map((lineItem, index) => (
             <PayslipDocument
               key={lineItem.employeeId}
               data={lineItem}
               companyName={companyName}
               payPeriod={payPeriod}
               payDate={payDate}
-              className="payslip-print-page my-6 print:my-0"
+              className={`payslip-print-page ${index === lineItems.length - 1 ? 'payslip-print-page-last' : ''} my-6 print:my-0`}
             />
           ))}
           <div className="mb-8 flex justify-center print:hidden">
