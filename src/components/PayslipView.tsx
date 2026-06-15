@@ -331,14 +331,18 @@ export const PayslipPrintBatch: React.FC<PayslipPrintBatchProps> = ({ lineItems,
 
         <div className="overflow-y-auto flex-1 bg-gray-100 print:bg-white payslip-print-batch-scroll">
           {lineItems.map((lineItem, index) => (
-            <PayslipDocument
+            <div
               key={lineItem.employeeId}
-              data={lineItem}
-              companyName={companyName}
-              payPeriod={payPeriod}
-              payDate={payDate}
               className={`payslip-print-page ${index === lineItems.length - 1 ? 'payslip-print-page-last' : ''} my-6 print:my-0`}
-            />
+            >
+              <PayslipDocument
+                data={lineItem}
+                companyName={companyName}
+                payPeriod={payPeriod}
+                payDate={payDate}
+                className="payslip-print-document"
+              />
+            </div>
           ))}
           <div className="mb-8 flex justify-center print:hidden">
             <button type="button" onClick={onClose} className="px-8 py-3 bg-white hover:bg-gray-50 text-gray-800 rounded-lg font-semibold transition-colors border border-gray-200">

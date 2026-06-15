@@ -195,15 +195,31 @@
           display: block !important;
           width: 100% !important;
           max-width: none !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          float: none !important;
+          position: relative !important;
           break-after: page !important;
           page-break-after: always !important;
           break-inside: avoid !important;
           page-break-inside: avoid !important;
         }
 
+        .payslip-print-page + .payslip-print-page {
+          break-before: page !important;
+          page-break-before: always !important;
+        }
+
         .payslip-print-page-last {
           break-after: auto !important;
           page-break-after: auto !important;
+        }
+
+        .payslip-print-document {
+          width: 100% !important;
+          max-width: none !important;
+          margin: 0 auto !important;
+          box-sizing: border-box !important;
         }
       }
     </style>
