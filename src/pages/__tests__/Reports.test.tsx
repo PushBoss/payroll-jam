@@ -285,7 +285,7 @@ describe('Reports page E2E Integration tests', () => {
     );
   });
 
-  it('renders every payslip in one bulk print view from a pay run register', async () => {
+  it('renders every register payslip in one bulk print view with page-separated payslips', async () => {
     const summaryHistory: PayRun[] = mockHistory.map((run) => ({
       ...run,
       lineItems: [],
@@ -331,7 +331,10 @@ describe('Reports page E2E Integration tests', () => {
 
     expect(loadFullPayRunHistory).toHaveBeenCalled();
     expect(container.textContent).toContain('Bulk Payslip Print');
-    expect(container.querySelectorAll('.payslip-print-page')).toHaveLength(2);
-    expect(window.print).toHaveBeenCalled();
+    const printPages = container.querySelectorAll('.payslip-print-page');
+    expect(printPages).toHaveLength(2);
+    expect(printPages[0].classList.contains('payslip-print-page-last')).toBe(false);
+    expect(printPages[1].classList.contains('payslip-print-page-last')).toBe(true);
+    expect(window.print).toHaveBeenCalledTimes(1);
   });
 });

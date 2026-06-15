@@ -331,6 +331,7 @@ export const Reports: React.FC<ReportsProps> = ({
     }
 
     setSelectedRun(printableRun);
+    setViewingPayslip(null);
     setPrintingPayslipRun(printableRun);
     window.setTimeout(() => window.print(), 100);
   };
