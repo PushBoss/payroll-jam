@@ -67,6 +67,14 @@ const withAuthTimeout = <T,>(promise: Promise<T>): Promise<T> =>
     ),
   ]);
 
+const isUserLookupTimeoutError = (error: unknown) =>
+  error instanceof Error && error.message === 'User lookup timed out';
+
+const getCachedUserForEmail = (email: string) => {
+  const storedUser = storage.getUser();
+  return storedUser?.email?.toLowerCase() === email.toLowerCase() ? storedUser : null;
+};
+
 const clearLocalAuthState = () => {
   storage.saveUser(null);
   if (typeof window === 'undefined') return;
@@ -166,8 +174,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             return;
           }
 
+          const sessionEmail = session.user.email!;
+
           // Load user profile from app_users table
-          const appUser = await EmployeeService.getUserByEmail(session.user.email!);
+          let appUser: User | null = null;
+          try {
+            appUser = await withAuthTimeout(EmployeeService.getUserByEmail(sessionEmail));
+          } catch (error) {
+            if (isUserLookupTimeoutError(error)) {
+              console.warn('Profile lookup timed out during auth initialization; using cached session if available.');
+              const cachedUser = getCachedUserForEmail(sessionEmail);
+              if (cachedUser && isMounted) {
+                setUser(cachedUser);
+                storage.saveUser(cachedUser);
+              }
+              done();
+              return;
+            }
+
+            throw error;
+          }
+
           if (appUser && isMounted) {
 
             // Check for active impersonation in storage to restore it
@@ -190,7 +217,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           } else if (!appUser && isMounted) {
             // User authenticated but no profile - attempt self-heal via Edge Function
             console.warn('User authenticated but no profile found; attempting recovery');
-            const recovered = await ensureSelfProfile(session.user.email!);
+            const recovered = await ensureSelfProfile(sessionEmail);
             if (recovered && isMounted) {
               setUser(recovered);
               storage.saveUser(recovered);
@@ -237,6 +264,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         // Handle email confirmation
         if (event === 'SIGNED_IN' && session?.user) {
+          const sessionEmail = session.user.email!;
           if (!session.user.email_confirmed_at) {
             console.warn('🔄 SIGNED_IN event for unconfirmed user. Signing out.');
             setUser(null);
@@ -249,7 +277,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             return;
           }
 
-          const appUser = await withAuthTimeout(EmployeeService.getUserByEmail(session.user.email!));
+          let appUser: User | null = null;
+          try {
+            appUser = await withAuthTimeout(EmployeeService.getUserByEmail(sessionEmail));
+          } catch (error) {
+            if (isUserLookupTimeoutError(error)) {
+              console.warn('Profile lookup timed out during auth event; keeping cached session while startup continues.');
+              const cachedUser = getCachedUserForEmail(sessionEmail);
+              if (cachedUser && isMounted) {
+                setUser(cachedUser);
+                storage.saveUser(cachedUser);
+              }
+              return;
+            }
+
+            console.warn('Profile lookup failed during auth event:', error);
+            return;
+          }
+
           if (appUser && isMounted) {
             setUser(appUser);
             storage.saveUser(appUser);
@@ -276,10 +321,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               }, 1500);
             }
           } else if (!appUser && isMounted) {
-            const recovered = await ensureSelfProfile(session.user.email!);
-            if (recovered && isMounted) {
-              setUser(recovered);
-              storage.saveUser(recovered);
+            try {
+              const recovered = await ensureSelfProfile(sessionEmail);
+              if (recovered && isMounted) {
+                setUser(recovered);
+                storage.saveUser(recovered);
+              }
+            } catch (error) {
+              console.warn('Profile recovery failed during auth event:', error);
             }
           }
         } else if (event === 'SIGNED_OUT') {
