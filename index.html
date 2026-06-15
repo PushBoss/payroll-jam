@@ -181,6 +181,16 @@
           overflow: visible !important;
           margin: 0 !important;
         }
+
+        .payslip-print-page {
+          break-after: page;
+          page-break-after: always;
+        }
+
+        .payslip-print-page:last-child {
+          break-after: auto;
+          page-break-after: auto;
+        }
       }
     </style>
   <script type="importmap">

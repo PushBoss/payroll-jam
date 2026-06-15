@@ -4,7 +4,7 @@ import { Icons } from '../components/Icons';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
 import { PayRun, PayRunLineItem, CompanySettings, AuditLogEntry, Employee, IntegrationConfig } from '../core/types';
 import { generateFullRegisterCSV, generateS01CSV, generateS02CSV, generateNCBFile, generateBNSFile, generateGLCSV } from '../utils/exportHelpers';
-import { PayslipView } from '../components/PayslipView';
+import { PayslipPrintBatch, PayslipView } from '../components/PayslipView';
 import { auditService } from '../core/auditService';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
@@ -34,6 +34,7 @@ export const Reports: React.FC<ReportsProps> = ({
   const [selectedRun, setSelectedRun] = useState<PayRun | null>(null);
   // Removed editingRun state - edit functionality can be added later if needed
   const [viewingPayslip, setViewingPayslip] = useState<PayRunLineItem | null>(null);
+  const [printingPayslipRun, setPrintingPayslipRun] = useState<PayRun | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [auditFilter, setAuditFilter] = useState('ALL');
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM format
@@ -291,7 +292,29 @@ export const Reports: React.FC<ReportsProps> = ({
     }
   };
 
+  const handlePrintAllPayslips = (run: PayRun) => {
+    if (!run.lineItems || run.lineItems.length === 0) {
+      toast.error('No payslips are available for this pay run.');
+      return;
+    }
+
+    setPrintingPayslipRun(run);
+    window.setTimeout(() => window.print(), 100);
+  };
+
   const renderDetailModal = () => {
+    if (printingPayslipRun) {
+      return (
+        <PayslipPrintBatch
+          lineItems={printingPayslipRun.lineItems}
+          companyName={companyData?.name || 'JamCorp Ltd.'}
+          payPeriod={printingPayslipRun.periodStart}
+          payDate={printingPayslipRun.payDate}
+          onClose={() => setPrintingPayslipRun(null)}
+        />
+      );
+    }
+
     if (!selectedRun) return null;
 
     if (viewingPayslip) {
@@ -425,7 +448,8 @@ export const Reports: React.FC<ReportsProps> = ({
             >
               Download CSV
             </button>
-            <button type="button" onClick={() => window.print()} className="px-4 py-2 bg-jam-black text-white rounded-lg hover:bg-gray-800 text-sm font-bold">
+            <button type="button" onClick={() => handlePrintAllPayslips(selectedRun)} className="px-4 py-2 bg-jam-black text-white rounded-lg hover:bg-gray-800 text-sm font-bold flex items-center">
+              <Icons.Printer className="w-4 h-4 mr-2" />
               Print Register
             </button>
           </div>

@@ -373,6 +373,44 @@ const addMonths = (date: Date, months: number) => {
     return next;
 };
 
+const normalizeSignupEmail = (email?: string | null) => String(email || '').trim().toLowerCase();
+
+const assertSignupAuthUser = async (adminClient: any, userId: string, email: string, signupFinalizeToken?: string | null) => {
+    const normalizedEmail = normalizeSignupEmail(email);
+    if (!userId) throw new Error('userId is required');
+    if (!normalizedEmail) throw new Error('email is required');
+
+    const { data: authUserResult, error: authUserError } = await adminClient.auth.admin.getUserById(userId);
+    if (authUserError || !authUserResult?.user) {
+        throw new Error('Signup user not found in auth.users');
+    }
+
+    if (normalizeSignupEmail(authUserResult.user.email) !== normalizedEmail) {
+        throw new Error('Signup profile email mismatch');
+    }
+
+    const expectedToken = authUserResult.user.user_metadata?.signup_finalize_token;
+    if (!signupFinalizeToken || expectedToken !== signupFinalizeToken) {
+        throw new Error('Invalid signup finalization token');
+    }
+
+    return { authUser: authUserResult.user, normalizedEmail };
+};
+
+const deriveCompanySignupRole = (plan?: string | null) =>
+    isResellerEquivalentPlan(plan) ? 'RESELLER' : 'OWNER';
+
+const toAppUserResponse = (row: any) => row ? {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    role: row.role,
+    companyId: row.company_id,
+    isOnboarded: row.is_onboarded,
+    avatarUrl: row.avatar_url,
+    phone: row.phone,
+} : null;
+
 const assertSuperAdmin = async (adminClient: any, authUser: any) => {
     if (!authUser) throw new Error('Unauthorized');
 
@@ -430,6 +468,229 @@ serve(async (req: Request) => {
         // --- Handle Actions ---
         
         switch (action) {
+            case 'onboard-confirmed-user': {
+                const { email, password, name, role, signupFinalizeToken } = payload || {};
+                const normalizedEmail = normalizeSignupEmail(email);
+                const normalizedName = String(name || '').trim();
+                const normalizedRole = normalizeMemberRole(role || 'MANAGER');
+
+                if (!normalizedEmail.includes('@')) throw new Error('Invalid email address');
+                if (!password || typeof password !== 'string') throw new Error('Password is required');
+                if (!allowedAppRoles.has(normalizedRole)) throw new Error('Invalid role for signup user');
+                if (!signupFinalizeToken || typeof signupFinalizeToken !== 'string') throw new Error('signupFinalizeToken is required');
+
+                const { data, error } = await adminClient.auth.admin.createUser({
+                    email: normalizedEmail,
+                    password,
+                    email_confirm: true,
+                    user_metadata: {
+                        full_name: normalizedName,
+                        name: normalizedName,
+                        role: normalizedRole,
+                        signup_flow: 'invitation_signup',
+                        signup_finalize_token: signupFinalizeToken,
+                    },
+                });
+
+                if (error) throw error;
+
+                return new Response(JSON.stringify({ user: data.user }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'finalize-signup': {
+                const {
+                    userId,
+                    email,
+                    name,
+                    phone,
+                    signupFinalizeToken,
+                    intent,
+                    company,
+                    verifyEmail = false,
+                    acceptPendingInvitations = false,
+                    resellerInviteToken,
+                } = payload || {};
+
+                const { normalizedEmail } = await assertSignupAuthUser(adminClient, userId, email, signupFinalizeToken);
+                const normalizedName = String(name || '').trim() || normalizedEmail.split('@')[0];
+                const normalizedPhone = phone ? String(phone).trim() : null;
+                const signupIntent = intent === 'company_signup' || company?.companyId ? 'company_signup' : 'invitation_signup';
+
+                if (signupIntent === 'company_signup') {
+                    const {
+                        companyId,
+                        name: companyName,
+                        trn,
+                        address,
+                        plan,
+                        billingCycle,
+                        employeeLimit,
+                        status,
+                        settings,
+                    } = company || {};
+
+                    if (!companyId || !companyName) {
+                        throw new Error('companyId and company name are required for company signup');
+                    }
+
+                    const derivedRole = deriveCompanySignupRole(plan);
+
+                    const { error: profileError } = await adminClient
+                        .from('app_users')
+                        .upsert({
+                            id: userId,
+                            auth_user_id: userId,
+                            email: normalizedEmail,
+                            name: normalizedName,
+                            role: derivedRole,
+                            company_id: null,
+                            is_onboarded: false,
+                            phone: normalizedPhone,
+                        }, { onConflict: 'id' });
+
+                    if (profileError) throw profileError;
+
+                    const { data: savedCompany, error: companyError } = await adminClient
+                        .from('companies')
+                        .upsert({
+                            id: companyId,
+                            owner_id: userId,
+                            name: String(companyName || '').trim(),
+                            email: normalizedEmail,
+                            trn: trn || '',
+                            address: address || '',
+                            plan: plan || 'FREE',
+                            billing_cycle: billingCycle || 'MONTHLY',
+                            employee_limit: employeeLimit ?? 999999,
+                            status: status || 'ACTIVE',
+                            settings: settings || {},
+                        })
+                        .select('*')
+                        .single();
+
+                    if (companyError) throw companyError;
+
+                    const { data: linkedUser, error: linkError } = await adminClient
+                        .from('app_users')
+                        .update({
+                            role: derivedRole,
+                            company_id: companyId,
+                            phone: normalizedPhone,
+                        })
+                        .eq('id', userId)
+                        .select('*')
+                        .maybeSingle();
+
+                    if (linkError) throw linkError;
+
+                    await adminClient.from('account_members').upsert({
+                        account_id: companyId,
+                        user_id: userId,
+                        email: normalizedEmail,
+                        role: 'OWNER',
+                        status: 'accepted',
+                        accepted_at: new Date().toISOString(),
+                        invited_at: new Date().toISOString(),
+                    }, { onConflict: 'account_id,email' });
+
+                    let resellerInviteAccepted = false;
+                    if (resellerInviteToken) {
+                        const { data: accepted, error: inviteError } = await adminClient.rpc('accept_reseller_invite', {
+                            p_invite_token: resellerInviteToken,
+                            p_company_id: companyId,
+                        });
+                        if (inviteError) {
+                            console.error('Failed to accept reseller invite during signup finalization:', inviteError);
+                        }
+                        resellerInviteAccepted = accepted === true;
+                    }
+
+                    return new Response(JSON.stringify({
+                        success: true,
+                        user: toAppUserResponse(linkedUser),
+                        company: savedCompany,
+                        acceptedInvitations: [],
+                        acceptedCount: 0,
+                        resellerInviteAccepted,
+                    }), {
+                        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                    });
+                }
+
+                const { data: pendingInvitations, error: invitationError } = await adminClient
+                    .from('account_members')
+                    .select(`id, account_id, role, email, status, invited_at,
+                        companies:account_id (name, plan)
+                    `)
+                    .eq('email', normalizedEmail)
+                    .eq('status', 'pending')
+                    .order('invited_at', { ascending: false });
+
+                if (invitationError) throw invitationError;
+                if (!pendingInvitations || pendingInvitations.length === 0) {
+                    throw new Error('No pending invitation found for this signup email');
+                }
+
+                const primaryInvitation = pendingInvitations[0];
+                let derivedRole = normalizeMemberRole(primaryInvitation.role);
+                const primaryCompany = Array.isArray(primaryInvitation.companies)
+                    ? primaryInvitation.companies[0]
+                    : primaryInvitation.companies;
+                if (derivedRole === 'OWNER' && primaryCompany && isResellerEquivalentPlan(primaryCompany.plan)) {
+                    derivedRole = 'RESELLER';
+                }
+
+                const { data: savedProfile, error: inviteProfileError } = await adminClient
+                    .from('app_users')
+                    .upsert({
+                        id: userId,
+                        auth_user_id: userId,
+                        email: normalizedEmail,
+                        name: normalizedName,
+                        role: derivedRole,
+                        company_id: primaryInvitation.account_id,
+                        is_onboarded: true,
+                        phone: normalizedPhone,
+                    }, { onConflict: 'id' })
+                    .select('*')
+                    .maybeSingle();
+
+                if (inviteProfileError) throw inviteProfileError;
+
+                let acceptedCount = 0;
+                if (acceptPendingInvitations) {
+                    const invitationIds = pendingInvitations.map((inv: any) => inv.id);
+                    const { data: acceptedRows, error: acceptError } = await adminClient
+                        .from('account_members')
+                        .update({
+                            status: 'accepted',
+                            user_id: userId,
+                            accepted_at: new Date().toISOString(),
+                        })
+                        .in('id', invitationIds)
+                        .eq('email', normalizedEmail)
+                        .select('id');
+
+                    if (acceptError) throw acceptError;
+                    acceptedCount = acceptedRows?.length || 0;
+                }
+
+                if (verifyEmail) {
+                    await adminClient.auth.admin.updateUserById(userId, { email_confirm: true });
+                }
+
+                return new Response(JSON.stringify({
+                    success: true,
+                    user: toAppUserResponse(savedProfile),
+                    acceptedInvitations: pendingInvitations,
+                    acceptedCount,
+                }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
             case 'ensure-self-profile': {
                 if (!authUser) throw new Error('Unauthorized');
 

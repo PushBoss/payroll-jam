@@ -3,13 +3,13 @@ import React, { createContext, useContext, useState, useEffect, useCallback, Rea
 import { User, Role, ResellerClient } from '../core/types';
 import { storage } from '../services/storage';
 import { EmployeeService } from '../services/EmployeeService';
-import { CompanyService } from '../services/CompanyService';
 import { supabase } from '../services/supabaseClient';
 import { getAuthRedirectUrl } from '../utils/domainConfig';
-import { getPendingInvitationsByEmail, acceptMultipleInvitations, AccountMember } from '../features/employees/inviteService';
+import type { AccountMember } from '../features/employees/inviteService';
 import { normalizePlanToDatabase } from '../utils/planNames';
 import { toast } from 'sonner';
 import { AppRoute, getPathForRoute } from '../app/routes';
+import { generateUUID } from '../utils/uuid';
 
 interface AuthContextType {
   user: User | null;
@@ -380,6 +380,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
       }
 
+      const isCompanySignup = Boolean(userData.companyName?.trim() && userData.companyId);
+      const companyCreatorRole =
+        userData.role === Role.RESELLER || userData.plan === 'Reseller' || userData.plan === 'Enterprise'
+          ? Role.RESELLER
+          : Role.OWNER;
+      const effectiveSignupRole = isCompanySignup ? companyCreatorRole : userData.role;
+      const shouldCreateCompany = isCompanySignup && (effectiveSignupRole === Role.OWNER || effectiveSignupRole === Role.RESELLER);
+      const shouldAutoAcceptInvitations = !shouldCreateCompany && Boolean(userData.skipEmailVerification || userData.resellerInviteToken);
+      const signupFinalizeToken = generateUUID();
+
       let authData;
       let authError;
 
@@ -391,7 +401,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           const { data, error } = await supabase.functions.invoke('admin-handler', {
             body: { 
               action: 'onboard-confirmed-user', 
-              payload: { email: userData.email, password: userData.password, name: userData.name } 
+              payload: { email: userData.email, password: userData.password, name: userData.name, role: effectiveSignupRole, signupFinalizeToken }
             }
           });
 
@@ -429,6 +439,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               full_name: userData.name,
               name: userData.name,
               phone: userData.phone || undefined,
+              role: effectiveSignupRole,
+              signup_flow: shouldCreateCompany ? 'company_signup' : 'invitation_signup',
+              company_id: shouldCreateCompany ? userData.companyId : undefined,
+              signup_finalize_token: signupFinalizeToken,
             },
           },
         });
@@ -447,226 +461,84 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       console.log('✅ Supabase Auth user created:', authData.user.id);
 
-      // PART 1: Create app_users profile (linked to auth user)
-      // We do this FIRST so the profile exists if other records need to link to it
-      // Note: We temporarily omit companyId if we're about to create a new company 
-      // to avoid Foreign Key violations (companies table entry doesn't exist yet).
-      const shouldCreateCompany = userData.companyName && userData.companyId &&
-        (userData.role === 'OWNER' || userData.role === 'RESELLER');
-
-      const appUser: User = {
-        id: authData.user.id, // Use Supabase Auth user ID
-        email: userData.email,
-        name: userData.name,
-        role: userData.role,
-        companyId: shouldCreateCompany ? undefined : userData.companyId, // Link later for new companies
-        isOnboarded: userData.isOnboarded || false
+      const parseEmployeeLimit = (limit?: string): number => {
+        if (!limit || limit === 'Unlimited') return 999999;
+        const match = limit.match(/\d+/);
+        return match ? Number(match[0]) : 999999;
       };
 
-      console.log('📝 Creating user profile:', {
-        id: appUser.id,
-        email: appUser.email,
-        companyId: appUser.companyId,
-        role: appUser.role
-      });
+      const isPaidPlan = userData.plan && userData.plan !== 'Free';
+      const billingCycle: 'MONTHLY' | 'ANNUAL' = (userData as any).billingCycle === 'annual' ? 'ANNUAL' : 'MONTHLY';
+      const employeeLimit = (userData as any).employeeLimit || 'Unlimited';
+      let companyStatus: 'ACTIVE' | 'PENDING_PAYMENT' =
+        (isPaidPlan && (userData as any).paymentMethod === 'direct-deposit') ||
+          (isPaidPlan && (userData as any).paymentMethod === 'reseller-billing')
+          ? 'PENDING_PAYMENT'
+          : 'ACTIVE';
 
-      try {
-        // Use SECURITY DEFINER RPC to insert the initial profile.
-        // supabase.auth.signUp() with email confirmation enabled returns NO
-        // active session yet — so auth.uid() is NULL server-side and any
-        // direct .from('app_users').insert() call will be rejected by the
-        // INSERT RLS policy (auth.uid() = id → NULL = id → false).
-        // The RPC runs as the DB owner and validates the auth user exists
-        // before inserting, making it safe without opening an RLS hole.
-        const { error: rpcError } = await supabase.rpc('create_user_profile', {
-          p_user_id: appUser.id,
-          p_email:   appUser.email,
-          p_name:    appUser.name,
-          p_role:    appUser.role,
-        });
-
-        if (rpcError) throw rpcError;
-        console.log('✅ User profile saved to app_users table:', appUser.email);
-
-        if (userData.phone?.trim()) {
-          const { error: phoneUpdateError } = await supabase.functions.invoke('admin-handler', {
-            body: {
-              action: 'update-signup-profile',
-              payload: {
-                userId: appUser.id,
-                email: appUser.email,
-                phone: userData.phone.trim(),
-              },
-            },
-          });
-
-          if (phoneUpdateError) throw phoneUpdateError;
-          appUser.phone = userData.phone.trim();
-        }
-      } catch (profileError) {
-        console.error('❌ CRITICAL: Failed to create user profile:', profileError);
-        // Try to clean up auth user if profile creation fails
-        try {
-          await supabase.auth.admin?.deleteUser(authData.user.id);
-          console.log('🧹 Cleaned up orphaned auth user');
-        } catch (cleanupError) {
-          console.error('⚠️ Failed to cleanup auth user:', cleanupError);
-        }
-        throw new Error(`Profile creation failed: ${(profileError as any).message || 'Unknown error'}`);
+      if ((userData as any).paymentMethod === 'reseller-billing') {
+        companyStatus = 'ACTIVE';
       }
 
-      // Wait a moment to ensure profile is committed
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      // PART 2: Create company record (ONLY for Owners/Resellers starting a NEW business)
-      // Managers/Employees are usually invited to existing businesses and should BYPASS this.
-      if (shouldCreateCompany) {
-        console.log('🏢 Creating new company for Owner/Reseller...');
-        const isPaidPlan = userData.plan && userData.plan !== 'Free';
-
-        const dbPlan = normalizePlanToDatabase(userData.plan);
-
-        // Map billing cycle to database format (MONTHLY/ANNUAL uppercase)
-        const billingCycle: 'MONTHLY' | 'ANNUAL' = (userData as any).billingCycle === 'annual' ? 'ANNUAL' : 'MONTHLY';
-        const employeeLimit = (userData as any).employeeLimit || 'Unlimited';
-
-        console.log('🔍 SIGNUP DEBUG:', {
-          'userData.plan (from form)': userData.plan,
-          'dbPlan (mapped for DB)': dbPlan,
-          'isPaidPlan': isPaidPlan,
-          'billingCycle': billingCycle,
-          'employeeLimit': employeeLimit
-        });
-
-        // Determine company status based on payment method
-        // PENDING_PAYMENT for direct deposit/reseller billing, ACTIVE for card payment or free plan
-        let companyStatus: 'ACTIVE' | 'PENDING_PAYMENT' =
-          (isPaidPlan && (userData as any).paymentMethod === 'direct-deposit') ||
-            (isPaidPlan && (userData as any).paymentMethod === 'reseller-billing')
-            ? 'PENDING_PAYMENT'
-            : 'ACTIVE';
-
-        // 🔍 NEW: Reseller Billing bypass
-        const isResellerBilling = (userData as any).paymentMethod === 'reseller-billing';
-        if (isResellerBilling) {
-          companyStatus = 'ACTIVE'; // Bypass immediate payment requirement
-          console.log('✅ Reseller Billing detected: Bypassing immediate payment for company');
-        }
-
-
-        // Use the Edge Function (service_role) to create the company, because
-        // auth.uid() is NULL at this point (no session until email is verified).
-        // Direct client writes to 'companies' are rejected by RLS (401/403).
-        const parseEmployeeLimit = (limit?: string): number => {
-          if (!limit || limit === 'Unlimited') return 999999;
-          const match = limit.match(/\d+/);
-          return match ? Number(match[0]) : 999999;
-        };
-
-        const { data: companyResult, error: companyInvokeError } = await supabase.functions.invoke('admin-handler', {
-          body: {
-            action: 'create-company',
-            payload: {
-              companyId:      userData.companyId,
-              ownerId:        authData.user.id,
-              name:           userData.companyName,
-              email:          userData.email,
-              trn:            '',
-              address:        userData.address || '',
-              plan:           normalizePlanToDatabase(userData.plan),
-              billingCycle:   billingCycle,
-              employeeLimit:  parseEmployeeLimit(employeeLimit),
-              status:         companyStatus,
+      const { data: finalizeData, error: finalizeError } = await supabase.functions.invoke('admin-handler', {
+        body: {
+          action: 'finalize-signup',
+          payload: {
+            userId: authData.user.id,
+            email: userData.email,
+            name: userData.name,
+            phone: userData.phone || null,
+            signupFinalizeToken,
+            intent: shouldCreateCompany ? 'company_signup' : 'invitation_signup',
+            verifyEmail: userData.skipEmailVerification,
+            acceptPendingInvitations: shouldAutoAcceptInvitations,
+            resellerInviteToken: userData.resellerInviteToken || undefined,
+            company: shouldCreateCompany ? {
+              companyId: userData.companyId,
+              name: userData.companyName,
+              trn: '',
+              address: userData.address || '',
+              plan: normalizePlanToDatabase(userData.plan),
+              billingCycle,
+              employeeLimit: parseEmployeeLimit(employeeLimit),
+              status: companyStatus,
               settings: {
-                email:          userData.email,
-                phone:          userData.phone || '',
-                contactName:    userData.name,
-                companyName:    userData.companyName,
-                city:           userData.city,
-                parish:         userData.parish,
-                paymentMethod:  (userData as any).paymentMethod,
+                email: userData.email,
+                phone: userData.phone || '',
+                contactName: userData.name,
+                companyName: userData.companyName,
+                city: userData.city,
+                parish: userData.parish,
+                paymentMethod: (userData as any).paymentMethod,
                 signupDetails: {
-                  numEmployees:             userData.numEmployees,
-                  numCompanies:             userData.numCompanies,
-                  legalConsentAccepted:     userData.legalConsentAccepted,
-                  legalConsentAcceptedAt:   userData.legalConsentAcceptedAt,
+                  numEmployees: userData.numEmployees,
+                  numCompanies: userData.numCompanies,
+                  legalConsentAccepted: userData.legalConsentAccepted,
+                  legalConsentAcceptedAt: userData.legalConsentAcceptedAt,
                 },
               },
-            }
-          }
-        });
+            } : undefined,
+          },
+        },
+      });
 
-        if (companyInvokeError) throw companyInvokeError;
-        if (!companyResult?.company) throw new Error('Failed to create company record');
-
-        // company created successfully via edge function (service_role)
-
-
-        // If there's a reseller invite token, accept it
-        if (userData.resellerInviteToken) {
-          const accepted = await CompanyService.acceptResellerInvite(
-            userData.resellerInviteToken,
-            userData.companyId!
-          );
-          if (accepted) {
-            console.log('✅ Reseller invitation accepted during signup');
-          } else {
-            console.warn('⚠️ Failed to accept reseller invitation, but continuing with signup');
-          }
-        }
-      } else {
-        console.log('⏩ Bypassing company creation (User is invited or missing company details)');
+      if (finalizeError) throw finalizeError;
+      if (!finalizeData?.success || !finalizeData?.user) {
+        throw new Error('Signup finalization failed');
       }
 
-      // PART 3: Check for pending team member invitations and accept them automatically
-      console.log('🔍 Checking for pending invitations for:', userData.email);
-      const pendingInvitations = await getPendingInvitationsByEmail(userData.email);
-      console.log('📬 Found pending invitations:', pendingInvitations.length);
+      const finalUser: User = {
+        id: finalizeData.user.id,
+        name: finalizeData.user.name,
+        email: finalizeData.user.email,
+        role: finalizeData.user.role as Role,
+        companyId: finalizeData.user.companyId || undefined,
+        isOnboarded: finalizeData.user.isOnboarded,
+        avatarUrl: finalizeData.user.avatarUrl || undefined,
+        phone: finalizeData.user.phone || undefined
+      };
 
-      // Automatically accept all pending team member invitations
-      if (pendingInvitations.length > 0) {
-        const invitationIds = pendingInvitations.map(inv => inv.id);
-        const acceptResult = await acceptMultipleInvitations(invitationIds, authData.user.id, true, userData.email);
-        console.log(`✅ Accepted ${acceptResult.acceptedCount} team member invitation(s)`);
-      }
-
-      // 5. Update local state
-      // Always use the latest companyId if it was created during signup
-      if (shouldCreateCompany && userData.companyId) {
-        appUser.companyId = userData.companyId;
-      }
-
-      // If we accepted invitations, fetch the user again to get the updated company_id
-      let finalUser = appUser;
-      if (pendingInvitations.length > 0) {
-        // Use edge function to bypass RLS/caching issues for the newly updated user
-        try {
-          const { data: resData, error: invokeError } = await supabase.functions.invoke('admin-handler', {
-            body: { action: 'get-user-admin', payload: { email: userData.email } }
-          });
-          const updatedUser = resData?.user;
-
-          if (!invokeError && updatedUser) {
-            console.log('✅ Fetched updated user via Edge Function with company_id:', updatedUser.company_id);
-            finalUser = {
-              id: updatedUser.id,
-              name: updatedUser.name,
-              email: updatedUser.email,
-              role: updatedUser.role as any,
-              companyId: updatedUser.company_id,
-              isOnboarded: updatedUser.is_onboarded,
-              avatarUrl: updatedUser.avatar_url,
-              phone: updatedUser.phone
-            };
-          } else {
-            const fallbackUser = await EmployeeService.getUserByEmail(userData.email);
-            if (fallbackUser) finalUser = fallbackUser;
-          }
-        } catch (e) {
-          const fallbackUser = await EmployeeService.getUserByEmail(userData.email);
-          if (fallbackUser) finalUser = fallbackUser;
-        }
-      }
+      const pendingInvitations: (AccountMember & { company_name?: string; inviter_name?: string; company_plan?: string })[] = [];
 
       // Only log the user in locally if Supabase returned an active session 
       // (which happens if Confirm Email is off, or if created via admin handler).

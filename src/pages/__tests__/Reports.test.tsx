@@ -143,6 +143,7 @@ describe('Reports page E2E Integration tests', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
+    Object.defineProperty(window, 'print', { value: vi.fn(), writable: true });
     vi.clearAllMocks();
   });
 
@@ -282,5 +283,47 @@ describe('Reports page E2E Integration tests', () => {
       true,
       ''
     );
+  });
+
+  it('renders every payslip in one bulk print view from a pay run register', async () => {
+    act(() => {
+      root.render(
+        <Reports
+          history={mockHistory}
+          companyData={mockCompanyData}
+          employees={mockEmployees}
+          integrationConfig={{}}
+        />
+      );
+    });
+
+    let viewDetailBtn: HTMLButtonElement | null = null;
+    container.querySelectorAll('button').forEach((btn) => {
+      if (btn.textContent === 'View Details') {
+        viewDetailBtn = btn as HTMLButtonElement;
+      }
+    });
+
+    act(() => {
+      viewDetailBtn!.click();
+    });
+
+    let printRegisterBtn: HTMLButtonElement | null = null;
+    container.querySelectorAll('button').forEach((btn) => {
+      if (btn.textContent?.includes('Print Register')) {
+        printRegisterBtn = btn as HTMLButtonElement;
+      }
+    });
+
+    expect(printRegisterBtn).not.toBeNull();
+
+    await act(async () => {
+      printRegisterBtn!.click();
+      await new Promise((resolve) => window.setTimeout(resolve, 120));
+    });
+
+    expect(container.textContent).toContain('Bulk Payslip Print');
+    expect(container.querySelectorAll('.payslip-print-page')).toHaveLength(2);
+    expect(window.print).toHaveBeenCalled();
   });
 });
