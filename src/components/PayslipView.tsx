@@ -334,6 +334,12 @@ export const PayslipPrintBatch: React.FC<PayslipPrintBatchProps> = ({ lineItems,
             <div
               key={lineItem.employeeId}
               className={`payslip-print-page ${index === lineItems.length - 1 ? 'payslip-print-page-last' : ''} my-6 print:my-0`}
+              style={{
+                breakAfter: index === lineItems.length - 1 ? 'auto' : 'page',
+                breakBefore: index === 0 ? 'auto' : 'page',
+                pageBreakAfter: index === lineItems.length - 1 ? 'auto' : 'always',
+                pageBreakBefore: index === 0 ? 'auto' : 'always',
+              }}
             >
               <PayslipDocument
                 data={lineItem}
