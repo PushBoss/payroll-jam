@@ -179,8 +179,9 @@ describe('Reports page E2E Integration tests', () => {
     expect(viewDetailBtn).not.toBeNull();
 
     // 2. Click "View Details" to open the detail modal
-    act(() => {
+    await act(async () => {
       viewDetailBtn!.click();
+      await Promise.resolve();
     });
 
     // Verify modal is open and shows "Email All" button
@@ -244,8 +245,9 @@ describe('Reports page E2E Integration tests', () => {
         viewDetailBtn = btn as HTMLButtonElement;
       }
     });
-    act(() => {
+    await act(async () => {
       viewDetailBtn!.click();
+      await Promise.resolve();
     });
 
     // Find "Email All" button
@@ -311,8 +313,9 @@ describe('Reports page E2E Integration tests', () => {
       }
     });
 
-    act(() => {
+    await act(async () => {
       viewDetailBtn!.click();
+      await Promise.resolve();
     });
 
     let printRegisterBtn: HTMLButtonElement | null = null;
@@ -336,5 +339,53 @@ describe('Reports page E2E Integration tests', () => {
     expect(printPages[0].classList.contains('payslip-print-page-last')).toBe(false);
     expect(printPages[1].classList.contains('payslip-print-page-last')).toBe(true);
     expect(window.print).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps loaded register payslips visible when refreshed history only has summary data', async () => {
+    act(() => {
+      root.render(
+        <Reports
+          history={mockHistory}
+          companyData={mockCompanyData}
+          employees={mockEmployees}
+          integrationConfig={{}}
+        />
+      );
+    });
+
+    let viewDetailBtn: HTMLButtonElement | null = null;
+    container.querySelectorAll('button').forEach((btn) => {
+      if (btn.textContent === 'View Details') {
+        viewDetailBtn = btn as HTMLButtonElement;
+      }
+    });
+
+    await act(async () => {
+      viewDetailBtn!.click();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('Jane Doe');
+    expect(container.textContent).toContain('John Smith');
+
+    const summaryHistory: PayRun[] = mockHistory.map((run) => ({
+      ...run,
+      lineItems: [],
+    }));
+
+    act(() => {
+      root.render(
+        <Reports
+          history={summaryHistory}
+          companyData={mockCompanyData}
+          employees={mockEmployees}
+          integrationConfig={{}}
+        />
+      );
+    });
+
+    expect(container.textContent).toContain('Jane Doe');
+    expect(container.textContent).toContain('John Smith');
+    expect(container.textContent).not.toContain('No line item details available');
   });
 });

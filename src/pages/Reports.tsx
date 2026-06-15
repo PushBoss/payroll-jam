@@ -88,6 +88,8 @@ export const Reports: React.FC<ReportsProps> = ({
 
     const selectedLineCount = selectedRun.lineItems?.length || 0;
     const refreshedLineCount = refreshedRun.lineItems?.length || 0;
+    if (selectedLineCount > 0 && refreshedLineCount === 0) return;
+
     if (refreshedLineCount !== selectedLineCount || refreshedRun.status !== selectedRun.status) {
       setSelectedRun(refreshedRun);
     }
@@ -321,6 +323,13 @@ export const Reports: React.FC<ReportsProps> = ({
     }
 
     return currentRun || run;
+  };
+
+  const handleViewRunDetails = async (run: PayRun) => {
+    const detailedRun = await resolvePrintableRun(run);
+    setViewingPayslip(null);
+    setPrintingPayslipRun(null);
+    setSelectedRun(detailedRun);
   };
 
   const handlePrintAllPayslips = async (run: PayRun) => {
@@ -614,8 +623,9 @@ export const Reports: React.FC<ReportsProps> = ({
                                 </button>
                               )}
                               <button
-                                onClick={() => setSelectedRun(run as PayRun)}
-                                className="text-jam-orange hover:text-yellow-600 text-sm font-medium px-2 py-1 rounded hover:bg-orange-50 transition-colors"
+                                onClick={() => void handleViewRunDetails(run as PayRun)}
+                                disabled={payRunDetailsLoading}
+                                className="text-jam-orange hover:text-yellow-600 text-sm font-medium px-2 py-1 rounded hover:bg-orange-50 transition-colors disabled:opacity-50"
                                 title="View details"
                               >
                                 View
@@ -635,8 +645,9 @@ export const Reports: React.FC<ReportsProps> = ({
                                 </button>
                               )}
                               <button
-                                onClick={() => setSelectedRun(run as PayRun)}
-                                className="text-jam-orange hover:text-yellow-600 text-sm font-medium px-2 py-1 rounded hover:bg-orange-50 transition-colors"
+                                onClick={() => void handleViewRunDetails(run as PayRun)}
+                                disabled={payRunDetailsLoading}
+                                className="text-jam-orange hover:text-yellow-600 text-sm font-medium px-2 py-1 rounded hover:bg-orange-50 transition-colors disabled:opacity-50"
                                 title="View details"
                               >
                                 View
@@ -670,8 +681,9 @@ export const Reports: React.FC<ReportsProps> = ({
                                 </button>
                               </div>
                               <button
-                                onClick={() => setSelectedRun(run as PayRun)}
-                                className="text-jam-orange hover:text-yellow-600 text-sm font-medium px-2 py-1 rounded hover:bg-orange-50 transition-colors border border-orange-100"
+                                onClick={() => void handleViewRunDetails(run as PayRun)}
+                                disabled={payRunDetailsLoading}
+                                className="text-jam-orange hover:text-yellow-600 text-sm font-medium px-2 py-1 rounded hover:bg-orange-50 transition-colors border border-orange-100 disabled:opacity-50"
                                 title="View details"
                               >
                                 View Details
