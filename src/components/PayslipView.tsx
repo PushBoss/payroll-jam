@@ -303,7 +303,24 @@ export const PayslipPrintBatch: React.FC<PayslipPrintBatchProps> = ({ lineItems,
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto print-only-modal-overlay"
       onClick={handleBackdropClick}
     >
-      <div className="bg-white w-full max-w-4xl rounded-xl shadow-2xl overflow-hidden animate-scale-in my-8 relative flex flex-col max-h-[95vh] print-only-modal payslip-print-batch">
+      <div className="bulk-payslip-print-root" aria-hidden="true">
+        {lineItems.map((lineItem, index) => (
+          <div
+            key={`print-${lineItem.employeeId}`}
+            className={`payslip-print-page ${index === lineItems.length - 1 ? 'payslip-print-page-last' : ''}`}
+          >
+            <PayslipDocument
+              data={lineItem}
+              companyName={companyName}
+              payPeriod={payPeriod}
+              payDate={payDate}
+              className="payslip-print-document"
+            />
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-white w-full max-w-4xl rounded-xl shadow-2xl overflow-hidden animate-scale-in my-8 relative flex flex-col max-h-[95vh] print-only-modal payslip-print-batch payslip-print-batch-screen">
         <div className="bg-jam-black text-white px-6 py-4 flex justify-between items-center sticky top-0 z-10 shrink-0 print:hidden">
           <div>
             <h3 className="font-bold text-lg">Bulk Payslip Print</h3>
@@ -330,23 +347,16 @@ export const PayslipPrintBatch: React.FC<PayslipPrintBatchProps> = ({ lineItems,
         </div>
 
         <div className="overflow-y-auto flex-1 bg-gray-100 print:bg-white payslip-print-batch-scroll">
-          {lineItems.map((lineItem, index) => (
+          {lineItems.map((lineItem) => (
             <div
-              key={lineItem.employeeId}
-              className={`payslip-print-page ${index === lineItems.length - 1 ? 'payslip-print-page-last' : ''} my-6 print:my-0`}
-              style={{
-                breakAfter: index === lineItems.length - 1 ? 'auto' : 'page',
-                breakBefore: index === 0 ? 'auto' : 'page',
-                pageBreakAfter: index === lineItems.length - 1 ? 'auto' : 'always',
-                pageBreakBefore: index === 0 ? 'auto' : 'always',
-              }}
+              key={`screen-${lineItem.employeeId}`}
+              className="my-6"
             >
               <PayslipDocument
                 data={lineItem}
                 companyName={companyName}
                 payPeriod={payPeriod}
                 payDate={payDate}
-                className="payslip-print-document"
               />
             </div>
           ))}

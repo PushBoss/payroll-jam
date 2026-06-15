@@ -127,6 +127,10 @@
         scrollbar-width: none;  /* Firefox */
       }
 
+      .bulk-payslip-print-root {
+        display: none;
+      }
+
       /* Print Styles */
       @media print {
         @page {
@@ -191,11 +195,33 @@
           background: white !important;
         }
 
+        .print-only-modal-overlay:has(.bulk-payslip-print-root) {
+          position: static !important;
+          min-height: 0 !important;
+        }
+
+        .print-only-modal-overlay:has(.bulk-payslip-print-root) .payslip-print-batch-screen {
+          display: none !important;
+        }
+
+        .bulk-payslip-print-root {
+          display: block !important;
+          visibility: visible !important;
+          position: static !important;
+          width: 100% !important;
+          height: auto !important;
+          overflow: visible !important;
+          background: white !important;
+        }
+
+        .bulk-payslip-print-root * {
+          visibility: visible !important;
+        }
+
         .payslip-print-page {
           display: block !important;
           width: 100% !important;
           max-width: none !important;
-          min-height: 100vh !important;
           margin: 0 !important;
           padding: 0 !important;
           float: none !important;
