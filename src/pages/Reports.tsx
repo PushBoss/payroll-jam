@@ -624,8 +624,7 @@ export const Reports: React.FC<ReportsProps> = ({
                               )}
                               <button
                                 onClick={() => void handleViewRunDetails(run as PayRun)}
-                                disabled={payRunDetailsLoading}
-                                className="text-jam-orange hover:text-yellow-600 text-sm font-medium px-2 py-1 rounded hover:bg-orange-50 transition-colors disabled:opacity-50"
+                                className="text-jam-orange hover:text-yellow-600 text-sm font-medium px-2 py-1 rounded hover:bg-orange-50 transition-colors"
                                 title="View details"
                               >
                                 View
@@ -646,8 +645,7 @@ export const Reports: React.FC<ReportsProps> = ({
                               )}
                               <button
                                 onClick={() => void handleViewRunDetails(run as PayRun)}
-                                disabled={payRunDetailsLoading}
-                                className="text-jam-orange hover:text-yellow-600 text-sm font-medium px-2 py-1 rounded hover:bg-orange-50 transition-colors disabled:opacity-50"
+                                className="text-jam-orange hover:text-yellow-600 text-sm font-medium px-2 py-1 rounded hover:bg-orange-50 transition-colors"
                                 title="View details"
                               >
                                 View
@@ -682,8 +680,7 @@ export const Reports: React.FC<ReportsProps> = ({
                               </div>
                               <button
                                 onClick={() => void handleViewRunDetails(run as PayRun)}
-                                disabled={payRunDetailsLoading}
-                                className="text-jam-orange hover:text-yellow-600 text-sm font-medium px-2 py-1 rounded hover:bg-orange-50 transition-colors border border-orange-100 disabled:opacity-50"
+                                className="text-jam-orange hover:text-yellow-600 text-sm font-medium px-2 py-1 rounded hover:bg-orange-50 transition-colors border border-orange-100"
                                 title="View details"
                               >
                                 View Details

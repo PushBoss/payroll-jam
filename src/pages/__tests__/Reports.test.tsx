@@ -341,6 +341,30 @@ describe('Reports page E2E Integration tests', () => {
     expect(window.print).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps view details available while payslip details are loading', async () => {
+    act(() => {
+      root.render(
+        <Reports
+          history={mockHistory}
+          companyData={mockCompanyData}
+          employees={mockEmployees}
+          integrationConfig={{}}
+          payRunDetailsLoading={true}
+        />
+      );
+    });
+
+    let viewDetailBtn: HTMLButtonElement | null = null;
+    container.querySelectorAll('button').forEach((btn) => {
+      if (btn.textContent === 'View Details') {
+        viewDetailBtn = btn as HTMLButtonElement;
+      }
+    });
+
+    expect(viewDetailBtn).not.toBeNull();
+    expect(viewDetailBtn!.disabled).toBe(false);
+  });
+
   it('keeps loaded register payslips visible when refreshed history only has summary data', async () => {
     act(() => {
       root.render(
