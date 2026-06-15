@@ -1826,7 +1826,7 @@ export const Settings: React.FC<SettingsProps> = ({
             })()}
 
             <p className="pt-6 text-center text-xs font-medium text-gray-400">
-                Version 1.0.0
+                Version 1.0.1
             </p>
         </div>
     );
