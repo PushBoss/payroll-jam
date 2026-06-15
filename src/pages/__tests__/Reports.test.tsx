@@ -143,6 +143,7 @@ describe('Reports page E2E Integration tests', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
+    Object.defineProperty(window, 'print', { value: vi.fn(), writable: true });
     vi.clearAllMocks();
   });
 
@@ -178,8 +179,9 @@ describe('Reports page E2E Integration tests', () => {
     expect(viewDetailBtn).not.toBeNull();
 
     // 2. Click "View Details" to open the detail modal
-    act(() => {
+    await act(async () => {
       viewDetailBtn!.click();
+      await Promise.resolve();
     });
 
     // Verify modal is open and shows "Email All" button
@@ -243,8 +245,9 @@ describe('Reports page E2E Integration tests', () => {
         viewDetailBtn = btn as HTMLButtonElement;
       }
     });
-    act(() => {
+    await act(async () => {
       viewDetailBtn!.click();
+      await Promise.resolve();
     });
 
     // Find "Email All" button
@@ -282,5 +285,131 @@ describe('Reports page E2E Integration tests', () => {
       true,
       ''
     );
+  });
+
+  it('renders every register payslip in one bulk print view with page-separated payslips', async () => {
+    const summaryHistory: PayRun[] = mockHistory.map((run) => ({
+      ...run,
+      lineItems: [],
+    }));
+    const loadFullPayRunHistory = vi.fn().mockResolvedValue(mockHistory);
+
+    act(() => {
+      root.render(
+        <Reports
+          history={summaryHistory}
+          companyData={mockCompanyData}
+          employees={mockEmployees}
+          integrationConfig={{}}
+          onLoadFullPayRunHistory={loadFullPayRunHistory}
+        />
+      );
+    });
+
+    let viewDetailBtn: HTMLButtonElement | null = null;
+    container.querySelectorAll('button').forEach((btn) => {
+      if (btn.textContent === 'View Details') {
+        viewDetailBtn = btn as HTMLButtonElement;
+      }
+    });
+
+    await act(async () => {
+      viewDetailBtn!.click();
+      await Promise.resolve();
+    });
+
+    let printRegisterBtn: HTMLButtonElement | null = null;
+    container.querySelectorAll('button').forEach((btn) => {
+      if (btn.textContent?.includes('Print Register')) {
+        printRegisterBtn = btn as HTMLButtonElement;
+      }
+    });
+
+    expect(printRegisterBtn).not.toBeNull();
+
+    await act(async () => {
+      printRegisterBtn!.click();
+      await new Promise((resolve) => window.setTimeout(resolve, 120));
+    });
+
+    expect(loadFullPayRunHistory).toHaveBeenCalled();
+    expect(container.textContent).toContain('Bulk Payslip Print');
+    const printPages = container.querySelectorAll('.payslip-print-page');
+    expect(printPages).toHaveLength(2);
+    expect(printPages[0].classList.contains('payslip-print-page-last')).toBe(false);
+    expect(printPages[1].classList.contains('payslip-print-page-last')).toBe(true);
+    expect(window.print).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps view details available while payslip details are loading', async () => {
+    act(() => {
+      root.render(
+        <Reports
+          history={mockHistory}
+          companyData={mockCompanyData}
+          employees={mockEmployees}
+          integrationConfig={{}}
+          payRunDetailsLoading={true}
+        />
+      );
+    });
+
+    let viewDetailBtn: HTMLButtonElement | null = null;
+    container.querySelectorAll('button').forEach((btn) => {
+      if (btn.textContent === 'View Details') {
+        viewDetailBtn = btn as HTMLButtonElement;
+      }
+    });
+
+    expect(viewDetailBtn).not.toBeNull();
+    expect(viewDetailBtn!.disabled).toBe(false);
+  });
+
+  it('keeps loaded register payslips visible when refreshed history only has summary data', async () => {
+    act(() => {
+      root.render(
+        <Reports
+          history={mockHistory}
+          companyData={mockCompanyData}
+          employees={mockEmployees}
+          integrationConfig={{}}
+        />
+      );
+    });
+
+    let viewDetailBtn: HTMLButtonElement | null = null;
+    container.querySelectorAll('button').forEach((btn) => {
+      if (btn.textContent === 'View Details') {
+        viewDetailBtn = btn as HTMLButtonElement;
+      }
+    });
+
+    await act(async () => {
+      viewDetailBtn!.click();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('Jane Doe');
+    expect(container.textContent).toContain('John Smith');
+
+    const summaryHistory: PayRun[] = mockHistory.map((run) => ({
+      ...run,
+      lineItems: [],
+    }));
+
+    act(() => {
+      root.render(
+        <Reports
+          history={summaryHistory}
+          companyData={mockCompanyData}
+          employees={mockEmployees}
+          integrationConfig={{}}
+        />
+      );
+    });
+
+    expect(container.textContent).toContain('Jane Doe');
+    expect(container.textContent).toContain('John Smith');
+    expect(container.textContent).not.toContain('No line item details available');
   });
 });

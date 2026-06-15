@@ -127,6 +127,10 @@
         scrollbar-width: none;  /* Firefox */
       }
 
+      .bulk-payslip-print-root {
+        display: none;
+      }
+
       /* Print Styles */
       @media print {
         @page {
@@ -180,6 +184,70 @@
           max-height: none !important;
           overflow: visible !important;
           margin: 0 !important;
+        }
+
+        .payslip-print-batch,
+        .payslip-print-batch-scroll {
+          display: block !important;
+          height: auto !important;
+          max-height: none !important;
+          overflow: visible !important;
+          background: white !important;
+        }
+
+        .print-only-modal-overlay:has(.bulk-payslip-print-root) {
+          position: static !important;
+          min-height: 0 !important;
+        }
+
+        .print-only-modal-overlay:has(.bulk-payslip-print-root) .payslip-print-batch-screen {
+          display: none !important;
+        }
+
+        .bulk-payslip-print-root {
+          display: block !important;
+          visibility: visible !important;
+          position: static !important;
+          width: 100% !important;
+          height: auto !important;
+          overflow: visible !important;
+          background: white !important;
+        }
+
+        .bulk-payslip-print-root * {
+          visibility: visible !important;
+        }
+
+        .payslip-print-page {
+          display: block !important;
+          width: 100% !important;
+          max-width: none !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          float: none !important;
+          position: relative !important;
+          box-sizing: border-box !important;
+          break-after: page !important;
+          page-break-after: always !important;
+          break-inside: avoid !important;
+          page-break-inside: avoid !important;
+        }
+
+        .payslip-print-page + .payslip-print-page {
+          break-before: page !important;
+          page-break-before: always !important;
+        }
+
+        .payslip-print-page-last {
+          break-after: auto !important;
+          page-break-after: auto !important;
+        }
+
+        .payslip-print-document {
+          width: 100% !important;
+          max-width: none !important;
+          margin: 0 auto !important;
+          box-sizing: border-box !important;
         }
       }
     </style>

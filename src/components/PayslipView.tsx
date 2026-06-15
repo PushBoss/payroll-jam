@@ -8,9 +8,10 @@ interface PayslipDocumentProps {
   companyName: string;
   payPeriod: string;
   payDate: string;
+  className?: string;
 }
 
-export const PayslipDocument: React.FC<PayslipDocumentProps> = ({ data, companyName, payPeriod, payDate }) => {
+export const PayslipDocument: React.FC<PayslipDocumentProps> = ({ data, companyName, payPeriod, payDate, className = '' }) => {
   // Mock YTD Calculations (In a real app, this comes from the backend)
   const mockYTD = {
     gross: data.grossPay * 4,
@@ -22,7 +23,7 @@ export const PayslipDocument: React.FC<PayslipDocumentProps> = ({ data, companyN
   };
 
   return (
-    <div className="bg-white p-8 print:p-0 max-w-3xl mx-auto">
+    <div className={`bg-white p-8 print:p-0 max-w-3xl mx-auto ${className}`}>
           {/* Header */}
           <div className="flex justify-between items-start border-b-2 border-gray-800 pb-6 mb-6">
             <div>
@@ -266,6 +267,104 @@ export const PayslipView: React.FC<PayslipViewProps> = ({ data, companyName, pay
                    Close Payslip
                </button>
             </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+interface PayslipPrintBatchProps {
+  lineItems: PayRunLineItem[];
+  companyName: string;
+  payPeriod: string;
+  payDate: string;
+  onClose: () => void;
+}
+
+export const PayslipPrintBatch: React.FC<PayslipPrintBatchProps> = ({ lineItems, companyName, payPeriod, payDate, onClose }) => {
+  useEffect(() => {
+    const handleEsc = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [onClose]);
+
+  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) {
+      onClose();
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto print-only-modal-overlay"
+      onClick={handleBackdropClick}
+    >
+      <div className="bulk-payslip-print-root" aria-hidden="true">
+        {lineItems.map((lineItem, index) => (
+          <div
+            key={`print-${lineItem.employeeId}`}
+            className={`payslip-print-page ${index === lineItems.length - 1 ? 'payslip-print-page-last' : ''}`}
+          >
+            <PayslipDocument
+              data={lineItem}
+              companyName={companyName}
+              payPeriod={payPeriod}
+              payDate={payDate}
+              className="payslip-print-document"
+            />
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-white w-full max-w-4xl rounded-xl shadow-2xl overflow-hidden animate-scale-in my-8 relative flex flex-col max-h-[95vh] print-only-modal payslip-print-batch payslip-print-batch-screen">
+        <div className="bg-jam-black text-white px-6 py-4 flex justify-between items-center sticky top-0 z-10 shrink-0 print:hidden">
+          <div>
+            <h3 className="font-bold text-lg">Bulk Payslip Print</h3>
+            <p className="text-sm text-gray-300">{lineItems.length} payslips for {payPeriod}</p>
+          </div>
+          <div className="flex space-x-3">
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="flex items-center px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors"
+            >
+              <Icons.Printer className="w-4 h-4 mr-2" />
+              Print All
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 bg-gray-800 hover:bg-red-600 rounded-full transition-colors"
+              aria-label="Close"
+            >
+              <Icons.Close className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="overflow-y-auto flex-1 bg-gray-100 print:bg-white payslip-print-batch-scroll">
+          {lineItems.map((lineItem) => (
+            <div
+              key={`screen-${lineItem.employeeId}`}
+              className="my-6"
+            >
+              <PayslipDocument
+                data={lineItem}
+                companyName={companyName}
+                payPeriod={payPeriod}
+                payDate={payDate}
+              />
+            </div>
+          ))}
+          <div className="mb-8 flex justify-center print:hidden">
+            <button type="button" onClick={onClose} className="px-8 py-3 bg-white hover:bg-gray-50 text-gray-800 rounded-lg font-semibold transition-colors border border-gray-200">
+              Close Payslips
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -19,6 +19,21 @@ export const usePayrollData = ({ user, isSupabaseMode, activeCompanyId }: UsePay
   const didMountPayRuns = useRef(false);
   const didMountTimesheets = useRef(false);
 
+  const preserveDetailedPayRuns = (previousRuns: PayRunType[], incomingRuns: PayRunType[]) => {
+    const previousById = new Map(previousRuns.map((run) => [run.id, run]));
+    return incomingRuns.map((run) => {
+      const previousRun = previousById.get(run.id);
+      if ((!run.lineItems || run.lineItems.length === 0) && previousRun?.lineItems?.length) {
+        return { ...run, lineItems: previousRun.lineItems };
+      }
+      return run;
+    });
+  };
+
+  const applyPayRunHistory = useCallback((runs: PayRunType[]) => {
+    setPayRunHistory((previousRuns) => preserveDetailedPayRuns(previousRuns, runs));
+  }, []);
+
   useEffect(() => {
     setPayRunDetailsLoaded(false);
   }, [activeCompanyId, user?.companyId]);
@@ -115,24 +130,29 @@ export const usePayrollData = ({ user, isSupabaseMode, activeCompanyId }: UsePay
 
   const loadFullPayRunHistory = useCallback(async () => {
     const targetCompanyId = activeCompanyId || user?.companyId;
-    if (!isSupabaseMode || !targetCompanyId || payRunDetailsLoaded || payRunDetailsLoading) return;
+    if (!isSupabaseMode || !targetCompanyId) return payRunHistory;
+    const hasDetailedRuns = payRunHistory.some((run) => run.lineItems?.length);
+    if (payRunDetailsLoaded && hasDetailedRuns) return payRunHistory;
+    if (payRunDetailsLoading) return payRunHistory;
 
     setPayRunDetailsLoading(true);
     try {
       const fullHistory = await PayrollService.getPayRuns(targetCompanyId, { includeLineItems: true });
       setPayRunHistory(fullHistory);
       setPayRunDetailsLoaded(true);
+      return fullHistory;
     } catch (error) {
       console.error('Failed to load detailed pay run history:', error);
       toast.error('Could not load detailed pay run history. Reports may be incomplete.');
+      return payRunHistory;
     } finally {
       setPayRunDetailsLoading(false);
     }
-  }, [activeCompanyId, isSupabaseMode, payRunDetailsLoaded, payRunDetailsLoading, user?.companyId]);
+  }, [activeCompanyId, isSupabaseMode, payRunDetailsLoaded, payRunDetailsLoading, payRunHistory, user?.companyId]);
 
   return {
     payRunHistory,
-    setPayRunHistory,
+    setPayRunHistory: applyPayRunHistory,
     payRunDetailsLoaded,
     payRunDetailsLoading,
     timesheets,

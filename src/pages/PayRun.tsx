@@ -21,7 +21,7 @@ import { generateNCBFile, generateBNSFile, generateGLCSV } from '../utils/export
 import { auditService } from '../core/auditService';
 import { emailService } from '../services/emailService';
 import { PayrollService } from '../services/PayrollService';
-import { PayslipView } from '../components/PayslipView';
+import { PayslipPrintBatch, PayslipView } from '../components/PayslipView';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { generateUUID } from '../utils/uuid';
@@ -68,6 +68,7 @@ export const PayRun: React.FC<PayRunProps> = ({
     const [isSavingDraft, setIsSavingDraft] = useState(false);
     const [isEmailing, setIsEmailing] = useState(false);
     const [currentRun, setCurrentRun] = useState<PayRunType | null>(null);
+    const [printingPayslipRun, setPrintingPayslipRun] = useState<PayRunType | null>(null);
     const [isPayRunConfirmed, setIsPayRunConfirmed] = useState(false);
     const [ytdSummaries, setYtdSummaries] = useState<Record<string, PayrollYtdSummary>>({});
 
@@ -522,58 +523,23 @@ export const PayRun: React.FC<PayRunProps> = ({
         }
     };
 
-    const runPayslipSequence = (
-        successStartMessage: string,
-        successEndMessage: string,
-        action: () => void
-    ) => {
+    const openBulkPayslipPrint = (message: string) => {
         if (!currentRun || currentRun.lineItems.length === 0) {
             toast.error('No payslips available');
             return;
         }
 
-        toast.success(successStartMessage);
-
-        let currentIndex = 0;
-
-        const runNext = () => {
-            if (!currentRun || currentIndex >= currentRun.lineItems.length) {
-                setViewingPayslip(null);
-                toast.success(successEndMessage);
-                return;
-            }
-
-            setViewingPayslip(currentRun.lineItems[currentIndex]);
-
-            setTimeout(() => {
-                const handleAfterPrint = () => {
-                    window.removeEventListener('afterprint', handleAfterPrint);
-                    currentIndex++;
-                    setTimeout(runNext, 300);
-                };
-
-                window.addEventListener('afterprint', handleAfterPrint);
-                action();
-            }, 500);
-        };
-
-        runNext();
+        toast.success(message);
+        setPrintingPayslipRun(currentRun);
+        window.setTimeout(() => window.print(), 100);
     };
 
     const handleDownloadAllPayslips = () => {
-        runPayslipSequence(
-            `Downloading ${currentRun?.lineItems.length || 0} payslips. Save each as PDF, then close the dialog to continue.`,
-            'All payslips downloaded successfully!',
-            () => window.print()
-        );
+        openBulkPayslipPrint(`Preparing ${currentRun?.lineItems.length || 0} payslips. Choose Save as PDF in the print dialog.`);
     };
 
     const handlePrintAllPayslips = () => {
-        runPayslipSequence(
-            `Printing ${currentRun?.lineItems.length || 0} payslips. Close each print dialog to continue to the next.`,
-            'All payslips printed successfully!',
-            () => window.print()
-        );
+        openBulkPayslipPrint(`Preparing ${currentRun?.lineItems.length || 0} payslips for bulk printing.`);
     };
 
     const missingEmployees = useMemo(() => getMissingPayRunEmployees(employees, draftItems), [employees, draftItems]);
@@ -813,6 +779,16 @@ export const PayRun: React.FC<PayRunProps> = ({
                     payPeriod={currentRun?.periodStart || payPeriod}
                     payDate={currentRun?.payDate || new Date().toISOString().split('T')[0]}
                     onClose={() => setViewingPayslip(null)}
+                />
+            )}
+
+            {printingPayslipRun && (
+                <PayslipPrintBatch
+                    lineItems={printingPayslipRun.lineItems}
+                    companyName={companyData.name}
+                    payPeriod={printingPayslipRun.periodStart}
+                    payDate={printingPayslipRun.payDate}
+                    onClose={() => setPrintingPayslipRun(null)}
                 />
             )}
 

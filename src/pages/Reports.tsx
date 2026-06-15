@@ -4,7 +4,7 @@ import { Icons } from '../components/Icons';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
 import { PayRun, PayRunLineItem, CompanySettings, AuditLogEntry, Employee, IntegrationConfig } from '../core/types';
 import { generateFullRegisterCSV, generateS01CSV, generateS02CSV, generateNCBFile, generateBNSFile, generateGLCSV } from '../utils/exportHelpers';
-import { PayslipView } from '../components/PayslipView';
+import { PayslipPrintBatch, PayslipView } from '../components/PayslipView';
 import { auditService } from '../core/auditService';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
@@ -19,6 +19,8 @@ interface ReportsProps {
   onNavigate?: (path: string, params?: { editRunId?: string }) => void;
   employees?: Employee[];
   integrationConfig?: IntegrationConfig;
+  payRunDetailsLoading?: boolean;
+  onLoadFullPayRunHistory?: () => Promise<PayRun[] | undefined>;
 }
 
 export const Reports: React.FC<ReportsProps> = ({
@@ -27,13 +29,16 @@ export const Reports: React.FC<ReportsProps> = ({
   onDeletePayRun,
   onNavigate,
   employees = [],
-  integrationConfig
+  integrationConfig,
+  payRunDetailsLoading = false,
+  onLoadFullPayRunHistory
 }) => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'register' | 'statutory' | 'audit'>('register');
   const [selectedRun, setSelectedRun] = useState<PayRun | null>(null);
   // Removed editingRun state - edit functionality can be added later if needed
   const [viewingPayslip, setViewingPayslip] = useState<PayRunLineItem | null>(null);
+  const [printingPayslipRun, setPrintingPayslipRun] = useState<PayRun | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [auditFilter, setAuditFilter] = useState('ALL');
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM format
@@ -75,6 +80,20 @@ export const Reports: React.FC<ReportsProps> = ({
     if (statusFilter === 'ALL') return displayHistory;
     return displayHistory.filter(run => run.status === statusFilter);
   }, [displayHistory, statusFilter]);
+
+  useEffect(() => {
+    if (!selectedRun) return;
+    const refreshedRun = displayHistory.find((run) => run.id === selectedRun.id);
+    if (!refreshedRun || refreshedRun === selectedRun) return;
+
+    const selectedLineCount = selectedRun.lineItems?.length || 0;
+    const refreshedLineCount = refreshedRun.lineItems?.length || 0;
+    if (selectedLineCount > 0 && refreshedLineCount === 0) return;
+
+    if (refreshedLineCount !== selectedLineCount || refreshedRun.status !== selectedRun.status) {
+      setSelectedRun(refreshedRun);
+    }
+  }, [displayHistory, selectedRun]);
 
   // Handle delete with confirmation
   const handleDelete = async (run: PayRun) => {
@@ -291,7 +310,54 @@ export const Reports: React.FC<ReportsProps> = ({
     }
   };
 
+  const resolvePrintableRun = async (run: PayRun) => {
+    if (run.lineItems?.length) return run;
+
+    const currentRun = displayHistory.find((historyRun) => historyRun.id === run.id);
+    if (currentRun?.lineItems?.length) return currentRun;
+
+    if (onLoadFullPayRunHistory) {
+      const detailedHistory = await onLoadFullPayRunHistory();
+      const detailedRun = detailedHistory?.find((historyRun) => historyRun.id === run.id);
+      if (detailedRun?.lineItems?.length) return detailedRun;
+    }
+
+    return currentRun || run;
+  };
+
+  const handleViewRunDetails = async (run: PayRun) => {
+    const detailedRun = await resolvePrintableRun(run);
+    setViewingPayslip(null);
+    setPrintingPayslipRun(null);
+    setSelectedRun(detailedRun);
+  };
+
+  const handlePrintAllPayslips = async (run: PayRun) => {
+    const printableRun = await resolvePrintableRun(run);
+    if (!printableRun.lineItems || printableRun.lineItems.length === 0) {
+      toast.error('No payslips are available for this pay run.');
+      return;
+    }
+
+    setSelectedRun(printableRun);
+    setViewingPayslip(null);
+    setPrintingPayslipRun(printableRun);
+    window.setTimeout(() => window.print(), 100);
+  };
+
   const renderDetailModal = () => {
+    if (printingPayslipRun) {
+      return (
+        <PayslipPrintBatch
+          lineItems={printingPayslipRun.lineItems}
+          companyName={companyData?.name || 'JamCorp Ltd.'}
+          payPeriod={printingPayslipRun.periodStart}
+          payDate={printingPayslipRun.payDate}
+          onClose={() => setPrintingPayslipRun(null)}
+        />
+      );
+    }
+
     if (!selectedRun) return null;
 
     if (viewingPayslip) {
@@ -425,8 +491,14 @@ export const Reports: React.FC<ReportsProps> = ({
             >
               Download CSV
             </button>
-            <button type="button" onClick={() => window.print()} className="px-4 py-2 bg-jam-black text-white rounded-lg hover:bg-gray-800 text-sm font-bold">
-              Print Register
+            <button
+              type="button"
+              onClick={() => void handlePrintAllPayslips(selectedRun)}
+              disabled={payRunDetailsLoading}
+              className="px-4 py-2 bg-jam-black text-white rounded-lg hover:bg-gray-800 text-sm font-bold flex items-center disabled:opacity-50"
+            >
+              <Icons.Printer className="w-4 h-4 mr-2" />
+              {payRunDetailsLoading ? 'Loading Payslips...' : 'Print Register'}
             </button>
           </div>
         </div>
@@ -551,7 +623,7 @@ export const Reports: React.FC<ReportsProps> = ({
                                 </button>
                               )}
                               <button
-                                onClick={() => setSelectedRun(run as PayRun)}
+                                onClick={() => void handleViewRunDetails(run as PayRun)}
                                 className="text-jam-orange hover:text-yellow-600 text-sm font-medium px-2 py-1 rounded hover:bg-orange-50 transition-colors"
                                 title="View details"
                               >
@@ -572,7 +644,7 @@ export const Reports: React.FC<ReportsProps> = ({
                                 </button>
                               )}
                               <button
-                                onClick={() => setSelectedRun(run as PayRun)}
+                                onClick={() => void handleViewRunDetails(run as PayRun)}
                                 className="text-jam-orange hover:text-yellow-600 text-sm font-medium px-2 py-1 rounded hover:bg-orange-50 transition-colors"
                                 title="View details"
                               >
@@ -607,7 +679,7 @@ export const Reports: React.FC<ReportsProps> = ({
                                 </button>
                               </div>
                               <button
-                                onClick={() => setSelectedRun(run as PayRun)}
+                                onClick={() => void handleViewRunDetails(run as PayRun)}
                                 className="text-jam-orange hover:text-yellow-600 text-sm font-medium px-2 py-1 rounded hover:bg-orange-50 transition-colors border border-orange-100"
                                 title="View details"
                               >
