@@ -585,10 +585,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 companyName: userData.companyName,
                 city: userData.city,
                 parish: userData.parish,
+                acquisitionSource: (userData as any).acquisitionSource,
                 paymentMethod: (userData as any).paymentMethod,
                 signupDetails: {
                   numEmployees: userData.numEmployees,
                   numCompanies: userData.numCompanies,
+                  acquisitionSource: (userData as any).acquisitionSource,
                   legalConsentAccepted: userData.legalConsentAccepted,
                   legalConsentAcceptedAt: userData.legalConsentAcceptedAt,
                 },

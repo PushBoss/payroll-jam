@@ -37,11 +37,14 @@ export interface User {
   isOnboarded?: boolean;
   avatarUrl?: string;
   phone?: string;
+  acquisitionSource?: AcquisitionSource;
   onboardingToken?: string; // For invite links
   // Used for Reseller Impersonation
   originalRole?: Role;
   isResellerView?: boolean;
 }
+
+export type AcquisitionSource = 'Google Search' | 'Word of Mouth / Referral' | 'Social Media' | 'Other';
 
 export interface Department {
   id: string;
@@ -469,9 +472,11 @@ export interface CompanySettings {
   paymentMethod?: 'card' | 'direct-deposit' | 'reseller-billing';
   city?: string;
   parish?: string;
+  acquisitionSource?: AcquisitionSource;
   signupDetails?: {
     numEmployees?: number;
     numCompanies?: number;
+    acquisitionSource?: AcquisitionSource;
     legalConsentAccepted?: boolean;
     legalConsentAcceptedAt?: string;
   };
@@ -508,6 +513,7 @@ export interface GlobalConfig {
   dataSource?: 'LOCAL' | 'SUPABASE';
   currency: 'JMD' | 'USD';
   pricingPlans?: PricingPlan[];
+  monthlySignupGoal?: number;
   taxConfig?: TaxConfig;
   supportEmail?: string;
   supportWidget?: {
@@ -660,6 +666,7 @@ export interface DbAppUserRow {
   is_onboarded?: boolean;
   avatar_url?: string | null;
   phone?: string | null;
+  acquisition_source?: string | null;
   onboarding_token?: string | null;
   preferences?: Record<string, unknown>;
   created_at?: string;
@@ -729,6 +736,7 @@ export interface DbCompanyRow {
   address?: string;
   plan?: string | null;
   status?: string;
+  acquisition_source?: string | null;
   owner_id?: string | null;
   reseller_id?: string | null;
   settings?: Record<string, unknown>;

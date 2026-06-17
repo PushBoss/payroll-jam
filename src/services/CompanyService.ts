@@ -253,6 +253,7 @@ export const CompanyService = {
         .upsert({
           id: 'platform',
           config,
+          monthly_signup_goal: config.monthlySignupGoal || 10,
           updated_at: new Date().toISOString()
         });
 

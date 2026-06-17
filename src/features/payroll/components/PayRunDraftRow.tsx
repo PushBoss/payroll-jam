@@ -45,7 +45,7 @@ export const PayRunDraftRow: React.FC<PayRunDraftRowProps> = ({
       <td className="px-6 py-4 text-right">
         {isPieceRate ? (
           <div className="flex flex-col items-end gap-1">
-            <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Pieces</label>
+            <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Pieces Completed</label>
             <input
               type="number"
               min="0"

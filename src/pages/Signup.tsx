@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Icons } from '../components/Icons';
 import { PendingInvitationsUI } from '../components/PendingInvitationsUI';
-import { Role, User, PricingPlan } from '../core/types';
+import { AcquisitionSource, Role, User, PricingPlan } from '../core/types';
 import { getPlanPriceDetails } from '../utils/pricing';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { storage } from '../services/storage';
@@ -38,6 +38,13 @@ const JAMAICA_PARISHES = [
     'St. Mary',
     'Portland',
     'St. Thomas',
+];
+
+const ACQUISITION_SOURCE_OPTIONS: AcquisitionSource[] = [
+    'Google Search',
+    'Word of Mouth / Referral',
+    'Social Media',
+    'Other',
 ];
 
 const sanitizeIntegerInput = (value: string) => value.replace(/\D/g, '');
@@ -93,6 +100,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
         address: '',
         city: 'Kingston',
         parish: 'Kingston',
+        acquisitionSource: '' as AcquisitionSource | '',
     });
 
     // Cleanup function to safely remove widget
@@ -452,6 +460,11 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
             return;
         }
 
+        if (!isTeamInvitation && !formData.acquisitionSource) {
+            toast.error("Please tell us how you heard about Payroll-Jam.");
+            return;
+        }
+
         if (!isTeamInvitation && formData.plan !== 'Free') {
             const employeeCount = Number(formData.numEmployees);
             if (!Number.isInteger(employeeCount) || employeeCount < 1) {
@@ -529,6 +542,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                 address: formData.address.trim() || undefined,
                 city: formData.city.trim() || undefined,
                 parish: formData.parish,
+                acquisitionSource: isTeamInvitation ? undefined : formData.acquisitionSource as AcquisitionSource,
                 plan: isTeamInvitation ? 'Free' : formData.plan,
                 billingCycle: formData.billingCycle,
                 employeeLimit: employeeLimit,
@@ -792,6 +806,20 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                                         ))}
                                                     </select>
                                                 </div>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700">How did you hear about us?</label>
+                                                <select
+                                                    required
+                                                    value={formData.acquisitionSource}
+                                                    onChange={(e) => setFormData({ ...formData, acquisitionSource: e.target.value as AcquisitionSource })}
+                                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-jam-orange focus:border-jam-orange sm:text-sm"
+                                                >
+                                                    <option value="">Select one</option>
+                                                    {ACQUISITION_SOURCE_OPTIONS.map(source => (
+                                                        <option key={source} value={source}>{source}</option>
+                                                    ))}
+                                                </select>
                                             </div>
                                         </>
                                     )}

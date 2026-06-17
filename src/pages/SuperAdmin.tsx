@@ -3,7 +3,7 @@ declare const process: any;
 import React, { useState, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { PricingPlan, ResellerClient, GlobalConfig, User, Role, AuditLogEntry, TaxConfig } from '../core/types';
-import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from 'recharts';
 import { storage } from '../services/storage';
 import { auditService } from '../core/auditService';
 import { BillingService } from '../services/BillingService';
@@ -49,6 +49,13 @@ interface PayingClient {
 }
 
 type ClientActivitySort = 'created_desc' | 'created_asc' | 'last_login_desc' | 'last_login_asc';
+
+interface GrowthAnalytics {
+    monthlySignupGoal: number;
+    currentMonthSignups: number;
+    acquisitionBreakdown: { source: string; count: number }[];
+    signupTrend: { month: string; signups: number }[];
+}
 
 interface EmailDraft {
     to: string;
@@ -104,6 +111,7 @@ const DEFAULT_PAYMENT_CONFIG: GlobalConfig = {
         enabled: true,
         instructions: `Please wire funds to NCB Account 404-392-XXX. Ref: Company Name`
     },
+    monthlySignupGoal: 10,
     maintenanceMode: false,
     systemBanner: {
         active: false,
@@ -177,6 +185,8 @@ const MOCK_REVENUE_DATA = [
     { name: 'Dec', revenue: 88000 },
     { name: 'Jan', revenue: 90500 },
 ];
+
+const ACQUISITION_COLORS = ['#F97316', '#111827', '#10B981', '#6366F1'];
 
 const formatGiftedUntil = (value?: string) => {
     if (!value) return null;
@@ -340,6 +350,13 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         totalEmployees: 0,
         totalMRR: 0
     });
+    const [growthAnalytics, setGrowthAnalytics] = useState<GrowthAnalytics>({
+        monthlySignupGoal: 10,
+        currentMonthSignups: 0,
+        acquisitionBreakdown: [],
+        signupTrend: []
+    });
+    const [isLoadingGrowthAnalytics, setIsLoadingGrowthAnalytics] = useState(false);
 
     // Stats - These are now primarily fetched via Edge Function for accuracy across pages
     // We fall back to local count if edge function isn't used
@@ -654,6 +671,37 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             handleCheckDb();
         }
     }, [activeTab]);
+
+    useEffect(() => {
+        const loadGrowthAnalytics = async () => {
+            if (activeTab !== 'overview') return;
+
+            setIsLoadingGrowthAnalytics(true);
+            try {
+                const { data, error } = await supabase!.functions.invoke('admin-handler', {
+                    body: { action: 'get-growth-analytics', payload: {} }
+                });
+                if (error) throw error;
+
+                setGrowthAnalytics({
+                    monthlySignupGoal: Number(data?.monthlySignupGoal || paymentConfig.monthlySignupGoal || 10),
+                    currentMonthSignups: Number(data?.currentMonthSignups || 0),
+                    acquisitionBreakdown: data?.acquisitionBreakdown || [],
+                    signupTrend: data?.signupTrend || []
+                });
+            } catch (error) {
+                console.error('Error loading growth analytics:', error);
+                setGrowthAnalytics(prev => ({
+                    ...prev,
+                    monthlySignupGoal: Number(paymentConfig.monthlySignupGoal || 10)
+                }));
+            } finally {
+                setIsLoadingGrowthAnalytics(false);
+            }
+        };
+
+        loadGrowthAnalytics();
+    }, [activeTab, paymentConfig.monthlySignupGoal]);
 
     const handleCheckDb = async () => {
         setIsCheckingDb(true);
@@ -1201,6 +1249,111 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                         </div>
                     </div>
                     <p className="text-xs text-gray-400 mt-2">Requires admin review</p>
+                </div>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+                    <div>
+                        <h3 className="font-bold text-gray-900">Growth & Analytics</h3>
+                        <p className="text-sm text-gray-600 mt-1">Monthly signup progress, acquisition source, and organic trend.</p>
+                    </div>
+                    {isLoadingGrowthAnalytics && (
+                        <Icons.Refresh className="w-5 h-5 animate-spin text-jam-orange" />
+                    )}
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6">
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                        <div className="flex items-center justify-between mb-4">
+                            <div>
+                                <p className="text-sm text-gray-500 uppercase font-bold">Monthly Signup Goal</p>
+                                <h3 className="text-3xl font-bold text-gray-900 mt-2">
+                                    {growthAnalytics.currentMonthSignups}
+                                    <span className="text-base font-semibold text-gray-400"> / {growthAnalytics.monthlySignupGoal}</span>
+                                </h3>
+                            </div>
+                            <div className="p-3 bg-orange-50 text-jam-orange rounded-lg">
+                                <Icons.Trending className="w-6 h-6" />
+                            </div>
+                        </div>
+                        <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+                            <div
+                                className="h-full bg-jam-orange rounded-full transition-all"
+                                style={{ width: `${Math.min(100, Math.round((growthAnalytics.currentMonthSignups / Math.max(1, growthAnalytics.monthlySignupGoal)) * 100))}%` }}
+                            />
+                        </div>
+                        <p className="text-xs text-gray-400 mt-3">
+                            {Math.max(0, growthAnalytics.monthlySignupGoal - growthAnalytics.currentMonthSignups)} signups left this month
+                        </p>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                        <div className="flex items-center justify-between mb-4">
+                            <div>
+                                <p className="text-sm text-gray-500 uppercase font-bold">Acquisition Source</p>
+                                <h3 className="text-xl font-bold text-gray-900 mt-2">Signup Mix</h3>
+                            </div>
+                        </div>
+                        {growthAnalytics.acquisitionBreakdown.length === 0 ? (
+                            <div className="h-56 flex items-center justify-center text-sm text-gray-400">No source data yet</div>
+                        ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-[140px_1fr] gap-4 items-center">
+                                <div className="h-40">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <PieChart>
+                                            <Pie
+                                                data={growthAnalytics.acquisitionBreakdown}
+                                                dataKey="count"
+                                                nameKey="source"
+                                                innerRadius={42}
+                                                outerRadius={64}
+                                                paddingAngle={3}
+                                            >
+                                                {growthAnalytics.acquisitionBreakdown.map((entry, index) => (
+                                                    <Cell key={entry.source} fill={ACQUISITION_COLORS[index % ACQUISITION_COLORS.length]} />
+                                                ))}
+                                            </Pie>
+                                            <Tooltip />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                </div>
+                                <div className="space-y-2">
+                                    {growthAnalytics.acquisitionBreakdown.map((entry, index) => (
+                                        <div key={entry.source} className="flex items-center justify-between text-sm">
+                                            <span className="flex items-center text-gray-600">
+                                                <span
+                                                    className="w-2.5 h-2.5 rounded-full mr-2"
+                                                    style={{ backgroundColor: ACQUISITION_COLORS[index % ACQUISITION_COLORS.length] }}
+                                                />
+                                                {entry.source}
+                                            </span>
+                                            <span className="font-bold text-gray-900">{entry.count}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                        <div className="flex items-center justify-between mb-4">
+                            <div>
+                                <p className="text-sm text-gray-500 uppercase font-bold">Organic Signup Trend</p>
+                                <h3 className="text-xl font-bold text-gray-900 mt-2">Last 6 Months</h3>
+                            </div>
+                        </div>
+                        <div className="h-56">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <AreaChart data={growthAnalytics.signupTrend}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                    <XAxis dataKey="month" fontSize={12} tickLine={false} axisLine={false} />
+                                    <YAxis allowDecimals={false} fontSize={12} tickLine={false} axisLine={false} />
+                                    <Tooltip />
+                                    <Area type="monotone" dataKey="signups" stroke="#F97316" fill="#FED7AA" strokeWidth={2} />
+                                </AreaChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
                 </div>
             </div>
             
@@ -2375,6 +2528,32 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                         />
                         <p className="text-xs text-gray-500 mt-2">
                             This email address will receive Contact Support clicks and Contact Us form submissions.
+                        </p>
+                    </div>
+                </div>
+
+                {/* Growth Analytics Configuration */}
+                <div className="mb-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <div className="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 className="text-sm font-bold text-gray-900">Growth Analytics</h3>
+                            <p className="text-xs text-gray-500">Monthly signup target used by the Super Admin overview.</p>
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Monthly Signup Goal</label>
+                        <input
+                            type="number"
+                            min="1"
+                            value={paymentConfig.monthlySignupGoal || 10}
+                            onChange={(e) => setPaymentConfig({
+                                ...paymentConfig,
+                                monthlySignupGoal: Math.max(1, parseInt(e.target.value, 10) || 10)
+                            })}
+                            className="w-full border border-gray-300 rounded p-2 text-sm"
+                        />
+                        <p className="text-xs text-gray-500 mt-2">
+                            Current-month company signups are compared against this target in Growth & Analytics.
                         </p>
                     </div>
                 </div>

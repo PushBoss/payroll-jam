@@ -739,6 +739,13 @@ const sortByClientActivity = <T extends { createdAt?: string | null; accountCrea
 
 const normalizeSignupEmail = (email?: string | null) => String(email || '').trim().toLowerCase();
 
+const ACQUISITION_SOURCES = new Set(['Google Search', 'Word of Mouth / Referral', 'Social Media', 'Other']);
+
+const normalizeAcquisitionSource = (value?: string | null): string | null => {
+    const source = String(value || '').trim();
+    return ACQUISITION_SOURCES.has(source) ? source : null;
+};
+
 const assertSignupAuthUser = async (
     adminClient: any,
     userId: string,
@@ -926,9 +933,15 @@ serve(async (req: Request) => {
                         status,
                         settings,
                     } = company || {};
+                    const acquisitionSource = normalizeAcquisitionSource(
+                        company?.acquisitionSource || settings?.acquisitionSource || settings?.signupDetails?.acquisitionSource
+                    );
 
                     if (!companyId || !companyName) {
                         throw new Error('companyId and company name are required for company signup');
+                    }
+                    if (!acquisitionSource) {
+                        throw new Error('How did you hear about us is required for company signup');
                     }
 
                     const derivedRole = deriveCompanySignupRole(plan);
@@ -969,6 +982,7 @@ serve(async (req: Request) => {
                             company_id: null,
                             is_onboarded: false,
                             phone: normalizedPhone,
+                            acquisition_source: acquisitionSource,
                         }, { onConflict: 'id' });
 
                     if (profileError) throw profileError;
@@ -986,7 +1000,15 @@ serve(async (req: Request) => {
                             billing_cycle: billingCycle || 'MONTHLY',
                             employee_limit: employeeLimit ?? 999999,
                             status: status || 'ACTIVE',
-                            settings: settings || {},
+                            acquisition_source: acquisitionSource,
+                            settings: {
+                                ...(settings || {}),
+                                acquisitionSource,
+                                signupDetails: {
+                                    ...((settings || {}).signupDetails || {}),
+                                    acquisitionSource,
+                                },
+                            },
                         })
                         .select('*')
                         .single();
@@ -999,6 +1021,7 @@ serve(async (req: Request) => {
                             role: derivedRole,
                             company_id: companyId,
                             phone: normalizedPhone,
+                            acquisition_source: acquisitionSource,
                         })
                         .eq('id', userId)
                         .select('*')
@@ -1316,6 +1339,7 @@ serve(async (req: Request) => {
                     companyId, ownerId, name, email, trn, address, plan,
                     billingCycle, employeeLimit, status, settings
                 } = payload;
+                const acquisitionSource = normalizeAcquisitionSource(settings?.acquisitionSource || settings?.signupDetails?.acquisitionSource);
 
                 if (!companyId || !ownerId || !name) {
                     throw new Error('companyId, ownerId, and name are required');
@@ -1340,7 +1364,15 @@ serve(async (req: Request) => {
                         billing_cycle: billingCycle || 'MONTHLY',
                         employee_limit: employeeLimit ?? 999999,
                         status: status || 'ACTIVE',
-                        settings: settings || {},
+                        acquisition_source: acquisitionSource,
+                        settings: {
+                            ...(settings || {}),
+                            acquisitionSource,
+                            signupDetails: {
+                                ...((settings || {}).signupDetails || {}),
+                                acquisitionSource,
+                            },
+                        },
                     })
                     .select('*')
                     .single();
@@ -1353,6 +1385,7 @@ serve(async (req: Request) => {
                     .update({
                         company_id: companyId,
                         phone: settings?.phone ? String(settings.phone).trim() : null,
+                        acquisition_source: acquisitionSource,
                     })
                     .eq('id', ownerId);
 
@@ -2672,6 +2705,78 @@ serve(async (req: Request) => {
                     pendingApprovals: pendingApprovals || 0,
                     totalEmployees: totalEmployees || 0,
                     totalMRR
+                }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'get-growth-analytics': {
+                await assertSuperAdmin(adminClient, authUser);
+
+                const { data: configRow } = await adminClient
+                    .from('global_config')
+                    .select('config, monthly_signup_goal')
+                    .eq('id', 'platform')
+                    .maybeSingle();
+
+                const monthlySignupGoal = Number(configRow?.monthly_signup_goal || configRow?.config?.monthlySignupGoal || configRow?.config?.monthly_signup_goal || 10);
+
+                const since = new Date();
+                since.setMonth(since.getMonth() - 5);
+                since.setDate(1);
+                since.setHours(0, 0, 0, 0);
+
+                const { data: companies, error: companiesError } = await adminClient
+                    .from('companies')
+                    .select('id, created_at, acquisition_source, settings')
+                    .gte('created_at', since.toISOString())
+                    .order('created_at', { ascending: true });
+
+                if (companiesError) throw companiesError;
+
+                const monthFormatter = new Intl.DateTimeFormat('en-US', { month: 'short' });
+                const months = Array.from({ length: 6 }, (_, index) => {
+                    const date = new Date(since);
+                    date.setMonth(since.getMonth() + index);
+                    return {
+                        key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
+                        label: monthFormatter.format(date),
+                        signups: 0,
+                    };
+                });
+
+                const currentMonthKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+                const sourceCounts: Record<string, number> = {
+                    'Google Search': 0,
+                    'Word of Mouth / Referral': 0,
+                    'Social Media': 0,
+                    Other: 0,
+                };
+
+                for (const company of companies || []) {
+                    const createdAt = new Date(company.created_at);
+                    if (Number.isNaN(createdAt.getTime())) continue;
+
+                    const key = `${createdAt.getFullYear()}-${String(createdAt.getMonth() + 1).padStart(2, '0')}`;
+                    const month = months.find((item) => item.key === key);
+                    if (month) month.signups += 1;
+
+                    const source = normalizeAcquisitionSource(
+                        company.acquisition_source || company.settings?.acquisitionSource || company.settings?.signupDetails?.acquisitionSource
+                    ) || 'Other';
+                    sourceCounts[source] = (sourceCounts[source] || 0) + 1;
+                }
+
+                const currentMonthSignups = months.find((item) => item.key === currentMonthKey)?.signups || 0;
+                const acquisitionBreakdown = Object.entries(sourceCounts)
+                    .map(([source, count]) => ({ source, count }))
+                    .filter((item) => item.count > 0);
+
+                return new Response(JSON.stringify({
+                    monthlySignupGoal,
+                    currentMonthSignups,
+                    acquisitionBreakdown,
+                    signupTrend: months.map(({ label, signups }) => ({ month: label, signups })),
                 }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });
