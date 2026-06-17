@@ -130,7 +130,7 @@ export const Layout: React.FC<LayoutProps> = ({
 
       {/* Reseller Managing Self Banner */}
       {isResellerManagingSelf && (
-        <div className="bg-gray-900 text-white px-4 py-3 text-sm font-bold flex justify-between items-center shadow-md z-[70] relative border-b border-gray-800">
+        <div className="bg-gray-900 text-white px-4 py-3 text-sm font-bold flex justify-between items-center shadow-md z-10 relative border-b border-gray-800">
           <div className="flex items-center">
             <div className="w-8 h-8 rounded-full bg-jam-orange bg-opacity-20 flex items-center justify-center mr-3">
               <Icons.Settings className="w-4 h-4 text-jam-orange" />
@@ -152,14 +152,14 @@ export const Layout: React.FC<LayoutProps> = ({
 
 
       {/* 0. Beta Banner */}
-      <div className="bg-blue-600 text-white px-4 py-1.5 text-xs font-semibold flex justify-center items-center gap-2 z-[65]">
+      <div className="bg-blue-600 text-white px-4 py-1.5 text-xs font-semibold flex justify-center items-center gap-2 z-10">
         <span>🚀</span>
         <span>You&apos;re on the <strong>Payroll-Jam Beta</strong> — features are actively being developed. Thank you for testing!</span>
       </div>
 
       {/* 1. Global System Banner (Super Admin) */}
       {systemBanner?.active && (
-        <div className={`px-4 py-2 text-sm font-bold flex justify-center items-center shadow-sm z-[60] text-center
+        <div className={`px-4 py-2 text-sm font-bold flex justify-center items-center shadow-sm z-10 text-center
             ${systemBanner.type === 'ERROR' ? 'bg-red-600 text-white' :
             systemBanner.type === 'WARNING' ? 'bg-orange-500 text-white' : 'bg-blue-600 text-white'}`
         }>
@@ -170,7 +170,7 @@ export const Layout: React.FC<LayoutProps> = ({
 
       {/* 2. Subscription Status Banner (Billing) */}
       {variant === 'admin' && subscriptionStatus === 'SUSPENDED' && (
-        <div className="bg-red-600 text-white px-4 py-3 text-sm font-bold flex justify-center items-center shadow-md z-[55]">
+        <div className="bg-red-600 text-white px-4 py-3 text-sm font-bold flex justify-center items-center shadow-md z-10">
           <Icons.Alert className="w-5 h-5 mr-2" />
           <span>ACCOUNT SUSPENDED: Payment required. Payroll features are currently disabled.</span>
           <button onClick={() => onNavigate('settings')} className="ml-4 underline hover:text-red-100">Update Billing</button>
@@ -179,7 +179,7 @@ export const Layout: React.FC<LayoutProps> = ({
 
       {/* 3. Plan Limit Banner (Soft Lock) */}
       {variant === 'admin' && isOverLimit && subscriptionStatus !== 'SUSPENDED' && (
-        <div className="bg-orange-500 text-white px-4 py-2 text-sm font-bold flex justify-center items-center shadow-sm z-[55]">
+        <div className="bg-orange-500 text-white px-4 py-2 text-sm font-bold flex justify-center items-center shadow-sm z-10">
           <Icons.Alert className="w-4 h-4 mr-2" />
           <span>PLAN LIMIT EXCEEDED: You have more active employees than your plan allows. Some features are locked.</span>
           <button onClick={() => onNavigate('settings')} className="ml-4 underline hover:text-orange-100">Upgrade Now</button>
@@ -188,7 +188,7 @@ export const Layout: React.FC<LayoutProps> = ({
 
       {/* 4. Impersonation Banner */}
       {isImpersonating && (
-        <div className={`px-4 py-3 text-sm font-bold flex justify-between items-center shadow-md z-[70] relative border-b border-gray-800 ${isSuperAdminImpersonating
+        <div className={`px-4 py-3 text-sm font-bold flex justify-between items-center shadow-md z-10 relative border-b border-gray-800 ${isSuperAdminImpersonating
           ? 'bg-red-900 text-white'
           : 'bg-gray-900 text-white'
           }`}>

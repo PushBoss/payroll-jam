@@ -18,6 +18,31 @@ body {
   background-color: #F9FAFB;
 }
 
+/* Keep app modal headers and close buttons reachable on shorter screens.
+   Many existing modals are inline page markup, so this protects the shared
+   overlay pattern without requiring every modal to be rewritten at once. */
+.fixed.inset-0[class*="bg-black"]:not(.print-only-modal-overlay) {
+  z-index: 1000 !important;
+  align-items: flex-start !important;
+  overflow-y: auto !important;
+  padding-top: max(1rem, env(safe-area-inset-top)) !important;
+  padding-bottom: max(1rem, env(safe-area-inset-bottom)) !important;
+}
+
+.fixed.inset-0[class*="bg-black"]:not(.print-only-modal-overlay) > div:not(.no-modal-viewport-guard) {
+  max-height: calc(100dvh - 2rem);
+}
+
+.fixed.inset-0[class*="bg-black"]:not(.print-only-modal-overlay) > div:not(.no-modal-viewport-guard):not([class*="overflow-y-auto"]) {
+  overflow-y: auto;
+}
+
+@supports not (height: 100dvh) {
+  .fixed.inset-0[class*="bg-black"]:not(.print-only-modal-overlay) > div:not(.no-modal-viewport-guard) {
+    max-height: calc(100vh - 2rem);
+  }
+}
+
 /* Hide scrollbar for chrome/safari/opera */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
