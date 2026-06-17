@@ -3,7 +3,7 @@ declare const process: any;
 import React, { useState, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { PricingPlan, ResellerClient, GlobalConfig, User, Role, AuditLogEntry, TaxConfig } from '../core/types';
-import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from 'recharts';
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell, ReferenceLine } from 'recharts';
 import { storage } from '../services/storage';
 import { auditService } from '../core/auditService';
 import { BillingService } from '../services/BillingService';
@@ -380,7 +380,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     const dimePayStatus = getDimePayStatus(paymentConfig);
     const trendWindowSize: Record<GrowthTrendRange, number> = { '1M': 2, '6M': 6, '1Y': 12 };
     const selectedSignupTrend = growthAnalytics.signupTrend.slice(-trendWindowSize[growthTrendRange]);
-    const monthOverMonthGrowth = selectedSignupTrend.map((point, index, records) => {
+    const fullMonthOverMonthGrowth = growthAnalytics.signupTrend.map((point, index, records) => {
         const previous = index > 0 ? records[index - 1].signups : 0;
         const growth = previous > 0
             ? Math.round(((point.signups - previous) / previous) * 1000) / 10
@@ -392,6 +392,15 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             signups: point.signups
         };
     });
+    const monthOverMonthGrowth = fullMonthOverMonthGrowth.slice(-trendWindowSize[growthTrendRange]);
+    const currentMomGrowth = monthOverMonthGrowth.length > 0
+        ? monthOverMonthGrowth[monthOverMonthGrowth.length - 1].growth
+        : 0;
+    const momStatus = currentMomGrowth >= 10
+        ? { label: 'On Track', className: 'bg-green-100 text-green-700' }
+        : currentMomGrowth >= 0
+            ? { label: 'Below Target', className: 'bg-amber-100 text-amber-700' }
+            : { label: 'Negative Growth', className: 'bg-red-100 text-red-700' };
 
     // --- Persistence Effects ---
     useEffect(() => {
@@ -1383,13 +1392,25 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     </div>
 
                     <div className="lg:col-span-3 bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                        <div className="flex items-center justify-between mb-4">
+                        <div className="flex flex-col gap-4 mb-4 lg:flex-row lg:items-start lg:justify-between">
                             <div>
                                 <p className="text-sm text-gray-500 uppercase font-bold">Month Over Month Growth</p>
                                 <h3 className="text-xl font-bold text-gray-900 mt-2">Signup Momentum</h3>
+                                <p className="text-xs text-gray-500 mt-1">Target is at least 10% month over month growth.</p>
                             </div>
-                            <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg">
-                                <Icons.Trending className="w-6 h-6" />
+                            <div className="flex flex-wrap items-center gap-3">
+                                <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-right">
+                                    <p className="text-xs font-bold uppercase text-gray-500">Current MoM</p>
+                                    <p className={`text-2xl font-bold ${currentMomGrowth >= 10 ? 'text-green-600' : currentMomGrowth >= 0 ? 'text-amber-600' : 'text-red-600'}`}>
+                                        {currentMomGrowth}%
+                                    </p>
+                                </div>
+                                <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold uppercase ${momStatus.className}`}>
+                                    {momStatus.label}
+                                </span>
+                                <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg">
+                                    <Icons.Trending className="w-6 h-6" />
+                                </div>
                             </div>
                         </div>
                         <div className="h-64">
@@ -1404,6 +1425,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                         tickFormatter={(value) => `${value}%`}
                                     />
                                     <Tooltip formatter={(value) => [`${value}%`, 'Growth']} />
+                                    <ReferenceLine y={10} stroke="#F97316" strokeDasharray="4 4" label={{ value: '10% target', position: 'insideTopRight', fill: '#F97316', fontSize: 12 }} />
                                     <Area type="monotone" dataKey="growth" stroke="#10B981" fill="#D1FAE5" strokeWidth={2} />
                                 </AreaChart>
                             </ResponsiveContainer>
