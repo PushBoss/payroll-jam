@@ -2722,7 +2722,7 @@ serve(async (req: Request) => {
                 const monthlySignupGoal = Number(configRow?.monthly_signup_goal || configRow?.config?.monthlySignupGoal || configRow?.config?.monthly_signup_goal || 10);
 
                 const since = new Date();
-                since.setMonth(since.getMonth() - 5);
+                since.setMonth(since.getMonth() - 11);
                 since.setDate(1);
                 since.setHours(0, 0, 0, 0);
 
@@ -2735,7 +2735,7 @@ serve(async (req: Request) => {
                 if (companiesError) throw companiesError;
 
                 const monthFormatter = new Intl.DateTimeFormat('en-US', { month: 'short' });
-                const months = Array.from({ length: 6 }, (_, index) => {
+                const months = Array.from({ length: 12 }, (_, index) => {
                     const date = new Date(since);
                     date.setMonth(since.getMonth() + index);
                     return {

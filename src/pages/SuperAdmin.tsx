@@ -49,6 +49,7 @@ interface PayingClient {
 }
 
 type ClientActivitySort = 'created_desc' | 'created_asc' | 'last_login_desc' | 'last_login_asc';
+type GrowthTrendRange = '1M' | '6M' | '1Y';
 
 interface GrowthAnalytics {
     monthlySignupGoal: number;
@@ -357,6 +358,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         signupTrend: []
     });
     const [isLoadingGrowthAnalytics, setIsLoadingGrowthAnalytics] = useState(false);
+    const [growthTrendRange, setGrowthTrendRange] = useState<GrowthTrendRange>('6M');
 
     // Stats - These are now primarily fetched via Edge Function for accuracy across pages
     // We fall back to local count if edge function isn't used
@@ -376,6 +378,20 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     const totalEmployees = (platformStats.totalEmployees > 0) ? platformStats.totalEmployees : tenants.reduce((acc, t) => acc + (t.employeeCount || 0), 0);
     const pendingApprovals = platformStats.pendingApprovals;
     const dimePayStatus = getDimePayStatus(paymentConfig);
+    const trendWindowSize: Record<GrowthTrendRange, number> = { '1M': 2, '6M': 6, '1Y': 12 };
+    const selectedSignupTrend = growthAnalytics.signupTrend.slice(-trendWindowSize[growthTrendRange]);
+    const monthOverMonthGrowth = selectedSignupTrend.map((point, index, records) => {
+        const previous = index > 0 ? records[index - 1].signups : 0;
+        const growth = previous > 0
+            ? Math.round(((point.signups - previous) / previous) * 1000) / 10
+            : point.signups > 0 ? 100 : 0;
+
+        return {
+            month: point.month,
+            growth,
+            signups: point.signups
+        };
+    });
 
     // --- Persistence Effects ---
     useEffect(() => {
@@ -1336,20 +1352,59 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     </div>
 
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                        <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-start justify-between gap-3 mb-4">
                             <div>
                                 <p className="text-sm text-gray-500 uppercase font-bold">Organic Signup Trend</p>
-                                <h3 className="text-xl font-bold text-gray-900 mt-2">Last 6 Months</h3>
+                                <h3 className="text-xl font-bold text-gray-900 mt-2">
+                                    {growthTrendRange === '1M' ? 'Last Month' : growthTrendRange === '1Y' ? 'Last Year' : 'Last 6 Months'}
+                                </h3>
                             </div>
+                            <select
+                                value={growthTrendRange}
+                                onChange={(event) => setGrowthTrendRange(event.target.value as GrowthTrendRange)}
+                                className="px-2 py-1.5 border border-gray-300 rounded-lg bg-white text-xs font-medium focus:outline-none focus:ring-2 focus:ring-jam-orange"
+                            >
+                                <option value="1M">Last Month</option>
+                                <option value="6M">Last 6 Months</option>
+                                <option value="1Y">Last Year</option>
+                            </select>
                         </div>
                         <div className="h-56">
                             <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={growthAnalytics.signupTrend}>
+                                <AreaChart data={selectedSignupTrend}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                     <XAxis dataKey="month" fontSize={12} tickLine={false} axisLine={false} />
                                     <YAxis allowDecimals={false} fontSize={12} tickLine={false} axisLine={false} />
                                     <Tooltip />
                                     <Area type="monotone" dataKey="signups" stroke="#F97316" fill="#FED7AA" strokeWidth={2} />
+                                </AreaChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+
+                    <div className="lg:col-span-3 bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                        <div className="flex items-center justify-between mb-4">
+                            <div>
+                                <p className="text-sm text-gray-500 uppercase font-bold">Month Over Month Growth</p>
+                                <h3 className="text-xl font-bold text-gray-900 mt-2">Signup Momentum</h3>
+                            </div>
+                            <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg">
+                                <Icons.Trending className="w-6 h-6" />
+                            </div>
+                        </div>
+                        <div className="h-64">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <AreaChart data={monthOverMonthGrowth}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                    <XAxis dataKey="month" fontSize={12} tickLine={false} axisLine={false} />
+                                    <YAxis
+                                        fontSize={12}
+                                        tickLine={false}
+                                        axisLine={false}
+                                        tickFormatter={(value) => `${value}%`}
+                                    />
+                                    <Tooltip formatter={(value) => [`${value}%`, 'Growth']} />
+                                    <Area type="monotone" dataKey="growth" stroke="#10B981" fill="#D1FAE5" strokeWidth={2} />
                                 </AreaChart>
                             </ResponsiveContainer>
                         </div>
