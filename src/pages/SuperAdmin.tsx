@@ -3,7 +3,7 @@ declare const process: any;
 import React, { useState, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { PricingPlan, ResellerClient, GlobalConfig, User, Role, AuditLogEntry, TaxConfig } from '../core/types';
-import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell, ReferenceLine } from 'recharts';
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell, ReferenceLine, BarChart, Bar } from 'recharts';
 import { storage } from '../services/storage';
 import { auditService } from '../core/auditService';
 import { BillingService } from '../services/BillingService';
@@ -56,6 +56,7 @@ interface GrowthAnalytics {
     currentMonthSignups: number;
     acquisitionBreakdown: { source: string; count: number }[];
     signupTrend: { month: string; signups: number }[];
+    activationFunnel: { step: string; count: number; rate: number }[];
 }
 
 interface EmailDraft {
@@ -355,7 +356,8 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         monthlySignupGoal: 10,
         currentMonthSignups: 0,
         acquisitionBreakdown: [],
-        signupTrend: []
+        signupTrend: [],
+        activationFunnel: []
     });
     const [isLoadingGrowthAnalytics, setIsLoadingGrowthAnalytics] = useState(false);
     const [growthTrendRange, setGrowthTrendRange] = useState<GrowthTrendRange>('6M');
@@ -712,7 +714,8 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     monthlySignupGoal: Number(data?.monthlySignupGoal || paymentConfig.monthlySignupGoal || 10),
                     currentMonthSignups: Number(data?.currentMonthSignups || 0),
                     acquisitionBreakdown: data?.acquisitionBreakdown || [],
-                    signupTrend: data?.signupTrend || []
+                    signupTrend: data?.signupTrend || [],
+                    activationFunnel: data?.activationFunnel || []
                 });
             } catch (error) {
                 console.error('Error loading growth analytics:', error);
@@ -1430,6 +1433,56 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                 </AreaChart>
                             </ResponsiveContainer>
                         </div>
+                    </div>
+
+                    <div className="lg:col-span-3 bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                        <div className="flex flex-col gap-4 mb-4 lg:flex-row lg:items-start lg:justify-between">
+                            <div>
+                                <p className="text-sm text-gray-500 uppercase font-bold">Activation Funnel</p>
+                                <h3 className="text-xl font-bold text-gray-900 mt-2">Signup to First Payroll</h3>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Cohort tracks companies signed up in the last 12 months through onboarding, roster setup, and finalized payroll.
+                                </p>
+                            </div>
+                            <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
+                                <Icons.Reports className="w-6 h-6" />
+                            </div>
+                        </div>
+                        {growthAnalytics.activationFunnel.length === 0 ? (
+                            <div className="h-64 flex items-center justify-center text-sm text-gray-400">No activation data yet</div>
+                        ) : (
+                            <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6 items-center">
+                                <div className="h-72">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart
+                                            data={growthAnalytics.activationFunnel}
+                                            layout="vertical"
+                                            margin={{ top: 8, right: 24, left: 20, bottom: 8 }}
+                                        >
+                                            <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                                            <XAxis type="number" allowDecimals={false} fontSize={12} tickLine={false} axisLine={false} />
+                                            <YAxis type="category" dataKey="step" width={120} fontSize={12} tickLine={false} axisLine={false} />
+                                            <Tooltip formatter={(value, name) => [value, name === 'count' ? 'Companies' : name]} />
+                                            <Bar dataKey="count" fill="#F97316" radius={[0, 6, 6, 0]} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                                <div className="space-y-3">
+                                    {growthAnalytics.activationFunnel.map((item) => (
+                                        <div key={item.step} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <p className="text-sm font-bold text-gray-900">{item.step}</p>
+                                                <span className="text-xs font-bold text-gray-500">{item.rate}%</span>
+                                            </div>
+                                            <div className="mt-2 flex items-end justify-between">
+                                                <p className="text-2xl font-bold text-gray-900">{item.count}</p>
+                                                <p className="text-xs text-gray-500">of signups</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

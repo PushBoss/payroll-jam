@@ -2725,6 +2725,7 @@ serve(async (req: Request) => {
                 since.setMonth(since.getMonth() - 11);
                 since.setDate(1);
                 since.setHours(0, 0, 0, 0);
+                const until = new Date();
 
                 const { data: companies, error: companiesError } = await adminClient
                     .from('companies')
@@ -2733,6 +2734,13 @@ serve(async (req: Request) => {
                     .order('created_at', { ascending: true });
 
                 if (companiesError) throw companiesError;
+
+                const { data: activationFunnel, error: activationFunnelError } = await adminClient.rpc('get_activation_funnel', {
+                    start_date: since.toISOString(),
+                    end_date: until.toISOString()
+                });
+
+                if (activationFunnelError) throw activationFunnelError;
 
                 const monthFormatter = new Intl.DateTimeFormat('en-US', { month: 'short' });
                 const months = Array.from({ length: 12 }, (_, index) => {
@@ -2777,6 +2785,7 @@ serve(async (req: Request) => {
                     currentMonthSignups,
                     acquisitionBreakdown,
                     signupTrend: months.map(({ label, signups }) => ({ month: label, signups })),
+                    activationFunnel: activationFunnel || [],
                 }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });
