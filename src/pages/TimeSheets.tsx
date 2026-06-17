@@ -5,6 +5,7 @@ import { Icons } from '../components/Icons';
 import { CompanySettings, Employee, WeeklyTimesheet } from '../core/types';
 import { buildAppUrl } from '../app/routes';
 import { encodeClockInPayload, getCompanyLocations } from '../utils/attendance';
+import { AttendanceBadge, PayrollService } from '../services/PayrollService';
 
 interface TimeSheetsProps {
   timesheets?: WeeklyTimesheet[];
@@ -70,6 +71,9 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
   const [kioskMode, setKioskMode] = useState(false);
   const [selectedLocationId, setSelectedLocationId] = useState(locations[0]?.id || '');
   const [qrImageUrl, setQrImageUrl] = useState('');
+  const [attendanceBadge, setAttendanceBadge] = useState<AttendanceBadge | null>(null);
+  const [attendanceBadgeLoading, setAttendanceBadgeLoading] = useState(false);
+  const [attendanceBadgeError, setAttendanceBadgeError] = useState('');
   const [manualEntry, setManualEntry] = useState({
     employeeId: '',
     date: toDateInputValue(new Date()),
@@ -143,6 +147,39 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
       setManualEntry((entry) => ({ ...entry, employeeId: activeEmployees[0].id }));
     }
   }, [activeEmployees, manualEntry.employeeId]);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!qrModalOpen || !companyData?.id || !selectedLocation?.id) {
+      setAttendanceBadge(null);
+      setAttendanceBadgeError('');
+      return () => {
+        active = false;
+      };
+    }
+
+    setAttendanceBadgeLoading(true);
+    setAttendanceBadgeError('');
+    PayrollService.getAttendanceBadge(companyData.id, selectedLocation.id)
+      .then((badge) => {
+        if (active) setAttendanceBadge(badge);
+      })
+      .catch((error) => {
+        console.error('Failed to generate attendance badge:', error);
+        if (active) {
+          setAttendanceBadge(null);
+          setAttendanceBadgeError(error?.message || 'Attendance badge could not be generated.');
+        }
+      })
+      .finally(() => {
+        if (active) setAttendanceBadgeLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [companyData?.id, qrModalOpen, selectedLocation?.id]);
 
   useEffect(() => {
     let active = true;
@@ -407,8 +444,7 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
               .clock-in-qr-print, .clock-in-qr-print * { visibility: visible; }
               .clock-in-qr-print { position: absolute; inset: 0; margin: auto; width: 100%; display: flex; align-items: center; justify-content: center; }
               .clock-in-qr-body { padding: 0 !important; }
-              .clock-in-qr-label { display: none !important; }
-              .clock-in-qr-image { width: 80vmin !important; height: 80vmin !important; margin: 0 !important; border: 0 !important; }
+              .clock-in-qr-image { width: 62vmin !important; height: 62vmin !important; margin: 5vmin auto 0 !important; border: 0 !important; }
               .no-print { display: none !important; }
             }
           `}</style>
@@ -416,7 +452,7 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
             <div className="no-print flex items-center justify-between border-b border-gray-100 bg-gray-50 p-4">
               <div>
                 <h3 className="font-bold text-gray-900">Generate Clock-in QR</h3>
-                <p className="text-xs text-gray-500">Choose a branch location for employee clock-in.</p>
+                <p className="text-xs text-gray-500">Choose a branch location for employee clock-in/out.</p>
               </div>
               <button onClick={() => setQrModalOpen(false)} className="text-gray-400 hover:text-gray-700">
                 <Icons.Close className="h-5 w-5" />
@@ -438,7 +474,7 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
                 </select>
               </div>
               <h2 className={`${kioskMode ? 'text-4xl' : 'text-2xl'} clock-in-qr-label font-bold text-gray-900`}>{selectedLocation.name}</h2>
-              <p className="clock-in-qr-label mt-1 text-sm text-gray-500">Scan to clock in within {selectedLocation.geofenceRadiusMeters} meters.</p>
+              <p className="clock-in-qr-label mt-1 text-sm text-gray-500">Scan to clock in/out within {selectedLocation.geofenceRadiusMeters} meters.</p>
               {qrImageUrl && (
                 <img
                   src={qrImageUrl}
@@ -446,7 +482,26 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
                   className={`${kioskMode ? 'mt-10 h-[65vh] w-[65vh]' : 'mx-auto mt-6 h-72 w-72'} clock-in-qr-image border-4 border-black bg-white object-contain`}
                 />
               )}
-              {!qrImageUrl && (
+              {attendanceBadgeLoading && (
+                <div className="clock-in-qr-label mx-auto mt-5 max-w-xs rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
+                  Generating secure pass code...
+                </div>
+              )}
+              {attendanceBadge && !attendanceBadgeLoading && (
+                <div className="clock-in-qr-label mx-auto mt-5 max-w-xs rounded-xl border border-gray-200 bg-gray-50 p-4">
+                  <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Pass Code</p>
+                  <p className="mt-1 font-mono text-3xl font-black tracking-[0.25em] text-gray-900">{attendanceBadge.passCode}</p>
+                  <p className="mt-2 text-xs text-gray-500">
+                    Employees can enter this code if they cannot scan the QR. Expires {new Date(attendanceBadge.expiresAt).toLocaleDateString()}.
+                  </p>
+                </div>
+              )}
+              {attendanceBadgeError && (
+                <p className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  {attendanceBadgeError}
+                </p>
+              )}
+              {!qrImageUrl && !attendanceBadgeError && (
                 <p className="mt-6 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
                   QR code could not be generated. Confirm the company has an active branch location.
                 </p>
@@ -460,7 +515,8 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
                 </button>
                 <button
                   onClick={() => window.print()}
-                  className="rounded-lg bg-jam-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+                  disabled={!attendanceBadge || attendanceBadgeLoading}
+                  className="rounded-lg bg-jam-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Print QR Code Badge
                 </button>

@@ -403,6 +403,8 @@ export interface TimeEntry {
   breakDuration: number; // in minutes
   totalHours: number;
   isOvertime: boolean;
+  source?: 'MANUAL' | 'QR' | 'PASS_CODE';
+  shiftId?: string;
 }
 
 export interface BranchLocation {

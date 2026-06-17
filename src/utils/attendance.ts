@@ -22,6 +22,8 @@ const decodeBase64 = (value: string) => decodeURIComponent(escape(atob(value)));
 export const createClockInSignature = (companyId: string, locationId: string, issuedAt: string, expiresAt: string) =>
   encodeBase64(`${companyId}:${locationId}:${issuedAt}:${expiresAt}:${SIGNING_CONTEXT}`);
 
+export const normalizeAttendancePassCode = (passCode: string) => passCode.replace(/\D/g, '').slice(0, 6);
+
 export const encodeClockInPayload = (companyId: string, locationId: string) => {
   const issuedAt = CLOCK_IN_QR_ISSUED_AT;
   const expiresAt = CLOCK_IN_QR_EXPIRES_AT;

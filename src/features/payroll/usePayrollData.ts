@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { PayRun as PayRunType, User, WeeklyTimesheet } from '../../core/types';
 import { storage } from '../../services/storage';
-import { PayrollService } from '../../services/PayrollService';
+import { AttendanceClockPayload, AttendanceClockResult, PayrollService } from '../../services/PayrollService';
 
 interface UsePayrollDataArgs {
   user: User | null;
@@ -128,6 +128,25 @@ export const usePayrollData = ({ user, isSupabaseMode, activeCompanyId }: UsePay
     return false;
   };
 
+  const handleClockAttendance = async (payload: AttendanceClockPayload): Promise<AttendanceClockResult | false> => {
+    if (!isSupabaseMode) {
+      toast.error('Database attendance is required for Clock In/Out.');
+      return false;
+    }
+
+    try {
+      const result = await PayrollService.clockAttendance(payload);
+      if (result.timesheet?.id) {
+        setTimesheets((prev) => upsertTimesheetLocally(prev, result.timesheet));
+      }
+      return result;
+    } catch (error: any) {
+      console.error('Failed to save attendance:', error);
+      toast.error(error?.message || 'Attendance could not be saved.');
+      return false;
+    }
+  };
+
   const loadFullPayRunHistory = useCallback(async () => {
     const targetCompanyId = activeCompanyId || user?.companyId;
     if (!isSupabaseMode || !targetCompanyId) return payRunHistory;
@@ -158,6 +177,7 @@ export const usePayrollData = ({ user, isSupabaseMode, activeCompanyId }: UsePay
     timesheets,
     setTimesheets,
     handleSaveTimesheet,
+    handleClockAttendance,
     handleSavePayRun,
     handleDeletePayRun,
     loadFullPayRunHistory,

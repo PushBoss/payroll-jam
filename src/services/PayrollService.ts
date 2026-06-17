@@ -69,6 +69,35 @@ interface GetPayRunsOptions {
   includeLineItems?: boolean;
 }
 
+export interface AttendanceBadge {
+  id?: string;
+  locationId: string;
+  locationName?: string;
+  passCode: string;
+  expiresAt: string;
+  codeVersion?: number;
+}
+
+export interface AttendanceClockPayload {
+  companyId: string;
+  employeeId: string;
+  method: 'QR' | 'PASS_CODE';
+  qrPayload?: string | null;
+  locationId?: string;
+  passCode?: string;
+  position: {
+    latitude: number;
+    longitude: number;
+    accuracy?: number;
+  };
+}
+
+export interface AttendanceClockResult {
+  success: boolean;
+  action: 'clock_in' | 'clock_out';
+  timesheet: WeeklyTimesheet;
+}
+
 const mapTimesheetRow = (row: Record<string, any>): WeeklyTimesheet => ({
   id: String(row.id || ''),
   employeeId: String(row.employee_id || row.employeeId || ''),
@@ -226,5 +255,30 @@ export const PayrollService = {
 
     if (error) throw error;
     return mapTimesheetRow(data || payload);
+  },
+
+  getAttendanceBadge: async (companyId: string, locationId: string): Promise<AttendanceBadge> => {
+    const result = await invokeAdminHandler<{ success: boolean; badge?: AttendanceBadge }>({
+      action: 'get-attendance-badge',
+      payload: {
+        companyId,
+        locationId,
+      },
+    });
+
+    if (!result.badge) throw new Error('Attendance badge could not be generated.');
+    return result.badge;
+  },
+
+  clockAttendance: async (payload: AttendanceClockPayload): Promise<AttendanceClockResult> => {
+    const result = await invokeAdminHandler<AttendanceClockResult>({
+      action: 'clock-attendance',
+      payload: payload as unknown as Record<string, unknown>,
+    });
+
+    return {
+      ...result,
+      timesheet: mapTimesheetRow(result.timesheet as unknown as Record<string, any>),
+    };
   },
 };

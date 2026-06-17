@@ -231,8 +231,12 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
             leaveRequests={appData.leaveRequests}
             onRequestLeave={appData.handleSaveLeaveRequest}
             payRunHistory={appData.payRunHistory}
+            timesheets={appData.timesheets}
             companyData={appData.companyData || undefined}
             onUpdateEmployee={appData.handleUpdateEmployee}
+            onClockIn={appData.handleClockAttendance}
+            onSaveTimesheet={appData.handleSaveTimesheet}
+            onNavigate={navigate}
           />
         );
       case 'portal-clock-in':
@@ -244,9 +248,12 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
             leaveRequests={appData.leaveRequests}
             onRequestLeave={appData.handleSaveLeaveRequest}
             payRunHistory={appData.payRunHistory}
+            timesheets={appData.timesheets}
             companyData={appData.companyData || undefined}
             onUpdateEmployee={appData.handleUpdateEmployee}
-            onClockIn={(timesheet: any) => void appData.handleSaveTimesheet(timesheet)}
+            onClockIn={appData.handleClockAttendance}
+            onSaveTimesheet={appData.handleSaveTimesheet}
+            onNavigate={navigate}
           />
         );
       case 'portal-timesheets':
@@ -257,8 +264,12 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
             view="timesheets"
             leaveRequests={appData.leaveRequests}
             onRequestLeave={appData.handleSaveLeaveRequest}
+            timesheets={appData.timesheets}
+            companyData={appData.companyData || undefined}
             onUpdateEmployee={appData.handleUpdateEmployee}
-            onClockIn={(timesheet: any) => void appData.handleSaveTimesheet(timesheet)}
+            onClockIn={appData.handleClockAttendance}
+            onSaveTimesheet={appData.handleSaveTimesheet}
+            onNavigate={navigate}
           />
         );
       case 'portal-leave':
@@ -269,7 +280,13 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
             view="leave"
             leaveRequests={appData.leaveRequests}
             onRequestLeave={appData.handleSaveLeaveRequest}
+            payRunHistory={appData.payRunHistory}
+            timesheets={appData.timesheets}
+            companyData={appData.companyData || undefined}
             onUpdateEmployee={appData.handleUpdateEmployee}
+            onClockIn={appData.handleClockAttendance}
+            onSaveTimesheet={appData.handleSaveTimesheet}
+            onNavigate={navigate}
           />
         );
       case 'portal-docs':
@@ -281,8 +298,12 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
             leaveRequests={appData.leaveRequests}
             onRequestLeave={appData.handleSaveLeaveRequest}
             payRunHistory={appData.payRunHistory}
+            timesheets={appData.timesheets}
             companyData={appData.companyData || undefined}
             onUpdateEmployee={appData.handleUpdateEmployee}
+            onClockIn={appData.handleClockAttendance}
+            onSaveTimesheet={appData.handleSaveTimesheet}
+            onNavigate={navigate}
           />
         );
       case 'portal-profile':
@@ -293,7 +314,13 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
             view="profile"
             leaveRequests={appData.leaveRequests}
             onRequestLeave={appData.handleSaveLeaveRequest}
+            payRunHistory={appData.payRunHistory}
+            timesheets={appData.timesheets}
+            companyData={appData.companyData || undefined}
             onUpdateEmployee={appData.handleUpdateEmployee}
+            onClockIn={appData.handleClockAttendance}
+            onSaveTimesheet={appData.handleSaveTimesheet}
+            onNavigate={navigate}
           />
         );
       case 'sa-overview':

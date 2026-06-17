@@ -163,11 +163,11 @@ const assertCompanyAccess = async (
         return callerProfile;
     }
 
-    if ((callerRole === 'OWNER' || callerRole === 'ADMIN' || callerRole === 'RESELLER') && callerProfile.company_id === companyId) {
+    if ((callerRole === 'OWNER' || callerRole === 'ADMIN' || callerRole === 'MANAGER' || callerRole === 'RESELLER') && callerProfile.company_id === companyId) {
         return callerProfile;
     }
 
-    if (callerRole === 'OWNER' || callerRole === 'ADMIN' || callerRole === 'RESELLER') {
+    if (callerRole === 'OWNER' || callerRole === 'ADMIN' || callerRole === 'MANAGER' || callerRole === 'RESELLER') {
         const [{ data: membership, error: membershipError }, { data: company, error: companyError }] = await Promise.all([
             adminClient
                 .from('account_members')
@@ -219,6 +219,321 @@ const assertCompanyAccess = async (
     }
 
     throw new Error('Unauthorized: No relationship with this company');
+};
+
+const ATTENDANCE_SIGNING_CONTEXT = 'payroll-jam-qr-attendance';
+const ATTENDANCE_CODE_CONTEXT = 'payroll-jam-attendance-code';
+const ATTENDANCE_BADGE_TTL_HOURS = 24 * 7;
+const ATTENDANCE_FAILED_ATTEMPT_LIMIT = 5;
+const ATTENDANCE_FAILED_ATTEMPT_WINDOW_MINUTES = 10;
+
+const encodeBase64 = (value: string) => btoa(value);
+const decodeBase64 = (value: string) => atob(value);
+
+const sha256Hex = async (value: string) => {
+    const bytes = new TextEncoder().encode(value);
+    const hash = await crypto.subtle.digest('SHA-256', bytes);
+    return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+};
+
+const generateAttendancePassCode = () => {
+    const bytes = new Uint32Array(1);
+    crypto.getRandomValues(bytes);
+    return String(bytes[0] % 1000000).padStart(6, '0');
+};
+
+const hashAttendancePassCode = (companyId: string, locationId: string, passCode: string, codeVersion: number) =>
+    sha256Hex(`${companyId}:${locationId}:${passCode}:${codeVersion}:${ATTENDANCE_CODE_CONTEXT}`);
+
+const createClockInSignature = (companyId: string, locationId: string, issuedAt: string, expiresAt: string) =>
+    encodeBase64(`${companyId}:${locationId}:${issuedAt}:${expiresAt}:${ATTENDANCE_SIGNING_CONTEXT}`);
+
+const decodeClockInPayload = (encodedPayload?: string | null) => {
+    if (!encodedPayload || typeof encodedPayload !== 'string') return null;
+
+    try {
+        const payload = JSON.parse(decodeBase64(encodedPayload));
+        const companyId = String(payload.company_id || '');
+        const locationId = String(payload.location_id || '');
+        const issuedAt = String(payload.issued_at || '');
+        const expiresAt = String(payload.expires_at || '');
+        const expectedSignature = createClockInSignature(companyId, locationId, issuedAt, expiresAt);
+        const expiresTime = new Date(expiresAt).getTime();
+
+        if (!companyId || !locationId || payload.signature !== expectedSignature) return null;
+        if (!Number.isFinite(expiresTime) || expiresTime < Date.now()) return null;
+
+        return { companyId, locationId, issuedAt, expiresAt };
+    } catch {
+        return null;
+    }
+};
+
+const getWeekBounds = (date: Date) => {
+    const monday = new Date(date);
+    const dayOfWeek = monday.getUTCDay();
+    monday.setUTCDate(monday.getUTCDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+    const sunday = new Date(monday);
+    sunday.setUTCDate(monday.getUTCDate() + 6);
+
+    return {
+        weekStartDate: monday.toISOString().slice(0, 10),
+        weekEndDate: sunday.toISOString().slice(0, 10),
+    };
+};
+
+const toTimeValue = (date: Date) => date.toISOString().slice(11, 16);
+
+const calculateHaversineDistanceMeters = (
+    from: { latitude: number; longitude: number },
+    to: { latitude: number; longitude: number }
+) => {
+    const earthRadiusMeters = 6371000;
+    const toRadians = (value: number) => value * Math.PI / 180;
+    const dLat = toRadians(to.latitude - from.latitude);
+    const dLon = toRadians(to.longitude - from.longitude);
+    const lat1 = toRadians(from.latitude);
+    const lat2 = toRadians(to.latitude);
+    const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return earthRadiusMeters * c;
+};
+
+const summarizeTimeEntries = (entries: any[]) => entries.reduce(
+    (summary, entry) => {
+        const totalHours = coerceFiniteNumber(entry?.totalHours, 0);
+        const regular = Math.min(totalHours, 8);
+        const overtime = Math.max(0, totalHours - regular);
+        return {
+            regular: Number((summary.regular + regular).toFixed(2)),
+            overtime: Number((summary.overtime + overtime).toFixed(2)),
+        };
+    },
+    { regular: 0, overtime: 0 }
+);
+
+const mapTimesheetRowToApp = (row: Record<string, any>) => ({
+    id: String(row.id || ''),
+    employeeId: String(row.employee_id || row.employeeId || ''),
+    employeeName: String(row.employee_name || row.employeeName || ''),
+    weekStartDate: String(row.week_start_date || row.weekStartDate || ''),
+    weekEndDate: String(row.week_end_date || row.weekEndDate || ''),
+    status: row.status || 'DRAFT',
+    totalRegularHours: Number(row.total_regular_hours ?? row.totalRegularHours ?? 0),
+    totalOvertimeHours: Number(row.total_overtime_hours ?? row.totalOvertimeHours ?? 0),
+    entries: Array.isArray(row.entries) ? row.entries : [],
+    source: row.source || 'MANUAL',
+    companyId: row.company_id || row.companyId || undefined,
+    locationId: row.location_id || row.locationId || undefined,
+    locationName: row.location_name || row.locationName || undefined,
+    clockInAt: row.clock_in_at || row.clockInAt || undefined,
+});
+
+const getActiveLocation = async (adminClient: any, companyId: string, locationId: string) => {
+    const { data: location, error } = await adminClient
+        .from('company_locations')
+        .select('id, company_id, name, latitude, longitude, geofence_radius_meters, is_active')
+        .eq('id', locationId)
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .maybeSingle();
+
+    if (error) throw error;
+    if (!location) throw new Error('Active branch location not found');
+    return location;
+};
+
+const logAttendanceAttempt = async (
+    adminClient: any,
+    attempt: {
+        companyId: string;
+        locationId?: string | null;
+        employeeId?: string | null;
+        userId?: string | null;
+        method: 'QR' | 'PASS_CODE';
+        status: 'SUCCESS' | 'FAILED';
+        reason?: string | null;
+        ipAddress?: string | null;
+    }
+) => {
+    const { error } = await adminClient.from('attendance_attempts').insert({
+        company_id: attempt.companyId,
+        location_id: attempt.locationId || null,
+        employee_id: attempt.employeeId || null,
+        user_id: attempt.userId || null,
+        method: attempt.method,
+        status: attempt.status,
+        reason: attempt.reason || null,
+        ip_address: attempt.ipAddress || null,
+    });
+    if (error) console.error('Failed to log attendance attempt:', error);
+};
+
+const assertAttendanceThrottle = async (adminClient: any, companyId: string, userId: string) => {
+    const since = new Date(Date.now() - (ATTENDANCE_FAILED_ATTEMPT_WINDOW_MINUTES * 60 * 1000)).toISOString();
+    const { count, error } = await adminClient
+        .from('attendance_attempts')
+        .select('id', { count: 'exact', head: true })
+        .eq('company_id', companyId)
+        .eq('user_id', userId)
+        .eq('status', 'FAILED')
+        .gte('created_at', since);
+
+    if (error) throw error;
+    if ((count || 0) >= ATTENDANCE_FAILED_ATTEMPT_LIMIT) {
+        throw new Error('Too many failed attendance attempts. Try again in a few minutes.');
+    }
+};
+
+const resolveAttendanceLocation = async (
+    adminClient: any,
+    companyId: string,
+    method: 'QR' | 'PASS_CODE',
+    payload: Record<string, any>
+) => {
+    if (method === 'QR') {
+        const decodedPayload = decodeClockInPayload(payload.qrPayload);
+        if (!decodedPayload || decodedPayload.companyId !== companyId) {
+            throw new Error('Invalid or expired QR code');
+        }
+        return getActiveLocation(adminClient, companyId, decodedPayload.locationId);
+    }
+
+    const locationId = String(payload.locationId || '');
+    const passCode = String(payload.passCode || '').replace(/\D/g, '');
+    if (!locationId || passCode.length !== 6) throw new Error('A valid branch and 6-digit pass code are required');
+
+    const location = await getActiveLocation(adminClient, companyId, locationId);
+    const { data: badge, error } = await adminClient
+        .from('attendance_badges')
+        .select('id, pass_code_hash, code_version, expires_at')
+        .eq('company_id', companyId)
+        .eq('location_id', locationId)
+        .eq('is_active', true)
+        .gt('expires_at', new Date().toISOString())
+        .maybeSingle();
+
+    if (error) throw error;
+    if (!badge) throw new Error('Pass code expired. Ask your manager for a new badge.');
+
+    const candidateHash = await hashAttendancePassCode(companyId, locationId, passCode, Number(badge.code_version || 1));
+    if (candidateHash !== badge.pass_code_hash) throw new Error('Invalid pass code');
+
+    return location;
+};
+
+const assertAttendanceCaller = async (
+    adminClient: any,
+    authUser: any,
+    companyId: string,
+    employeeId: string
+) => {
+    const callerProfile = await getCallerProfile(adminClient, authUser);
+    const callerRole = normalizeRole(callerProfile.role);
+
+    const { data: employee, error } = await adminClient
+        .from('employees')
+        .select('id, first_name, last_name, email, status, company_id')
+        .eq('id', employeeId)
+        .eq('company_id', companyId)
+        .maybeSingle();
+
+    if (error) throw error;
+    if (!employee) throw new Error('Employee not found for this company');
+    if (['ARCHIVED', 'TERMINATED'].includes(normalizeEmployeeStatus(employee.status))) {
+        throw new Error('Attendance is unavailable for archived or terminated employees.');
+    }
+
+    if (callerRole === 'EMPLOYEE') {
+        const employeeEmail = String(employee.email || '').trim().toLowerCase();
+        const authEmail = String(authUser?.email || callerProfile.email || '').trim().toLowerCase();
+        if (callerProfile.company_id !== companyId || !employeeEmail || employeeEmail !== authEmail) {
+            throw new Error('Unauthorized');
+        }
+        return { callerProfile, employee };
+    }
+
+    await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'MANAGER', 'RESELLER', 'SUPER_ADMIN']);
+    return { callerProfile, employee };
+};
+
+const upsertAttendanceTimesheet = async (
+    adminClient: any,
+    args: {
+        companyId: string;
+        employeeId: string;
+        employeeName: string;
+        locationId: string;
+        locationName: string;
+        shiftId: string;
+        clockInAt: string;
+        clockOutAt?: string | null;
+        method: 'QR' | 'PASS_CODE';
+    }
+) => {
+    const clockInDate = new Date(args.clockInAt);
+    const { weekStartDate, weekEndDate } = getWeekBounds(clockInDate);
+    const timesheetId = `TS-ATT-${args.employeeId}-${weekStartDate}`;
+    const entryId = `ENTRY-SHIFT-${args.shiftId}`;
+
+    const { data: existing, error: existingError } = await adminClient
+        .from('timesheets')
+        .select('*')
+        .eq('id', timesheetId)
+        .eq('company_id', args.companyId)
+        .maybeSingle();
+
+    if (existingError) throw existingError;
+
+    const clockOutDate = args.clockOutAt ? new Date(args.clockOutAt) : null;
+    const totalHours = clockOutDate
+        ? Number(Math.max(0, (clockOutDate.getTime() - clockInDate.getTime()) / 36e5).toFixed(2))
+        : 0;
+    const nextEntry = {
+        id: entryId,
+        date: clockInDate.toISOString().slice(0, 10),
+        startTime: toTimeValue(clockInDate),
+        endTime: clockOutDate ? toTimeValue(clockOutDate) : '',
+        breakDuration: 0,
+        totalHours,
+        isOvertime: totalHours > 8,
+        source: args.method,
+        shiftId: args.shiftId,
+    };
+    const existingEntries = Array.isArray(existing?.entries) ? existing.entries : [];
+    const entryIndex = existingEntries.findIndex((entry: any) => entry?.id === entryId);
+    const entries = entryIndex >= 0
+        ? existingEntries.map((entry: any, index: number) => index === entryIndex ? nextEntry : entry)
+        : [...existingEntries, nextEntry];
+    const totals = summarizeTimeEntries(entries);
+
+    const payload = {
+        id: timesheetId,
+        company_id: args.companyId,
+        employee_id: args.employeeId,
+        employee_name: args.employeeName,
+        week_start_date: weekStartDate,
+        week_end_date: weekEndDate,
+        status: 'SUBMITTED',
+        total_regular_hours: totals.regular,
+        total_overtime_hours: totals.overtime,
+        entries,
+        source: 'AUTO_QR',
+        location_id: args.locationId,
+        location_name: args.locationName,
+        clock_in_at: existing?.clock_in_at || args.clockInAt,
+        submitted_at: new Date().toISOString(),
+    };
+
+    const { data: saved, error: saveError } = await adminClient
+        .from('timesheets')
+        .upsert(payload)
+        .select('*')
+        .maybeSingle();
+
+    if (saveError) throw saveError;
+    return mapTimesheetRowToApp(saved || payload);
 };
 
 const coerceFiniteNumber = (value: unknown, fallback = 0) => {
@@ -474,6 +789,9 @@ serve(async (req: Request) => {
                 authUser = user;
             }
         }
+        const requestIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+            || req.headers.get('cf-connecting-ip')
+            || null;
 
         // --- Handle Actions ---
         
@@ -1733,6 +2051,245 @@ serve(async (req: Request) => {
                 return new Response(JSON.stringify({ success: true, payRun: savedPayRun }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });
+            }
+
+            case 'get-attendance-badge': {
+                const { companyId, locationId } = payload || {};
+                if (!companyId) throw new Error('companyId required');
+                if (!locationId) throw new Error('locationId required');
+
+                await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'MANAGER', 'RESELLER', 'SUPER_ADMIN']);
+                const location = await getActiveLocation(adminClient, companyId, locationId);
+
+                const { data: activeBadges, error: activeBadgesError } = await adminClient
+                    .from('attendance_badges')
+                    .select('code_version')
+                    .eq('company_id', companyId)
+                    .eq('location_id', locationId)
+                    .order('code_version', { ascending: false })
+                    .limit(1);
+
+                if (activeBadgesError) throw activeBadgesError;
+
+                const codeVersion = Number(activeBadges?.[0]?.code_version || 0) + 1;
+                const passCode = generateAttendancePassCode();
+                const passCodeHash = await hashAttendancePassCode(companyId, locationId, passCode, codeVersion);
+                const expiresAt = new Date(Date.now() + (ATTENDANCE_BADGE_TTL_HOURS * 60 * 60 * 1000)).toISOString();
+
+                const { error: deactivateError } = await adminClient
+                    .from('attendance_badges')
+                    .update({ is_active: false, updated_at: new Date().toISOString() })
+                    .eq('company_id', companyId)
+                    .eq('location_id', locationId)
+                    .eq('is_active', true);
+
+                if (deactivateError) throw deactivateError;
+
+                const { data: badge, error: badgeError } = await adminClient
+                    .from('attendance_badges')
+                    .insert({
+                        company_id: companyId,
+                        location_id: locationId,
+                        pass_code_hash: passCodeHash,
+                        code_version: codeVersion,
+                        expires_at: expiresAt,
+                        is_active: true,
+                        rotated_at: new Date().toISOString(),
+                    })
+                    .select('id, expires_at, code_version')
+                    .maybeSingle();
+
+                if (badgeError) throw badgeError;
+
+                return new Response(JSON.stringify({
+                    success: true,
+                    badge: {
+                        id: badge?.id,
+                        locationId,
+                        locationName: location.name,
+                        passCode,
+                        expiresAt: badge?.expires_at || expiresAt,
+                        codeVersion,
+                    },
+                }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'clock-attendance': {
+                const {
+                    companyId,
+                    employeeId,
+                    method,
+                    position,
+                } = payload || {};
+                const normalizedMethod = method === 'PASS_CODE' ? 'PASS_CODE' : 'QR';
+
+                if (!companyId) throw new Error('companyId required');
+                if (!employeeId) throw new Error('employeeId required');
+                if (!authUser?.id) throw new Error('Unauthorized');
+
+                await assertAttendanceThrottle(adminClient, companyId, authUser.id);
+
+                let location: any = null;
+                try {
+                    const { callerProfile, employee } = await assertAttendanceCaller(adminClient, authUser, companyId, employeeId);
+                    location = await resolveAttendanceLocation(adminClient, companyId, normalizedMethod, payload || {});
+
+                    const latitude = coerceFiniteNumber(position?.latitude, NaN);
+                    const longitude = coerceFiniteNumber(position?.longitude, NaN);
+                    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+                        throw new Error('Location permission is required for attendance.');
+                    }
+
+                    const distanceMeters = calculateHaversineDistanceMeters(
+                        { latitude, longitude },
+                        { latitude: Number(location.latitude), longitude: Number(location.longitude) }
+                    );
+                    const allowedRadiusMeters = Number(location.geofence_radius_meters || 100);
+                    if (distanceMeters > allowedRadiusMeters) {
+                        throw new Error('Attendance rejected. You are outside your branch location boundary.');
+                    }
+
+                    const employeeName = `${employee.first_name || ''} ${employee.last_name || ''}`.trim()
+                        || callerProfile.name
+                        || String(employee.email || 'Employee');
+                    const now = new Date().toISOString();
+
+                    const { data: openShift, error: openShiftError } = await adminClient
+                        .from('attendance_shifts')
+                        .select('*')
+                        .eq('company_id', companyId)
+                        .eq('employee_id', employee.id)
+                        .eq('status', 'OPEN')
+                        .maybeSingle();
+
+                    if (openShiftError) throw openShiftError;
+
+                    if (openShift) {
+                        if (openShift.location_id && openShift.location_id !== location.id) {
+                            throw new Error(`Clock-out must use ${openShift.location_name || 'the same branch'} where you clocked in.`);
+                        }
+
+                        const clockInAt = String(openShift.clock_in_at);
+                        const totalHours = Number(Math.max(0, (new Date(now).getTime() - new Date(clockInAt).getTime()) / 36e5).toFixed(2));
+
+                        const { data: savedShift, error: shiftError } = await adminClient
+                            .from('attendance_shifts')
+                            .update({
+                                status: 'SUBMITTED',
+                                clock_out_at: now,
+                                total_hours: totalHours,
+                                updated_at: now,
+                            })
+                            .eq('id', openShift.id)
+                            .select('*')
+                            .maybeSingle();
+
+                        if (shiftError) throw shiftError;
+
+                        const timesheet = await upsertAttendanceTimesheet(adminClient, {
+                            companyId,
+                            employeeId: employee.id,
+                            employeeName,
+                            locationId: location.id,
+                            locationName: location.name,
+                            shiftId: openShift.id,
+                            clockInAt,
+                            clockOutAt: now,
+                            method: normalizedMethod,
+                        });
+
+                        await adminClient
+                            .from('attendance_shifts')
+                            .update({ timesheet_id: timesheet.id, updated_at: now })
+                            .eq('id', openShift.id);
+
+                        await logAttendanceAttempt(adminClient, {
+                            companyId,
+                            locationId: location.id,
+                            employeeId: employee.id,
+                            userId: authUser.id,
+                            method: normalizedMethod,
+                            status: 'SUCCESS',
+                            ipAddress: requestIp,
+                        });
+
+                        return new Response(JSON.stringify({
+                            success: true,
+                            action: 'clock_out',
+                            timesheet,
+                            shift: savedShift,
+                        }), {
+                            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                        });
+                    }
+
+                    const { data: newShift, error: shiftError } = await adminClient
+                        .from('attendance_shifts')
+                        .insert({
+                            company_id: companyId,
+                            employee_id: employee.id,
+                            employee_name: employeeName,
+                            location_id: location.id,
+                            location_name: location.name,
+                            user_id: authUser.id,
+                            method: normalizedMethod,
+                            status: 'OPEN',
+                            clock_in_at: now,
+                        })
+                        .select('*')
+                        .maybeSingle();
+
+                    if (shiftError) throw shiftError;
+
+                    const timesheet = await upsertAttendanceTimesheet(adminClient, {
+                        companyId,
+                        employeeId: employee.id,
+                        employeeName,
+                        locationId: location.id,
+                        locationName: location.name,
+                        shiftId: newShift.id,
+                        clockInAt: now,
+                        method: normalizedMethod,
+                    });
+
+                    await adminClient
+                        .from('attendance_shifts')
+                        .update({ timesheet_id: timesheet.id, updated_at: now })
+                        .eq('id', newShift.id);
+
+                    await logAttendanceAttempt(adminClient, {
+                        companyId,
+                        locationId: location.id,
+                        employeeId: employee.id,
+                        userId: authUser.id,
+                        method: normalizedMethod,
+                        status: 'SUCCESS',
+                        ipAddress: requestIp,
+                    });
+
+                    return new Response(JSON.stringify({
+                        success: true,
+                        action: 'clock_in',
+                        timesheet,
+                        shift: newShift,
+                    }), {
+                        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                    });
+                } catch (attendanceError: any) {
+                    await logAttendanceAttempt(adminClient, {
+                        companyId,
+                        locationId: location?.id || payload?.locationId || null,
+                        employeeId: employeeId || null,
+                        userId: authUser?.id || null,
+                        method: normalizedMethod,
+                        status: 'FAILED',
+                        reason: attendanceError?.message || 'Attendance failed',
+                        ipAddress: requestIp,
+                    });
+                    throw attendanceError;
+                }
             }
 
             case 'bulk-update-employee-deductions': {

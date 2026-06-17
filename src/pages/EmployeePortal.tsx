@@ -5,8 +5,9 @@ import { User, PayRunLineItem, LeaveType, WeeklyTimesheet, TimeEntry, LeaveReque
 import { PayslipView } from '../components/PayslipView';
 import { MultiDateCalendar } from '../components/MultiDateCalendar';
 import { generateP24CSV } from '../utils/exportHelpers';
-import { calculateHaversineDistanceMeters, createAutoQrTimesheet, decodeClockInPayload, getCompanyLocations } from '../utils/attendance';
+import { decodeClockInPayload, getCompanyLocations, normalizeAttendancePassCode } from '../utils/attendance';
 import { toast } from 'sonner';
+import { AttendanceClockPayload, AttendanceClockResult } from '../services/PayrollService';
 
 interface PortalProps {
     user: User;
@@ -15,12 +16,59 @@ interface PortalProps {
     leaveRequests: LeaveRequest[];
     onRequestLeave: (req: LeaveRequest) => void;
     payRunHistory?: PayRun[];
+    timesheets?: WeeklyTimesheet[];
     companyData?: CompanySettings;
     onUpdateEmployee?: (emp: Employee) => void | boolean | Promise<void | boolean>;
-    onClockIn?: (timesheet: WeeklyTimesheet) => void;
+    onClockIn?: (payload: AttendanceClockPayload) => Promise<AttendanceClockResult | false>;
+    onSaveTimesheet?: (timesheet: WeeklyTimesheet) => void | boolean | Promise<void | boolean>;
+    onNavigate?: (path: string) => void;
 }
 
-export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = 'home', leaveRequests, onRequestLeave, payRunHistory = [], companyData, onUpdateEmployee, onClockIn }) => {
+const toDateInputValue = (date: Date) => date.toISOString().split('T')[0];
+
+const getWeekBounds = (date: Date) => {
+    const monday = new Date(date);
+    const dayOfWeek = monday.getDay();
+    monday.setDate(monday.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+
+    return {
+        weekStartDate: toDateInputValue(monday),
+        weekEndDate: toDateInputValue(sunday),
+    };
+};
+
+const getTimeMinutes = (value: string) => {
+    const [hours, minutes] = value.split(':').map(Number);
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return NaN;
+    return (hours * 60) + minutes;
+};
+
+const calculateEntryHours = (startTime: string, endTime: string, breakDuration: number) => {
+    const startMinutes = getTimeMinutes(startTime);
+    let endMinutes = getTimeMinutes(endTime);
+    if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes)) return 0;
+    if (endMinutes < startMinutes) endMinutes += 24 * 60;
+    const workedMinutes = Math.max(0, endMinutes - startMinutes - breakDuration);
+    return Number((workedMinutes / 60).toFixed(2));
+};
+
+const summarizeEntries = (entries: TimeEntry[]) => entries.reduce(
+    (summary, entry) => {
+        const regularHours = Math.min(entry.totalHours, 8);
+        const overtimeHours = Math.max(0, entry.totalHours - regularHours);
+        return {
+            regular: Number((summary.regular + regularHours).toFixed(2)),
+            overtime: Number((summary.overtime + overtimeHours).toFixed(2)),
+        };
+    },
+    { regular: 0, overtime: 0 }
+);
+
+const isOpenAttendanceEntry = (entry: TimeEntry) => Boolean(entry.startTime && !entry.endTime);
+
+export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = 'home', leaveRequests, onRequestLeave, payRunHistory = [], timesheets = [], companyData, onUpdateEmployee, onClockIn, onSaveTimesheet, onNavigate }) => {
     // Check if company plan allows Employee Portal access
     const hasPortalAccess = companyData && 
         (companyData.plan === 'Starter' || 
@@ -38,26 +86,9 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
     const [selectedDates, setSelectedDates] = useState<string[]>([]);
     const [leaveSubmitted, setLeaveSubmitted] = useState(false);
     const [clockInStatus, setClockInStatus] = useState<'idle' | 'checking' | 'success' | 'error'>('idle');
-
-    // Timesheet State
-    const [currentWeek, setCurrentWeek] = useState<WeeklyTimesheet>({
-        id: 'TS-NEW',
-        employeeId: user.id,
-        employeeName: user.name,
-        weekStartDate: '2025-01-27',
-        weekEndDate: '2025-02-02',
-        status: 'DRAFT',
-        source: 'MANUAL',
-        totalRegularHours: 0,
-        totalOvertimeHours: 0,
-        entries: [
-            { id: '1', date: '2025-01-27', startTime: '09:00', endTime: '17:00', breakDuration: 60, totalHours: 7, isOvertime: false },
-            { id: '2', date: '2025-01-28', startTime: '09:00', endTime: '17:00', breakDuration: 60, totalHours: 7, isOvertime: false },
-            { id: '3', date: '2025-01-29', startTime: '09:00', endTime: '17:00', breakDuration: 60, totalHours: 7, isOvertime: false },
-            { id: '4', date: '2025-01-30', startTime: '09:00', endTime: '17:00', breakDuration: 60, totalHours: 7, isOvertime: false },
-            { id: '5', date: '2025-01-31', startTime: '', endTime: '', breakDuration: 0, totalHours: 0, isOvertime: false },
-        ]
-    });
+    const [lastAttendanceAction, setLastAttendanceAction] = useState<'Clock In' | 'Clock Out' | null>(null);
+    const [passCode, setPassCode] = useState('');
+    const [selectedPassLocationId, setSelectedPassLocationId] = useState('');
 
     // Filter leave requests for this user
     const myRequests = leaveRequests.filter(r => {
@@ -94,6 +125,41 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
         return myPayslips.reduce((acc, slip) => acc + slip.data.netPay, 0);
     }, [myPayslips]);
 
+    const employeeId = employee?.id || user.id;
+    const employeeName = employee ? `${employee.firstName} ${employee.lastName}` : user.name;
+    const today = new Date();
+    const currentWeekBounds = getWeekBounds(today);
+    const employeeTimesheets = useMemo(() => {
+        return timesheets
+            .filter((timesheet) =>
+                timesheet.employeeId === employeeId ||
+                timesheet.employeeName === employeeName ||
+                timesheet.employeeName === user.name
+            )
+            .sort((a, b) => new Date(b.weekStartDate).getTime() - new Date(a.weekStartDate).getTime());
+    }, [employeeId, employeeName, timesheets, user.name]);
+    const currentWeek = employeeTimesheets.find((timesheet) => timesheet.weekStartDate === currentWeekBounds.weekStartDate) || {
+        id: `TS-PORTAL-${employeeId}-${currentWeekBounds.weekStartDate}`,
+        employeeId,
+        employeeName,
+        companyId: companyData?.id,
+        weekStartDate: currentWeekBounds.weekStartDate,
+        weekEndDate: currentWeekBounds.weekEndDate,
+        status: 'DRAFT' as WeeklyTimesheet['status'],
+        source: 'MANUAL' as WeeklyTimesheet['source'],
+        totalRegularHours: 0,
+        totalOvertimeHours: 0,
+        entries: [],
+    };
+    const openAttendance = employeeTimesheets
+        .flatMap((timesheet) => timesheet.entries.map((entry) => ({ timesheet, entry })))
+        .find(({ entry, timesheet }) =>
+            timesheet.source === 'AUTO_QR' &&
+            timesheet.status !== 'APPROVED' &&
+            isOpenAttendanceEntry(entry)
+        );
+    const isClockedIn = Boolean(openAttendance);
+
     const handleLeaveSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         
@@ -128,53 +194,68 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
         setSelectedDates([]);
     };
 
-    const handleQrClockIn = () => {
-        const params = new URLSearchParams(window.location.search);
-        const payload = decodeClockInPayload(params.get('qr'));
-        if (!payload || !companyData?.id || payload.company_id !== companyData.id) {
-            toast.error('Clock-in rejected. This QR code is invalid for your company.');
+    const handleAttendance = (method: 'QR' | 'PASS_CODE', qrPayload?: string | null, locationId?: string) => {
+        if (!onClockIn || !companyData?.id) {
+            toast.error('Attendance saving is not available right now.');
             setClockInStatus('error');
             return;
         }
 
-        const location = getCompanyLocations(companyData).find((item) => item.id === payload.location_id);
-        if (!location) {
-            toast.error('Clock-in rejected. This branch location is not active.');
+        if (!locationId) {
+            toast.error('Attendance rejected. Choose a valid branch QR code or pass code.');
+            setClockInStatus('error');
+            return;
+        }
+
+        if (employee?.status === 'ARCHIVED' || employee?.status === 'TERMINATED') {
+            toast.error('Attendance is unavailable for archived or terminated employees.');
             setClockInStatus('error');
             return;
         }
 
         if (!navigator.geolocation) {
-            toast.error('Clock-in rejected. Geolocation is not available on this device.');
+            toast.error('Attendance rejected. Geolocation is not available on this device.');
+            setClockInStatus('error');
+            return;
+        }
+
+        const normalizedPassCode = normalizeAttendancePassCode(passCode);
+        if (method === 'PASS_CODE' && normalizedPassCode.length !== 6) {
+            toast.error('Enter the 6-digit pass code from your branch badge.');
             setClockInStatus('error');
             return;
         }
 
         setClockInStatus('checking');
         navigator.geolocation.getCurrentPosition((position) => {
-            const distance = calculateHaversineDistanceMeters(
-                {
+            onClockIn({
+                companyId: companyData.id!,
+                employeeId,
+                method,
+                qrPayload,
+                locationId,
+                passCode: method === 'PASS_CODE' ? normalizedPassCode : undefined,
+                position: {
                     latitude: position.coords.latitude,
                     longitude: position.coords.longitude,
+                    accuracy: position.coords.accuracy,
                 },
-                {
-                    latitude: location.latitude,
-                    longitude: location.longitude,
+            }).then((result) => {
+                if (!result) {
+                    setClockInStatus('error');
+                    return;
                 }
-            );
-
-            if (distance > location.geofenceRadiusMeters) {
-                toast.error('Clock-in rejected. You are outside your branch location boundary.');
+                const action = result.action === 'clock_out' ? 'Clock Out' : 'Clock In';
+                setLastAttendanceAction(action);
+                toast.success(`${action} accepted.`);
+                setClockInStatus('success');
+            }).catch((error) => {
+                console.error('Attendance failed:', error);
+                toast.error(error?.message || 'Attendance could not be saved.');
                 setClockInStatus('error');
-                return;
-            }
-
-            const timesheet = createAutoQrTimesheet(user, employee, companyData.id!, location);
-            onClockIn?.(timesheet);
-            toast.success(`Clock-in accepted at ${location.name}.`);
-            setClockInStatus('success');
+            });
         }, () => {
-            toast.error('Clock-in rejected. Location permission is required.');
+            toast.error('Attendance rejected. Location permission is required.');
             setClockInStatus('error');
         }, {
             enableHighAccuracy: true,
@@ -184,32 +265,26 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
     };
 
     const handleTimeChange = (id: string, field: keyof TimeEntry, value: string) => {
-        const newEntries = currentWeek.entries.map(e => {
-            if (e.id === id) {
-                const updated = { ...e, [field]: value };
-                // Recalculate hours (simple logic for demo)
-                if (updated.startTime && updated.endTime) {
-                    const start = parseInt(updated.startTime.split(':')[0]);
-                    const end = parseInt(updated.endTime.split(':')[0]);
-                    let total = end - start - (updated.breakDuration / 60);
-                    updated.totalHours = total > 0 ? total : 0;
-                }
-                return updated;
+        const entries = currentWeek.entries.map((entry) => {
+            if (entry.id !== id) return entry;
+            const updated = { ...entry, [field]: field === 'breakDuration' ? Number(value) : value } as TimeEntry;
+            if (updated.startTime && updated.endTime) {
+                updated.totalHours = calculateEntryHours(updated.startTime, updated.endTime, updated.breakDuration || 0);
+                updated.isOvertime = updated.totalHours > 8;
             }
-            return e;
+            return updated;
         });
-        
-        const totalHours = newEntries.reduce((acc, curr) => acc + curr.totalHours, 0);
-        
-        setCurrentWeek({
+        const totals = summarizeEntries(entries);
+        onSaveTimesheet?.({
             ...currentWeek,
-            entries: newEntries,
-            totalRegularHours: totalHours
+            entries,
+            totalRegularHours: totals.regular,
+            totalOvertimeHours: totals.overtime,
         });
     };
 
     const submitTimesheet = () => {
-        setCurrentWeek({...currentWeek, status: 'SUBMITTED'});
+        onSaveTimesheet?.({...currentWeek, status: 'SUBMITTED'});
     };
 
     const handleDownloadP24 = () => {
@@ -337,16 +412,22 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
     }
 
     if (view === 'clock-in') {
-        const payload = decodeClockInPayload(new URLSearchParams(window.location.search).get('qr'));
-        const location = payload
-            ? getCompanyLocations(companyData).find((item) => item.id === payload.location_id)
+        const qrParam = new URLSearchParams(window.location.search).get('qr');
+        const payload = decodeClockInPayload(qrParam);
+        const locations = getCompanyLocations(companyData);
+        const qrLocation = payload && companyData?.id && payload.company_id === companyData.id
+            ? locations.find((item) => item.id === payload.location_id)
             : undefined;
+        const passCodeLocation = locations.find((item) => item.id === selectedPassLocationId) || locations[0];
+        const location = qrLocation || passCodeLocation;
+        const attendanceAction = isClockedIn ? 'Clock Out' : 'Clock In';
+        const canSubmitAttendance = Boolean(qrLocation || (passCodeLocation && normalizeAttendancePassCode(passCode).length === 6));
 
         return (
-            <div className="mx-auto max-w-md space-y-6 animate-fade-in">
+            <div className="mx-auto max-w-md space-y-6 animate-fade-in px-1 sm:px-0">
                 <div>
-                    <h2 className="text-3xl font-bold text-gray-900">QR Clock-in</h2>
-                    <p className="mt-1 text-gray-500">Validate your device location before submitting attendance.</p>
+                    <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">Clock In/Out</h2>
+                    <p className="mt-1 text-gray-500">Scan your branch QR code or enter the badge pass code.</p>
                 </div>
 
                 <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -356,18 +437,53 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                         {location && (
                             <p className="mt-1 text-sm text-gray-500">Allowed radius: {location.geofenceRadiusMeters} meters</p>
                         )}
+                        <div className={`mt-3 inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${isClockedIn ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-700'}`}>
+                            {isClockedIn ? 'Currently clocked in' : 'Not clocked in'}
+                        </div>
+                    </div>
+
+                    <div className="mb-5">
+                        <label className="mb-1 block text-xs font-bold uppercase text-gray-500">Pass Code</label>
+                        {!qrLocation && (
+                            <select
+                                value={passCodeLocation?.id || ''}
+                                onChange={(event) => {
+                                    setSelectedPassLocationId(event.target.value);
+                                    setClockInStatus('idle');
+                                }}
+                                className="mb-3 w-full rounded-lg border border-gray-300 p-3 text-sm focus:border-jam-orange focus:ring-2 focus:ring-jam-orange/20"
+                            >
+                                {locations.map((item) => (
+                                    <option key={item.id} value={item.id}>{item.name}</option>
+                                ))}
+                            </select>
+                        )}
+                        <input
+                            inputMode="numeric"
+                            maxLength={6}
+                            value={passCode}
+                            onChange={(event) => {
+                                setPassCode(normalizeAttendancePassCode(event.target.value));
+                                setClockInStatus('idle');
+                            }}
+                            placeholder="Enter 6-digit code"
+                            className="w-full rounded-lg border border-gray-300 p-3 text-center font-mono text-xl font-bold tracking-[0.25em] focus:border-jam-orange focus:ring-2 focus:ring-jam-orange/20"
+                        />
+                        <p className="mt-2 text-xs text-gray-500">
+                            Use this if your phone cannot open the QR code link.
+                        </p>
                     </div>
 
                     {clockInStatus === 'success' ? (
                         <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-green-800">
-                            <p className="font-bold">Clock-in accepted</p>
-                            <p className="mt-1 text-sm">Your attendance has been submitted as AUTO_QR.</p>
+                            <p className="font-bold">{lastAttendanceAction || attendanceAction} accepted</p>
+                            <p className="mt-1 text-sm">Your attendance has been submitted for manager review.</p>
                         </div>
                     ) : (
                         <button
                             type="button"
-                            onClick={handleQrClockIn}
-                            disabled={clockInStatus === 'checking' || !payload || !location}
+                            onClick={() => handleAttendance(qrLocation ? 'QR' : 'PASS_CODE', qrParam, qrLocation?.id || passCodeLocation?.id)}
+                            disabled={clockInStatus === 'checking' || !canSubmitAttendance}
                             className="flex w-full items-center justify-center rounded-lg bg-jam-black px-4 py-3 font-bold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             {clockInStatus === 'checking' ? (
@@ -376,12 +492,12 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                                     Checking location...
                                 </>
                             ) : (
-                                'Validate Location & Clock In'
+                                `Validate Location & ${attendanceAction}`
                             )}
                         </button>
                     )}
 
-                    {(!payload || !location) && (
+                    {payload && !qrLocation && (
                         <p className="mt-3 text-sm text-red-600">
                             This clock-in link is invalid or no longer matches an active branch location.
                         </p>
@@ -394,13 +510,13 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
     if (view === 'timesheets') {
         return (
             <div className="space-y-6 animate-fade-in">
-                <div className="flex justify-between items-center">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                        <h2 className="text-3xl font-bold text-gray-900">My Hours</h2>
+                        <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">My Hours</h2>
                         <p className="text-gray-500 mt-1">Week of {currentWeek.weekStartDate}</p>
                     </div>
-                    <div className="flex items-center space-x-3">
-                         <div className="bg-white px-4 py-2 rounded-lg border border-gray-200 shadow-sm">
+                    <div className="flex items-center gap-3">
+                         <div className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2 shadow-sm sm:w-auto">
                             <p className="text-xs text-gray-500 uppercase font-bold">Total Hours</p>
                             <p className="text-xl font-bold text-jam-black">{currentWeek.totalRegularHours.toFixed(1)}</p>
                          </div>
@@ -409,7 +525,7 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
 
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                      {/* Header */}
-                    <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+                    <div className="flex flex-col gap-3 border-b border-gray-200 bg-gray-50 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
                         <div className="flex items-center space-x-2">
                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
                                 ${currentWeek.status === 'SUBMITTED' ? 'bg-yellow-100 text-yellow-800' : 
@@ -420,9 +536,10 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                         </div>
                         
                         {currentWeek.status === 'DRAFT' && (
-                            <button 
+                            <button
                                 onClick={submitTimesheet}
-                                className="bg-jam-black text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-800 flex items-center"
+                                disabled={currentWeek.entries.length === 0}
+                                className="flex items-center justify-center rounded-lg bg-jam-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 <Icons.Check className="w-4 h-4 mr-2" />
                                 Submit for Approval
@@ -484,6 +601,11 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                                 </div>
                             );
                         })}
+                        {currentWeek.entries.length === 0 && (
+                            <div className="p-8 text-center text-sm text-gray-500">
+                                No hours logged for this week yet. Use Clock In/Out to start a shift.
+                            </div>
+                        )}
                     </div>
                     
                     {/* Footer */}
@@ -894,7 +1016,7 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                 <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                     <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
                         <h3 className="font-bold text-gray-900">Recent Payslips</h3>
-                        <button className="text-sm text-gray-500 hover:text-jam-black">View All History</button>
+                        <button onClick={() => onNavigate?.('portal-docs')} className="text-sm text-gray-500 hover:text-jam-black">Documents</button>
                     </div>
                     <div className="divide-y divide-gray-100">
                         {myPayslips.length === 0 && (
@@ -932,6 +1054,16 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                         <h3 className="font-bold text-gray-900 mb-4">Quick Actions</h3>
                         <div className="space-y-3">
                             <button 
+                                onClick={() => onNavigate?.('portal-clock-in')}
+                                className="w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg transition-all group hover:border-jam-orange hover:bg-orange-50"
+                            >
+                                <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">
+                                    {isClockedIn ? 'Clock Out' : 'Clock In'}
+                                </span>
+                                <Icons.Clock className="w-4 h-4 text-gray-400 group-hover:text-jam-orange" />
+                            </button>
+                            <button
+                                onClick={() => onNavigate?.('portal-leave')}
                                 disabled={isPendingVerification}
                                 className={`w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg transition-all group ${
                                     isPendingVerification 
@@ -943,6 +1075,7 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                                 <Icons.Calendar className="w-4 h-4 text-gray-400 group-hover:text-jam-orange" />
                             </button>
                              <button 
+                                onClick={() => onNavigate?.('portal-docs')}
                                 disabled={isPendingVerification}
                                 className={`w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg transition-all group ${
                                     isPendingVerification 
@@ -950,19 +1083,15 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                                         : 'hover:border-jam-orange hover:bg-orange-50'
                                 }`}
                             >
-                                <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">Submit Claim</span>
-                                <Icons.Upload className="w-4 h-4 text-gray-400 group-hover:text-jam-orange" />
+                                <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">Documents</span>
+                                <Icons.Document className="w-4 h-4 text-gray-400 group-hover:text-jam-orange" />
                             </button>
                             <button 
-                                disabled={isPendingVerification}
-                                className={`w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg transition-all group ${
-                                    isPendingVerification 
-                                        ? 'opacity-50 cursor-not-allowed' 
-                                        : 'hover:border-jam-orange hover:bg-orange-50'
-                                }`}
+                                onClick={() => onNavigate?.('portal-timesheets')}
+                                className="w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg transition-all group hover:border-jam-orange hover:bg-orange-50"
                             >
-                                <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">Insurance Card</span>
-                                <Icons.Shield className="w-4 h-4 text-gray-400 group-hover:text-jam-orange" />
+                                <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">My Hours</span>
+                                <Icons.Timer className="w-4 h-4 text-gray-400 group-hover:text-jam-orange" />
                             </button>
                             {isPendingVerification && (
                                 <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">

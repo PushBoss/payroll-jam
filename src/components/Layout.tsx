@@ -72,7 +72,7 @@ export const Layout: React.FC<LayoutProps> = ({
 
   const portalNavItems = [
     { id: 'portal-home', label: 'My Pay', icon: Icons.Payroll, feature: null },
-    { id: 'portal-clock-in', label: 'Clock In', icon: Icons.Clock, feature: null },
+    { id: 'portal-clock-in', label: 'Clock In/Out', icon: Icons.Clock, feature: null },
     { id: 'portal-timesheets', label: 'My Hours', icon: Icons.Clock, feature: null },
     { id: 'portal-leave', label: 'Time Off', icon: Icons.Plane, feature: null },
     { id: 'portal-docs', label: 'Documents', icon: Icons.Compliance, feature: null },
