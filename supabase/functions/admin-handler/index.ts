@@ -1696,15 +1696,14 @@ serve(async (req: Request) => {
                 // Enrich with owner name from app_users
                 const enriched = await Promise.all((companies || []).map(async (c: any) => {
                     const billingGift = toBillingGift(c.settings?.billingGift);
-                    const { data: ownerData } = await adminClient
+                    const { data: ownerRows } = await adminClient
                         .from('app_users')
-                        .select('id, name, email, phone')
+                        .select('id, auth_user_id, name, email, phone, role')
                         .eq('company_id', c.id)
-                        .in('role', ['OWNER', 'ADMIN'])
-                        .order('role', { ascending: true }) // ADMIN < OWNER alphabetically, but OWNER preferred
-                        .limit(1)
-                        .maybeSingle();
-                    const authActivity = await getAuthActivityForUser(adminClient, ownerData?.id);
+                        .in('role', ['OWNER', 'ADMIN']);
+                    const ownerData = (ownerRows || []).find((user: any) => user.role === 'OWNER') || ownerRows?.[0] || null;
+                    const ownerAuthUserId = ownerData?.auth_user_id || ownerData?.id;
+                    const authActivity = await getAuthActivityForUser(adminClient, ownerAuthUserId);
 
                     // Accurate employee count instead of settings cache
                     const { count: empCount } = await adminClient
@@ -2715,7 +2714,7 @@ serve(async (req: Request) => {
                         .order('created_at', { ascending: false }),
                     adminClient
                         .from('app_users')
-                        .select('id, company_id, name, email, phone, role')
+                        .select('id, auth_user_id, company_id, name, email, phone, role')
                         .in('role', ['OWNER', 'ADMIN']),
                     adminClient
                         .from('employees')
@@ -2775,7 +2774,8 @@ serve(async (req: Request) => {
                         const employeeCount = employeeCounts[company.id] || 0;
                         const subscription = subscriptionByCompany[company.id];
                         const owner = ownersByCompany[company.id];
-                        const authActivity = await getAuthActivityForUser(adminClient, owner?.id);
+                        const ownerAuthUserId = owner?.auth_user_id || owner?.id;
+                        const authActivity = await getAuthActivityForUser(adminClient, ownerAuthUserId);
                         const latestPayment = paymentByCompany[company.id];
                         const latestLedgerEvent = ledgerByCompany[company.id];
                         const mrr = calculatePlanMRR(company.plan, employeeCount);
