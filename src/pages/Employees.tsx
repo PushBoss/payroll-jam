@@ -57,6 +57,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     onUpdateCompany: _onUpdateCompany,
 }) => {
     const { user: currentUser } = useAuth();
+    const canInviteEmployees = hasEmployeePortalAccess(companyData?.plan || 'Free');
 
 
     const [viewMode, setViewMode] = useState<'active' | 'onboarding' | 'archived'>('active');
@@ -130,7 +131,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     };
 
     const handleInviteClick = () => {
-        if (!hasEmployeePortalAccess(companyData?.plan || 'Free')) {
+        if (!canInviteEmployees) {
             toast.error('Employee portal invites are available on Starter plans and above. Please upgrade to send invites.');
             return;
         }
@@ -141,7 +142,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     };
 
     const handleResendInvite = async (emp: Employee) => {
-        if (!hasEmployeePortalAccess(companyData?.plan || 'Free')) {
+        if (!canInviteEmployees) {
             toast.error('Employee portal invites are available on Starter plans and above. Please upgrade to resend invites.');
             return;
         }
@@ -166,7 +167,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     };
 
     const handleSendLoginInvite = async (emp: Employee) => {
-        if (!hasEmployeePortalAccess(companyData?.plan || 'Free')) {
+        if (!canInviteEmployees) {
             toast.error('Employee portal invites are available on Starter plans and above. Please upgrade to send employee portal invites.');
             return;
         }
@@ -222,7 +223,7 @@ export const Employees: React.FC<EmployeesProps> = ({
 
     const handleInvite = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!hasEmployeePortalAccess(companyData?.plan || 'Free')) {
+        if (!canInviteEmployees) {
             toast.error('Employee portal invites are available on Starter plans and above. Please upgrade to invite employees.');
             return;
         }
@@ -764,13 +765,15 @@ export const Employees: React.FC<EmployeesProps> = ({
                         <Icons.Plus className="w-4 h-4 mr-2" />
                         Add Employee
                     </button>
-                    <button
-                        onClick={handleInviteClick}
-                        className="bg-jam-orange text-jam-black px-4 py-2 rounded-lg hover:bg-yellow-500 flex items-center shadow-lg transform hover:-translate-y-0.5 transition-all"
-                    >
-                        <Icons.Mail className="w-4 h-4 mr-2" />
-                        Invite
-                    </button>
+                    {canInviteEmployees && (
+                        <button
+                            onClick={handleInviteClick}
+                            className="bg-jam-orange text-jam-black px-4 py-2 rounded-lg hover:bg-yellow-500 flex items-center shadow-lg transform hover:-translate-y-0.5 transition-all"
+                        >
+                            <Icons.Mail className="w-4 h-4 mr-2" />
+                            Invite
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -922,7 +925,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                                                 )}
 
                                                 {/* Send Employee Portal Invite - Starter and above, ACTIVE employees only */}
-                                                {emp.status === 'ACTIVE' && hasEmployeePortalAccess(companyData?.plan || 'Free') && (
+                                                {emp.status === 'ACTIVE' && canInviteEmployees && (
                                                     <button
                                                         onClick={() => handleSendLoginInvite(emp)}
                                                         disabled={isSendingInvite}
