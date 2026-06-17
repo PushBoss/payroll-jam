@@ -1,27 +1,83 @@
 import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
+import { toast } from 'sonner';
 import { Icons } from '../components/Icons';
-import { CompanySettings, WeeklyTimesheet } from '../core/types';
+import { CompanySettings, Employee, WeeklyTimesheet } from '../core/types';
 import { buildAppUrl } from '../app/routes';
 import { encodeClockInPayload, getCompanyLocations } from '../utils/attendance';
 
 interface TimeSheetsProps {
   timesheets?: WeeklyTimesheet[];
-  onUpdate?: (ts: WeeklyTimesheet) => void;
+  employees?: Employee[];
+  onUpdate?: (ts: WeeklyTimesheet) => void | boolean | Promise<void | boolean>;
   companyData?: CompanySettings;
 }
 
+const toDateInputValue = (date: Date) => date.toISOString().split('T')[0];
+
+const getWeekBounds = (dateValue: string) => {
+  const date = new Date(`${dateValue}T00:00:00`);
+  const dayOfWeek = date.getDay();
+  const monday = new Date(date);
+  monday.setDate(date.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+
+  return {
+    weekStartDate: toDateInputValue(monday),
+    weekEndDate: toDateInputValue(sunday),
+  };
+};
+
+const getTimeMinutes = (value: string) => {
+  const [hours, minutes] = value.split(':').map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return NaN;
+  return (hours * 60) + minutes;
+};
+
+const calculateEntryHours = (startTime: string, endTime: string, breakDuration: number) => {
+  const startMinutes = getTimeMinutes(startTime);
+  let endMinutes = getTimeMinutes(endTime);
+  if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes)) return 0;
+  if (endMinutes < startMinutes) endMinutes += 24 * 60;
+  const workedMinutes = Math.max(0, endMinutes - startMinutes - breakDuration);
+  return Number((workedMinutes / 60).toFixed(2));
+};
+
+const summarizeEntries = (entries: WeeklyTimesheet['entries']) => entries.reduce(
+  (summary, entry) => {
+    const regularHours = Math.min(entry.totalHours, 8);
+    const overtimeHours = Math.max(0, entry.totalHours - regularHours);
+    return {
+      regular: Number((summary.regular + regularHours).toFixed(2)),
+      overtime: Number((summary.overtime + overtimeHours).toFixed(2)),
+    };
+  },
+  { regular: 0, overtime: 0 }
+);
+
 export const TimeSheets: React.FC<TimeSheetsProps> = ({ 
   timesheets = [], 
+  employees = [],
   onUpdate,
   companyData
 }) => {
   const [filter, setFilter] = useState<'ALL' | 'PENDING' | 'APPROVED'>('ALL');
   const locations = getCompanyLocations(companyData);
   const [qrModalOpen, setQrModalOpen] = useState(false);
+  const [logTimeModalOpen, setLogTimeModalOpen] = useState(false);
+  const [isSavingTimeEntry, setIsSavingTimeEntry] = useState(false);
   const [kioskMode, setKioskMode] = useState(false);
   const [selectedLocationId, setSelectedLocationId] = useState(locations[0]?.id || '');
   const [qrImageUrl, setQrImageUrl] = useState('');
+  const [manualEntry, setManualEntry] = useState({
+    employeeId: '',
+    date: toDateInputValue(new Date()),
+    startTime: '09:00',
+    endTime: '17:00',
+    breakDuration: 60,
+    status: 'APPROVED' as WeeklyTimesheet['status'],
+  });
   const [currentWeekStart, setCurrentWeekStart] = useState<string>(() => {
     // Get Monday of current week
     const today = new Date();
@@ -68,6 +124,7 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
   const weekEnd = new Date(currentWeekStart);
   weekEnd.setDate(weekEnd.getDate() + 6);
   const weekDisplay = `${new Date(currentWeekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+  const activeEmployees = employees.filter((employee) => employee.status !== 'ARCHIVED' && employee.status !== 'TERMINATED');
 
   const pendingCount = weekSheets.filter(t => t.status === 'SUBMITTED').length;
   const totalOvertime = filteredSheets.reduce((acc, t) => acc + t.totalOvertimeHours, 0);
@@ -80,6 +137,12 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
       setSelectedLocationId(locations[0].id);
     }
   }, [locations, selectedLocationId]);
+
+  useEffect(() => {
+    if (!manualEntry.employeeId && activeEmployees[0]?.id) {
+      setManualEntry((entry) => ({ ...entry, employeeId: activeEmployees[0].id }));
+    }
+  }, [activeEmployees, manualEntry.employeeId]);
 
   useEffect(() => {
     let active = true;
@@ -114,6 +177,87 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
     };
   }, [companyData?.id, qrModalOpen, selectedLocation?.id]);
 
+  const handleManualEntryChange = <K extends keyof typeof manualEntry>(key: K, value: typeof manualEntry[K]) => {
+    setManualEntry((entry) => ({ ...entry, [key]: value }));
+  };
+
+  const handleLogTime = async () => {
+    if (!onUpdate) {
+      toast.error('Timesheet saving is not available right now.');
+      return;
+    }
+
+    const employee = activeEmployees.find((item) => item.id === manualEntry.employeeId);
+    if (!employee) {
+      toast.error('Choose an employee before logging time.');
+      return;
+    }
+
+    const entryHours = calculateEntryHours(
+      manualEntry.startTime,
+      manualEntry.endTime,
+      Number(manualEntry.breakDuration) || 0
+    );
+
+    if (entryHours <= 0) {
+      toast.error('Enter a valid start time, end time, and break duration.');
+      return;
+    }
+
+    const { weekStartDate, weekEndDate } = getWeekBounds(manualEntry.date);
+    const existingTimesheet = timesheets.find((timesheet) =>
+      timesheet.employeeId === employee.id && timesheet.weekStartDate === weekStartDate
+    );
+
+    const newEntry = {
+      id: `ENTRY-MANUAL-${Date.now()}`,
+      date: manualEntry.date,
+      startTime: manualEntry.startTime,
+      endTime: manualEntry.endTime,
+      breakDuration: Number(manualEntry.breakDuration) || 0,
+      totalHours: entryHours,
+      isOvertime: entryHours > 8,
+    };
+
+    const entries = [...(existingTimesheet?.entries || []), newEntry];
+    const totals = summarizeEntries(entries);
+    const employeeName = `${employee.firstName} ${employee.lastName}`.trim();
+
+    const timesheet: WeeklyTimesheet = {
+      id: existingTimesheet?.id || `TS-MANUAL-${employee.id}-${weekStartDate}`,
+      employeeId: employee.id,
+      employeeName,
+      companyId: companyData?.id || existingTimesheet?.companyId,
+      weekStartDate,
+      weekEndDate,
+      status: manualEntry.status,
+      totalRegularHours: totals.regular,
+      totalOvertimeHours: totals.overtime,
+      entries,
+      source: 'MANUAL',
+      locationId: existingTimesheet?.locationId,
+      locationName: existingTimesheet?.locationName,
+      clockInAt: existingTimesheet?.clockInAt,
+    };
+
+    setIsSavingTimeEntry(true);
+    try {
+      await onUpdate(timesheet);
+      setCurrentWeekStart(weekStartDate);
+      setLogTimeModalOpen(false);
+      setManualEntry((entry) => ({
+        ...entry,
+        date: manualEntry.date,
+        startTime: '09:00',
+        endTime: '17:00',
+        breakDuration: 60,
+      }));
+      toast.success(`Logged ${entryHours} hour${entryHours === 1 ? '' : 's'} for ${employeeName}.`);
+    } finally {
+      setIsSavingTimeEntry(false);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
@@ -128,11 +272,132 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
           >
             <Icons.Clock className="w-4 h-4 mr-2" /> Generate Clock-in QR
           </button>
+          <button
+            onClick={() => setLogTimeModalOpen(true)}
+            className="bg-jam-orange text-jam-black px-4 py-2 rounded-lg hover:bg-yellow-500 flex items-center font-semibold"
+          >
+            <Icons.Plus className="w-4 h-4 mr-2" /> Log Time
+          </button>
           <button className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 flex items-center">
             <Icons.Download className="w-4 h-4 mr-2" /> Export Report
           </button>
         </div>
       </div>
+
+      {logTimeModalOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-xl overflow-hidden rounded-xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 p-4">
+              <div>
+                <h3 className="font-bold text-gray-900">Log Time</h3>
+                <p className="text-xs text-gray-500">Add a manual time entry to an employee's weekly timesheet.</p>
+              </div>
+              <button onClick={() => setLogTimeModalOpen(false)} className="text-gray-400 hover:text-gray-700">
+                <Icons.Close className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-4 p-6">
+              <div>
+                <label className="mb-1 block text-xs font-bold uppercase text-gray-500">Employee</label>
+                <select
+                  value={manualEntry.employeeId}
+                  onChange={(event) => handleManualEntryChange('employeeId', event.target.value)}
+                  className="w-full rounded-lg border border-gray-300 p-2 text-sm"
+                  disabled={activeEmployees.length === 0}
+                >
+                  {activeEmployees.map((employee) => (
+                    <option key={employee.id} value={employee.id}>
+                      {employee.firstName} {employee.lastName}{employee.employeeId ? ` (${employee.employeeId})` : ''}
+                    </option>
+                  ))}
+                </select>
+                {activeEmployees.length === 0 && (
+                  <p className="mt-2 text-sm text-red-600">Add an active employee before logging time.</p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs font-bold uppercase text-gray-500">Work Date</label>
+                  <input
+                    type="date"
+                    value={manualEntry.date}
+                    onChange={(event) => handleManualEntryChange('date', event.target.value)}
+                    className="w-full rounded-lg border border-gray-300 p-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-bold uppercase text-gray-500">Timesheet Status</label>
+                  <select
+                    value={manualEntry.status}
+                    onChange={(event) => handleManualEntryChange('status', event.target.value as WeeklyTimesheet['status'])}
+                    className="w-full rounded-lg border border-gray-300 p-2 text-sm"
+                  >
+                    <option value="APPROVED">Approved</option>
+                    <option value="SUBMITTED">Submitted</option>
+                    <option value="DRAFT">Draft</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div>
+                  <label className="mb-1 block text-xs font-bold uppercase text-gray-500">Start Time</label>
+                  <input
+                    type="time"
+                    value={manualEntry.startTime}
+                    onChange={(event) => handleManualEntryChange('startTime', event.target.value)}
+                    className="w-full rounded-lg border border-gray-300 p-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-bold uppercase text-gray-500">End Time</label>
+                  <input
+                    type="time"
+                    value={manualEntry.endTime}
+                    onChange={(event) => handleManualEntryChange('endTime', event.target.value)}
+                    className="w-full rounded-lg border border-gray-300 p-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-bold uppercase text-gray-500">Break (minutes)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="5"
+                    value={manualEntry.breakDuration}
+                    onChange={(event) => handleManualEntryChange('breakDuration', Number(event.target.value))}
+                    className="w-full rounded-lg border border-gray-300 p-2 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+                Total for this entry:{' '}
+                <span className="font-bold text-gray-900">
+                  {calculateEntryHours(manualEntry.startTime, manualEntry.endTime, Number(manualEntry.breakDuration) || 0)} hours
+                </span>
+                <span className="ml-2 text-xs text-gray-500">Hours over 8 on the entry are treated as overtime.</span>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 border-t border-gray-100 bg-gray-50 p-4">
+              <button
+                onClick={() => setLogTimeModalOpen(false)}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-white"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleLogTime}
+                disabled={isSavingTimeEntry || activeEmployees.length === 0}
+                className="rounded-lg bg-jam-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSavingTimeEntry ? 'Saving...' : 'Save Time'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {qrModalOpen && selectedLocation && (
         <div className={`${kioskMode ? 'fixed inset-0 z-[120] bg-white' : 'fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4'} print:static print:block print:bg-white`}>

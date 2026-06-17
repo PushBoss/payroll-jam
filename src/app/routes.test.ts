@@ -40,6 +40,7 @@ describe('app routes', () => {
   it('computes the default route for each user type', () => {
     expect(getDefaultRouteForUser(null)).toBe('home');
     expect(getDefaultRouteForUser(makeUser({ isOnboarded: false, role: Role.OWNER }))).toBe('onboarding');
+    expect(getDefaultRouteForUser(makeUser({ isOnboarded: false, role: Role.RESELLER }))).toBe('onboarding');
     expect(getDefaultRouteForUser(makeUser({ isOnboarded: false, role: Role.EMPLOYEE }))).toBe('employee-onboarding');
     expect(getDefaultRouteForUser(makeUser({ role: Role.EMPLOYEE }))).toBe('portal-home');
     expect(getDefaultRouteForUser(makeUser({ role: Role.RESELLER }))).toBe('reseller-dashboard');

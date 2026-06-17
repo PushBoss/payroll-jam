@@ -179,7 +179,7 @@ export const parseRoute = (value: string | null | undefined): AppRoute | null =>
 
 export const getDefaultRouteForUser = (user: User | null | undefined): AppRoute => {
   if (!user) return 'home';
-  if (!user.isOnboarded && user.role === Role.OWNER) return 'onboarding';
+  if (!user.isOnboarded && (user.role === Role.OWNER || user.role === Role.RESELLER)) return 'onboarding';
   if (!user.isOnboarded && user.role === Role.EMPLOYEE) return 'employee-onboarding';
   if (user.role === Role.EMPLOYEE) return 'portal-home';
   if (user.role === Role.RESELLER) return 'reseller-dashboard';

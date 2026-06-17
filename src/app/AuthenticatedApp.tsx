@@ -87,7 +87,7 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
   const renderPage = () => {
     if (appData.dataLoading) return <AppLoadingFallback />;
 
-    if (!user.isOnboarded && user.role === Role.OWNER) {
+    if (!user.isOnboarded && (user.role === Role.OWNER || user.role === Role.RESELLER)) {
       return (
         <OnboardingPage
           companyData={appData.companyData || undefined}
@@ -217,10 +217,9 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
         return (
           <TimeSheetsPage
             timesheets={appData.timesheets}
+            employees={appData.employees}
             companyData={appData.companyData || undefined}
-            onUpdate={(timesheet: any) =>
-              void appData.handleSaveTimesheet(timesheet)
-            }
+            onUpdate={(timesheet: any) => appData.handleSaveTimesheet(timesheet)}
           />
         );
       case 'portal-home':

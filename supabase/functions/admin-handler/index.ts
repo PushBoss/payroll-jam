@@ -527,6 +527,25 @@ serve(async (req: Request) => {
                 const normalizedName = String(name || '').trim() || normalizedEmail.split('@')[0];
                 const normalizedPhone = phone ? String(phone).trim() : null;
                 const signupIntent = intent === 'company_signup' || company?.companyId ? 'company_signup' : 'invitation_signup';
+                const ownerContextRoles = new Set(['OWNER', 'RESELLER', 'SUPER_ADMIN']);
+
+                const getExistingProfile = async () => {
+                    const { data: byId, error: byIdError } = await adminClient
+                        .from('app_users')
+                        .select('id, email, role, company_id')
+                        .eq('id', userId)
+                        .maybeSingle();
+                    if (byIdError) throw byIdError;
+                    if (byId) return byId;
+
+                    const { data: byEmail, error: byEmailError } = await adminClient
+                        .from('app_users')
+                        .select('id, email, role, company_id')
+                        .eq('email', normalizedEmail)
+                        .maybeSingle();
+                    if (byEmailError) throw byEmailError;
+                    return byEmail;
+                };
 
                 if (signupIntent === 'company_signup') {
                     const {
@@ -546,6 +565,31 @@ serve(async (req: Request) => {
                     }
 
                     const derivedRole = deriveCompanySignupRole(plan);
+                    const existingProfile = await getExistingProfile();
+
+                    if (
+                        existingProfile?.company_id &&
+                        existingProfile.company_id !== companyId
+                    ) {
+                        throw new Error('This email is already connected to another Payroll-Jam account. Use a different email for company signup until account switching is available.');
+                    }
+
+                    if (
+                        existingProfile?.company_id === companyId &&
+                        !ownerContextRoles.has(normalizeMemberRole(existingProfile.role))
+                    ) {
+                        throw new Error('This email is already connected to an employee account. Use a different email for company signup until account switching is available.');
+                    }
+
+                    const { data: employeeEmailMatches, error: employeeEmailError } = await adminClient
+                        .from('employees')
+                        .select('id, company_id')
+                        .ilike('email', normalizedEmail);
+
+                    if (employeeEmailError) throw employeeEmailError;
+                    if ((employeeEmailMatches || []).some((employee: any) => employee.company_id !== companyId)) {
+                        throw new Error('This email is already listed as an employee in another company. Use a different email for company signup until account switching is available.');
+                    }
 
                     const { error: profileError } = await adminClient
                         .from('app_users')
@@ -650,6 +694,18 @@ serve(async (req: Request) => {
                     : primaryInvitation.companies;
                 if (derivedRole === 'OWNER' && primaryCompany && isResellerEquivalentPlan(primaryCompany.plan)) {
                     derivedRole = 'RESELLER';
+                }
+
+                const existingProfile = await getExistingProfile();
+                const existingRole = normalizeMemberRole(existingProfile?.role);
+                if (
+                    existingProfile?.company_id &&
+                    (
+                        existingProfile.company_id !== primaryInvitation.account_id ||
+                        ownerContextRoles.has(existingRole)
+                    )
+                ) {
+                    throw new Error('This email is already connected to another Payroll-Jam account. Account switching is planned for version 2.0; use a different email for this invitation for now.');
                 }
 
                 const { data: savedProfile, error: inviteProfileError } = await adminClient
