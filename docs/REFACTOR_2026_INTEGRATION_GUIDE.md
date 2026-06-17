@@ -463,6 +463,7 @@ ALTER TABLE employees ADD COLUMN custom_deductions JSONB DEFAULT '[]'::JSONB;
 ## Version 2.0 Roadmap
 
 - Add account switching backed by `account_members`, allowing one authenticated user to hold multiple memberships and choose the active company/context after login. This should cover employee-plus-owner cases, reseller portfolio access, and future multi-company administration without overwriting the single `app_users.role` / `app_users.company_id` profile context.
+- See `docs/MAJOR_RELEASE_ROADMAP.md` for the full version 2.0 and version 3.0 scope.
 
 ---
 

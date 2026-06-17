@@ -26,6 +26,49 @@ import { AccountMembersCard } from '../components/AccountMembersCard';
 import { TaxConfigCard } from '../features/employees/TaxConfigCard';
 import { buildAppUrl } from '../app/routes';
 
+const JAMAICA_PARISHES = [
+    'Kingston',
+    'St. Andrew',
+    'St. Catherine',
+    'Clarendon',
+    'Manchester',
+    'St. Elizabeth',
+    'Westmoreland',
+    'Hanover',
+    'St. James',
+    'Trelawny',
+    'St. Ann',
+    'St. Mary',
+    'Portland',
+    'St. Thomas',
+];
+
+const GEOFENCE_RADIUS_PRESETS = [
+    { label: 'Small office', value: '50', description: 'Tight office or shop' },
+    { label: 'Building', value: '100', description: 'Most offices' },
+    { label: 'Compound', value: '250', description: 'Large premises' },
+    { label: 'Wide area', value: '500', description: 'Campus or yard' },
+];
+
+const DEFAULT_NEW_LOCATION = {
+    name: '',
+    address: '',
+    parish: 'Kingston',
+    latitude: '',
+    longitude: '',
+    geofenceRadiusMeters: '100',
+};
+
+const buildJamaicaLocationQuery = (location: typeof DEFAULT_NEW_LOCATION) => (
+    [location.address, location.parish, 'Jamaica']
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .join(', ')
+);
+
+const getGoogleMapsUrl = (latitude: number, longitude: number) =>
+    `https://www.google.com/maps?q=${latitude},${longitude}`;
+
 
 interface SettingsProps {
     companyData?: CompanySettings;
@@ -578,12 +621,10 @@ export const Settings: React.FC<SettingsProps> = ({
     const [newDept, setNewDept] = useState('');
     const [newDesig, setNewDesig] = useState('');
     const [newDesigDept, setNewDesigDept] = useState('');
-    const [newLocation, setNewLocation] = useState({
-        name: '',
-        latitude: '',
-        longitude: '',
-        geofenceRadiusMeters: '100',
-    });
+    const [newLocation, setNewLocation] = useState(DEFAULT_NEW_LOCATION);
+    const [isLocatingBranch, setIsLocatingBranch] = useState(false);
+    const [isGeocodingBranch, setIsGeocodingBranch] = useState(false);
+    const [showAdvancedLocationFields, setShowAdvancedLocationFields] = useState(false);
 
     // DB State
     const [, setDbStatus] = useState<{ connected: boolean; message: string; details?: string } | null>(null);
@@ -709,6 +750,75 @@ export const Settings: React.FC<SettingsProps> = ({
 
     const handleCompanyUpdate = (newData: CompanySettings) => { onUpdateCompany(newData); };
 
+    const handleUseCurrentLocation = () => {
+        if (!navigator.geolocation) {
+            toast.error('This browser does not support current-location lookup.');
+            return;
+        }
+
+        setIsLocatingBranch(true);
+        navigator.geolocation.getCurrentPosition((position) => {
+            setNewLocation((prev) => ({
+                ...prev,
+                name: prev.name || `${companyData?.name || 'Main'} Branch`,
+                latitude: position.coords.latitude.toFixed(6),
+                longitude: position.coords.longitude.toFixed(6),
+            }));
+            setShowAdvancedLocationFields(true);
+            setIsLocatingBranch(false);
+            toast.success('Current location captured. Review the branch details, then add it.');
+        }, () => {
+            setIsLocatingBranch(false);
+            toast.error('Location permission is required to use your current location.');
+        }, {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 0,
+        });
+    };
+
+    const handleFindLocationFromAddress = async () => {
+        if (!newLocation.address.trim()) {
+            toast.error('Enter a street address or landmark first.');
+            return;
+        }
+
+        const query = buildJamaicaLocationQuery(newLocation);
+        setIsGeocodingBranch(true);
+        try {
+            const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=jm&q=${encodeURIComponent(query)}`, {
+                headers: {
+                    Accept: 'application/json',
+                },
+            });
+
+            if (!response.ok) throw new Error('Address lookup failed');
+            const results = await response.json();
+            const match = Array.isArray(results) ? results[0] : null;
+            const latitude = Number(match?.lat);
+            const longitude = Number(match?.lon);
+
+            if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+                toast.error('Could not find that address. Try a nearby landmark or use current location.');
+                return;
+            }
+
+            setNewLocation((prev) => ({
+                ...prev,
+                name: prev.name || match.display_name?.split(',')?.[0] || `${prev.parish} Branch`,
+                latitude: latitude.toFixed(6),
+                longitude: longitude.toFixed(6),
+            }));
+            setShowAdvancedLocationFields(true);
+            toast.success('Address found. Review the branch pin, then add the branch.');
+        } catch (error) {
+            console.error('Branch address lookup failed:', error);
+            toast.error('Address lookup is unavailable right now. Use current location or advanced coordinates.');
+        } finally {
+            setIsGeocodingBranch(false);
+        }
+    };
+
     const handleAddLocation = () => {
         if (!companyData || !newLocation.name.trim()) {
             toast.error('Enter a branch location name');
@@ -727,6 +837,8 @@ export const Settings: React.FC<SettingsProps> = ({
         const nextLocation: BranchLocation = {
             id: generateUUID(),
             name: newLocation.name.trim(),
+            address: newLocation.address.trim() || undefined,
+            parish: newLocation.parish || undefined,
             latitude,
             longitude,
             geofenceRadiusMeters: Number.isFinite(geofenceRadiusMeters) && geofenceRadiusMeters > 0 ? geofenceRadiusMeters : 100,
@@ -736,7 +848,8 @@ export const Settings: React.FC<SettingsProps> = ({
             ...companyData,
             locations: [...(companyData.locations || []), nextLocation],
         });
-        setNewLocation({ name: '', latitude: '', longitude: '', geofenceRadiusMeters: '100' });
+        setNewLocation(DEFAULT_NEW_LOCATION);
+        setShowAdvancedLocationFields(false);
         toast.success('Business location added');
     };
 
@@ -1570,7 +1683,8 @@ export const Settings: React.FC<SettingsProps> = ({
                             </div>
                         </div>
 
-                        <div className="mb-5 grid grid-cols-1 gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4 md:grid-cols-5">
+                        <div className="mb-5 space-y-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
                             <div className="md:col-span-2">
                                 <label className="block text-xs font-bold text-gray-500 uppercase">Location Name</label>
                                 <input
@@ -1581,47 +1695,146 @@ export const Settings: React.FC<SettingsProps> = ({
                                     className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
                                 />
                             </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase">Latitude</label>
+                            <div className="md:col-span-2">
+                                <label className="block text-xs font-bold text-gray-500 uppercase">Parish</label>
+                                <select
+                                    value={newLocation.parish}
+                                    onChange={(event) => setNewLocation((prev) => ({ ...prev, parish: event.target.value }))}
+                                    className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
+                                >
+                                    {JAMAICA_PARISHES.map((parish) => (
+                                        <option key={parish} value={parish}>{parish}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="md:col-span-4">
+                                <label className="block text-xs font-bold text-gray-500 uppercase">Street Address or Landmark</label>
                                 <input
-                                    type="number"
-                                    step="0.000001"
-                                    value={newLocation.latitude}
-                                    onChange={(event) => setNewLocation((prev) => ({ ...prev, latitude: event.target.value }))}
-                                    placeholder="18.0179"
+                                    type="text"
+                                    value={newLocation.address}
+                                    onChange={(event) => setNewLocation((prev) => ({ ...prev, address: event.target.value }))}
+                                    placeholder="123 Knutsford Blvd, near New Kingston"
                                     className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
                                 />
+                                <p className="mt-1 text-xs text-gray-500">No coordinates needed. Search the address, or use current location if you are already at the branch.</p>
                             </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase">Longitude</label>
-                                <input
-                                    type="number"
-                                    step="0.000001"
-                                    value={newLocation.longitude}
-                                    onChange={(event) => setNewLocation((prev) => ({ ...prev, longitude: event.target.value }))}
-                                    placeholder="-76.8099"
-                                    className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
-                                />
                             </div>
+
+                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                <button
+                                    type="button"
+                                    onClick={handleFindLocationFromAddress}
+                                    disabled={isGeocodingBranch}
+                                    className="flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    <Icons.Search className={`mr-2 h-4 w-4 ${isGeocodingBranch ? 'animate-spin' : ''}`} />
+                                    {isGeocodingBranch ? 'Finding address...' : 'Find Pin From Address'}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleUseCurrentLocation}
+                                    disabled={isLocatingBranch}
+                                    className="flex items-center justify-center rounded-lg border border-jam-orange bg-white px-4 py-2 text-sm font-semibold text-jam-black hover:bg-yellow-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    <Icons.Smartphone className={`mr-2 h-4 w-4 ${isLocatingBranch ? 'animate-pulse' : ''}`} />
+                                    {isLocatingBranch ? 'Getting location...' : 'Use My Current Location'}
+                                </button>
+                            </div>
+
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase">Radius (m)</label>
-                                <div className="mt-1 flex gap-2">
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        value={newLocation.geofenceRadiusMeters}
-                                        onChange={(event) => setNewLocation((prev) => ({ ...prev, geofenceRadiusMeters: event.target.value }))}
-                                        className="w-full rounded border border-gray-300 p-2 text-sm"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={handleAddLocation}
-                                        className="rounded bg-jam-black px-3 text-white hover:bg-gray-800"
-                                        title="Add business location"
-                                    >
-                                        <Icons.Plus className="h-4 w-4" />
-                                    </button>
+                                <label className="block text-xs font-bold text-gray-500 uppercase">Clock-in Boundary</label>
+                                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                                    {GEOFENCE_RADIUS_PRESETS.map((preset) => (
+                                        <button
+                                            key={preset.value}
+                                            type="button"
+                                            onClick={() => setNewLocation((prev) => ({ ...prev, geofenceRadiusMeters: preset.value }))}
+                                            className={`rounded-lg border p-3 text-left text-sm transition-colors ${
+                                                newLocation.geofenceRadiusMeters === preset.value
+                                                    ? 'border-jam-orange bg-yellow-50 text-jam-black'
+                                                    : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                                            }`}
+                                        >
+                                            <span className="block font-bold">{preset.label}</span>
+                                            <span className="text-xs text-gray-500">{preset.value}m · {preset.description}</span>
+                                        </button>
+                                    ))}
                                 </div>
+                            </div>
+
+                            <div className="rounded-lg border border-gray-200 bg-white p-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAdvancedLocationFields((value) => !value)}
+                                    className="flex w-full items-center justify-between text-left text-sm font-semibold text-gray-700"
+                                >
+                                    Advanced location settings
+                                    {showAdvancedLocationFields ? <Icons.ChevronUp className="h-4 w-4" /> : <Icons.ChevronDown className="h-4 w-4" />}
+                                </button>
+                                {showAdvancedLocationFields && (
+                                    <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 uppercase">Latitude</label>
+                                            <input
+                                                type="number"
+                                                step="0.000001"
+                                                value={newLocation.latitude}
+                                                onChange={(event) => setNewLocation((prev) => ({ ...prev, latitude: event.target.value }))}
+                                                placeholder="18.0179"
+                                                className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 uppercase">Longitude</label>
+                                            <input
+                                                type="number"
+                                                step="0.000001"
+                                                value={newLocation.longitude}
+                                                onChange={(event) => setNewLocation((prev) => ({ ...prev, longitude: event.target.value }))}
+                                                placeholder="-76.8099"
+                                                className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 uppercase">Custom Radius (m)</label>
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                value={newLocation.geofenceRadiusMeters}
+                                                onChange={(event) => setNewLocation((prev) => ({ ...prev, geofenceRadiusMeters: event.target.value }))}
+                                                className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex flex-col gap-3 border-t border-gray-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="text-sm text-gray-600">
+                                    {newLocation.latitude && newLocation.longitude ? (
+                                        <>
+                                            Pin ready at {newLocation.latitude}, {newLocation.longitude}.{' '}
+                                            <a
+                                                href={getGoogleMapsUrl(Number(newLocation.latitude), Number(newLocation.longitude))}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="font-semibold text-jam-orange hover:underline"
+                                            >
+                                                Preview map
+                                            </a>
+                                        </>
+                                    ) : (
+                                        'Find or capture the branch pin before adding this location.'
+                                    )}
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleAddLocation}
+                                    className="inline-flex items-center justify-center rounded-lg bg-jam-black px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800"
+                                >
+                                    <Icons.Plus className="mr-2 h-4 w-4" />
+                                    Add Location
+                                </button>
                             </div>
                         </div>
 
@@ -1638,6 +1851,48 @@ export const Settings: React.FC<SettingsProps> = ({
                                                 className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
                                             />
                                         </div>
+                                        <div className="md:col-span-3">
+                                            <label className="block text-xs font-bold text-gray-500 uppercase">Address</label>
+                                            <input
+                                                type="text"
+                                                value={location.address || ''}
+                                                onChange={(event) => handleUpdateLocation(location.id, { address: event.target.value })}
+                                                placeholder="Street address or landmark"
+                                                className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
+                                            />
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className="block text-xs font-bold text-gray-500 uppercase">Parish</label>
+                                            <select
+                                                value={location.parish || 'Kingston'}
+                                                onChange={(event) => handleUpdateLocation(location.id, { parish: event.target.value })}
+                                                className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
+                                            >
+                                                {JAMAICA_PARISHES.map((parish) => (
+                                                    <option key={parish} value={parish}>{parish}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className="block text-xs font-bold text-gray-500 uppercase">Boundary</label>
+                                            <select
+                                                value={String(location.geofenceRadiusMeters)}
+                                                onChange={(event) => handleUpdateLocation(location.id, { geofenceRadiusMeters: Number(event.target.value) || 100 })}
+                                                className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
+                                            >
+                                                {GEOFENCE_RADIUS_PRESETS.map((preset) => (
+                                                    <option key={preset.value} value={preset.value}>{preset.label} ({preset.value}m)</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDeleteLocation(location.id)}
+                                            className="rounded border border-red-200 p-2 text-red-600 hover:bg-red-50 md:col-span-1"
+                                            title="Delete location"
+                                        >
+                                            <Icons.Trash className="mx-auto h-4 w-4" />
+                                        </button>
                                         <div className="md:col-span-2">
                                             <label className="block text-xs font-bold text-gray-500 uppercase">Latitude</label>
                                             <input
@@ -1658,24 +1913,20 @@ export const Settings: React.FC<SettingsProps> = ({
                                                 className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
                                             />
                                         </div>
-                                        <div className="md:col-span-3">
-                                            <label className="block text-xs font-bold text-gray-500 uppercase">Geofence Radius</label>
-                                            <input
-                                                type="number"
-                                                min="1"
-                                                value={location.geofenceRadiusMeters}
-                                                onChange={(event) => handleUpdateLocation(location.id, { geofenceRadiusMeters: Number(event.target.value) || 100 })}
-                                                className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
-                                            />
+                                        <div className="md:col-span-8">
+                                            <p className="rounded-lg bg-gray-50 p-3 text-xs text-gray-600">
+                                                Employees must be within {location.geofenceRadiusMeters}m of this pin to clock in/out.
+                                                {' '}
+                                                <a
+                                                    href={getGoogleMapsUrl(location.latitude, location.longitude)}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="font-semibold text-jam-orange hover:underline"
+                                                >
+                                                    Preview map
+                                                </a>
+                                            </p>
                                         </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleDeleteLocation(location.id)}
-                                            className="rounded border border-red-200 p-2 text-red-600 hover:bg-red-50 md:col-span-1"
-                                            title="Delete location"
-                                        >
-                                            <Icons.Trash className="mx-auto h-4 w-4" />
-                                        </button>
                                     </div>
                                 ))}
                             </div>

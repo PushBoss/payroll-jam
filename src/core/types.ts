@@ -410,6 +410,8 @@ export interface TimeEntry {
 export interface BranchLocation {
   id: string;
   name: string;
+  address?: string;
+  parish?: string;
   latitude: number;
   longitude: number;
   geofenceRadiusMeters: number;
