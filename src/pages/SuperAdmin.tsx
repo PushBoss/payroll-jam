@@ -44,7 +44,11 @@ interface PayingClient {
     latestLedgerEventType?: string | null;
     risk: 'ok' | 'attention' | 'critical';
     createdAt?: string;
+    accountCreatedAt?: string | null;
+    lastLoginAt?: string | null;
 }
+
+type ClientActivitySort = 'created_desc' | 'created_asc' | 'last_login_desc' | 'last_login_asc';
 
 interface EmailDraft {
     to: string;
@@ -187,6 +191,51 @@ const formatGiftedUntil = (value?: string) => {
     });
 };
 
+const formatActivityDate = (value?: string | null, fallback = 'Never') => {
+    if (!value) return fallback;
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return fallback;
+
+    return date.toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+    });
+};
+
+const toActivityTime = (value?: string | null) => {
+    if (!value) return 0;
+    const time = new Date(value).getTime();
+    return Number.isNaN(time) ? 0 : time;
+};
+
+const getSortedByClientActivity = <T extends { createdAt?: string | null; accountCreatedAt?: string | null; lastLoginAt?: string | null }>(
+    records: T[],
+    sort: ClientActivitySort
+) => {
+    return [...records].sort((a, b) => {
+        const createdA = toActivityTime(a.accountCreatedAt || a.createdAt);
+        const createdB = toActivityTime(b.accountCreatedAt || b.createdAt);
+        const loginA = toActivityTime(a.lastLoginAt);
+        const loginB = toActivityTime(b.lastLoginAt);
+
+        switch (sort) {
+            case 'created_asc':
+                return createdA - createdB;
+            case 'last_login_desc':
+                return loginB - loginA;
+            case 'last_login_asc':
+                return loginA - loginB;
+            case 'created_desc':
+            default:
+                return createdB - createdA;
+        }
+    });
+};
+
 const isActiveBillingStatus = (status?: string) => {
     const normalized = String(status || '').trim().toLowerCase();
     return normalized === 'active' || normalized === 'trialing';
@@ -228,6 +277,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     const [isLoadingTenants, setIsLoadingTenants] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState<'ALL' | 'ACTIVE' | 'SUSPENDED'>('ALL');
+    const [tenantActivitySort, setTenantActivitySort] = useState<ClientActivitySort>('created_desc');
     const [giftingTenant, setGiftingTenant] = useState<ResellerClient | null>(null);
     const [giftMonths, setGiftMonths] = useState(1);
     const [giftNote, setGiftNote] = useState('');
@@ -272,6 +322,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     const [payingClientSearch, setPayingClientSearch] = useState('');
     const [payingClientPlanFilter, setPayingClientPlanFilter] = useState<'ALL' | ResellerClient['plan']>('ALL');
     const [payingClientRiskFilter, setPayingClientRiskFilter] = useState<'ALL' | PayingClient['risk']>('ALL');
+    const [payingClientActivitySort, setPayingClientActivitySort] = useState<ClientActivitySort>('created_desc');
     const [emailDraft, setEmailDraft] = useState<EmailDraft | null>(null);
 
     // Database Connection State & Wizard
@@ -638,7 +689,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 const { data, error } = await supabase!.functions.invoke('admin-handler', {
                     body: {
                         action: 'get-all-companies',
-                        payload: { page: tenantPage, pageSize: TENANTS_PER_PAGE }
+                        payload: { page: tenantPage, pageSize: TENANTS_PER_PAGE, sort: tenantActivitySort }
                     }
                 });
                 if (error) throw error;
@@ -653,7 +704,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             }
         }
         fetchDBTenants();
-    }, [activeTab, tenantPage]); // Re-fetch whenever tab or page changes
+    }, [activeTab, tenantPage, tenantActivitySort]); // Re-fetch whenever tab, page, or sort changes
 
     // --- Handlers ---
     const handleSuspend = async (id: string) => {
@@ -1193,8 +1244,18 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                             onChange={(e) => { setSearchTerm(e.target.value); setTenantPage(0); }}
                         />
                     </div>
-                    <div className="flex items-center space-x-4">
+                    <div className="flex flex-wrap items-center justify-end gap-3">
                         <span className="text-xs text-gray-500">{tenantTotal} total tenants</span>
+                        <select
+                            className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-jam-orange"
+                            value={tenantActivitySort}
+                            onChange={(e) => { setTenantActivitySort(e.target.value as ClientActivitySort); setTenantPage(0); }}
+                        >
+                            <option value="created_desc">Newest signups</option>
+                            <option value="created_asc">Oldest signups</option>
+                            <option value="last_login_desc">Recent logins</option>
+                            <option value="last_login_asc">Oldest logins</option>
+                        </select>
                         <div className="flex space-x-2">
                             {(['ALL', 'ACTIVE', 'SUSPENDED'] as const).map(status => (
                                 <button
@@ -1219,6 +1280,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                     <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">Contact</th>
                                     <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">Plan</th>
                                     <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">Employees</th>
+                                    <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">Activity</th>
                                     <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">Status</th>
                                     <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase text-right">Actions</th>
                                 </tr>
@@ -1226,7 +1288,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                             <tbody>
                                 {isLoadingTenants ? (
                                     <tr>
-                                        <td colSpan={6} className="p-12 text-center text-gray-500">
+                                        <td colSpan={7} className="p-12 text-center text-gray-500">
                                             <div className="flex flex-col items-center">
                                                 <Icons.Refresh className="w-8 h-8 animate-spin text-jam-orange mb-2" />
                                                 <p>Loading records from Supabase...</p>
@@ -1235,7 +1297,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                     </tr>
                                 ) : filteredTenants.length === 0 ? (
                                     <tr>
-                                        <td colSpan={6} className="p-8 text-center text-gray-500">
+                                        <td colSpan={7} className="p-8 text-center text-gray-500">
                                             No companies found.
                                         </td>
                                     </tr>
@@ -1254,6 +1316,16 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4 text-sm text-gray-500">{tenant.employeeCount}</td>
+                                            <td className="px-6 py-4 text-sm text-gray-500">
+                                                <div>
+                                                    <span className="font-medium text-gray-700">Last login</span>
+                                                    <div className="text-xs text-gray-500">{formatActivityDate(tenant.lastLoginAt)}</div>
+                                                </div>
+                                                <div className="mt-2">
+                                                    <span className="font-medium text-gray-700">Created</span>
+                                                    <div className="text-xs text-gray-500">{formatActivityDate(tenant.accountCreatedAt || tenant.createdAt, 'N/A')}</div>
+                                                </div>
+                                            </td>
                                             <td className="px-6 py-4">
                                                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${tenant.status === 'ACTIVE' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                                                     }`}>
@@ -1608,7 +1680,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     );
 
     const renderPayingClients = () => {
-        const filteredClients = payingClients.filter((client) => {
+        const filteredClients = getSortedByClientActivity(payingClients.filter((client) => {
             const query = payingClientSearch.trim().toLowerCase();
             const matchesSearch = !query
                 || client.companyName.toLowerCase().includes(query)
@@ -1617,7 +1689,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             const matchesPlan = payingClientPlanFilter === 'ALL' || client.plan === payingClientPlanFilter;
             const matchesRisk = payingClientRiskFilter === 'ALL' || client.risk === payingClientRiskFilter;
             return matchesSearch && matchesPlan && matchesRisk;
-        });
+        }), payingClientActivitySort);
 
         const totalClientMRR = filteredClients.reduce((sum, client) => sum + Number(client.mrr || 0), 0);
         const totalClientARR = totalClientMRR * 12;
@@ -1693,6 +1765,16 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                 <option value="attention">Attention</option>
                                 <option value="critical">Critical</option>
                             </select>
+                            <select
+                                className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-jam-orange"
+                                value={payingClientActivitySort}
+                                onChange={(event) => setPayingClientActivitySort(event.target.value as ClientActivitySort)}
+                            >
+                                <option value="created_desc">Newest signups</option>
+                                <option value="created_asc">Oldest signups</option>
+                                <option value="last_login_desc">Recent logins</option>
+                                <option value="last_login_asc">Oldest logins</option>
+                            </select>
                         </div>
                     </div>
 
@@ -1705,6 +1787,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                     <th className="px-5 py-4 text-xs font-bold text-gray-500 uppercase">Plan</th>
                                     <th className="px-5 py-4 text-xs font-bold text-gray-500 uppercase">MRR</th>
                                     <th className="px-5 py-4 text-xs font-bold text-gray-500 uppercase">Payment</th>
+                                    <th className="px-5 py-4 text-xs font-bold text-gray-500 uppercase">Activity</th>
                                     <th className="px-5 py-4 text-xs font-bold text-gray-500 uppercase">Access</th>
                                     <th className="px-5 py-4 text-xs font-bold text-gray-500 uppercase">Ledger</th>
                                     <th className="px-5 py-4 text-xs font-bold text-gray-500 uppercase text-right">Actions</th>
@@ -1713,14 +1796,14 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                             <tbody>
                                 {isLoadingPayingClients ? (
                                     <tr>
-                                        <td colSpan={8} className="p-12 text-center text-gray-500">
+                                        <td colSpan={9} className="p-12 text-center text-gray-500">
                                             <Icons.Refresh className="w-8 h-8 animate-spin text-jam-orange mx-auto mb-2" />
                                             Loading paying clients...
                                         </td>
                                     </tr>
                                 ) : filteredClients.length === 0 ? (
                                     <tr>
-                                        <td colSpan={8} className="p-12 text-center text-gray-500">
+                                        <td colSpan={9} className="p-12 text-center text-gray-500">
                                             No paying clients match the current filters.
                                         </td>
                                     </tr>
@@ -1765,6 +1848,10 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                                         Last paid {new Date(client.lastPaymentDate).toLocaleDateString()}
                                                     </div>
                                                 )}
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <div className="text-sm text-gray-900">{formatActivityDate(client.lastLoginAt)}</div>
+                                                <div className="text-xs text-gray-500">Created {formatActivityDate(client.accountCreatedAt || client.createdAt, 'N/A')}</div>
                                             </td>
                                             <td className="px-5 py-4">
                                                 <div className="text-sm text-gray-900">{client.subscriptionStatus || client.status}</div>

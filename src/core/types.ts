@@ -361,6 +361,8 @@ export interface ResellerClient {
   hasActiveBillingGift?: boolean;
   mrr: number;
   createdAt?: string;
+  accountCreatedAt?: string;
+  lastLoginAt?: string;
 }
 
 export interface PricingPlan {

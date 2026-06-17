@@ -688,6 +688,55 @@ const addMonths = (date: Date, months: number) => {
     return next;
 };
 
+const toTimestamp = (value?: string | null) => {
+    if (!value) return 0;
+    const time = new Date(value).getTime();
+    return Number.isFinite(time) ? time : 0;
+};
+
+const getAuthActivityForUser = async (adminClient: any, userId?: string | null) => {
+    if (!userId) {
+        return { accountCreatedAt: null, lastLoginAt: null };
+    }
+
+    const { data, error } = await adminClient.auth.admin.getUserById(userId);
+    if (error || !data?.user) {
+        console.warn('Unable to load auth activity for user', userId, error?.message || error);
+        return { accountCreatedAt: null, lastLoginAt: null };
+    }
+
+    return {
+        accountCreatedAt: data.user.created_at || null,
+        lastLoginAt: data.user.last_sign_in_at || null
+    };
+};
+
+const sortByClientActivity = <T extends { createdAt?: string | null; accountCreatedAt?: string | null; lastLoginAt?: string | null }>(
+    records: T[],
+    sort?: string
+) => {
+    const selectedSort = sort || 'created_desc';
+
+    return [...records].sort((a, b) => {
+        const createdA = toTimestamp(a.accountCreatedAt || a.createdAt);
+        const createdB = toTimestamp(b.accountCreatedAt || b.createdAt);
+        const loginA = toTimestamp(a.lastLoginAt);
+        const loginB = toTimestamp(b.lastLoginAt);
+
+        switch (selectedSort) {
+            case 'created_asc':
+                return createdA - createdB;
+            case 'last_login_desc':
+                return loginB - loginA;
+            case 'last_login_asc':
+                return loginA - loginB;
+            case 'created_desc':
+            default:
+                return createdB - createdA;
+        }
+    });
+};
+
 const normalizeSignupEmail = (email?: string | null) => String(email || '').trim().toLowerCase();
 
 const assertSignupAuthUser = async (
@@ -1633,14 +1682,14 @@ serve(async (req: Request) => {
             case 'get-all-companies': {
                 const page = payload?.page ?? 0;
                 const pageSize = payload?.pageSize ?? 20;
+                const sort = payload?.sort || 'created_desc';
                 const from = page * pageSize;
                 const to = from + pageSize - 1;
 
                 const { data: companies, error: compError, count } = await adminClient
                     .from('companies')
                     .select('id, name, email, plan, status, settings, created_at', { count: 'exact' })
-                    .order('created_at', { ascending: false })
-                    .range(from, to);
+                    .order('created_at', { ascending: false });
 
                 if (compError) throw compError;
 
@@ -1649,12 +1698,13 @@ serve(async (req: Request) => {
                     const billingGift = toBillingGift(c.settings?.billingGift);
                     const { data: ownerData } = await adminClient
                         .from('app_users')
-                        .select('name, email, phone')
+                        .select('id, name, email, phone')
                         .eq('company_id', c.id)
                         .in('role', ['OWNER', 'ADMIN'])
                         .order('role', { ascending: true }) // ADMIN < OWNER alphabetically, but OWNER preferred
                         .limit(1)
                         .maybeSingle();
+                    const authActivity = await getAuthActivityForUser(adminClient, ownerData?.id);
 
                     // Accurate employee count instead of settings cache
                     const { count: empCount } = await adminClient
@@ -1678,11 +1728,16 @@ serve(async (req: Request) => {
                         hasActiveBillingGift: isBillingGiftActive(billingGift),
                         employeeCount: activeEmployeeCount,
                         mrr,
-                        createdAt: c.created_at
+                        createdAt: c.created_at,
+                        accountCreatedAt: authActivity.accountCreatedAt || c.created_at,
+                        lastLoginAt: authActivity.lastLoginAt
                     };
                 }));
 
-                return new Response(JSON.stringify({ companies: enriched, total: count }), {
+                const sorted = sortByClientActivity(enriched, sort);
+                const paged = sorted.slice(from, to + 1);
+
+                return new Response(JSON.stringify({ companies: paged, total: count }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });
             }
@@ -2714,12 +2769,13 @@ serve(async (req: Request) => {
                     return acc;
                 }, {});
 
-                const payingClients = (companies || [])
+                const payingClients = await Promise.all((companies || [])
                     .filter((company: any) => normalizePlanToFrontend(company.plan) !== 'Free')
-                    .map((company: any) => {
+                    .map(async (company: any) => {
                         const employeeCount = employeeCounts[company.id] || 0;
                         const subscription = subscriptionByCompany[company.id];
                         const owner = ownersByCompany[company.id];
+                        const authActivity = await getAuthActivityForUser(adminClient, owner?.id);
                         const latestPayment = paymentByCompany[company.id];
                         const latestLedgerEvent = ledgerByCompany[company.id];
                         const mrr = calculatePlanMRR(company.plan, employeeCount);
@@ -2767,9 +2823,11 @@ serve(async (req: Request) => {
                             latestLedgerState: latestLedgerEvent?.state || null,
                             latestLedgerEventType: latestLedgerEvent?.event_type || null,
                             risk,
-                            createdAt: company.created_at
+                            createdAt: company.created_at,
+                            accountCreatedAt: authActivity.accountCreatedAt || company.created_at,
+                            lastLoginAt: authActivity.lastLoginAt
                         };
-                    });
+                    }));
 
                 return new Response(JSON.stringify({ clients: payingClients }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
