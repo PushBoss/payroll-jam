@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 interface EmployeeAccountSetupProps {
   employee: Employee;
   companyName: string;
-  onComplete: (password: string) => void;
+  onComplete: (password: string) => void | Promise<void>;
   onCancel: () => void;
 }
 
@@ -54,9 +54,10 @@ export const EmployeeAccountSetup: React.FC<EmployeeAccountSetupProps> = ({
 
     setIsSubmitting(true);
     try {
-      onComplete(password);
+      await onComplete(password);
     } catch (error) {
       toast.error('Failed to set up account');
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -226,4 +227,3 @@ export const EmployeeAccountSetup: React.FC<EmployeeAccountSetupProps> = ({
     </div>
   );
 };
-

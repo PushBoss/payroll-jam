@@ -4,7 +4,6 @@ import { Asset, Employee, LeaveRequest, User, PerformanceReview, Role } from '..
 import { storage } from '../../services/storage';
 import { EmployeeService } from '../../services/EmployeeService';
 import { supabase } from '../../services/supabaseClient';
-import { getAuthRedirectUrl } from '../../utils/domainConfig';
 import { TraceLogger } from '../../utils/employeeEditTrace';
 
 export interface EmployeeAccountSetupState {
@@ -230,29 +229,16 @@ export const useWorkforceData = ({ user, isSupabaseMode, activeCompanyId }: UseW
         return;
       }
 
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      if (!employee.onboardingToken) {
+        toast.error('This invite is missing its setup token. Please ask your employer to resend it.');
+        return;
+      }
+
+      const completedInvite = await EmployeeService.completeEmployeeInvite({
+        token: employee.onboardingToken,
         email: employee.email,
         password,
-        options: {
-          emailRedirectTo: getAuthRedirectUrl('/verify-email'),
-        },
       });
-
-      if (authError) throw authError;
-      if (!authData.user) throw new Error('No user returned from signup');
-
-      const newUser = {
-        id: authData.user.id,
-        email: employee.email,
-        name: `${employee.firstName} ${employee.lastName}`,
-        role: employee.role,
-        companyId: finalCompanyId,
-        isOnboarded: true,
-      } as User;
-
-      await EmployeeService.saveUser(newUser);
-      const updatedEmployee = { ...employee, userId: newUser.id, isOnboarded: true } as Employee;
-      await EmployeeService.saveEmployee(updatedEmployee, finalCompanyId, 'update');
 
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email: employee.email,
@@ -269,6 +255,12 @@ export const useWorkforceData = ({ user, isSupabaseMode, activeCompanyId }: UseW
       }
 
       toast.success('Account created successfully! Welcome aboard!');
+      const updatedEmployee = { ...employee, status: 'ACTIVE', isOnboarded: true } as Employee;
+      setEmployees((prev) => prev.map((existing) => (existing.id === employee.id ? updatedEmployee : existing)));
+      setUsers((prev) => {
+        if (prev.some((existing) => existing.id === completedInvite.user.id)) return prev;
+        return [...prev, completedInvite.user];
+      });
       setEmployeeAccountSetup(null);
       await new Promise((resolve) => setTimeout(resolve, 500));
       window.location.href = '/portal';

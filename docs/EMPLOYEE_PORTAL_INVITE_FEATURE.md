@@ -1,7 +1,14 @@
+<!-- ai-context
+feature: employee-portal-invites
+status: current
+summary: Documents employee portal invite behavior, Starter+ access, and token-based employee account setup.
+do-not-change: Employee invites must use the employee account setup flow, not company signup or company onboarding.
+-->
+
 # Employee Portal Invite Feature Implementation
 
 ## Summary
-Added a new action to the employees table that allows accounts on Pro and Reseller tiers to send invite links to their active employees for accessing the employee dashboard/portal.
+Added employee invite actions that allow Starter, Pro, Enterprise, and Reseller accounts to send invite links to employees for accessing the employee dashboard/portal.
 
 ## Changes Made
 
@@ -9,7 +16,7 @@ Added a new action to the employees table that allows accounts on Pro and Resell
 **File**: `/pages/Employees.tsx`
 
 Added `handleSendLoginInvite()` function that:
-- **Checks tier access**: Only available for Pro and Reseller plans
+- **Checks tier access**: Available for Starter plans and above
 - **Shows error message** if plan doesn't have access
 - **Generates or reuses** onboarding token for the employee
 - **Updates employee record** with token if not already set
@@ -23,7 +30,7 @@ Added `handleSendLoginInvite()` function that:
 Added new action button in the employees table:
 - **Visibility**: Only shown for:
   - ACTIVE employees (not pending, archived, or terminated)
-  - Pro or Reseller tier accounts (Enterprise accounts are Reseller accounts)
+  - Starter, Pro, Enterprise, or Reseller tier accounts
 - **Location**: Actions column, between "Edit" and "Terminate" buttons
 - **Styling**: Blue text with mail icon for clear visual distinction
 - **Disabled state**: Grayed out while sending to prevent duplicate sends
@@ -31,7 +38,7 @@ Added new action button in the employees table:
 
 ## How It Works
 
-### For Pro/Reseller Accounts:
+### For Starter+ Accounts:
 1. Navigate to **Employees** tab
 2. Find an **ACTIVE** employee in the table
 3. Click the **"Send Invite"** button in the Actions column
@@ -40,15 +47,15 @@ Added new action button in the employees table:
 6. Employee receives email with instructions to set up their account
 7. Success notification confirms invite was sent
 
-### For Free/Starter Accounts:
+### For Free Accounts:
 - "Send Invite" button is **not visible** in the Actions column
 - If they somehow trigger the function, they receive an error:
-  > "This feature is only available for Pro and Reseller plans. Please upgrade to send employee portal invites."
+  > "Employee portal invites are available on Starter plans and above. Please upgrade to send employee portal invites."
 
 ## Security Considerations
 
 ✅ **Token-based authentication**: Uses same secure token system as existing employee invitations  
-✅ **Email verification**: Invite link includes both token and email for verification  
+✅ **Email possession**: Invite link includes both token and email; completing the invite creates an email-confirmed employee account without a second verification loop  
 ✅ **Tier validation**: Backend and frontend checks ensure only authorized plans can send invites  
 ✅ **Audit logging**: All invite actions are logged for compliance  
 ✅ **Idempotent**: Reuses tokens if already generated, prevents duplicate tokens  
@@ -64,9 +71,9 @@ Added new action button in the employees table:
 ## Testing Checklist
 
 - [ ] "Send Invite" button visible for Pro accounts with ACTIVE employees
+- [ ] "Send Invite" button visible for Starter accounts with ACTIVE employees
 - [ ] "Send Invite" button visible for Reseller accounts with ACTIVE employees
 - [ ] "Send Invite" button NOT visible for Free accounts
-- [ ] "Send Invite" button NOT visible for Starter accounts
 - [ ] Button NOT visible for PENDING_ONBOARDING employees
 - [ ] Button NOT visible for ARCHIVED employees
 - [ ] Button NOT visible for TERMINATED employees
@@ -75,6 +82,8 @@ Added new action button in the employees table:
 - [ ] Audit log records invite action
 - [ ] Token generated and saved to employee record
 - [ ] Employee can use link to access their portal
+- [ ] Employee invite links open the employee account setup page, not company signup
+- [ ] Employee account setup does not request a second email verification
 - [ ] Button disabled during send operation
 
 ## Future Enhancements

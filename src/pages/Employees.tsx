@@ -10,8 +10,8 @@ import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { isValidEmail } from '../utils/validators';
 import { generateUUID } from '../utils/uuid';
-import { isResellerEquivalentPlan, normalizePlanToFrontend } from '../utils/planNames';
 import { createEmployeeEditTrace, TraceLogger } from '../utils/employeeEditTrace';
+import { hasEmployeePortalAccess } from '../features/payroll/payrunWorkflow';
 
 
 interface EmployeesProps {
@@ -130,12 +130,22 @@ export const Employees: React.FC<EmployeesProps> = ({
     };
 
     const handleInviteClick = () => {
+        if (!hasEmployeePortalAccess(companyData?.plan || 'Free')) {
+            toast.error('Employee portal invites are available on Starter plans and above. Please upgrade to send invites.');
+            return;
+        }
+
         if (checkPlanLimit(1)) {
             setIsInviteModalOpen(true);
         }
     };
 
     const handleResendInvite = async (emp: Employee) => {
+        if (!hasEmployeePortalAccess(companyData?.plan || 'Free')) {
+            toast.error('Employee portal invites are available on Starter plans and above. Please upgrade to resend invites.');
+            return;
+        }
+
         setIsSendingInvite(true);
         const inviteLink = `${window.location.origin}/?token=${emp.onboardingToken}&email=${encodeURIComponent(emp.email)}&type=employee`;
 
@@ -156,9 +166,8 @@ export const Employees: React.FC<EmployeesProps> = ({
     };
 
     const handleSendLoginInvite = async (emp: Employee) => {
-        const planName = normalizePlanToFrontend(companyData?.plan);
-        if (planName !== 'Pro' && !isResellerEquivalentPlan(companyData?.plan)) {
-            toast.error('This feature is only available for Pro and Reseller plans. Please upgrade to send employee portal invites.');
+        if (!hasEmployeePortalAccess(companyData?.plan || 'Free')) {
+            toast.error('Employee portal invites are available on Starter plans and above. Please upgrade to send employee portal invites.');
             return;
         }
 
@@ -213,6 +222,11 @@ export const Employees: React.FC<EmployeesProps> = ({
 
     const handleInvite = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!hasEmployeePortalAccess(companyData?.plan || 'Free')) {
+            toast.error('Employee portal invites are available on Starter plans and above. Please upgrade to invite employees.');
+            return;
+        }
+
         if (!checkPlanLimit(1)) return;
 
         if (!isValidEmail(inviteData.email)) {
@@ -907,8 +921,8 @@ export const Employees: React.FC<EmployeesProps> = ({
                                                     }} className="text-jam-orange hover:text-yellow-600 font-semibold">Edit</button>
                                                 )}
 
-                                                {/* Send Employee Portal Invite - Only for Pro/Reseller/Enterprise plans and ACTIVE employees */}
-                                                {emp.status === 'ACTIVE' && (companyData?.plan === 'Pro' || companyData?.plan === 'Professional' || companyData?.plan === 'Reseller' || companyData?.plan === 'Enterprise') && (
+                                                {/* Send Employee Portal Invite - Starter and above, ACTIVE employees only */}
+                                                {emp.status === 'ACTIVE' && hasEmployeePortalAccess(companyData?.plan || 'Free') && (
                                                     <button
                                                         onClick={() => handleSendLoginInvite(emp)}
                                                         disabled={isSendingInvite}

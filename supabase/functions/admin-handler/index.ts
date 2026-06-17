@@ -30,6 +30,11 @@ const normalizePlanToFrontend = (plan?: string | null): string => {
 const isResellerEquivalentPlan = (plan?: string | null): boolean =>
     normalizePlanToFrontend(plan) === 'Reseller';
 
+const hasEmployeePortalAccess = (plan?: string | null): boolean => {
+    const normalizedPlan = normalizePlanToFrontend(plan);
+    return ['Starter', 'Pro', 'Reseller'].includes(normalizedPlan);
+};
+
 const getPlanMonthlyPricing = (plan?: string | null) => {
     switch (normalizePlanToFrontend(plan)) {
         case 'Starter':
@@ -2538,6 +2543,111 @@ serve(async (req: Request) => {
                 }
 
                 return new Response(JSON.stringify({ employee: data }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'complete-employee-invite': {
+                const { token, email, password } = payload || {};
+                const normalizedEmail = String(email || '').trim().toLowerCase();
+                const normalizedToken = String(token || '').trim();
+
+                if (!normalizedToken) throw new Error('Invite token is required');
+                if (!normalizedEmail.includes('@')) throw new Error('A valid email address is required');
+                if (!password || typeof password !== 'string') throw new Error('Password is required');
+
+                const { data: employee, error: employeeError } = await adminClient
+                    .from('employees')
+                    .select('*, companies(name, plan)')
+                    .eq('onboarding_token', normalizedToken)
+                    .eq('email', normalizedEmail)
+                    .maybeSingle();
+
+                if (employeeError) throw employeeError;
+                if (!employee) throw new Error('Invite link is invalid or has expired.');
+
+                const employeeStatus = normalizeEmployeeStatus(employee.status);
+                if (employeeStatus === 'ARCHIVED' || employeeStatus === 'TERMINATED') {
+                    throw new Error('This employee invite is no longer active.');
+                }
+
+                if (!hasEmployeePortalAccess(employee.companies?.plan)) {
+                    throw new Error('Employee portal invites require a Starter plan or above.');
+                }
+
+                const { data: existingProfile, error: existingProfileError } = await adminClient
+                    .from('app_users')
+                    .select('id, email')
+                    .eq('email', normalizedEmail)
+                    .maybeSingle();
+
+                if (existingProfileError) throw existingProfileError;
+                if (existingProfile) {
+                    throw new Error('An account already exists for this email. Please sign in or contact support to link this employee profile.');
+                }
+
+                const employeeName = `${employee.first_name || ''} ${employee.last_name || ''}`.trim() || normalizedEmail;
+                const { data: createdAuthUser, error: createAuthError } = await adminClient.auth.admin.createUser({
+                    email: normalizedEmail,
+                    password,
+                    email_confirm: true,
+                    user_metadata: {
+                        full_name: employeeName,
+                        name: employeeName,
+                        role: 'EMPLOYEE',
+                        signup_flow: 'employee_invite',
+                        onboarding_token: normalizedToken,
+                    },
+                });
+
+                if (createAuthError || !createdAuthUser?.user) {
+                    const message = createAuthError?.message || 'Unable to create employee account';
+                    if (message.toLowerCase().includes('already')) {
+                        throw new Error('An account already exists for this email. Please sign in or contact support to link this employee profile.');
+                    }
+                    throw new Error(message);
+                }
+
+                const profilePayload = {
+                    id: createdAuthUser.user.id,
+                    auth_user_id: createdAuthUser.user.id,
+                    email: normalizedEmail,
+                    name: employeeName,
+                    role: 'EMPLOYEE',
+                    company_id: employee.company_id,
+                    is_onboarded: true,
+                    onboarding_token: normalizedToken,
+                    preferences: {
+                        signupFlow: 'employee_invite',
+                        employeeId: employee.id,
+                    },
+                };
+
+                const { data: savedProfile, error: profileError } = await adminClient
+                    .from('app_users')
+                    .upsert(profilePayload, { onConflict: 'id' })
+                    .select('id, auth_user_id, email, name, role, company_id, is_onboarded, onboarding_token, avatar_url, phone')
+                    .single();
+
+                if (profileError) throw profileError;
+
+                const { error: updateEmployeeError } = await adminClient
+                    .from('employees')
+                    .update({
+                        status: 'ACTIVE',
+                        onboarding_token: normalizedToken,
+                    })
+                    .eq('id', employee.id)
+                    .eq('company_id', employee.company_id);
+
+                if (updateEmployeeError) throw updateEmployeeError;
+
+                return new Response(JSON.stringify({
+                    success: true,
+                    user: savedProfile,
+                    companyId: employee.company_id,
+                    companyName: employee.companies?.name || null,
+                }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });
             }

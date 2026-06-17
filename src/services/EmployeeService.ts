@@ -473,6 +473,43 @@ export const EmployeeService = {
     }
   },
 
+  completeEmployeeInvite: async (input: { token: string; email: string; password: string }): Promise<{ user: User; companyId: string }> => {
+    if (!supabase) throw new Error('Supabase client not initialized');
+
+    const normalizedEmail = input.email.trim().toLowerCase();
+    const { data: result, error } = await requireSupabase().functions.invoke('admin-handler', {
+      body: {
+        action: 'complete-employee-invite',
+        payload: {
+          token: input.token,
+          email: normalizedEmail,
+          password: input.password,
+        },
+      },
+    });
+
+    if (error) throw error;
+    if (!result?.success || !result?.user || !result?.companyId) {
+      throw new Error(result?.error || 'Employee invite setup failed.');
+    }
+
+    const row = result.user as DbAppUserRow;
+    return {
+      user: {
+        id: row.id,
+        name: row.name,
+        email: row.email,
+        role: toRole(row.role),
+        companyId: row.company_id ?? undefined,
+        isOnboarded: row.is_onboarded,
+        avatarUrl: row.avatar_url ?? undefined,
+        phone: row.phone ?? undefined,
+        onboardingToken: row.onboarding_token ?? undefined,
+      },
+      companyId: result.companyId,
+    };
+  },
+
   // --- Leave & Docs ---
 
   getLeaveRequests: async (companyId: string): Promise<LeaveRequest[]> => {

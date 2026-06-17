@@ -90,9 +90,10 @@ export const useAuthRedirects = ({
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token');
     const email = params.get('email');
+    const isEmployeeInvite = params.get('type') === 'employee';
 
     if (!token) return;
-    if (currentPath === 'signup' && token) return;
+    if (currentPath === 'signup' && token && !isEmployeeInvite) return;
 
     if (user && email && user.email === email) {
       window.history.replaceState({}, '', window.location.pathname);
@@ -127,8 +128,6 @@ export const useAuthRedirects = ({
       navigateTo('signup', { query: { token, email, reseller: 'true' } });
       return;
     }
-
-    const isEmployeeInvite = params.get('type') === 'employee';
 
     if (employees.length > 0 && !isResellerInvite && !isEmployeeInvite) {
       const invitee = employees.find((employee) => employee.onboardingToken === token);

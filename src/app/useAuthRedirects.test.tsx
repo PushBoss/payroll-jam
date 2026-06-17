@@ -208,4 +208,54 @@ describe('useAuthRedirects', () => {
       companyId: 'company-1',
     });
   });
+
+  it('handles employee invite links even when they land on signup', async () => {
+    vi.mocked(EmployeeService.getEmployeeByToken).mockResolvedValue({
+      employee: {
+        id: 'emp-2',
+        firstName: 'Sam',
+        lastName: 'Worker',
+        email: 'sam@example.com',
+        trn: '123',
+        nis: '456',
+        status: 'PENDING_ONBOARDING',
+        role: Role.EMPLOYEE,
+        hireDate: '2026-01-01',
+        grossSalary: 100000,
+        payType: 'SALARIED',
+        payFrequency: 'MONTHLY',
+      } as any,
+      companyName: 'Starter Co',
+      companyId: 'company-2',
+    });
+
+    window.history.replaceState({}, '', '/signup?token=emp-token-2&email=sam@example.com&type=employee');
+
+    renderHook(() =>
+      useAuthRedirects({
+        user: null,
+        isLoading: false,
+        currentPath: 'signup',
+        navigateTo,
+        logout,
+        employees: [],
+        isSupabaseMode: true,
+        companyData: null,
+        setVerifyEmail,
+        setEmployeeAccountSetup,
+      })
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(EmployeeService.getEmployeeByToken).toHaveBeenCalledWith('emp-token-2', 'sam@example.com');
+    expect(setEmployeeAccountSetup).toHaveBeenCalledWith({
+      employee: expect.objectContaining({ email: 'sam@example.com' }),
+      companyName: 'Starter Co',
+      companyId: 'company-2',
+    });
+    expect(navigateTo).not.toHaveBeenCalledWith('signup', expect.anything());
+  });
 });
