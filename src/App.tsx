@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+import { Toaster } from 'sonner';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { PublicApp } from './app/PublicApp';
 import { AuthenticatedApp } from './app/AuthenticatedApp';
@@ -35,6 +36,7 @@ function AppContent() {
       {isRevalidating && <SyncIndicator />}
       {appData.employeeAccountSetup ? (
         <Suspense fallback={<AppLoadingFallback />}>
+          <Toaster richColors position="top-right" />
           <EmployeeAccountSetupPage
             employee={appData.employeeAccountSetup.employee}
             companyName={appData.employeeAccountSetup.companyName}

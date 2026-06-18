@@ -488,7 +488,19 @@ export const EmployeeService = {
       },
     });
 
-    if (error) throw error;
+    if (error) {
+      let message = error.message || 'Employee invite setup failed.';
+      const context = (error as any).context;
+      if (context && typeof context.clone === 'function') {
+        try {
+          const body = await context.clone().json();
+          message = body?.error || body?.message || message;
+        } catch {
+          // Keep the Supabase function error message if the response is not JSON.
+        }
+      }
+      throw new Error(message);
+    }
     if (!result?.success || !result?.user || !result?.companyId) {
       throw new Error(result?.error || 'Employee invite setup failed.');
     }

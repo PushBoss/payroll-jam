@@ -2587,46 +2587,90 @@ serve(async (req: Request) => {
                 }
 
                 const employeeName = `${employee.first_name || ''} ${employee.last_name || ''}`.trim() || normalizedEmail;
+                const userMetadata = {
+                    full_name: employeeName,
+                    name: employeeName,
+                    role: 'EMPLOYEE',
+                    signup_flow: 'employee_invite',
+                    onboarding_token: normalizedToken,
+                };
+                const findExistingAuthUserByEmail = async () => {
+                    for (let page = 1; page <= 20; page += 1) {
+                        const { data: usersPage, error: listUsersError } = await adminClient.auth.admin.listUsers({
+                            page,
+                            perPage: 1000,
+                        });
+
+                        if (listUsersError) throw listUsersError;
+
+                        const match = usersPage?.users?.find((candidate: any) =>
+                            String(candidate.email || '').trim().toLowerCase() === normalizedEmail
+                        );
+                        if (match) return match;
+                        if (!usersPage?.users || usersPage.users.length < 1000) return null;
+                    }
+                    return null;
+                };
+
+                let inviteAuthUser: any = null;
                 const { data: createdAuthUser, error: createAuthError } = await adminClient.auth.admin.createUser({
                     email: normalizedEmail,
                     password,
                     email_confirm: true,
-                    user_metadata: {
-                        full_name: employeeName,
-                        name: employeeName,
-                        role: 'EMPLOYEE',
-                        signup_flow: 'employee_invite',
-                        onboarding_token: normalizedToken,
-                    },
+                    user_metadata: userMetadata,
                 });
 
-                if (createAuthError || !createdAuthUser?.user) {
+                if (!createAuthError && createdAuthUser?.user) {
+                    inviteAuthUser = createdAuthUser.user;
+                } else {
                     const message = createAuthError?.message || 'Unable to create employee account';
-                    if (message.toLowerCase().includes('already')) {
+                    if (!message.toLowerCase().includes('already')) {
+                        throw new Error(message);
+                    }
+
+                    const existingAuthUser = await findExistingAuthUserByEmail();
+                    if (!existingAuthUser?.id) {
                         throw new Error('An account already exists for this email. Please sign in or contact support to link this employee profile.');
                     }
-                    throw new Error(message);
+
+                    const { data: updatedAuthUser, error: updateAuthError } = await adminClient.auth.admin.updateUserById(existingAuthUser.id, {
+                        password,
+                        email_confirm: true,
+                        user_metadata: {
+                            ...(existingAuthUser.user_metadata || {}),
+                            ...userMetadata,
+                        },
+                    });
+
+                    if (updateAuthError || !updatedAuthUser?.user) {
+                        throw new Error(updateAuthError?.message || 'Unable to recover existing employee auth account.');
+                    }
+                    inviteAuthUser = updatedAuthUser.user;
+                }
+
+                if (!inviteAuthUser?.id) {
+                    throw new Error('Unable to create employee account.');
                 }
 
                 const profilePayload = {
-                    id: createdAuthUser.user.id,
-                    auth_user_id: createdAuthUser.user.id,
+                    id: inviteAuthUser.id,
+                    auth_user_id: inviteAuthUser.id,
                     email: normalizedEmail,
                     name: employeeName,
                     role: 'EMPLOYEE',
                     company_id: employee.company_id,
                     is_onboarded: true,
-                    onboarding_token: normalizedToken,
                     preferences: {
                         signupFlow: 'employee_invite',
                         employeeId: employee.id,
+                        onboardingToken: normalizedToken,
                     },
                 };
 
                 const { data: savedProfile, error: profileError } = await adminClient
                     .from('app_users')
                     .upsert(profilePayload, { onConflict: 'id' })
-                    .select('id, auth_user_id, email, name, role, company_id, is_onboarded, onboarding_token, avatar_url, phone')
+                    .select('id, auth_user_id, email, name, role, company_id, is_onboarded, avatar_url, phone')
                     .single();
 
                 if (profileError) throw profileError;

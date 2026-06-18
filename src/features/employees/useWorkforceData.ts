@@ -266,7 +266,9 @@ export const useWorkforceData = ({ user, isSupabaseMode, activeCompanyId }: UseW
       window.location.href = '/portal';
     } catch (error: any) {
       console.error('Error setting up employee account:', error);
-      toast.error(error?.message || 'Failed to create account. Please try again or contact your employer.');
+      const message = error?.message || 'Failed to create account. Please try again or contact your employer.';
+      toast.error(message);
+      throw new Error(message);
     }
   };
 

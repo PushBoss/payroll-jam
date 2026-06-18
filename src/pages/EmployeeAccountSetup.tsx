@@ -21,6 +21,7 @@ export const EmployeeAccountSetup: React.FC<EmployeeAccountSetupProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const validatePassword = (pwd: string): { valid: boolean; message: string } => {
     if (pwd.length < 8) {
@@ -53,10 +54,11 @@ export const EmployeeAccountSetup: React.FC<EmployeeAccountSetupProps> = ({
     }
 
     setIsSubmitting(true);
+    setSubmitError(null);
     try {
       await onComplete(password);
     } catch (error) {
-      toast.error('Failed to set up account');
+      setSubmitError(error instanceof Error ? error.message : 'Failed to set up account');
     } finally {
       setIsSubmitting(false);
     }
@@ -217,6 +219,11 @@ export const EmployeeAccountSetup: React.FC<EmployeeAccountSetupProps> = ({
               {isSubmitting ? 'Setting up...' : 'Create Account'}
             </button>
           </div>
+          {submitError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {submitError}
+            </div>
+          )}
         </form>
 
         {/* Footer */}
