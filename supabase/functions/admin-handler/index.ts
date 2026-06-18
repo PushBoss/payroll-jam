@@ -2408,12 +2408,14 @@ serve(async (req: Request) => {
                     { data: employees },
                     { data: payRuns },
                     { data: leaveRequests },
+                    { data: documentRequests },
                     { data: users }
                 ] = await Promise.all([
                     adminClient.from('companies').select('*').eq('id', companyId).maybeSingle(),
                     adminClient.from('employees').select('*').eq('company_id', companyId),
                     adminClient.from('pay_runs').select(payRunSelect).eq('company_id', companyId).order('period_start', { ascending: false }),
                     adminClient.from('leave_requests').select('*').eq('company_id', companyId),
+                    adminClient.from('document_requests').select('*').eq('company_id', companyId).order('requested_at', { ascending: false }),
                     adminClient.from('app_users').select('*').eq('company_id', companyId)
                 ]);
 
@@ -2422,6 +2424,7 @@ serve(async (req: Request) => {
                     employees,
                     payRuns,
                     leaveRequests,
+                    documentRequests,
                     users
                 }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -2818,7 +2821,7 @@ serve(async (req: Request) => {
                 if (!log || typeof log !== 'object') throw new Error('log payload required');
 
                 if (companyId) {
-                    await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'RESELLER', 'SUPER_ADMIN']);
+                    await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'MANAGER', 'EMPLOYEE', 'RESELLER', 'SUPER_ADMIN']);
                 } else {
                     const callerProfile = await getCallerProfile(adminClient, authUser);
                     if (normalizeRole(callerProfile.role) !== 'SUPER_ADMIN') {
@@ -2826,10 +2829,60 @@ serve(async (req: Request) => {
                     }
                 }
 
-                const { error: auditError } = await adminClient.from('audit_logs').insert(log);
+                const auditLog = { ...log } as Record<string, any>;
+                if (auditLog.actor_id) {
+                    const { data: actorProfile, error: actorLookupError } = await adminClient
+                        .from('app_users')
+                        .select('id')
+                        .eq('id', auditLog.actor_id)
+                        .maybeSingle();
+
+                    if (actorLookupError) throw actorLookupError;
+                    if (!actorProfile) auditLog.actor_id = null;
+                }
+
+                const { error: auditError } = await adminClient.from('audit_logs').insert(auditLog);
                 if (auditError) throw auditError;
 
                 return new Response(JSON.stringify({ success: true }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'get-document-requests': {
+                const { companyId } = payload || {};
+                if (!companyId) throw new Error('companyId is required');
+
+                const callerProfile = await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'MANAGER', 'EMPLOYEE', 'RESELLER', 'SUPER_ADMIN']);
+                const callerRole = normalizeRole(callerProfile.role);
+                let query = adminClient
+                    .from('document_requests')
+                    .select('*')
+                    .eq('company_id', companyId)
+                    .order('requested_at', { ascending: false });
+
+                if (callerRole === 'EMPLOYEE') {
+                    const callerEmail = String(authUser?.email || callerProfile.email || '').trim().toLowerCase();
+                    const { data: employee, error: employeeError } = await adminClient
+                        .from('employees')
+                        .select('id')
+                        .eq('company_id', companyId)
+                        .ilike('email', callerEmail)
+                        .maybeSingle();
+
+                    if (employeeError) throw employeeError;
+                    if (!employee) {
+                        return new Response(JSON.stringify({ documentRequests: [] }), {
+                            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                        });
+                    }
+                    query = query.eq('employee_id', employee.id);
+                }
+
+                const { data: documentRequests, error: documentRequestsError } = await query;
+                if (documentRequestsError) throw documentRequestsError;
+
+                return new Response(JSON.stringify({ documentRequests: documentRequests || [] }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });
             }

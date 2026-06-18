@@ -74,13 +74,11 @@ export const useAppBootstrap = ({
           if (context.company) applyLoadedCompany(context.company);
           if (context.employees) setEmployees(context.employees);
           if (context.payRuns) setPayRunHistory(context.payRuns);
+          if (context.documentRequests) setDocumentRequests(context.documentRequests);
           void PayrollService.getTimesheets(user.companyId).then(setTimesheets).catch((error) => {
             console.error('Failed to load timesheets for impersonated context:', error);
           });
           if (context.leaveRequests) setLeaveRequests(context.leaveRequests);
-          void DocumentService.getDocumentRequests(user.companyId).then(setDocumentRequests).catch((error) => {
-            console.error('Failed to load document requests for impersonated context:', error);
-          });
           if (context.users) setUsers(context.users);
           return;
         }
@@ -100,13 +98,11 @@ export const useAppBootstrap = ({
             if (context.company) applyLoadedCompany(context.company);
             if (context.employees) setEmployees(context.employees);
             if (context.payRuns) setPayRunHistory(context.payRuns);
+            if (context.documentRequests) setDocumentRequests(context.documentRequests);
             void PayrollService.getTimesheets(user.companyId).then(setTimesheets).catch((error) => {
               console.error('Failed to load timesheets for owner/admin context:', error);
             });
             if (context.leaveRequests) setLeaveRequests(context.leaveRequests);
-            void DocumentService.getDocumentRequests(user.companyId).then(setDocumentRequests).catch((error) => {
-              console.error('Failed to load document requests for owner/admin context:', error);
-            });
             if (context.users) setUsers(context.users);
             return;
           } catch (fallbackError) {

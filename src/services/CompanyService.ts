@@ -9,6 +9,19 @@ const parseEmployeeLimit = (limit?: string): number | null => {
   return match ? Number(match[0]) : null;
 };
 
+const getFunctionErrorMessage = async (error: any, fallback = 'Edge function request failed') => {
+  const context = error?.context;
+  if (context && typeof context.clone === 'function') {
+    try {
+      const body = await context.clone().json();
+      return body?.error || body?.message || error?.message || fallback;
+    } catch {
+      // Fall through to the SDK message.
+    }
+  }
+
+  return error?.message || fallback;
+};
 
 export const CompanyService = {
   getCompany: async (companyId: string): Promise<CompanySettings | null> => {
@@ -221,7 +234,7 @@ export const CompanyService = {
     });
 
     if (error) {
-      console.error('Error deep deleting company:', error);
+      console.error('Error deep deleting company:', await getFunctionErrorMessage(error, 'Failed to delete company'), error);
       return false;
     }
 

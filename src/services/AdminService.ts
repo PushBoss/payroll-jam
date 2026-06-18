@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { CompanySettings, Employee, PayRun, LeaveRequest, User, toPlanLabel, toRole, toPayType, toPayFrequency } from '../core/types';
+import { CompanySettings, Employee, PayRun, LeaveRequest, User, DocumentRequest, toPlanLabel, toRole, toPayType, toPayFrequency } from '../core/types';
 import { normalizePlanToFrontend } from '../utils/planNames';
 import { getEffectiveSubscriptionStatus, toBillingGift } from '../utils/billingGift';
 
@@ -33,6 +33,7 @@ export const AdminService = {
     employees: Employee[],
     payRuns: PayRun[],
     leaveRequests: LeaveRequest[],
+    documentRequests: DocumentRequest[],
     users: User[]
   }> => {
     try {
@@ -115,6 +116,22 @@ export const AdminService = {
         employees,
         payRuns,
         leaveRequests: data.leaveRequests || [],
+        documentRequests: (data.documentRequests || []).map((request: Record<string, unknown>) => ({
+          id: request.id as string,
+          companyId: request.company_id as string | undefined,
+          employeeId: request.employee_id as string,
+          employeeName: request.employee_name as string,
+          templateId: request.template_id as string,
+          documentType: request.document_type as string,
+          purpose: request.purpose as string,
+          status: (request.status || 'PENDING') as DocumentRequest['status'],
+          requestedAt: request.requested_at as string,
+          reviewedBy: request.reviewed_by as string | undefined,
+          reviewedAt: request.reviewed_at as string | undefined,
+          rejectionReason: request.rejection_reason as string | undefined,
+          generatedContent: request.generated_content as string | undefined,
+          fileUrl: request.file_url as string | undefined,
+        })),
         users
       };
     } catch (error) {

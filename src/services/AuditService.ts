@@ -10,6 +10,20 @@ const requireSupabase = () => {
   return supabase;
 };
 
+const getFunctionErrorMessage = async (error: any, fallback = 'Audit log request failed') => {
+  const context = error?.context;
+  if (context && typeof context.clone === 'function') {
+    try {
+      const body = await context.clone().json();
+      return body?.error || body?.message || error?.message || fallback;
+    } catch {
+      // Fall through to the SDK message.
+    }
+  }
+
+  return error?.message || fallback;
+};
+
 export const AuditService = {
   saveAuditLog: async (log: AuditLogEntry, companyId: string | null) => {
     const client = requireSupabase();
@@ -38,7 +52,7 @@ export const AuditService = {
     });
 
     if (error) {
-      console.error('Failed to save audit log:', error);
+      console.error('Failed to save audit log:', await getFunctionErrorMessage(error), error);
       throw error;
     }
   },

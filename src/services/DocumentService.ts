@@ -39,14 +39,16 @@ export const DocumentService = {
   getDocumentRequests: async (companyId: string): Promise<DocumentRequest[]> => {
     if (!supabase) return [];
 
-    const { data, error } = await supabase
-      .from('document_requests')
-      .select('*')
-      .eq('company_id', companyId)
-      .order('requested_at', { ascending: false });
+    const { data: functionData, error: functionError } = await supabase.functions.invoke('admin-handler', {
+      body: {
+        action: 'get-document-requests',
+        payload: { companyId },
+      },
+    });
 
-    if (error) throw error;
-    return (data || []).map(mapDocumentRequestRow);
+    if (functionError) throw functionError;
+    if (functionData?.error) throw new Error(functionData.error);
+    return (functionData?.documentRequests || []).map(mapDocumentRequestRow);
   },
 
   saveDocumentRequest: async (request: DocumentRequest, companyId: string): Promise<DocumentRequest> => {
