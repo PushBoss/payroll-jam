@@ -27,6 +27,22 @@ const normalizePlanToFrontend = (plan?: string | null): string => {
     return planMap[normalized] || plan;
 };
 
+const normalizePlanToDatabase = (plan?: string | null): string => {
+    if (!plan) return 'Free';
+
+    const normalized = plan.trim().toLowerCase();
+    const planMap: Record<string, string> = {
+        free: 'Free',
+        starter: 'Starter',
+        professional: 'Professional',
+        pro: 'Professional',
+        enterprise: 'Enterprise',
+        reseller: 'Enterprise'
+    };
+
+    return planMap[normalized] || 'Free';
+};
+
 const isResellerEquivalentPlan = (plan?: string | null): boolean =>
     normalizePlanToFrontend(plan) === 'Reseller';
 
@@ -2344,7 +2360,7 @@ serve(async (req: Request) => {
                 };
 
                 if (requestedPlan) {
-                    companyUpdate.plan = requestedPlan;
+                    companyUpdate.plan = normalizePlanToDatabase(requestedPlan);
                 }
 
                 const { error: updateError } = await adminClient
@@ -2359,7 +2375,7 @@ serve(async (req: Request) => {
                     company: {
                         id: company.id,
                         companyName: company.name,
-                        plan: requestedPlan || undefined,
+                        plan: requestedPlan ? normalizePlanToFrontend(requestedPlan) : undefined,
                         billingGift,
                         hasActiveBillingGift: true,
                     },

@@ -21,6 +21,20 @@ interface SuperAdminProps {
     initialTab?: string;
 }
 
+const getFunctionErrorMessage = async (error: any, fallback = 'Edge function request failed') => {
+    const context = error?.context;
+    if (context && typeof context.clone === 'function') {
+        try {
+            const body = await context.clone().json();
+            return body?.error || body?.message || error?.message || fallback;
+        } catch {
+            // Fall through to the SDK message.
+        }
+    }
+
+    return error?.message || fallback;
+};
+
 interface PayingClient {
     id: string;
     companyName: string;
@@ -916,7 +930,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 },
             });
 
-            if (error) throw error;
+            if (error) throw new Error(await getFunctionErrorMessage(error, 'Failed to apply manual payment access'));
 
             const updatedCompany = data?.company;
             setTenants((prev) => prev.map((tenant) => (
