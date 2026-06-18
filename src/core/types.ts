@@ -335,7 +335,8 @@ export interface BillingGift {
   monthsGranted: number;
   note?: string;
   employeeLimitOverride?: string;
-  reason?: 'FREE_GIFT' | 'BANK_TRANSFER' | 'CARD_PAYMENT' | 'DIFFICULTY_UPGRADING';
+  reason?: 'STANDARD_PAYMENT' | 'DIFFICULTY_UPGRADING' | 'GOODWILL' | 'TEST_ACCOUNT' | 'OTHER' | 'FREE_GIFT' | 'BANK_TRANSFER' | 'CARD_PAYMENT' | 'CASH';
+  manualPaymentType?: 'FREE_GIFT' | 'BANK_TRANSFER' | 'CARD_PAYMENT' | 'CASH';
   tierGranted?: PlanLabel;
   manualPaymentLabel?: string;
 }

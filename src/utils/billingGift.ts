@@ -32,6 +32,9 @@ export const toBillingGift = (value: unknown): BillingGift | undefined => {
     reason: typeof value.reason === 'string'
       ? value.reason as BillingGift['reason']
       : undefined,
+    manualPaymentType: typeof value.manualPaymentType === 'string'
+      ? value.manualPaymentType as BillingGift['manualPaymentType']
+      : undefined,
     tierGranted: typeof value.tierGranted === 'string'
       ? value.tierGranted as BillingGift['tierGranted']
       : undefined,

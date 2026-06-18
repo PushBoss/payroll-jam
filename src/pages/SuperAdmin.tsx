@@ -65,6 +65,43 @@ interface PayingClient {
 
 type ClientActivitySort = 'created_desc' | 'created_asc' | 'last_login_desc' | 'last_login_asc';
 type GrowthTrendRange = '1M' | '6M' | '1Y';
+type ManualPaymentAction = 'FREE_GIFT' | 'BANK_TRANSFER' | 'CARD_PAYMENT' | 'CASH';
+type ManualPaymentReason = 'STANDARD_PAYMENT' | 'DIFFICULTY_UPGRADING' | 'GOODWILL' | 'TEST_ACCOUNT' | 'OTHER';
+type ManualPaymentPlan = Exclude<ResellerClient['plan'], 'Enterprise'>;
+
+const MANUAL_PAYMENT_ACTION_LABELS: Record<ManualPaymentAction, string> = {
+    FREE_GIFT: 'Free Gift',
+    BANK_TRANSFER: 'Bank Transfer',
+    CARD_PAYMENT: 'Card Payment',
+    CASH: 'Cash',
+};
+
+const MANUAL_PAYMENT_REASON_LABELS: Record<ManualPaymentReason, string> = {
+    STANDARD_PAYMENT: 'Standard Payment',
+    DIFFICULTY_UPGRADING: 'Difficulty Upgrading',
+    GOODWILL: 'Goodwill / Retention',
+    TEST_ACCOUNT: 'Test Account',
+    OTHER: 'Other',
+};
+
+const LEGACY_MANUAL_PAYMENT_LABELS: Record<string, string> = {
+    FREE_GIFT: 'Free Gift',
+    BANK_TRANSFER: 'Bank Transfer',
+    CARD_PAYMENT: 'Card Payment',
+    CASH: 'Cash',
+    DIFFICULTY_UPGRADING: 'Difficulty Upgrading',
+};
+
+const normalizeManualPaymentPlan = (plan: ResellerClient['plan']): ManualPaymentPlan =>
+    plan === 'Enterprise' ? 'Reseller' : plan;
+
+const getManualPaymentAccessLabel = (billingGift?: BillingGift | null) => {
+    if (!billingGift) return 'Manual access';
+    if (billingGift.manualPaymentLabel) return billingGift.manualPaymentLabel;
+    if (billingGift.manualPaymentType) return MANUAL_PAYMENT_ACTION_LABELS[billingGift.manualPaymentType];
+    if (billingGift.reason) return LEGACY_MANUAL_PAYMENT_LABELS[billingGift.reason] || 'Manual access';
+    return 'Manual access';
+};
 
 interface GrowthAnalytics {
     monthlySignupGoal: number;
@@ -339,8 +376,9 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     const [giftingTenant, setGiftingTenant] = useState<ResellerClient | null>(null);
     const [giftMonths, setGiftMonths] = useState(1);
     const [giftNote, setGiftNote] = useState('');
-    const [manualPaymentReason, setManualPaymentReason] = useState<'FREE_GIFT' | 'BANK_TRANSFER' | 'CARD_PAYMENT' | 'DIFFICULTY_UPGRADING'>('FREE_GIFT');
-    const [manualPaymentPlan, setManualPaymentPlan] = useState<ResellerClient['plan']>('Starter');
+    const [manualPaymentAction, setManualPaymentAction] = useState<ManualPaymentAction>('FREE_GIFT');
+    const [manualPaymentReason, setManualPaymentReason] = useState<ManualPaymentReason>('STANDARD_PAYMENT');
+    const [manualPaymentPlan, setManualPaymentPlan] = useState<ManualPaymentPlan>('Starter');
     const [isGiftingAccess, setIsGiftingAccess] = useState(false);
 
     // Super Admin User State
@@ -902,7 +940,8 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         setGiftingTenant(null);
         setGiftMonths(1);
         setGiftNote('');
-        setManualPaymentReason('FREE_GIFT');
+        setManualPaymentAction('FREE_GIFT');
+        setManualPaymentReason('STANDARD_PAYMENT');
         setManualPaymentPlan('Starter');
         setIsGiftingAccess(false);
     };
@@ -921,13 +960,9 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                         months: giftMonths,
                         note: giftNote.trim(),
                         reason: manualPaymentReason,
+                        manualPaymentType: manualPaymentAction,
                         plan: manualPaymentPlan,
-                        manualPaymentLabel: {
-                            FREE_GIFT: 'Free Gift',
-                            BANK_TRANSFER: 'Bank Transfer',
-                            CARD_PAYMENT: 'Card Payment',
-                            DIFFICULTY_UPGRADING: 'Difficulty Upgrading',
-                        }[manualPaymentReason],
+                        manualPaymentLabel: MANUAL_PAYMENT_ACTION_LABELS[manualPaymentAction],
                     },
                 },
             });
@@ -1695,7 +1730,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                                 {tenant.hasActiveBillingGift && (
                                                     <div className="mt-2 inline-flex items-center rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
                                                         <Icons.CalendarDays className="mr-1.5 h-3.5 w-3.5" />
-                                                        Gifted through {formatGiftedUntil(tenant.billingGift?.giftedUntil) || 'active period'}
+                                                        {getManualPaymentAccessLabel(tenant.billingGift)} through {formatGiftedUntil(tenant.billingGift?.giftedUntil) || 'active period'}
                                                     </div>
                                                 )}
                                             </td>
@@ -1708,8 +1743,9 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                                         setGiftingTenant(tenant);
                                                         setGiftMonths(1);
                                                         setGiftNote('');
-                                                        setManualPaymentReason('FREE_GIFT');
-                                                        setManualPaymentPlan(tenant.plan === 'Free' ? 'Starter' : tenant.plan);
+                                                        setManualPaymentAction('FREE_GIFT');
+                                                        setManualPaymentReason('STANDARD_PAYMENT');
+                                                        setManualPaymentPlan(tenant.plan === 'Free' ? 'Starter' : normalizeManualPaymentPlan(tenant.plan));
                                                     }}
                                                     className="text-amber-600 hover:text-amber-700 text-xs font-bold uppercase"
                                                 >
@@ -3527,7 +3563,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                             <span className="text-gray-500">Manual access</span>
                                             <span className="font-medium text-gray-900">
                                                 {selectedPayingClient.billingGift?.giftedUntil
-                                                    ? `${selectedPayingClient.billingGift.manualPaymentLabel || selectedPayingClient.billingGift.reason || 'Manual access'} through ${formatGiftedUntil(selectedPayingClient.billingGift.giftedUntil)}`
+                                                    ? `${getManualPaymentAccessLabel(selectedPayingClient.billingGift)} through ${formatGiftedUntil(selectedPayingClient.billingGift.giftedUntil)}`
                                                     : 'None'}
                                             </span>
                                         </div>
@@ -3845,13 +3881,24 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                 <label className="mb-1 block text-xs font-bold uppercase text-gray-500">Support Action</label>
                                 <select
                                     className="w-full rounded border border-gray-300 px-3 py-2"
-                                    value={manualPaymentReason}
-                                    onChange={(event) => setManualPaymentReason(event.target.value as typeof manualPaymentReason)}
+                                    value={manualPaymentAction}
+                                    onChange={(event) => setManualPaymentAction(event.target.value as ManualPaymentAction)}
                                 >
-                                    <option value="FREE_GIFT">Free Gift</option>
-                                    <option value="BANK_TRANSFER">Bank Transfer</option>
-                                    <option value="CARD_PAYMENT">Card Payment</option>
-                                    <option value="DIFFICULTY_UPGRADING">Difficulty Upgrading</option>
+                                    {Object.entries(MANUAL_PAYMENT_ACTION_LABELS).map(([value, label]) => (
+                                        <option key={value} value={value}>{label}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="mb-1 block text-xs font-bold uppercase text-gray-500">Reason</label>
+                                <select
+                                    className="w-full rounded border border-gray-300 px-3 py-2"
+                                    value={manualPaymentReason}
+                                    onChange={(event) => setManualPaymentReason(event.target.value as ManualPaymentReason)}
+                                >
+                                    {Object.entries(MANUAL_PAYMENT_REASON_LABELS).map(([value, label]) => (
+                                        <option key={value} value={value}>{label}</option>
+                                    ))}
                                 </select>
                             </div>
                             <div>
@@ -3859,12 +3906,11 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                 <select
                                     className="w-full rounded border border-gray-300 px-3 py-2"
                                     value={manualPaymentPlan}
-                                    onChange={(event) => setManualPaymentPlan(event.target.value as ResellerClient['plan'])}
+                                    onChange={(event) => setManualPaymentPlan(event.target.value as ManualPaymentPlan)}
                                 >
                                     <option value="Free">Free</option>
                                     <option value="Starter">Starter</option>
                                     <option value="Pro">Pro</option>
-                                    <option value="Enterprise">Enterprise</option>
                                     <option value="Reseller">Reseller</option>
                                 </select>
                             </div>

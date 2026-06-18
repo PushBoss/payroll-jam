@@ -698,6 +698,7 @@ const toBillingGift = (value: unknown) => {
             ? raw.employeeLimitOverride
             : undefined,
         reason: typeof raw.reason === 'string' ? raw.reason : undefined,
+        manualPaymentType: typeof raw.manualPaymentType === 'string' ? raw.manualPaymentType : undefined,
         tierGranted: typeof raw.tierGranted === 'string' ? raw.tierGranted : undefined,
         manualPaymentLabel: typeof raw.manualPaymentLabel === 'string' ? raw.manualPaymentLabel : undefined,
     };
@@ -2309,7 +2310,8 @@ serve(async (req: Request) => {
                 const companyId = payload?.companyId;
                 const requestedMonths = Number(payload?.months);
                 const note = typeof payload?.note === 'string' ? payload.note.trim() : '';
-                const reason = typeof payload?.reason === 'string' ? payload.reason : 'FREE_GIFT';
+                const reason = typeof payload?.reason === 'string' ? payload.reason : 'STANDARD_PAYMENT';
+                const manualPaymentType = typeof payload?.manualPaymentType === 'string' ? payload.manualPaymentType : '';
                 const requestedPlan = typeof payload?.plan === 'string' ? payload.plan : '';
                 const manualPaymentLabel = typeof payload?.manualPaymentLabel === 'string' ? payload.manualPaymentLabel : '';
                 const allowedPlans = new Set(['Free', 'Starter', 'Pro', 'Enterprise', 'Reseller']);
@@ -2348,6 +2350,7 @@ serve(async (req: Request) => {
                     note: note || existingGift?.note,
                     employeeLimitOverride: 'Unlimited',
                     reason,
+                    manualPaymentType: manualPaymentType || existingGift?.manualPaymentType,
                     tierGranted: requestedPlan || existingGift?.tierGranted,
                     manualPaymentLabel: manualPaymentLabel || existingGift?.manualPaymentLabel,
                 };
