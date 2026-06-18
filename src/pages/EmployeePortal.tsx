@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Icons } from '../components/Icons';
-import { User, PayRunLineItem, LeaveType, WeeklyTimesheet, TimeEntry, LeaveRequest, Employee, PayRun, CompanySettings, DocumentTemplate, TemplateCategory } from '../core/types';
+import { User, PayRunLineItem, LeaveType, WeeklyTimesheet, TimeEntry, LeaveRequest, Employee, PayRun, CompanySettings, DocumentTemplate, TemplateCategory, DocumentRequest } from '../core/types';
 import { PayslipView } from '../components/PayslipView';
 import { MultiDateCalendar } from '../components/MultiDateCalendar';
 import { downloadFile, generateP24CSV } from '../utils/exportHelpers';
@@ -18,10 +18,12 @@ interface PortalProps {
     payRunHistory?: PayRun[];
     timesheets?: WeeklyTimesheet[];
     templates?: DocumentTemplate[];
+    documentRequests?: DocumentRequest[];
     companyData?: CompanySettings;
     onUpdateEmployee?: (emp: Employee) => void | boolean | Promise<void | boolean>;
     onClockIn?: (payload: AttendanceClockPayload) => Promise<AttendanceClockResult | false>;
     onSaveTimesheet?: (timesheet: WeeklyTimesheet) => void | boolean | Promise<void | boolean>;
+    onSaveDocumentRequest?: (request: DocumentRequest) => void | DocumentRequest | Promise<void | DocumentRequest>;
     onNavigate?: (path: string) => void;
 }
 
@@ -92,7 +94,7 @@ Gross Salary: {{grossSalary}}
 
 Additional terms are maintained by the employer in the company document center.`;
 
-export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = 'home', leaveRequests, onRequestLeave, payRunHistory = [], timesheets = [], templates = [], companyData, onUpdateEmployee, onClockIn, onSaveTimesheet, onNavigate }) => {
+export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = 'home', leaveRequests, onRequestLeave, payRunHistory = [], timesheets = [], templates = [], documentRequests = [], companyData, onUpdateEmployee, onClockIn, onSaveTimesheet, onSaveDocumentRequest, onNavigate }) => {
     // Check if company plan allows Employee Portal access
     const hasPortalAccess = companyData && 
         (companyData.plan === 'Starter' || 
@@ -192,6 +194,11 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
             isOpenAttendanceEntry(entry)
         );
     const isClockedIn = Boolean(openAttendance);
+    const activeContractRequest = documentRequests.find((request) =>
+        request.employeeId === employeeId &&
+        request.documentType.toLowerCase().includes('contract') &&
+        ['PENDING', 'APPROVED', 'GENERATED', 'DELIVERED'].includes(request.status)
+    );
 
     const handleLeaveSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -405,7 +412,7 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
         return latestRun?.periodStart?.slice(0, 4) || String(new Date().getFullYear());
     };
 
-    const buildP24Content = (year = getP24Year()) => {
+    const getP24Stats = (year = getP24Year()) => {
         const name = employee ? `${employee.firstName} ${employee.lastName}` : user.name;
         const empId = employee ? employee.id : user.id;
         const relevantRuns = payRunHistory.filter(run => run.periodStart.startsWith(year));
@@ -421,10 +428,16 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
             };
         }, { gross: 0, nis: 0, nht: 0, edTax: 0, paye: 0 });
 
-        if (stats.gross === 0) {
-            toast.error('No earnings found for this tax year.');
-            return null;
-        }
+        return { name, stats };
+    };
+
+    const p24Year = getP24Year();
+    const p24Stats = getP24Stats(p24Year);
+    const hasP24Data = p24Stats.stats.gross > 0;
+
+    const buildP24Content = (year = p24Year) => {
+        const { name, stats } = getP24Stats(year);
+        if (stats.gross === 0) return null;
 
         const company = getSafeCompanyData();
         const netPay = stats.gross - (stats.nis + stats.nht + stats.edTax + stats.paye);
@@ -448,8 +461,9 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
     };
 
     const handleDownloadP24 = () => {
+        if (!hasP24Data) return;
         const company = getSafeCompanyData();
-        generateP24CSV(company, payRunHistory, employee, user, getP24Year());
+        generateP24CSV(company, payRunHistory, employee, user, p24Year);
     };
 
     const handleViewP24 = () => {
@@ -466,6 +480,7 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
             '{{role}}': employee?.jobTitle || 'Employee',
             '{{hireDate}}': employee?.hireDate || employee?.joiningDate || 'N/A',
             '{{companyName}}': companyData?.name || 'Your Company',
+            '{{companyLogo}}': companyData?.logoUrl || '',
             '{{currentDate}}': new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
             '{{address}}': employee?.address || 'N/A',
         };
@@ -490,12 +505,78 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
         );
     };
 
-    const downloadEmployeeDocument = (intent: 'job-letter' | 'contract') => {
+    const openEmployeeDocumentPdf = (intent: 'job-letter' | 'contract') => {
         const template = getTemplateByIntent(intent);
         const fallback = intent === 'job-letter' ? DEFAULT_JOB_LETTER_TEMPLATE : DEFAULT_CONTRACT_TEMPLATE;
         const content = fillDocumentTemplate(template?.content || fallback);
-        const filename = `${intent === 'job-letter' ? 'Job_Letter' : 'Employment_Contract'}_${employeeName.replace(/\s+/g, '_')}.txt`;
-        downloadFile(filename, content, 'text/plain');
+        const logoUrl = template?.logoUrl || companyData?.logoUrl || '';
+        const title = intent === 'job-letter' ? 'Job Letter' : 'Employment Contract';
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) {
+            toast.error('Unable to open the PDF preview window. Please allow popups for Payroll-Jam.');
+            return;
+        }
+
+        printWindow.document.write(`
+            <html>
+                <head>
+                    <title>${title} - ${employeeName}</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; color: #111827; line-height: 1.6; }
+                        .header { text-align: center; border-bottom: 1px solid #d1d5db; margin-bottom: 36px; padding-bottom: 24px; }
+                        .logo { max-height: 72px; max-width: 220px; object-fit: contain; margin-bottom: 16px; }
+                        h1 { margin: 0; font-size: 20px; letter-spacing: 0.08em; text-transform: uppercase; }
+                        .content { white-space: pre-wrap; font-size: 14px; }
+                        .footer { margin-top: 56px; color: #6b7280; font-size: 12px; text-align: center; }
+                        .actions { position: fixed; right: 24px; bottom: 24px; display: flex; gap: 8px; }
+                        .actions button { border: 0; border-radius: 8px; padding: 10px 14px; font-weight: 700; cursor: pointer; }
+                        .print { background: #111827; color: white; }
+                        .close { background: #f3f4f6; color: #374151; }
+                        @media print {
+                            body { padding: 0; margin: 2cm; }
+                            .actions { display: none; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        ${logoUrl ? `<img class="logo" src="${logoUrl}" alt="${companyData?.name || 'Company'} logo" />` : ''}
+                        <h1>${companyData?.name || 'Your Company'}</h1>
+                        <p>${companyData?.address || ''}</p>
+                    </div>
+                    <div class="content">${content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+                    <div class="footer">Generated by Payroll-Jam on ${new Date().toLocaleDateString()}</div>
+                    <div class="actions">
+                        <button class="close" onclick="window.close()">Close</button>
+                        <button class="print" onclick="window.print()">Save as PDF / Print</button>
+                    </div>
+                </body>
+            </html>
+        `);
+        printWindow.document.close();
+        window.setTimeout(() => printWindow.print(), 250);
+    };
+
+    const handleContractRequest = async () => {
+        if (!onSaveDocumentRequest) {
+            toast.error('Document requests are not available right now.');
+            return;
+        }
+
+        const request: DocumentRequest = {
+            id: `DOCREQ-${employeeId}-${Date.now()}`,
+            companyId: companyData?.id,
+            employeeId,
+            employeeName,
+            templateId: getTemplateByIntent('contract')?.id || 'DOC-EMPLOYEE-CONTRACT',
+            documentType: 'Employment Contract',
+            purpose: 'Employee requested a copy from the employee portal.',
+            status: 'PENDING',
+            requestedAt: new Date().toISOString(),
+        };
+
+        await Promise.resolve(onSaveDocumentRequest(request));
+        toast.success('Employment contract request sent to your employer.');
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -639,7 +720,7 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                         </button>
                         <button
                             onClick={() => {
-                                downloadFile(`P24_${employeeName.replace(/\s+/g, '_')}_${getP24Year()}.csv`, p24PreviewContent, 'text/csv');
+                                downloadFile(`P24_${employeeName.replace(/\s+/g, '_')}_${p24Year}.csv`, p24PreviewContent, 'text/csv');
                                 setP24PreviewContent(null);
                             }}
                             className="rounded-lg bg-jam-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
@@ -1129,8 +1210,8 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                                 <p className="text-sm font-bold text-green-800">Letter Generated!</p>
                                 <p className="text-xs text-green-600 mt-1">Ready to download from your company template.</p>
                                 <div className="mt-3 flex gap-2">
-                                    <button onClick={() => downloadEmployeeDocument('job-letter')} className="flex-1 rounded-lg bg-green-600 px-3 py-2 text-xs font-bold text-white hover:bg-green-700">
-                                        Download TXT
+                                    <button onClick={() => openEmployeeDocumentPdf('job-letter')} className="flex-1 rounded-lg bg-green-600 px-3 py-2 text-xs font-bold text-white hover:bg-green-700">
+                                        Save PDF
                                     </button>
                                     <button onClick={() => setJobLetterRequest(false)} className="flex-1 rounded-lg border border-green-200 px-3 py-2 text-xs font-bold text-green-800 hover:bg-green-100">
                                         Reset
@@ -1141,11 +1222,11 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                             <button 
                                 onClick={() => {
                                     setJobLetterRequest(true);
-                                    downloadEmployeeDocument('job-letter');
+                                    openEmployeeDocumentPdf('job-letter');
                                 }}
                                 className="w-full py-2 bg-jam-black text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors"
                             >
-                                Generate & Download Letter
+                                Generate PDF Letter
                             </button>
                         )}
                     </div>
@@ -1160,23 +1241,27 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                         </p>
                         {getTemplateByIntent('contract') ? (
                             <button
-                                onClick={() => downloadEmployeeDocument('contract')}
+                                onClick={() => openEmployeeDocumentPdf('contract')}
                                 className="w-full py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors flex items-center justify-center"
                             >
                                 <Icons.DownloadCloud className="w-4 h-4 mr-2" />
-                                Download Contract
+                                Save Contract PDF
                             </button>
-                        ) : contractRequested ? (
+                        ) : contractRequested || activeContractRequest ? (
                             <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-center">
                                 <Icons.Check className="mx-auto mb-2 h-5 w-5 text-blue-600" />
-                                <p className="text-sm font-bold text-blue-800">Contract requested</p>
-                                <p className="mt-1 text-xs text-blue-600">Your employer can upload or generate it from Document Center.</p>
+                                <p className="text-sm font-bold text-blue-800">
+                                    {activeContractRequest?.status === 'APPROVED' ? 'Contract request approved' : 'Contract requested'}
+                                </p>
+                                <p className="mt-1 text-xs text-blue-600">
+                                    Your employer can upload or generate it from Document Center.
+                                </p>
                             </div>
                         ) : (
                             <button
                                 onClick={() => {
                                     setContractRequested(true);
-                                    toast.success('Employment contract request recorded.');
+                                    void handleContractRequest();
                                 }}
                                 className="w-full py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors flex items-center justify-center"
                             >
@@ -1198,20 +1283,27 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                                 <Icons.Compliance className="w-5 h-5 text-gray-400 mr-3" />
                                 <div>
                                     <p className="text-sm font-medium text-gray-900">P24 - Annual Income Certificate</p>
-                                    <p className="text-xs text-gray-500">Tax Year 2024 • Required for tax filing</p>
+                                    <p className="text-xs text-gray-500">Tax Year {p24Year} • Required for tax filing</p>
+                                    {!hasP24Data && (
+                                        <p className="mt-1 text-xs text-amber-600">
+                                            No finalized earnings are available for this tax year yet.
+                                        </p>
+                                    )}
                                 </div>
                             </div>
                             <div className="flex items-center gap-3">
                                 <button
                                     onClick={handleViewP24}
-                                    className="text-gray-600 hover:text-gray-900 text-sm font-medium flex items-center"
+                                    disabled={!hasP24Data}
+                                    className="text-gray-600 hover:text-gray-900 text-sm font-medium flex items-center disabled:cursor-not-allowed disabled:text-gray-300"
                                 >
                                     <Icons.Eye className="w-4 h-4 mr-1" />
                                     View
                                 </button>
                                 <button
                                     onClick={handleDownloadP24}
-                                    className="text-jam-orange hover:text-yellow-600 text-sm font-medium flex items-center"
+                                    disabled={!hasP24Data}
+                                    className="text-jam-orange hover:text-yellow-600 text-sm font-medium flex items-center disabled:cursor-not-allowed disabled:text-gray-300"
                                 >
                                     <Icons.Download className="w-4 h-4 mr-1" />
                                     Download

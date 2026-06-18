@@ -466,6 +466,7 @@ export interface CompanySettings {
   bankName: string;
   accountNumber: string;
   branchCode: string;
+  logoUrl?: string;
   payFrequency?: string;
   defaultPayDate?: string;
   subscriptionStatus?: 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'PENDING_PAYMENT';
@@ -605,10 +606,12 @@ export interface DocumentTemplate {
   content: string; // HTML or Markdown content
   lastModified: string;
   requiresApproval?: boolean;
+  logoUrl?: string;
 }
 
 export interface DocumentRequest {
   id: string;
+  companyId?: string;
   employeeId: string;
   employeeName: string;
   templateId: string;

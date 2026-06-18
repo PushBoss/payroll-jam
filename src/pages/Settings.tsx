@@ -1620,6 +1620,17 @@ export const Settings: React.FC<SettingsProps> = ({
                                 <label className="block text-xs font-bold text-gray-500 uppercase">Phone</label>
                                 <input type="text" value={companyData.phone} onChange={e => handleCompanyUpdate({ ...companyData, phone: e.target.value })} className="w-full border rounded p-2" />
                             </div>
+                            <div className="space-y-2">
+                                <label className="block text-xs font-bold text-gray-500 uppercase">Company Logo URL</label>
+                                <input
+                                    type="url"
+                                    value={companyData.logoUrl || ''}
+                                    onChange={e => handleCompanyUpdate({ ...companyData, logoUrl: e.target.value })}
+                                    placeholder="https://example.com/logo.png"
+                                    className="w-full border rounded p-2"
+                                />
+                                <p className="text-xs text-gray-500">Used on generated employee job letters and contracts unless a template has its own logo URL.</p>
+                            </div>
                         </div>
                         <div className="space-y-4">
                             <h4 className="font-semibold border-b pb-2">Payroll Configuration</h4>

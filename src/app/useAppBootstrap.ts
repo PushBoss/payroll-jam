@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { CompanySettings, Employee, LeaveRequest, PayRun, User, WeeklyTimesheet } from '../core/types';
+import { CompanySettings, DocumentRequest, Employee, LeaveRequest, PayRun, User, WeeklyTimesheet } from '../core/types';
 import { AdminService } from '../services/AdminService';
 import { CompanyService } from '../services/CompanyService';
 import { EmployeeService } from '../services/EmployeeService';
 import { PayrollService } from '../services/PayrollService';
+import { DocumentService } from '../services/DocumentService';
 
 const BOOTSTRAP_QUERY_TIMEOUT_MS = 12000;
 const BOOTSTRAP_BACKGROUND_TIMEOUT_MS = 15000;
@@ -29,6 +30,7 @@ interface UseAppBootstrapArgs {
   setPayRunHistory: (runs: PayRun[]) => void;
   setTimesheets: (timesheets: WeeklyTimesheet[]) => void;
   setLeaveRequests: (requests: LeaveRequest[]) => void;
+  setDocumentRequests: (requests: DocumentRequest[]) => void;
   setUsers: (users: User[]) => void;
 }
 
@@ -41,6 +43,7 @@ export const useAppBootstrap = ({
   setPayRunHistory,
   setTimesheets,
   setLeaveRequests,
+  setDocumentRequests,
   setUsers,
 }: UseAppBootstrapArgs) => {
   const [dataLoading, setDataLoading] = useState(false);
@@ -75,6 +78,9 @@ export const useAppBootstrap = ({
             console.error('Failed to load timesheets for impersonated context:', error);
           });
           if (context.leaveRequests) setLeaveRequests(context.leaveRequests);
+          void DocumentService.getDocumentRequests(user.companyId).then(setDocumentRequests).catch((error) => {
+            console.error('Failed to load document requests for impersonated context:', error);
+          });
           if (context.users) setUsers(context.users);
           return;
         }
@@ -98,6 +104,9 @@ export const useAppBootstrap = ({
               console.error('Failed to load timesheets for owner/admin context:', error);
             });
             if (context.leaveRequests) setLeaveRequests(context.leaveRequests);
+            void DocumentService.getDocumentRequests(user.companyId).then(setDocumentRequests).catch((error) => {
+              console.error('Failed to load document requests for owner/admin context:', error);
+            });
             if (context.users) setUsers(context.users);
             return;
           } catch (fallbackError) {
@@ -134,6 +143,7 @@ export const useAppBootstrap = ({
           withTimeout(PayrollService.getPayRuns(user.companyId, { includeLineItems: false }), 'Pay runs', BOOTSTRAP_BACKGROUND_TIMEOUT_MS),
           withTimeout(PayrollService.getTimesheets(user.companyId), 'Timesheets', BOOTSTRAP_BACKGROUND_TIMEOUT_MS),
           withTimeout(EmployeeService.getLeaveRequests(user.companyId), 'Leave requests', BOOTSTRAP_BACKGROUND_TIMEOUT_MS),
+          withTimeout(DocumentService.getDocumentRequests(user.companyId), 'Document requests', BOOTSTRAP_BACKGROUND_TIMEOUT_MS),
           withTimeout(EmployeeService.getCompanyUsers(user.companyId), 'Company users', BOOTSTRAP_BACKGROUND_TIMEOUT_MS),
         ]);
 
@@ -142,7 +152,8 @@ export const useAppBootstrap = ({
         if (results[1].status === 'fulfilled') setPayRunHistory(results[1].value);
         if (results[2].status === 'fulfilled') setTimesheets(results[2].value);
         if (results[3].status === 'fulfilled') setLeaveRequests(results[3].value);
-        if (results[4].status === 'fulfilled') setUsers(results[4].value);
+        if (results[4].status === 'fulfilled') setDocumentRequests(results[4].value);
+        if (results[5].status === 'fulfilled') setUsers(results[5].value);
 
         const failures = results.filter((result) => result.status === 'rejected') as PromiseRejectedResult[];
         if (failures.length > 0) {
@@ -161,7 +172,7 @@ export const useAppBootstrap = ({
     return () => {
       isCancelled = true;
     };
-  }, [applyLoadedCompany, isSupabaseMode, setEmployees, setLeaveRequests, setPayRunHistory, setTimesheets, setUsers, user?.companyId, user?.originalRole, user?.role]);
+  }, [applyLoadedCompany, isSupabaseMode, setDocumentRequests, setEmployees, setLeaveRequests, setPayRunHistory, setTimesheets, setUsers, user?.companyId, user?.originalRole, user?.role]);
 
   return {
     dataLoading,

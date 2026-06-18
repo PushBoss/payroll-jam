@@ -5,6 +5,7 @@ import {
   Department,
   Designation,
   DocumentTemplate,
+  DocumentRequest,
   GlobalConfig,
   IntegrationConfig,
   PricingPlan,
@@ -55,6 +56,7 @@ export const useCompanyConfigData = () => {
     () => storage.getIntegrationConfig() || { provider: 'CSV', mappings: [] }
   );
   const [templates, setTemplates] = useState<DocumentTemplate[]>(() => storage.getTemplates() || []);
+  const [documentRequests, setDocumentRequests] = useState<DocumentRequest[]>(() => storage.getDocumentRequests() || []);
   const [plans, setPlans] = useState<PricingPlan[]>(() => storage.getPricingPlans() || INITIAL_PLANS);
   const [departments, setDepartments] = useState<Department[]>(() => storage.getDepartments() || []);
   const [designations, setDesignations] = useState<Designation[]>(() => storage.getDesignations() || []);
@@ -73,6 +75,7 @@ export const useCompanyConfigData = () => {
   const didMountTax = useRef(false);
   const didMountIntegration = useRef(false);
   const didMountTemplates = useRef(false);
+  const didMountDocumentRequests = useRef(false);
   const didMountDepts = useRef(false);
   const didMountDesigs = useRef(false);
 
@@ -96,6 +99,11 @@ export const useCompanyConfigData = () => {
     if (!didMountTemplates.current) { didMountTemplates.current = true; return; }
     storage.saveTemplates(templates);
   }, [templates]);
+
+  useEffect(() => {
+    if (!didMountDocumentRequests.current) { didMountDocumentRequests.current = true; return; }
+    storage.saveDocumentRequests(documentRequests);
+  }, [documentRequests]);
 
   useEffect(() => {
     if (!didMountDepts.current) { didMountDepts.current = true; return; }
@@ -227,6 +235,8 @@ export const useCompanyConfigData = () => {
     setIntegrationConfig,
     templates,
     setTemplates,
+    documentRequests,
+    setDocumentRequests,
     plans,
     departments,
     designations,

@@ -9,6 +9,7 @@ import {
   TaxConfig,
   User,
   Role,
+  DocumentRequest,
 } from '../core/types';
 import { initializeCacheValidation } from '../utils/cacheUtils';
 import { useWorkforceData } from '../features/employees/useWorkforceData';
@@ -20,6 +21,8 @@ import { createAppFlowHandlers } from './appFlowHandlers';
 import { useAppBootstrap } from './useAppBootstrap';
 import { isResellerEquivalentPlan } from '../utils/planNames';
 import { UserService } from '../services/UserService';
+import { DocumentService } from '../services/DocumentService';
+import { storage } from '../services/storage';
 
 interface UseAppDataArgs {
   user: User | null;
@@ -47,6 +50,8 @@ export const useAppData = ({ user, updateUser, impersonate, navigateTo }: UseApp
     setIntegrationConfig,
     templates,
     setTemplates,
+    documentRequests,
+    setDocumentRequests,
     plans,
     departments,
     designations,
@@ -152,6 +157,7 @@ export const useAppData = ({ user, updateUser, impersonate, navigateTo }: UseApp
     setPayRunHistory,
     setTimesheets,
     setLeaveRequests,
+    setDocumentRequests,
     setUsers,
   });
 
@@ -169,6 +175,40 @@ export const useAppData = ({ user, updateUser, impersonate, navigateTo }: UseApp
 
   const handleUpdateTaxConfig = async (newConfig: TaxConfig) => {
     await updateTaxConfig(newConfig, user?.companyId);
+  };
+
+  const handleSaveDocumentRequest = async (request: DocumentRequest) => {
+    const targetCompanyId = user?.companyId || companyData?.id || request.companyId;
+    const requestWithCompany = {
+      ...request,
+      companyId: targetCompanyId || request.companyId,
+    };
+
+    setDocumentRequests((prev) => {
+      const existingIndex = prev.findIndex((item) => item.id === request.id);
+      if (existingIndex >= 0) {
+        const updated = [...prev];
+        updated[existingIndex] = requestWithCompany;
+        storage.saveDocumentRequests(updated);
+        return updated;
+      }
+      const updated = [requestWithCompany, ...prev];
+      storage.saveDocumentRequests(updated);
+      return updated;
+    });
+
+    if (isSupabaseMode && targetCompanyId) {
+      try {
+        const saved = await DocumentService.saveDocumentRequest(requestWithCompany, targetCompanyId);
+        setDocumentRequests((prev) => prev.map((item) => item.id === saved.id ? saved : item));
+        return saved;
+      } catch (error: any) {
+        console.error('Failed to save document request:', error);
+        toast.error(error?.message || 'Document request saved locally only.');
+      }
+    }
+
+    return requestWithCompany;
   };
 
   const {
@@ -219,6 +259,8 @@ export const useAppData = ({ user, updateUser, impersonate, navigateTo }: UseApp
     setIntegrationConfig,
     templates,
     setTemplates,
+    documentRequests,
+    setDocumentRequests,
     plans,
     departments,
     designations,
@@ -244,6 +286,7 @@ export const useAppData = ({ user, updateUser, impersonate, navigateTo }: UseApp
     handleUpdateDepartments,
     handleUpdateDesignations,
     handleUpdateTaxConfig,
+    handleSaveDocumentRequest,
     onLoginSuccess,
     handleImpersonation,
     handleCompanyOnboardComplete,

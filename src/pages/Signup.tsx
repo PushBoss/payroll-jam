@@ -88,7 +88,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
     const paymentConfig = storage.getGlobalConfig();
     const payPalEnabled = false; // PayPal disabled - only using DimePay
     const dimePayEnabled = paymentConfig?.dimepay?.enabled ?? true; // DimePay enabled by default
-    const bankTransfer = paymentConfig?.bankTransfer || {
+    const bankTransferDefaults = {
         enabled: true,
         bankName: 'NCB (National Commercial Bank)',
         accountName: 'Balance Investments Limited',
@@ -96,6 +96,16 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
         accountType: 'Savings Account',
         branch: 'UWI Branch',
         instructions: 'After making the deposit, your account will be activated within 24 hours. You will receive a confirmation email once payment is verified.'
+    };
+    const bankTransfer = {
+        ...bankTransferDefaults,
+        ...(paymentConfig?.bankTransfer || {}),
+        bankName: paymentConfig?.bankTransfer?.bankName || bankTransferDefaults.bankName,
+        accountName: paymentConfig?.bankTransfer?.accountName || bankTransferDefaults.accountName,
+        accountNumber: paymentConfig?.bankTransfer?.accountNumber || bankTransferDefaults.accountNumber,
+        accountType: paymentConfig?.bankTransfer?.accountType || bankTransferDefaults.accountType,
+        branch: paymentConfig?.bankTransfer?.branch || bankTransferDefaults.branch,
+        instructions: paymentConfig?.bankTransfer?.instructions || bankTransferDefaults.instructions,
     };
 
     const [formData, setFormData] = useState({

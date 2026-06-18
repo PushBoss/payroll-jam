@@ -66,6 +66,16 @@ interface EmailDraft {
     companyName: string;
 }
 
+const DEFAULT_BANK_TRANSFER_CONFIG: NonNullable<GlobalConfig['bankTransfer']> = {
+    enabled: true,
+    bankName: 'NCB (National Commercial Bank)',
+    accountName: 'Balance Investments Limited',
+    accountNumber: '404286331',
+    accountType: 'Savings Account',
+    branch: 'UWI Branch',
+    instructions: 'After making the deposit, your account will be activated within 24 hours. Use the signup email as the payment reference.'
+};
+
 const DEFAULT_PAYMENT_CONFIG: GlobalConfig = {
     dataSource: 'SUPABASE', // Always use Supabase - no mock data
     currency: 'JMD',
@@ -76,15 +86,7 @@ const DEFAULT_PAYMENT_CONFIG: GlobalConfig = {
         position: 'bottom-right',
         customCss: ''
     },
-    bankTransfer: {
-        enabled: true,
-        bankName: 'NCB (National Commercial Bank)',
-        accountName: 'Balance Investments Limited',
-        accountNumber: '404286331',
-        accountType: 'Savings Account',
-        branch: 'UWI Branch',
-        instructions: 'After making the deposit, your account will be activated within 24 hours. Use the signup email as the payment reference.'
-    },
+    bankTransfer: DEFAULT_BANK_TRANSFER_CONFIG,
     emailjs: {
         serviceId: '',
         templateId: '',
@@ -130,6 +132,25 @@ const DEFAULT_PAYMENT_CONFIG: GlobalConfig = {
         type: 'INFO'
     }
 };
+
+const withGlobalConfigDefaults = (config?: GlobalConfig | null): GlobalConfig => ({
+    ...DEFAULT_PAYMENT_CONFIG,
+    ...(config || {}),
+    supportWidget: {
+        ...DEFAULT_PAYMENT_CONFIG.supportWidget!,
+        ...(config?.supportWidget || {}),
+    },
+    bankTransfer: {
+        ...DEFAULT_BANK_TRANSFER_CONFIG,
+        ...(config?.bankTransfer || {}),
+        bankName: config?.bankTransfer?.bankName || DEFAULT_BANK_TRANSFER_CONFIG.bankName,
+        accountName: config?.bankTransfer?.accountName || DEFAULT_BANK_TRANSFER_CONFIG.accountName,
+        accountNumber: config?.bankTransfer?.accountNumber || DEFAULT_BANK_TRANSFER_CONFIG.accountNumber,
+        accountType: config?.bankTransfer?.accountType || DEFAULT_BANK_TRANSFER_CONFIG.accountType,
+        branch: config?.bankTransfer?.branch || DEFAULT_BANK_TRANSFER_CONFIG.branch,
+        instructions: config?.bankTransfer?.instructions || DEFAULT_BANK_TRANSFER_CONFIG.instructions,
+    },
+});
 
 const getRuntimeDimePayEnvironment = (): 'sandbox' | 'production' => {
     if (typeof window === 'undefined') return 'sandbox';
@@ -281,7 +302,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     const hasLoadedGlobalConfigRef = useRef(false);
 
     // Payment Settings State
-    const [paymentConfig, setPaymentConfig] = useState<GlobalConfig>(() => storage.getGlobalConfig() || DEFAULT_PAYMENT_CONFIG);
+    const [paymentConfig, setPaymentConfig] = useState<GlobalConfig>(() => withGlobalConfigDefaults(storage.getGlobalConfig()));
 
     // Sync with prop if provided
     useEffect(() => {
@@ -430,7 +451,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             try {
                 const config = await CompanyService.getGlobalConfig();
                 if (config) {
-                    setPaymentConfig(config);
+                    setPaymentConfig(withGlobalConfigDefaults(config));
                 }
             } catch (e) {
                 console.error("Error loading global config from Supabase:", e);

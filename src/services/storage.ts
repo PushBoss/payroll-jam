@@ -1,5 +1,5 @@
 
-import { Employee, PayRun, WeeklyTimesheet, User, CompanySettings, TaxConfig, DocumentTemplate, IntegrationConfig, LeaveRequest, GlobalConfig, ResellerClient, PricingPlan, Department, Designation, AuditLogEntry, Asset, PerformanceReview } from '../core/types';
+import { Employee, PayRun, WeeklyTimesheet, User, CompanySettings, TaxConfig, DocumentTemplate, DocumentRequest, IntegrationConfig, LeaveRequest, GlobalConfig, ResellerClient, PricingPlan, Department, Designation, AuditLogEntry, Asset, PerformanceReview } from '../core/types';
 
 const STORAGE_KEYS = {
   EMPLOYEES: 'payroll_jam_employees',
@@ -9,6 +9,7 @@ const STORAGE_KEYS = {
   TAX_CONFIG: 'payroll_jam_tax_config',
   USER: 'payroll_jam_user',
   TEMPLATES: 'payroll_jam_templates',
+  DOCUMENT_REQUESTS: 'payroll_jam_document_requests',
   INTEGRATION: 'payroll_jam_integration',
   LEAVE_REQUESTS: 'payroll_jam_leave_requests',
   GLOBAL_CONFIG: 'payroll_jam_global_config',
@@ -63,6 +64,12 @@ export const storage = {
   saveTemplates: (data: DocumentTemplate[]) => localStorage.setItem(STORAGE_KEYS.TEMPLATES, JSON.stringify(data)),
   getTemplates: (): DocumentTemplate[] | null => {
     const data = localStorage.getItem(STORAGE_KEYS.TEMPLATES);
+    return data ? JSON.parse(data) : null;
+  },
+
+  saveDocumentRequests: (data: DocumentRequest[]) => localStorage.setItem(STORAGE_KEYS.DOCUMENT_REQUESTS, JSON.stringify(data)),
+  getDocumentRequests: (): DocumentRequest[] | null => {
+    const data = localStorage.getItem(STORAGE_KEYS.DOCUMENT_REQUESTS);
     return data ? JSON.parse(data) : null;
   },
 

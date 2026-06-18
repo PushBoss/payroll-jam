@@ -175,6 +175,8 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
             employees={appData.employees}
             companyData={appData.companyData!}
             onUpdateTemplates={appData.setTemplates}
+            documentRequests={appData.documentRequests}
+            onSaveDocumentRequest={appData.handleSaveDocumentRequest}
           />
         );
       case 'reports':
@@ -235,10 +237,12 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
             payRunHistory={appData.payRunHistory}
             timesheets={appData.timesheets}
             templates={appData.templates}
+            documentRequests={appData.documentRequests}
             companyData={appData.companyData || undefined}
             onUpdateEmployee={appData.handleUpdateEmployee}
             onClockIn={appData.handleClockAttendance}
             onSaveTimesheet={appData.handleSaveTimesheet}
+            onSaveDocumentRequest={appData.handleSaveDocumentRequest}
             onNavigate={navigate}
           />
         );
@@ -253,10 +257,12 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
             payRunHistory={appData.payRunHistory}
             timesheets={appData.timesheets}
             templates={appData.templates}
+            documentRequests={appData.documentRequests}
             companyData={appData.companyData || undefined}
             onUpdateEmployee={appData.handleUpdateEmployee}
             onClockIn={appData.handleClockAttendance}
             onSaveTimesheet={appData.handleSaveTimesheet}
+            onSaveDocumentRequest={appData.handleSaveDocumentRequest}
             onNavigate={navigate}
           />
         );
@@ -270,10 +276,12 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
             onRequestLeave={appData.handleSaveLeaveRequest}
             timesheets={appData.timesheets}
             templates={appData.templates}
+            documentRequests={appData.documentRequests}
             companyData={appData.companyData || undefined}
             onUpdateEmployee={appData.handleUpdateEmployee}
             onClockIn={appData.handleClockAttendance}
             onSaveTimesheet={appData.handleSaveTimesheet}
+            onSaveDocumentRequest={appData.handleSaveDocumentRequest}
             onNavigate={navigate}
           />
         );
@@ -288,10 +296,12 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
             payRunHistory={appData.payRunHistory}
             timesheets={appData.timesheets}
             templates={appData.templates}
+            documentRequests={appData.documentRequests}
             companyData={appData.companyData || undefined}
             onUpdateEmployee={appData.handleUpdateEmployee}
             onClockIn={appData.handleClockAttendance}
             onSaveTimesheet={appData.handleSaveTimesheet}
+            onSaveDocumentRequest={appData.handleSaveDocumentRequest}
             onNavigate={navigate}
           />
         );
@@ -306,10 +316,12 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
             payRunHistory={appData.payRunHistory}
             timesheets={appData.timesheets}
             templates={appData.templates}
+            documentRequests={appData.documentRequests}
             companyData={appData.companyData || undefined}
             onUpdateEmployee={appData.handleUpdateEmployee}
             onClockIn={appData.handleClockAttendance}
             onSaveTimesheet={appData.handleSaveTimesheet}
+            onSaveDocumentRequest={appData.handleSaveDocumentRequest}
             onNavigate={navigate}
           />
         );
@@ -324,10 +336,12 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
             payRunHistory={appData.payRunHistory}
             timesheets={appData.timesheets}
             templates={appData.templates}
+            documentRequests={appData.documentRequests}
             companyData={appData.companyData || undefined}
             onUpdateEmployee={appData.handleUpdateEmployee}
             onClockIn={appData.handleClockAttendance}
             onSaveTimesheet={appData.handleSaveTimesheet}
+            onSaveDocumentRequest={appData.handleSaveDocumentRequest}
             onNavigate={navigate}
           />
         );

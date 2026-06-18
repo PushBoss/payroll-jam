@@ -1,13 +1,15 @@
 
 import React, { useEffect, useState } from 'react';
 import { Icons } from '../components/Icons';
-import { DocumentTemplate, TemplateCategory, DOCUMENT_PLACEHOLDERS, Employee, CompanySettings } from '../core/types';
+import { DocumentRequest, DocumentTemplate, TemplateCategory, DOCUMENT_PLACEHOLDERS, Employee, CompanySettings } from '../core/types';
 
 interface DocumentsProps {
   templates: DocumentTemplate[];
   employees: Employee[];
   companyData: CompanySettings;
   onUpdateTemplates: (templates: DocumentTemplate[]) => void;
+  documentRequests?: DocumentRequest[];
+  onSaveDocumentRequest?: (request: DocumentRequest) => void | Promise<DocumentRequest | void>;
 }
 
 const DEFAULT_EMPLOYEE_TEMPLATES: DocumentTemplate[] = [
@@ -28,6 +30,7 @@ This letter is issued upon employee request.
 Sincerely,
 {{companyName}}`,
     lastModified: new Date().toISOString().split('T')[0],
+    logoUrl: '',
   },
   {
     id: 'DOC-EMPLOYEE-CONTRACT',
@@ -44,13 +47,13 @@ Gross Salary: {{grossSalary}}
 Additional terms should be completed by HR before issuing this document.`,
     lastModified: new Date().toISOString().split('T')[0],
     requiresApproval: true,
+    logoUrl: '',
   },
 ];
 
-export const Documents: React.FC<DocumentsProps> = ({ templates, employees, companyData, onUpdateTemplates }) => {
+export const Documents: React.FC<DocumentsProps> = ({ templates, employees, companyData, onUpdateTemplates, documentRequests = [], onSaveDocumentRequest }) => {
   const [activeTab, setActiveTab] = useState<'list' | 'create' | 'generate'>('list');
   const [currentTemplate, setCurrentTemplate] = useState<DocumentTemplate | null>(null);
-  const [pendingRequests, setPendingRequests] = useState<Array<{id: string, employeeName: string, documentType: string, requestDate: string, status: 'PENDING' | 'APPROVED' | 'REJECTED'}>>([]);
   
   // Generation State
   const [selectedEmpId, setSelectedEmpId] = useState('');
@@ -61,6 +64,7 @@ export const Documents: React.FC<DocumentsProps> = ({ templates, employees, comp
   const [editorName, setEditorName] = useState('');
   const [editorCategory, setEditorCategory] = useState<TemplateCategory>(TemplateCategory.LETTER);
   const [editorContent, setEditorContent] = useState('');
+  const [editorLogoUrl, setEditorLogoUrl] = useState('');
 
   useEffect(() => {
     const missingDefaults = DEFAULT_EMPLOYEE_TEMPLATES.filter((defaultTemplate) => (
@@ -72,18 +76,29 @@ export const Documents: React.FC<DocumentsProps> = ({ templates, employees, comp
     }
   }, [templates, onUpdateTemplates]);
 
-  const handleApproveRequest = (requestId: string) => {
-    setPendingRequests(prev => prev.map(req => 
-      req.id === requestId ? { ...req, status: 'APPROVED' as const } : req
-    ));
+  const handleApproveRequest = async (requestId: string) => {
+    const request = documentRequests.find(req => req.id === requestId);
+    if (!request) return;
+
+    await onSaveDocumentRequest?.({
+      ...request,
+      status: 'APPROVED',
+      reviewedAt: new Date().toISOString(),
+    });
     alert('Document request approved. Employee will be notified.');
   };
 
-  const handleRejectRequest = (requestId: string) => {
-    prompt('Rejection reason (optional):');
-    setPendingRequests(prev => prev.map(req => 
-      req.id === requestId ? { ...req, status: 'REJECTED' as const } : req
-    ));
+  const handleRejectRequest = async (requestId: string) => {
+    const request = documentRequests.find(req => req.id === requestId);
+    if (!request) return;
+    const rejectionReason = prompt('Rejection reason (optional):') || undefined;
+
+    await onSaveDocumentRequest?.({
+      ...request,
+      status: 'REJECTED',
+      reviewedAt: new Date().toISOString(),
+      rejectionReason,
+    });
     alert('Document request rejected.');
   };
 
@@ -92,6 +107,7 @@ export const Documents: React.FC<DocumentsProps> = ({ templates, employees, comp
     setEditorName('New Template');
     setEditorCategory(TemplateCategory.LETTER);
     setEditorContent('Dear {{firstName}},\n\nWrite your content here...');
+    setEditorLogoUrl('');
     setActiveTab('create');
   };
 
@@ -100,6 +116,7 @@ export const Documents: React.FC<DocumentsProps> = ({ templates, employees, comp
     setEditorName(t.name);
     setEditorCategory(t.category);
     setEditorContent(t.content);
+    setEditorLogoUrl(t.logoUrl || '');
     setActiveTab('create');
   };
 
@@ -122,7 +139,8 @@ export const Documents: React.FC<DocumentsProps> = ({ templates, employees, comp
       name: editorName,
       category: editorCategory,
       content: editorContent,
-      lastModified: new Date().toISOString().split('T')[0]
+      lastModified: new Date().toISOString().split('T')[0],
+      logoUrl: editorLogoUrl.trim() || undefined,
     };
 
     let updated;
@@ -152,6 +170,7 @@ export const Documents: React.FC<DocumentsProps> = ({ templates, employees, comp
       '{{role}}': emp.jobTitle || String(emp.role),
       '{{hireDate}}': emp.hireDate,
       '{{companyName}}': companyData.name,
+      '{{companyLogo}}': companyData.logoUrl || '',
       '{{currentDate}}': new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
       '{{address}}': emp.address || 'Address not provided'
     };
@@ -175,6 +194,8 @@ export const Documents: React.FC<DocumentsProps> = ({ templates, employees, comp
   };
 
   const printDocument = () => {
+    const template = templates.find(t => t.id === selectedTemplateId);
+    const logoUrl = template?.logoUrl || companyData.logoUrl || '';
     const printWindow = window.open('', '_blank');
     if (printWindow) {
       printWindow.document.write(`
@@ -184,6 +205,7 @@ export const Documents: React.FC<DocumentsProps> = ({ templates, employees, comp
             <style>
               body { font-family: 'Times New Roman', serif; padding: 40px; max-width: 800px; margin: 0 auto; line-height: 1.6; }
               .header { text-align: center; margin-bottom: 40px; border-bottom: 1px solid #ccc; padding-bottom: 20px; }
+              .logo { max-height: 72px; max-width: 220px; object-fit: contain; margin-bottom: 16px; }
               .footer { margin-top: 60px; font-size: 12px; color: #666; text-align: center; }
               h1 { font-size: 18px; text-transform: uppercase; }
               p { margin-bottom: 16px; white-space: pre-wrap; }
@@ -194,6 +216,7 @@ export const Documents: React.FC<DocumentsProps> = ({ templates, employees, comp
           </head>
           <body>
             <div class="header">
+              ${logoUrl ? `<img class="logo" src="${logoUrl}" alt="${companyData.name} logo" />` : ''}
               <h1>${companyData.name}</h1>
               <p>${companyData.address} | ${companyData.phone}</p>
             </div>
@@ -232,6 +255,13 @@ export const Documents: React.FC<DocumentsProps> = ({ templates, employees, comp
                 {Object.values(TemplateCategory).map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
+            <input
+              type="url"
+              value={editorLogoUrl}
+              onChange={(e) => setEditorLogoUrl(e.target.value)}
+              className="mt-2 w-full max-w-md rounded border border-gray-300 bg-white px-2 py-1 text-xs"
+              placeholder="Optional logo URL for generated PDFs"
+            />
           </div>
           <div className="flex space-x-2">
             <button onClick={() => setActiveTab('list')} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-200 rounded-lg">Cancel</button>
@@ -403,47 +433,6 @@ export const Documents: React.FC<DocumentsProps> = ({ templates, employees, comp
         </div>
       </div>
 
-      {/* Pending Requests Section */}
-      {pendingRequests.some(r => r.status === 'PENDING') && (
-        <div className="bg-yellow-50 border-l-4 border-yellow-400 rounded-lg p-6">
-          <div className="flex items-center mb-4">
-            <Icons.Alert className="w-5 h-5 text-yellow-600 mr-2" />
-            <h3 className="font-bold text-gray-900">Pending Document Requests</h3>
-            <span className="ml-2 bg-yellow-200 text-yellow-800 text-xs font-bold px-2 py-0.5 rounded-full">
-              {pendingRequests.filter(r => r.status === 'PENDING').length}
-            </span>
-          </div>
-          <div className="space-y-3">
-            {pendingRequests.filter(r => r.status === 'PENDING').map(req => (
-              <div key={req.id} className="bg-white p-4 rounded-lg flex items-center justify-between shadow-sm">
-                <div className="flex items-center">
-                  <Icons.Document className="w-5 h-5 text-gray-400 mr-3" />
-                  <div>
-                    <p className="font-medium text-gray-900">{req.employeeName}</p>
-                    <p className="text-sm text-gray-500">{req.documentType} • Requested {req.requestDate}</p>
-                  </div>
-                </div>
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => handleApproveRequest(req.id)}
-                    className="px-3 py-1.5 bg-green-100 text-green-700 rounded hover:bg-green-200 text-sm font-medium flex items-center"
-                  >
-                    <Icons.CheckMark className="w-4 h-4 mr-1" />
-                    Approve
-                  </button>
-                  <button
-                    onClick={() => handleRejectRequest(req.id)}
-                    className="px-3 py-1.5 bg-red-100 text-red-700 rounded hover:bg-red-200 text-sm font-medium"
-                  >
-                    Reject
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
          {templates.map(template => (
            <div key={template.id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-shadow group relative">
@@ -489,6 +478,50 @@ export const Documents: React.FC<DocumentsProps> = ({ templates, employees, comp
             <span className="font-medium">Create Blank Template</span>
          </button>
       </div>
+
+      {/* Pending Requests Section */}
+      {documentRequests.some(r => r.status === 'PENDING') && (
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 rounded-lg p-6">
+          <div className="flex items-center mb-4">
+            <Icons.Alert className="w-5 h-5 text-yellow-600 mr-2" />
+            <h3 className="font-bold text-gray-900">Pending Document Requests</h3>
+            <span className="ml-2 bg-yellow-200 text-yellow-800 text-xs font-bold px-2 py-0.5 rounded-full">
+              {documentRequests.filter(r => r.status === 'PENDING').length}
+            </span>
+          </div>
+          <div className="space-y-3">
+            {documentRequests.filter(r => r.status === 'PENDING').map(req => (
+              <div key={req.id} className="bg-white p-4 rounded-lg flex items-center justify-between shadow-sm">
+                <div className="flex items-center">
+                  <Icons.Document className="w-5 h-5 text-gray-400 mr-3" />
+                  <div>
+                    <p className="font-medium text-gray-900">{req.employeeName}</p>
+                    <p className="text-sm text-gray-500">
+                      {req.documentType} • Requested {new Date(req.requestedAt).toLocaleDateString()}
+                    </p>
+                    {req.purpose && <p className="mt-1 text-xs text-gray-500">{req.purpose}</p>}
+                  </div>
+                </div>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => handleApproveRequest(req.id)}
+                    className="px-3 py-1.5 bg-green-100 text-green-700 rounded hover:bg-green-200 text-sm font-medium flex items-center"
+                  >
+                    <Icons.CheckMark className="w-4 h-4 mr-1" />
+                    Approve
+                  </button>
+                  <button
+                    onClick={() => handleRejectRequest(req.id)}
+                    className="px-3 py-1.5 bg-red-100 text-red-700 rounded hover:bg-red-200 text-sm font-medium"
+                  >
+                    Reject
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
