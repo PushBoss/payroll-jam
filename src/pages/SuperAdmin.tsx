@@ -2,7 +2,7 @@ declare const process: any;
 
 import React, { useRef, useState, useEffect } from 'react';
 import { Icons } from '../components/Icons';
-import { PricingPlan, ResellerClient, GlobalConfig, User, Role, AuditLogEntry, TaxConfig } from '../core/types';
+import { PricingPlan, ResellerClient, GlobalConfig, User, Role, AuditLogEntry, TaxConfig, BillingGift } from '../core/types';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell, ReferenceLine, BarChart, Bar } from 'recharts';
 import { storage } from '../services/storage';
 import { auditService } from '../core/auditService';
@@ -44,6 +44,7 @@ interface PayingClient {
     plan: ResellerClient['plan'];
     status: string;
     subscriptionStatus?: string | null;
+    billingGift?: BillingGift;
     activeEmployees: number;
     mrr: number;
     arr: number;
@@ -382,6 +383,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     const [payingClientPlanFilter, setPayingClientPlanFilter] = useState<'ALL' | ResellerClient['plan']>('ALL');
     const [payingClientRiskFilter, setPayingClientRiskFilter] = useState<'ALL' | PayingClient['risk']>('ALL');
     const [payingClientActivitySort, setPayingClientActivitySort] = useState<ClientActivitySort>('created_desc');
+    const [selectedPayingClient, setSelectedPayingClient] = useState<PayingClient | null>(null);
     const [emailDraft, setEmailDraft] = useState<EmailDraft | null>(null);
 
     // Database Connection State & Wizard
@@ -2170,7 +2172,11 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                     </tr>
                                 ) : (
                                     filteredClients.map((client) => (
-                                        <tr key={client.id} className="hover:bg-gray-50 border-b border-gray-100 last:border-0">
+                                        <tr
+                                            key={client.id}
+                                            onClick={() => setSelectedPayingClient(client)}
+                                            className="cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-0"
+                                        >
                                             <td className="px-5 py-4">
                                                 <div className="font-medium text-gray-900">{client.companyName}</div>
                                                 <div className="text-xs text-gray-500">{client.activeEmployees} active employees</div>
@@ -2227,14 +2233,20 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                             <td className="px-5 py-4 text-right">
                                                 <div className="flex justify-end gap-2">
                                                     <button
-                                                        onClick={() => handleCreateClientEmail(client)}
+                                                        onClick={(event) => {
+                                                            event.stopPropagation();
+                                                            handleCreateClientEmail(client);
+                                                        }}
                                                         className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-gray-200 text-gray-600 hover:text-jam-orange hover:border-jam-orange"
                                                         title="Create email"
                                                     >
                                                         <Icons.Mail className="w-4 h-4" />
                                                     </button>
                                                     <button
-                                                        onClick={() => handleManagePayingClient(client)}
+                                                        onClick={(event) => {
+                                                            event.stopPropagation();
+                                                            handleManagePayingClient(client);
+                                                        }}
                                                         className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-gray-200 text-gray-600 hover:text-jam-orange hover:border-jam-orange"
                                                         title="Manage company"
                                                     >
@@ -3428,6 +3440,155 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 {activeTab === 'billing' && renderBilling()}
                 {activeTab === 'plans' && renderPlans()}
             </div>
+            {selectedPayingClient && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                    <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl bg-white shadow-2xl animate-scale-in">
+                        <div className="sticky top-0 z-10 flex items-start justify-between border-b border-gray-100 bg-gray-50 p-6">
+                            <div>
+                                <h3 className="text-xl font-bold text-gray-900">{selectedPayingClient.companyName}</h3>
+                                <p className="mt-1 text-sm text-gray-500">
+                                    Paying customer details, activity, billing notes, and support signals.
+                                </p>
+                            </div>
+                            <button onClick={() => setSelectedPayingClient(null)} className="text-gray-400 hover:text-gray-600">
+                                <Icons.Close className="h-6 w-6" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-6 p-6">
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                                <div className="rounded-xl border border-gray-200 p-4">
+                                    <p className="text-xs font-bold uppercase text-gray-500">Plan</p>
+                                    <p className="mt-1 text-lg font-bold text-gray-900">{selectedPayingClient.plan}</p>
+                                    <p className="text-xs text-gray-500">{selectedPayingClient.subscriptionStatus || selectedPayingClient.status}</p>
+                                </div>
+                                <div className="rounded-xl border border-gray-200 p-4">
+                                    <p className="text-xs font-bold uppercase text-gray-500">MRR</p>
+                                    <p className="mt-1 text-lg font-bold text-jam-orange">JMD {selectedPayingClient.mrr.toLocaleString()}</p>
+                                    <p className="text-xs text-gray-500">ARR JMD {selectedPayingClient.arr.toLocaleString()}</p>
+                                </div>
+                                <div className="rounded-xl border border-gray-200 p-4">
+                                    <p className="text-xs font-bold uppercase text-gray-500">Last Login</p>
+                                    <p className="mt-1 text-lg font-bold text-gray-900">{formatActivityDate(selectedPayingClient.lastLoginAt)}</p>
+                                    <p className="text-xs text-gray-500">Created {formatActivityDate(selectedPayingClient.accountCreatedAt || selectedPayingClient.createdAt, 'N/A')}</p>
+                                </div>
+                                <div className="rounded-xl border border-gray-200 p-4">
+                                    <p className="text-xs font-bold uppercase text-gray-500">Risk</p>
+                                    <p className={`mt-1 text-lg font-bold ${selectedPayingClient.risk === 'critical' ? 'text-red-600' : selectedPayingClient.risk === 'attention' ? 'text-amber-600' : 'text-green-600'}`}>
+                                        {selectedPayingClient.risk === 'ok' ? 'Healthy' : selectedPayingClient.risk === 'attention' ? 'Attention' : 'Critical'}
+                                    </p>
+                                    <p className="text-xs text-gray-500">{selectedPayingClient.activeEmployees} active employees</p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                                <div className="rounded-xl border border-gray-200 p-5">
+                                    <div className="mb-4 flex items-center gap-2">
+                                        <Icons.CreditCard className="h-5 w-5 text-gray-400" />
+                                        <h4 className="font-bold text-gray-900">Card And Payment Status</h4>
+                                    </div>
+                                    <div className="space-y-3 text-sm">
+                                        <div className="flex justify-between gap-4">
+                                            <span className="text-gray-500">Payment method</span>
+                                            <span className="font-medium text-gray-900">{selectedPayingClient.paymentMethod}</span>
+                                        </div>
+                                        <div className="flex justify-between gap-4">
+                                            <span className="text-gray-500">DimePay schedule</span>
+                                            <span className="font-medium text-gray-900">{selectedPayingClient.dimeSubscriptionId || 'No recurring schedule'}</span>
+                                        </div>
+                                        <div className="flex justify-between gap-4">
+                                            <span className="text-gray-500">Last payment</span>
+                                            <span className="font-medium text-gray-900">
+                                                {selectedPayingClient.lastPaymentDate
+                                                    ? `${new Date(selectedPayingClient.lastPaymentDate).toLocaleDateString()} · JMD ${(selectedPayingClient.lastPaymentAmount || 0).toLocaleString()}`
+                                                    : 'No payment recorded'}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between gap-4">
+                                            <span className="text-gray-500">Last payment status</span>
+                                            <span className="font-medium text-gray-900">{selectedPayingClient.lastPaymentStatus || 'N/A'}</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="rounded-xl border border-gray-200 p-5">
+                                    <div className="mb-4 flex items-center gap-2">
+                                        <Icons.CalendarDays className="h-5 w-5 text-gray-400" />
+                                        <h4 className="font-bold text-gray-900">Access And Manual Payment Notes</h4>
+                                    </div>
+                                    <div className="space-y-3 text-sm">
+                                        <div className="flex justify-between gap-4">
+                                            <span className="text-gray-500">Access until</span>
+                                            <span className="font-medium text-gray-900">
+                                                {selectedPayingClient.accessUntil ? new Date(selectedPayingClient.accessUntil).toLocaleDateString() : 'No access date'}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between gap-4">
+                                            <span className="text-gray-500">Manual access</span>
+                                            <span className="font-medium text-gray-900">
+                                                {selectedPayingClient.billingGift?.giftedUntil
+                                                    ? `${selectedPayingClient.billingGift.manualPaymentLabel || selectedPayingClient.billingGift.reason || 'Manual access'} through ${formatGiftedUntil(selectedPayingClient.billingGift.giftedUntil)}`
+                                                    : 'None'}
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <p className="text-gray-500">Internal note</p>
+                                            <p className="mt-1 rounded-lg bg-gray-50 p-3 text-gray-800">
+                                                {selectedPayingClient.billingGift?.note || 'No manual payment note recorded.'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                                <div className="rounded-xl border border-gray-200 p-5">
+                                    <div className="mb-4 flex items-center gap-2">
+                                        <Icons.Info className="h-5 w-5 text-gray-400" />
+                                        <h4 className="font-bold text-gray-900">Ledger Snapshot</h4>
+                                    </div>
+                                    <div className="space-y-3 text-sm">
+                                        <div className="flex justify-between gap-4">
+                                            <span className="text-gray-500">Latest state</span>
+                                            <span className="font-medium text-gray-900">{selectedPayingClient.latestLedgerState || 'No events'}</span>
+                                        </div>
+                                        <div className="flex justify-between gap-4">
+                                            <span className="text-gray-500">Latest event</span>
+                                            <span className="font-medium text-gray-900">{selectedPayingClient.latestLedgerEventType || 'Awaiting DimePay event'}</span>
+                                        </div>
+                                        <p className="rounded-lg bg-gray-50 p-3 text-xs text-gray-500">
+                                            Full DimePay event timeline and transfer history are scoped for the 1.0.6 detail endpoint.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="rounded-xl border border-gray-200 p-5">
+                                    <div className="mb-4 flex items-center gap-2">
+                                        <Icons.Users className="h-5 w-5 text-gray-400" />
+                                        <h4 className="font-bold text-gray-900">Admin Contact</h4>
+                                    </div>
+                                    <div className="space-y-3 text-sm">
+                                        <div>
+                                            <p className="text-gray-500">Primary admin</p>
+                                            <p className="font-medium text-gray-900">{selectedPayingClient.adminName}</p>
+                                            <p className="text-gray-500">{selectedPayingClient.adminEmail}</p>
+                                            {selectedPayingClient.adminPhone && <p className="text-gray-500">{selectedPayingClient.adminPhone}</p>}
+                                        </div>
+                                        <div className="flex flex-wrap gap-2 pt-2">
+                                            <button onClick={() => handleCreateClientEmail(selectedPayingClient)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                                                Create Email
+                                            </button>
+                                            <button onClick={() => handleManagePayingClient(selectedPayingClient)} className="rounded-lg bg-jam-black px-3 py-2 text-sm font-medium text-white hover:bg-gray-800">
+                                                Manage Company
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
             {emailDraft && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                     <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-scale-in">

@@ -151,6 +151,7 @@ Turn Payroll-Jam from a payroll app into a broader payroll operations platform f
 These can be pulled into v2 or v3 depending on urgency:
 
 - Version 1.0.5 support dashboard foundation: see `docs/VERSION_1_0_5_SUPPORT_DASHBOARD_PLAN.md`.
+- Version 1.0.6 practical multi-account support and Super Admin drill-downs: see `docs/VERSION_1_0_6_MULTI_ACCOUNT_ADMIN_OVERVIEW.md`.
 - Physical-device mobile QA checklist and recurring smoke suite.
 - Stronger E2E test harness for signup, account switching, payroll, and employee portal.
 - Better support tooling for deleting/resetting failed company accounts.
