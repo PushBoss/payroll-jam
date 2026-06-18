@@ -987,7 +987,10 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 'Company',
                 `Applied manual payment access for ${giftMonths} month${giftMonths === 1 ? '' : 's'} to tenant: ${giftingTenant.companyName}`
             );
-            toast.success(`Applied ${giftMonths} month${giftMonths === 1 ? '' : 's'} of ${manualPaymentPlan} access to ${giftingTenant.companyName}`);
+            const emailSent = data?.emailNotification?.sent === true;
+            toast.success(
+                `Applied ${giftMonths} month${giftMonths === 1 ? '' : 's'} of ${manualPaymentPlan} access to ${giftingTenant.companyName}${emailSent ? ' and emailed the account.' : '.'}`
+            );
             closeGiftModal();
         } catch (error: any) {
             console.error('Error applying manual payment access:', error);

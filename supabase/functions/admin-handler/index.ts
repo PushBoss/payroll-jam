@@ -69,6 +69,114 @@ const calculatePlanMRR = (plan: string | null | undefined, activeEmployeeCount: 
     return baseFee + (Math.max(0, activeEmployeeCount || 0) * perEmployeeFee);
 };
 
+const escapeHtml = (value: unknown): string =>
+    String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+
+const formatAccessDate = (value: string): string => {
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return value;
+    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+};
+
+const sendManualUpgradeNotification = async ({
+    to,
+    recipientName,
+    companyName,
+    plan,
+    months,
+    accessUntil,
+    paymentLabel,
+}: {
+    to: string;
+    recipientName: string;
+    companyName: string;
+    plan: string;
+    months: number;
+    accessUntil: string;
+    paymentLabel: string;
+}) => {
+    const brevoApiKey = Deno.env.get('BREVO_API_KEY');
+    if (!brevoApiKey) {
+        console.warn('Skipping manual upgrade email: BREVO_API_KEY is not configured.');
+        return { sent: false, error: 'BREVO_API_KEY is not configured' };
+    }
+
+    const fromName = Deno.env.get('SMTP_FROM_NAME') || 'Payroll-Jam';
+    const fromEmail = Deno.env.get('SMTP_FROM_EMAIL') || '9dea0e001@smtp-brevo.com';
+    const appUrl = Deno.env.get('APP_URL') || Deno.env.get('SITE_URL') || 'https://payroll-jam.com';
+    const safeName = escapeHtml(recipientName || 'there');
+    const safeCompany = escapeHtml(companyName || 'your company');
+    const safePlan = escapeHtml(normalizePlanToFrontend(plan));
+    const safePaymentLabel = escapeHtml(paymentLabel || 'Manual Payment');
+    const safeAccessUntil = escapeHtml(formatAccessDate(accessUntil));
+    const dashboardUrl = `${appUrl.replace(/\/$/, '')}/dashboard`;
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <body style="margin:0;background:#f8fafc;font-family:Arial,sans-serif;color:#111827;">
+        <div style="max-width:640px;margin:0 auto;padding:24px;">
+          <div style="background:#111827;color:#ffffff;padding:24px;border-radius:12px 12px 0 0;">
+            <h1 style="margin:0;font-size:24px;">Your Payroll-Jam access was updated</h1>
+          </div>
+          <div style="background:#ffffff;border:1px solid #e5e7eb;border-top:0;padding:28px;border-radius:0 0 12px 12px;">
+            <p>Hi ${safeName},</p>
+            <p><strong>${safeCompany}</strong> now has <strong>${safePlan}</strong> access through <strong>${safeAccessUntil}</strong>.</p>
+            <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:16px;margin:20px 0;">
+              <p style="margin:0;"><strong>Support action:</strong> ${safePaymentLabel}</p>
+              <p style="margin:8px 0 0;"><strong>Access window:</strong> ${months} month${months === 1 ? '' : 's'}</p>
+            </div>
+            <p>You can sign in and continue managing payroll from your dashboard.</p>
+            <p style="margin:24px 0;">
+              <a href="${dashboardUrl}" style="display:inline-block;background:#f97316;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:bold;">Open Payroll-Jam</a>
+            </p>
+            <p style="font-size:13px;color:#6b7280;">If anything looks off, reply to support and we will help.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const text = `Hi ${recipientName || 'there'},
+
+${companyName || 'Your company'} now has ${normalizePlanToFrontend(plan)} access through ${formatAccessDate(accessUntil)}.
+
+Support action: ${paymentLabel || 'Manual Payment'}
+Access window: ${months} month${months === 1 ? '' : 's'}
+
+Open Payroll-Jam: ${dashboardUrl}
+
+If anything looks off, reply to support and we will help.`;
+
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+            'api-key': brevoApiKey,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            sender: { name: fromName, email: fromEmail },
+            to: [{ email: to, name: recipientName || undefined }],
+            subject: `${companyName || 'Your company'} ${normalizePlanToFrontend(plan)} access is active`,
+            htmlContent: html,
+            textContent: text,
+        }),
+    });
+
+    if (!response.ok) {
+        const details = await response.text();
+        console.error('Manual upgrade email failed:', details);
+        return { sent: false, error: details };
+    }
+
+    return { sent: true };
+};
+
 const normalizeMemberRole = (role?: string | null): string => {
     if (!role) return 'EMPLOYEE';
     const upper = role.trim().toUpperCase();
@@ -2326,12 +2434,27 @@ serve(async (req: Request) => {
 
                 const { data: company, error: companyError } = await adminClient
                     .from('companies')
-                    .select('id, name, settings')
+                    .select('id, name, email, settings')
                     .eq('id', companyId)
                     .maybeSingle();
 
                 if (companyError) throw companyError;
                 if (!company) throw new Error('Company not found');
+
+                const { data: companyUsers, error: companyUsersError } = await adminClient
+                    .from('app_users')
+                    .select('name, email, role')
+                    .eq('company_id', companyId);
+
+                if (companyUsersError) {
+                    console.warn('Could not load company users for manual upgrade email:', companyUsersError);
+                }
+
+                const recipientProfile = (companyUsers || []).find((profile: any) => normalizeRole(profile.role) === 'OWNER')
+                    || (companyUsers || []).find((profile: any) => normalizeRole(profile.role) === 'RESELLER')
+                    || (companyUsers || []).find((profile: any) => normalizeRole(profile.role) === 'ADMIN');
+                const recipientEmail = (recipientProfile?.email || company.email || '').toString().trim();
+                const recipientName = (recipientProfile?.name || company.name || 'there').toString();
 
                 const existingSettings = company.settings || {};
                 const existingGift = toBillingGift(existingSettings.billingGift);
@@ -2373,8 +2496,30 @@ serve(async (req: Request) => {
 
                 if (updateError) throw updateError;
 
+                let emailNotification = { sent: false, error: 'No recipient email found' as string | undefined };
+                if (recipientEmail) {
+                    try {
+                        emailNotification = await sendManualUpgradeNotification({
+                            to: recipientEmail,
+                            recipientName,
+                            companyName: company.name,
+                            plan: requestedPlan || existingGift?.tierGranted || companyUpdate.plan?.toString() || 'Free',
+                            months: requestedMonths,
+                            accessUntil: giftedUntil,
+                            paymentLabel: manualPaymentLabel || billingGift.manualPaymentLabel || 'Manual Payment',
+                        });
+                    } catch (emailError) {
+                        console.error('Manual upgrade email notification failed:', emailError);
+                        emailNotification = {
+                            sent: false,
+                            error: emailError instanceof Error ? emailError.message : 'Unknown email error',
+                        };
+                    }
+                }
+
                 return new Response(JSON.stringify({
                     success: true,
+                    emailNotification,
                     company: {
                         id: company.id,
                         companyName: company.name,
