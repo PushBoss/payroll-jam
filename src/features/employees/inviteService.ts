@@ -238,7 +238,7 @@ export async function inviteUserToAccount(payload: {
       // If they do exist, we can direct them to the dashboard where they will see the acceptance prompt.
       const inviteLink = exists
         ? buildAppUrl('dashboard')
-        : buildAppUrl('signup', { email: normalizedEmail, invitation: 'true' });
+        : buildAppUrl('signup', { flow: 'team_member', email: normalizedEmail, invitation: 'true' });
 
       // Send manager invite email (for team member invitations)
       await emailService.sendManagerInvite(
@@ -609,7 +609,9 @@ export async function resendInvitation(memberId: string): Promise<{ success: boo
         email,
         email.split('@')[0],
         companyName,
-        buildAppUrl('dashboard'),
+        member.user_id
+          ? buildAppUrl('dashboard')
+          : buildAppUrl('signup', { flow: 'team_member', email, invitation: 'true' }),
         role
       );
     } else {

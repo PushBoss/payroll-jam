@@ -6,6 +6,7 @@ import { AppRoute } from './routes';
 import { NavigateFunction } from './useAppNavigation';
 import { CompanyService } from '../services/CompanyService';
 import { EmployeeService } from '../services/EmployeeService';
+import { resolveSignupFlow } from './signupFlows';
 
 interface UseAuthRedirectsArgs {
   user: User | null;
@@ -90,7 +91,11 @@ export const useAuthRedirects = ({
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token');
     const email = params.get('email');
-    const isEmployeeInvite = params.get('type') === 'employee';
+    const signupFlow = resolveSignupFlow(params);
+    const isEmployeeInvite = signupFlow === 'employee_portal';
+    const isResellerInvite = signupFlow === 'reseller_client';
+    const isTeamMemberInvite = signupFlow === 'team_member';
+    const isLegacyUserInvite = signupFlow === 'legacy_user';
 
     if (!token) return;
     if (currentPath === 'signup' && token && !isEmployeeInvite) return;
@@ -100,8 +105,6 @@ export const useAuthRedirects = ({
       toast.success('You are already logged in!');
       return;
     }
-
-    const isResellerInvite = params.get('reseller') === 'true';
 
     if (user && email && user.email.toLowerCase() !== email.toLowerCase()) {
       toast.info(`Switching accounts to accept invitation for ${email}...`);
@@ -125,11 +128,11 @@ export const useAuthRedirects = ({
     }
 
     if (isResellerInvite && !user && token && email) {
-      navigateTo('signup', { query: { token, email, reseller: 'true' } });
+      navigateTo('signup', { query: { flow: 'reseller_client', token, email, reseller: 'true' } });
       return;
     }
 
-    if (employees.length > 0 && !isResellerInvite && !isEmployeeInvite) {
+    if (employees.length > 0 && !isResellerInvite && !isEmployeeInvite && !isTeamMemberInvite) {
       const invitee = employees.find((employee) => employee.onboardingToken === token);
       if (invitee && (!user || user.email !== invitee.email)) {
         setEmployeeAccountSetup({
@@ -140,7 +143,7 @@ export const useAuthRedirects = ({
       }
     }
 
-    if (isSupabaseMode && token && (isEmployeeInvite || (!user && email))) {
+    if (isSupabaseMode && token && (isEmployeeInvite || (isLegacyUserInvite && !user && email))) {
       void (async () => {
         try {
           const result = await EmployeeService.getEmployeeByToken(token, email || undefined);
@@ -158,12 +161,12 @@ export const useAuthRedirects = ({
       })();
     }
 
-    if (isSupabaseMode && token && !user && email && !isEmployeeInvite) {
+    if (isSupabaseMode && token && !user && email && isLegacyUserInvite) {
       void (async () => {
         try {
           const foundUser = await EmployeeService.getUserByEmail(email);
           if (foundUser && foundUser.onboardingToken === token) {
-            navigateTo('signup', { query: { token, email, type: 'user' } });
+            navigateTo('signup', { query: { flow: 'legacy_user', token, email, type: 'user' } });
             toast.info(`Welcome! Please sign up to join ${companyData?.name || 'the team'}.`);
           }
         } catch (error) {

@@ -423,6 +423,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     resellerUserId?: string;
     resellerEmail?: string;
     resellerCompanyId?: string;
+    signupFlow?: string;
+    inviteToken?: string;
   }) => {
     if (!supabase) {
       throw new Error('Supabase not initialized');
@@ -478,12 +480,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               console.error('❌ Error signing in after admin creation:', signInError);
             }
           } else {
-            authError = error;
-            console.warn('⚠️ Edge Function creation failed, falling back to standard signup:', error);
+            throw error || new Error('Could not create confirmed invitation user');
           }
         } catch (e) {
-          authError = e;
-          console.warn('⚠️ Edge Function request failed, falling back to standard signup:', e);
+          console.warn('⚠️ Edge Function request failed for invitation signup:', e);
+          throw e;
         }
       }
 
@@ -569,6 +570,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             verifyEmail: userData.skipEmailVerification,
             acceptPendingInvitations: shouldAutoAcceptInvitations,
             resellerInviteToken: userData.resellerInviteToken || undefined,
+            flow: userData.signupFlow || undefined,
+            inviteToken: userData.inviteToken || undefined,
             company: shouldCreateCompany ? {
               companyId: userData.companyId,
               name: userData.companyName,

@@ -387,6 +387,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
                 // This allows the client to link to the reseller and add them as a team member 
                 // during signup without needing to perform complex database lookups that RLS might block.
                 const signupLink = buildAppUrl('signup', {
+                    flow: 'reseller_client',
                     token: inviteToken,
                     resellerUserId: user.id,
                     resellerEmail: user.email,
@@ -653,6 +654,7 @@ export const ResellerDashboard: React.FC<ResellerDashboardProps> = ({ onManageCl
             const invitePlan = invite.plan_name || invite.metadata?.plan_name || 'Starter';
             const inviteEmail = invite.invite_email || invite.client_email || '';
             const inviteLink = buildAppUrl('signup', {
+                flow: 'reseller_client',
                 token: invite.invite_token,
                 resellerUserId: user?.id,
                 resellerEmail: user?.email,

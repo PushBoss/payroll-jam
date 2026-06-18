@@ -148,7 +148,7 @@ export const Employees: React.FC<EmployeesProps> = ({
         }
 
         setIsSendingInvite(true);
-        const inviteLink = `${window.location.origin}/?token=${emp.onboardingToken}&email=${encodeURIComponent(emp.email)}&type=employee`;
+        const inviteLink = `${window.location.origin}/?flow=employee_portal&token=${emp.onboardingToken}&email=${encodeURIComponent(emp.email)}&type=employee`;
 
         const emailResult = await emailService.sendEmployeeInvite(
             emp.email,
@@ -183,7 +183,7 @@ export const Employees: React.FC<EmployeesProps> = ({
             onUpdateEmployee(updatedEmp);
         }
 
-        const inviteLink = `${window.location.origin}/?token=${token}&email=${encodeURIComponent(emp.email)}&type=employee`;
+        const inviteLink = `${window.location.origin}/?flow=employee_portal&token=${token}&email=${encodeURIComponent(emp.email)}&type=employee`;
 
         const emailResult = await emailService.sendEmployeeInvite(
             emp.email,
@@ -237,7 +237,7 @@ export const Employees: React.FC<EmployeesProps> = ({
 
         setIsSendingInvite(true);
         const onboardingToken = generateUUID();
-        const inviteLink = `${window.location.origin}/?token=${onboardingToken}&email=${encodeURIComponent(inviteData.email)}&type=employee`;
+        const inviteLink = `${window.location.origin}/?flow=employee_portal&token=${onboardingToken}&email=${encodeURIComponent(inviteData.email)}&type=employee`;
 
         const newEmp: Employee = {
             id: generateUUID(),

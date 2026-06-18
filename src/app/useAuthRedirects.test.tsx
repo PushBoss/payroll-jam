@@ -134,7 +134,7 @@ describe('useAuthRedirects', () => {
   });
 
   it('redirects anonymous reseller invite flows to signup with preserved query', () => {
-    window.history.replaceState({}, '', '/?token=invite-123&email=client@example.com&reseller=true');
+    window.history.replaceState({}, '', '/?flow=reseller_client&token=invite-123&email=client@example.com&reseller=true');
 
     renderHook(() =>
       useAuthRedirects({
@@ -153,6 +153,7 @@ describe('useAuthRedirects', () => {
 
     expect(navigateTo).toHaveBeenCalledWith('signup', {
       query: {
+        flow: 'reseller_client',
         token: 'invite-123',
         email: 'client@example.com',
         reseller: 'true',
@@ -180,7 +181,7 @@ describe('useAuthRedirects', () => {
       companyId: 'company-1',
     });
 
-    window.history.replaceState({}, '', '/?token=emp-token&email=jane@example.com&type=employee');
+    window.history.replaceState({}, '', '/?flow=employee_portal&token=emp-token&email=jane@example.com&type=employee');
 
     renderHook(() =>
       useAuthRedirects({
@@ -229,7 +230,7 @@ describe('useAuthRedirects', () => {
       companyId: 'company-2',
     });
 
-    window.history.replaceState({}, '', '/signup?token=emp-token-2&email=sam@example.com&type=employee');
+    window.history.replaceState({}, '', '/signup?flow=employee_portal&token=emp-token-2&email=sam@example.com&type=employee');
 
     renderHook(() =>
       useAuthRedirects({

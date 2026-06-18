@@ -900,6 +900,8 @@ serve(async (req: Request) => {
                     verifyEmail = false,
                     acceptPendingInvitations = false,
                     resellerInviteToken,
+                    flow,
+                    inviteToken,
                 } = payload || {};
 
                 const { normalizedEmail } = await assertSignupAuthUser(adminClient, userId, email, signupFinalizeToken, authUser);
@@ -1079,6 +1081,70 @@ serve(async (req: Request) => {
 
                 if (invitationError) throw invitationError;
                 if (!pendingInvitations || pendingInvitations.length === 0) {
+                    const normalizedInviteToken = String(inviteToken || '').trim();
+                    if (normalizedInviteToken) {
+                        const { data: legacyProfile, error: legacyProfileError } = await adminClient
+                            .from('app_users')
+                            .select('*')
+                            .eq('email', normalizedEmail)
+                            .maybeSingle();
+
+                        if (legacyProfileError) throw legacyProfileError;
+
+                        const profilePreferences = legacyProfile?.preferences || {};
+                        const legacyToken = legacyProfile?.onboarding_token || profilePreferences?.onboardingToken;
+                        if (legacyProfile?.company_id && legacyToken === normalizedInviteToken) {
+                            const normalizedLegacyRole = normalizeMemberRole(legacyProfile.role);
+                            const { data: savedLegacyProfile, error: legacyUpdateError } = await adminClient
+                                .from('app_users')
+                                .update({
+                                    id: userId,
+                                    auth_user_id: userId,
+                                    email: normalizedEmail,
+                                    name: normalizedName,
+                                    role: normalizedLegacyRole,
+                                    company_id: legacyProfile.company_id,
+                                    is_onboarded: true,
+                                    phone: normalizedPhone,
+                                    preferences: {
+                                        ...(profilePreferences || {}),
+                                        migratedFromLegacyInvite: true,
+                                        legacyProfileId: legacyProfile.id,
+                                        signupFlow: flow || 'legacy_user',
+                                    },
+                                })
+                                .eq('email', normalizedEmail)
+                                .select('*')
+                                .maybeSingle();
+
+                            if (legacyUpdateError) throw legacyUpdateError;
+
+                            await adminClient.from('account_members').upsert({
+                                account_id: legacyProfile.company_id,
+                                user_id: userId,
+                                email: normalizedEmail,
+                                role: normalizedLegacyRole,
+                                status: 'accepted',
+                                accepted_at: new Date().toISOString(),
+                                invited_at: new Date().toISOString(),
+                            }, { onConflict: 'account_id,email' });
+
+                            if (verifyEmail) {
+                                await adminClient.auth.admin.updateUserById(userId, { email_confirm: true });
+                            }
+
+                            return new Response(JSON.stringify({
+                                success: true,
+                                user: toAppUserResponse(savedLegacyProfile),
+                                acceptedInvitations: [],
+                                acceptedCount: 1,
+                                migratedLegacyInvite: true,
+                            }), {
+                                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                            });
+                        }
+                    }
+
                     throw new Error('No pending invitation found for this signup email');
                 }
 

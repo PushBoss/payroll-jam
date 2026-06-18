@@ -20,11 +20,10 @@ import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { downloadFile } from '../utils/exportHelpers';
 import { useAccount } from '../hooks/useAccount';
-import { getUserRoleInAccount, MemberRole } from '../features/employees/inviteService';
+import { getUserRoleInAccount, inviteUserToAccount, MemberRole } from '../features/employees/inviteService';
 import { InviteUserCard } from '../components/InviteUserCard';
 import { AccountMembersCard } from '../components/AccountMembersCard';
 import { TaxConfigCard } from '../features/employees/TaxConfigCard';
-import { buildAppUrl } from '../app/routes';
 
 const JAMAICA_PARISHES = [
     'Kingston',
@@ -615,6 +614,7 @@ export const Settings: React.FC<SettingsProps> = ({
     const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
     const [inviteForm, setInviteForm] = useState({ name: '', email: '', role: Role.MANAGER });
     const [isSendingInvite, setIsSendingInvite] = useState(false);
+    const [memberRefreshTrigger, setMemberRefreshTrigger] = useState(0);
     const [isSavingCompany, setIsSavingCompany] = useState(false);
 
     // Organization Management State
@@ -1034,59 +1034,32 @@ export const Settings: React.FC<SettingsProps> = ({
 
         setIsSendingInvite(true);
 
-        // Generate invite token and link
-        const onboardingToken = generateUUID();
-        const inviteLink = buildAppUrl('signup', { token: onboardingToken, email: inviteForm.email });
-
-        const newUser: User = {
-            id: `u-${Date.now()}`,
-            name: inviteForm.name,
-            email: inviteForm.email,
-            role: inviteForm.role,
-            companyId: currentUser?.companyId,
-            isOnboarded: false,
-            onboardingToken: onboardingToken
-        };
-
-        // Send invitation email
-        const emailResult = await emailService.sendInvite(
-            inviteForm.email,
-            inviteForm.name.split(' ')[0] || inviteForm.name,
-            inviteLink
-        );
-
-        if (!emailResult.success) {
-            toast.error('Failed to send invitation email. User not created.');
-            setIsSendingInvite(false);
-            return;
-        }
-
-        // Save to Supabase if available
-        if (currentUser?.companyId) {
-            try {
-                await UserService.saveUser(newUser);
-            } catch (error) {
-                console.error("Error saving user to Supabase:", error);
-                toast.error("Failed to save user to database.");
-                setIsSendingInvite(false);
+        try {
+            if (!currentUser?.companyId || !currentUser?.id) {
+                toast.error('Unable to determine your company. Please refresh and try again.');
                 return;
             }
-        }
 
-        const updatedUsers = [...users, newUser];
-        setUsers(updatedUsers);
-        storage.saveCompanyUsers(updatedUsers);
-        auditService.log(currentUser, 'CREATE', 'User', `Invited user ${newUser.email}`);
-        setIsInviteModalOpen(false);
-        setInviteForm({ name: '', email: '', role: Role.MANAGER });
+            const result = await inviteUserToAccount({
+                accountId: currentUser.companyId,
+                email: inviteForm.email.trim(),
+                role: inviteForm.role as MemberRole,
+                invitedBy: currentUser.id,
+            });
 
-        if (!emailResult.message?.includes('Simulation')) {
+            if (!result.success) {
+                toast.error(result.error || 'Failed to send invitation.');
+                return;
+            }
+
+            auditService.log(currentUser, 'CREATE', 'User', `Invited user ${inviteForm.email}`);
+            setIsInviteModalOpen(false);
+            setInviteForm({ name: '', email: '', role: Role.MANAGER });
+            setMemberRefreshTrigger((value) => value + 1);
             toast.success("Invitation email sent successfully!");
-        } else {
-            toast.info("User invited (email simulation mode - check console for link)");
+        } finally {
+            setIsSendingInvite(false);
         }
-
-        setIsSendingInvite(false);
     };
 
 
@@ -2065,12 +2038,14 @@ export const Settings: React.FC<SettingsProps> = ({
                             accountId={accountId}
                             onInviteSent={() => {
                                 // Refresh members list
+                                setMemberRefreshTrigger((value) => value + 1);
                                 toast.success('Invitation sent successfully!');
                             }}
                         />
                         <AccountMembersCard
                             accountId={accountId}
                             isAdmin={['admin', 'owner'].includes((userRole || '').toLowerCase())}
+                            refreshTrigger={memberRefreshTrigger}
                         />
                     </div>
                 );

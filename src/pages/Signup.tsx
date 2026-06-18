@@ -11,6 +11,7 @@ import { acceptMultipleInvitations, AccountMember } from '../features/employees/
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { generateUUID } from '../utils/uuid';
+import { isResellerClientFlow, isTeamMemberFlow, resolveSignupFlow, SignupFlow } from '../app/signupFlows';
 
 interface SignupProps {
     onSignup?: (user: User) => void;
@@ -80,6 +81,8 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
     const [resellerEmail, setResellerEmail] = useState<string | null>(null);
     const [resellerCompanyId, setResellerCompanyId] = useState<string | null>(null);
     const [isTeamInvitation, setIsTeamInvitation] = useState(false);
+    const [signupFlow, setSignupFlow] = useState<SignupFlow>('company_signup');
+    const [inviteToken, setInviteToken] = useState<string | null>(null);
 
     // Fetch Global Payment Configuration
     const paymentConfig = storage.getGlobalConfig();
@@ -129,8 +132,10 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
         const rEmail = params.get('resellerEmail');
         const rCompanyId = params.get('resellerCompanyId');
         const invitedPlan = params.get('plan');
-        const isResellerInvite = params.get('reseller') === 'true';
-        const teamInvite = params.get('invitation') === 'true';
+        const resolvedFlow = resolveSignupFlow(params);
+
+        setSignupFlow(resolvedFlow);
+        setInviteToken(token);
 
         // Pre-fill email if provided
         if (email) {
@@ -141,14 +146,14 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
         // Team invitation mode should ONLY be enabled for explicit invitation links.
         // Do not infer invitation mode from `email` query params alone; that can misclassify
         // regular signups and create users without a company context.
-        if (teamInvite) {
-            console.log('👥 Team member invitation detected:', { teamInvite, email });
+        if (isTeamMemberFlow(params)) {
+            console.log('👥 Team member invitation detected:', { flow: resolvedFlow, email });
             setIsTeamInvitation(true);
             toast.info('Joining as a team member. Just set your name and password!', { duration: 5000 });
         }
 
         // Store reseller invite info if this is a reseller invite
-        if (token && isResellerInvite) {
+        if (token && isResellerClientFlow(params)) {
             console.log('🔗 Reseller invite detected:', { token, rUserId, rEmail, rCompanyId });
             setResellerInviteToken(token);
             if (rUserId) setResellerUserId(rUserId);
@@ -445,12 +450,12 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
             return;
         }
 
-        if (!formData.phone.trim()) {
+        if (!isTeamInvitation && !formData.phone.trim()) {
             toast.error("Please enter your phone number to continue.");
             return;
         }
 
-        if (!isValidPhone(formData.phone)) {
+        if (formData.phone.trim() && !isValidPhone(formData.phone)) {
             toast.error("Please enter a valid phone number.");
             return;
         }
@@ -555,7 +560,9 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                 resellerUserId: resellerUserId || undefined,
                 resellerEmail: resellerEmail || undefined,
                 resellerCompanyId: resellerCompanyId || undefined,
-                skipEmailVerification: isTeamInvitation
+                skipEmailVerification: isTeamInvitation,
+                signupFlow,
+                inviteToken: inviteToken || undefined
             };
 
             // Call signup and get pending invitations
@@ -780,8 +787,10 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                         <input required type="email" autoComplete="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700">Phone</label>
-                                        <input required type="tel" inputMode="tel" autoComplete="tel" pattern="[0-9\\s()+-]{7,20}" title="Enter a valid phone number using digits, spaces, +, -, or parentheses." value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: sanitizePhoneInput(e.target.value) })} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
+                                        <label className="block text-sm font-medium text-gray-700">
+                                            Phone {!isTeamInvitation && <span className="text-red-500">*</span>}
+                                        </label>
+                                        <input required={!isTeamInvitation} type="tel" inputMode="tel" autoComplete="tel" pattern="[0-9\\s()+-]{7,20}" title="Enter a valid phone number using digits, spaces, +, -, or parentheses." value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: sanitizePhoneInput(e.target.value) })} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
                                     </div>
                                     {!isTeamInvitation && (
                                         <>

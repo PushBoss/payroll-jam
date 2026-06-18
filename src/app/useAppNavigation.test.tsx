@@ -87,7 +87,7 @@ describe('useAppNavigation', () => {
   });
 
   it('updates state and url when navigating, including edit run state', () => {
-    window.history.replaceState({}, '', '/?token=stale-token&email=old@example.com');
+    window.history.replaceState({}, '', '/?flow=employee_portal&token=stale-token&email=old@example.com');
     const { result, unmount } = renderHook(() => useAppNavigation(makeUser()));
 
     act(() => {
@@ -101,6 +101,7 @@ describe('useAppNavigation', () => {
     expect(result.current.editRunId).toBe('run-123');
     expect(window.location.pathname).toBe('/app/payrun');
     expect(window.location.search).toContain('filter=draft');
+    expect(window.location.search).not.toContain('employee_portal');
     expect(window.location.search).not.toContain('stale-token');
     expect(window.location.search).not.toContain('old%40example.com');
 

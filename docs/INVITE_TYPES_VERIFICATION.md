@@ -1,124 +1,116 @@
+<!-- ai-context
+feature: signup-invite-flows
+status: current
+summary: Documents canonical invite/signup flow query parameters and legacy compatibility behavior.
+do-not-change: New invite links should include an explicit flow parameter; legacy params remain supported for old emails already sent.
+-->
+
 # Invite Types Verification
 
-## ✅ All Invite Types Status
+## Canonical Rule
 
-### 1. Employee Invite ✅
-**Location:** Employees page → Invite Employee  
-**Link Format:** `/?token={token}&email={email}&type=employee`  
-**Handler:** App.tsx lines 225-247  
-**Status:** ✅ Working - Uses `getEmployeeByToken()` to find employee, shows EmployeeAccountSetup page
+New invite links must include `flow` so the app does not infer intent from overlapping `token`, `email`, `type`, `reseller`, or `invitation` parameters.
 
-**Flow:**
-- Employee receives email with link
-- Clicks link → App.tsx detects `type=employee`
-- Looks up employee by token in Supabase
-- Shows EmployeeAccountSetup page
-- Employee creates password → Account created
+Supported flows:
 
----
+- `flow=employee_portal`
+- `flow=team_member`
+- `flow=reseller_client`
+- `flow=company_signup`
+- `flow=legacy_user`
 
-### 2. User Invite (Company User) ✅
-**Location:** Settings → Users tab → Invite User  
-**Link Format:** `/?page=signup&token={token}&email={email}`  
-**Handler:** App.tsx lines 249-267  
-**Status:** ✅ Working - Checks Supabase for user with token, navigates to signup
+Legacy links are still supported by `resolveSignupFlow()` for old emails already in inboxes.
 
-**Flow:**
-- User receives email with link
-- Clicks link → App.tsx detects token + email (not employee)
-- Looks up user by email in Supabase
-- Verifies token matches
-- Navigates to signup page with pre-filled email
-- User signs up → Joins existing company
+## Active Invite Types
 
----
+### Employee Portal Invite
 
-### 3. Company Invite ✅
-**Location:** Settings → Company tab → Test Company Invite  
-**Link Format:** `/?page=signup&token={token}&email={email}&companyInvite=true`  
-**Handler:** Signup page (direct navigation)  
-**Status:** ✅ Working - Goes directly to signup page, email pre-filled
+Canonical link:
 
-**Flow:**
-- Company receives email with link
-- Clicks link → Goes directly to signup page (because of `?page=signup`)
-- Email is pre-filled from URL parameter
-- Company signs up → Creates new company account
+`/?flow=employee_portal&token={token}&email={email}&type=employee`
 
-**Note:** `companyInvite=true` parameter is set but not currently used for special handling. This is fine - company invites are just regular signups.
+Legacy accepted:
 
----
+`/?token={token}&email={email}&type=employee`
 
-### 4. Reseller Invite ✅
-**Location:** Reseller Dashboard → Add New Client  
-**Link Format:** `/?token={token}&email={email}&reseller=true`  
-**Handler:** App.tsx lines 193-207  
-**Status:** ✅ Working - Accepts reseller invite if user logged in, or navigates to signup
+Behavior:
 
-**Flow:**
-- Company receives email with link
-- If logged in with matching email → Accepts invite immediately
-- If not logged in → Navigates to signup, then accepts invite after signup
+- Routes to employee account setup, not Signup.
+- Looks up employee by onboarding token.
+- Completes through `complete-employee-invite`.
+- Creates an email-confirmed `EMPLOYEE` profile.
 
----
+### Team Member Invite
 
-## 🔍 Verification Checklist
+Canonical link:
 
-### Employee Invites
-- [x] Link includes `type=employee` parameter
-- [x] App.tsx checks for `type=employee`
-- [x] Uses `getEmployeeByToken()` to find employee
-- [x] Shows EmployeeAccountSetup page
-- [x] Creates auth user and app_users profile
-- [x] Updates employee status to ACTIVE
+`/signup?flow=team_member&email={email}&invitation=true`
 
-### User Invites
-- [x] Link includes `page=signup` parameter
-- [x] App.tsx checks for user invite (not employee)
-- [x] Looks up user by email in Supabase
-- [x] Verifies token matches
-- [x] Navigates to signup with pre-filled email
-- [x] User joins existing company
+Legacy accepted:
 
-### Company Invites
-- [x] Link includes `page=signup` and `companyInvite=true`
-- [x] Goes directly to signup page
-- [x] Email is pre-filled from URL
-- [x] Company can sign up normally
+`/signup?invitation=true&email={email}`
 
-### Reseller Invites
-- [x] Link includes `reseller=true` parameter
-- [x] App.tsx checks for reseller invite
-- [x] Accepts invite if user logged in
-- [x] Navigates to signup if not logged in
-- [x] Accepts invite after signup
+Behavior:
 
----
+- Uses Signup in team-invitation mode.
+- Hides company signup fields.
+- Creates a confirmed invited user.
+- Finalizes against pending `account_members` rows.
 
-## 🚀 Ready for Production
+### Legacy User Invite
 
-All invite types are properly configured and should work on the live server:
+Canonical link:
 
-1. ✅ **Employee Invites** - Fixed with proper token handling
-2. ✅ **User Invites** - Working with Supabase lookup
-3. ✅ **Company Invites** - Working with direct signup navigation
-4. ✅ **Reseller Invites** - Working with invite acceptance logic
+`/signup?flow=legacy_user&token={token}&email={email}&type=user`
 
-**All invite links include:**
-- Token for verification
-- Email for lookup/pre-fill
-- Type parameter to distinguish invite types
+Legacy accepted:
 
-**All emails are sent via:**
-- Brevo SMTP (if VITE_API_URL is configured)
-- Falls back to EmailJS or simulation mode
+`/signup?token={token}&email={email}`
 
----
+Behavior:
 
-## 📝 Notes
+- Supports older Settings invites that created an `app_users` pending row.
+- Validates the token against `app_users.onboarding_token` or `preferences.onboardingToken`.
+- Migrates the profile to the real Supabase Auth user id.
+- Adds an accepted `account_members` row.
 
-- Company invites use `companyInvite=true` but don't require special handling - they're just regular signups
-- All invite types save tokens to database for verification
-- Employee invites work even when user is not logged in (uses Supabase lookup)
-- User and company invites require signup flow
-- Reseller invites can be accepted by logged-in users immediately
+### Reseller Client Invite
+
+Canonical link:
+
+`/signup?flow=reseller_client&token={token}&email={email}&reseller=true`
+
+Legacy accepted:
+
+`/?token={token}&email={email}&reseller=true`
+
+Behavior:
+
+- Existing matching logged-in client can accept immediately.
+- Anonymous client is sent to Signup with reseller context.
+- Company signup finalization accepts the reseller invite.
+
+### Company Signup
+
+Canonical link:
+
+`/signup?flow=company_signup`
+
+Legacy accepted:
+
+`/signup?companyInvite=true`
+
+Behavior:
+
+- Uses normal company signup.
+- Server derives final role as `OWNER` or `RESELLER`.
+- Requires acquisition source.
+
+## Verification Checklist
+
+- [x] Employee portal invites do not render the company signup form.
+- [x] Team member invites use invite mode and skip company fields.
+- [x] Reseller client invites preserve reseller context through signup.
+- [x] Legacy token/email user invites are treated as `legacy_user`, not company signup.
+- [x] Invite query keys are transient and removed during normal app navigation.
+- [x] `admin-handler` finalization supports both `account_members` invites and legacy pending `app_users` invites.

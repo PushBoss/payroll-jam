@@ -137,7 +137,19 @@ export const PORTAL_ROUTES: AppRoute[] = [
   'portal-profile'
 ];
 
-export const TRANSIENT_QUERY_KEYS = ['token', 'email', 'type', 'invitation', 'reseller'];
+export const TRANSIENT_QUERY_KEYS = [
+  'token',
+  'email',
+  'type',
+  'flow',
+  'invitation',
+  'reseller',
+  'companyInvite',
+  'resellerUserId',
+  'resellerEmail',
+  'resellerCompanyId',
+  'plan',
+];
 
 export const normalizePathname = (pathname: string | null | undefined): string => {
   if (!pathname || pathname === '/') return '/';

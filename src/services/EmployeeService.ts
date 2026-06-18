@@ -180,7 +180,7 @@ export const EmployeeService = {
       isOnboarded: row.is_onboarded,
       avatarUrl: row.avatar_url ?? undefined,
       phone: row.phone ?? undefined,
-      onboardingToken: row.onboarding_token ?? undefined
+      onboardingToken: row.onboarding_token ?? (typeof row.preferences?.onboardingToken === 'string' ? row.preferences.onboardingToken : undefined)
     };
   },
 
