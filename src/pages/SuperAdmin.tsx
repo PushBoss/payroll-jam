@@ -1,6 +1,6 @@
 declare const process: any;
 
-import React, { useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { PricingPlan, ResellerClient, GlobalConfig, User, Role, AuditLogEntry, TaxConfig } from '../core/types';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell, ReferenceLine, BarChart, Bar } from 'recharts';
@@ -278,6 +278,7 @@ const getMonthEnd = (year: number, monthIndex: number) => new Date(year, monthIn
 
 export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, onImpersonate, initialTab }) => {
     const [activeTab, setActiveTab] = useState<'overview' | 'tenants' | 'users' | 'plans' | 'logs' | 'settings' | 'health' | 'billing' | 'pending-payments' | 'paying-clients'>('overview');
+    const hasLoadedGlobalConfigRef = useRef(false);
 
     // Payment Settings State
     const [paymentConfig, setPaymentConfig] = useState<GlobalConfig>(() => storage.getGlobalConfig() || DEFAULT_PAYMENT_CONFIG);
@@ -433,6 +434,8 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 }
             } catch (e) {
                 console.error("Error loading global config from Supabase:", e);
+            } finally {
+                hasLoadedGlobalConfigRef.current = true;
             }
         };
         loadGlobalConfig();
@@ -440,6 +443,8 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
 
     // Save global config to both localStorage and Supabase
     useEffect(() => {
+        if (!hasLoadedGlobalConfigRef.current) return;
+
         storage.saveGlobalConfig(paymentConfig);
         // Also save to Supabase
         CompanyService.saveGlobalConfig(paymentConfig).catch(e => {
