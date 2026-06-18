@@ -47,6 +47,7 @@ Support users cannot:
 
 - Orphaned auth user with no `app_users` profile.
 - `app_users` profile with no auth user.
+- `app_users` profile with a missing or stale `auth_user_id` despite a valid company id.
 - Owner profile with no company.
 - Company with no owner/admin.
 - Duplicate profiles for the same email.
@@ -73,6 +74,16 @@ Each action should be an edge-function action in `admin-handler` or a dedicated 
   - create missing company if the signup payload exists
   - link owner role
   - mark onboarding state consistently
+
+- Repair missing profile/auth link:
+  - detect `app_users.auth_user_id IS NULL` or points to a missing auth identity
+  - find matching `auth.users` identity by normalized email
+  - verify the matching auth identity is not linked to another profile
+  - update `app_users.auth_user_id`
+  - repair `companies.owner_id` when it still points at the orphan profile id or is empty
+  - repair `account_members.user_id` for the same company/email
+  - expose dry-run preview before execution
+  - if no matching auth identity exists, stop and instruct support to recreate/restore auth identity first
 
 - Repair owner role anomaly:
   - detect company signup profile stuck as `EMPLOYEE`
@@ -134,6 +145,7 @@ Audit every support action with:
 - Every impersonation session and support action creates an audit record.
 - Dry-run output is available before each account repair.
 - Orphaned signup repair has automated tests for safe and unsafe cases.
+- Missing `auth_user_id` repair has automated tests for linked, unlinked, conflicting, and missing-auth cases.
 - Tenant and paying-client activity sorting remains available for operators.
 - `npm test -- --run` and `npm run build` pass.
 

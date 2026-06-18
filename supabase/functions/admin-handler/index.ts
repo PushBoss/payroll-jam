@@ -794,6 +794,28 @@ const getAuthActivityForUser = async (adminClient: any, userId?: string | null) 
     };
 };
 
+const findAuthUserByEmail = async (adminClient: any, email?: string | null) => {
+    const normalizedEmail = normalizeSignupEmail(email);
+    if (!normalizedEmail) return null;
+
+    for (let page = 1; page <= 20; page += 1) {
+        const { data: usersPage, error: listUsersError } = await adminClient.auth.admin.listUsers({
+            page,
+            perPage: 1000,
+        });
+
+        if (listUsersError) throw listUsersError;
+
+        const match = usersPage?.users?.find((candidate: any) =>
+            normalizeSignupEmail(candidate.email) === normalizedEmail
+        );
+        if (match) return match;
+        if (!usersPage?.users || usersPage.users.length < 1000) return null;
+    }
+
+    return null;
+};
+
 const sortByClientActivity = <T extends { createdAt?: string | null; accountCreatedAt?: string | null; lastLoginAt?: string | null }>(
     records: T[],
     sort?: string
@@ -1420,6 +1442,192 @@ serve(async (req: Request) => {
                     role: userProfile?.role,
                     companyId: userProfile?.company_id
                 }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+            }
+
+            case 'repair-missing-auth-user-link': {
+                const callerProfile = await assertSuperAdmin(adminClient, authUser);
+                const appUserId = typeof payload?.appUserId === 'string' ? payload.appUserId.trim() : '';
+                const companyId = typeof payload?.companyId === 'string' ? payload.companyId.trim() : '';
+                const email = normalizeSignupEmail(payload?.email);
+                const dryRun = payload?.dryRun !== false;
+                const reason = typeof payload?.reason === 'string' ? payload.reason.trim() : '';
+
+                if (!appUserId && !email) {
+                    throw new Error('appUserId or email is required');
+                }
+                if (!dryRun && reason.length < 5) {
+                    throw new Error('A support reason is required to execute this repair');
+                }
+
+                let profileQuery = adminClient
+                    .from('app_users')
+                    .select('id, auth_user_id, email, name, role, company_id, is_onboarded');
+
+                if (appUserId) {
+                    profileQuery = profileQuery.eq('id', appUserId);
+                } else {
+                    profileQuery = profileQuery.ilike('email', email);
+                }
+                if (companyId) profileQuery = profileQuery.eq('company_id', companyId);
+
+                const { data: profiles, error: profileError } = await profileQuery.limit(2);
+                if (profileError) throw profileError;
+                if (!profiles || profiles.length === 0) {
+                    throw new Error('No app_users profile found for the supplied account details');
+                }
+                if (profiles.length > 1) {
+                    throw new Error('Multiple app_users profiles match. Provide appUserId to repair one profile safely.');
+                }
+
+                const targetProfile = profiles[0];
+                const targetEmail = normalizeSignupEmail(targetProfile.email);
+                if (!targetEmail) throw new Error('Target app_users profile has no email');
+
+                let existingLinkedAuthUser: any = null;
+                if (targetProfile.auth_user_id) {
+                    const { data: linkedAuth, error: linkedAuthError } = await adminClient.auth.admin.getUserById(targetProfile.auth_user_id);
+                    if (!linkedAuthError && linkedAuth?.user) existingLinkedAuthUser = linkedAuth.user;
+                }
+
+                const matchingAuthUser = existingLinkedAuthUser || await findAuthUserByEmail(adminClient, targetEmail);
+                const { data: conflictingProfiles, error: conflictError } = matchingAuthUser?.id
+                    ? await adminClient
+                        .from('app_users')
+                        .select('id, email, company_id, role')
+                        .eq('auth_user_id', matchingAuthUser.id)
+                        .neq('id', targetProfile.id)
+                    : { data: [], error: null };
+                if (conflictError) throw conflictError;
+
+                const resolvedCompanyId = targetProfile.company_id || companyId || null;
+                const { data: company, error: companyError } = resolvedCompanyId
+                    ? await adminClient
+                        .from('companies')
+                        .select('id, name, owner_id')
+                        .eq('id', resolvedCompanyId)
+                        .maybeSingle()
+                    : { data: null, error: null };
+                if (companyError) throw companyError;
+
+                const targetRole = normalizeRole(targetProfile.role);
+                const shouldRepairCompanyOwner = Boolean(
+                    matchingAuthUser?.id &&
+                    company?.id &&
+                    ['OWNER', 'RESELLER'].includes(targetRole) &&
+                    (!company.owner_id || company.owner_id === targetProfile.id)
+                );
+                const canRepair = Boolean(matchingAuthUser?.id && (!conflictingProfiles || conflictingProfiles.length === 0));
+                const before = {
+                    appUser: {
+                        id: targetProfile.id,
+                        authUserId: targetProfile.auth_user_id || null,
+                        email: targetProfile.email,
+                        role: targetProfile.role,
+                        companyId: targetProfile.company_id || null,
+                    },
+                    company: company ? {
+                        id: company.id,
+                        name: company.name,
+                        ownerId: company.owner_id || null,
+                    } : null,
+                };
+                const preview = {
+                    dryRun,
+                    repairable: canRepair,
+                    status: existingLinkedAuthUser
+                        ? 'ALREADY_LINKED'
+                        : matchingAuthUser?.id
+                            ? 'MATCHING_AUTH_USER_FOUND'
+                            : 'AUTH_USER_NOT_FOUND',
+                    targetAppUserId: targetProfile.id,
+                    targetEmail,
+                    targetCompanyId: resolvedCompanyId,
+                    matchingAuthUserId: matchingAuthUser?.id || null,
+                    conflictingProfiles: conflictingProfiles || [],
+                    changes: {
+                        appUsersAuthUserId: targetProfile.auth_user_id === matchingAuthUser?.id ? 'unchanged' : `${targetProfile.auth_user_id || '<null>'} -> ${matchingAuthUser?.id || '<missing>'}`,
+                        companyOwnerId: shouldRepairCompanyOwner ? `${company?.owner_id || '<null>'} -> ${matchingAuthUser.id}` : 'unchanged',
+                        accountMembersUserId: resolvedCompanyId ? `set matching ${targetEmail} membership user_id to ${matchingAuthUser?.id || '<missing>'}` : 'unchanged',
+                    },
+                    before,
+                };
+
+                if (dryRun || existingLinkedAuthUser) {
+                    return new Response(JSON.stringify({
+                        success: true,
+                        ...preview,
+                        message: existingLinkedAuthUser
+                            ? 'Profile already has a valid auth_user_id link.'
+                            : canRepair
+                                ? 'Dry run only. Re-run with dryRun=false and a support reason to apply.'
+                                : 'No matching auth.users identity was found, or the auth identity is already linked elsewhere.',
+                    }), {
+                        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                    });
+                }
+
+                if (!matchingAuthUser?.id) {
+                    throw new Error('No matching auth.users identity found for this app_users email. The customer needs an auth account before this repair can link the profile.');
+                }
+                if (conflictingProfiles && conflictingProfiles.length > 0) {
+                    throw new Error('Matching auth.users identity is already linked to another app_users profile.');
+                }
+
+                const { data: repairedProfile, error: repairProfileError } = await adminClient
+                    .from('app_users')
+                    .update({ auth_user_id: matchingAuthUser.id })
+                    .eq('id', targetProfile.id)
+                    .select('id, auth_user_id, email, role, company_id, is_onboarded')
+                    .maybeSingle();
+
+                if (repairProfileError) throw repairProfileError;
+
+                let repairedCompany: any = null;
+                if (shouldRepairCompanyOwner) {
+                    const { data: updatedCompany, error: ownerUpdateError } = await adminClient
+                        .from('companies')
+                        .update({ owner_id: matchingAuthUser.id })
+                        .eq('id', company.id)
+                        .select('id, name, owner_id')
+                        .maybeSingle();
+                    if (ownerUpdateError) throw ownerUpdateError;
+                    repairedCompany = updatedCompany;
+                }
+
+                let repairedMembershipCount = 0;
+                if (resolvedCompanyId) {
+                    const { count, error: membershipUpdateError } = await adminClient
+                        .from('account_members')
+                        .update({ user_id: matchingAuthUser.id }, { count: 'exact' })
+                        .eq('account_id', resolvedCompanyId)
+                        .ilike('email', targetEmail);
+                    if (membershipUpdateError && !isIgnorableDeleteError(membershipUpdateError)) throw membershipUpdateError;
+                    repairedMembershipCount = count || 0;
+                }
+
+                await adminClient.from('audit_logs').insert({
+                    actor_id: callerProfile.id,
+                    actor_name: callerProfile.name || callerProfile.email || 'Support operator',
+                    company_id: resolvedCompanyId,
+                    action: 'REPAIR',
+                    entity: 'User',
+                    description: `Linked app_users ${targetProfile.id} to auth user ${matchingAuthUser.id}. Reason: ${reason}`,
+                    timestamp: new Date().toISOString(),
+                });
+
+                return new Response(JSON.stringify({
+                    success: true,
+                    dryRun: false,
+                    status: 'REPAIRED',
+                    before,
+                    after: {
+                        appUser: repairedProfile,
+                        company: repairedCompany || company,
+                        repairedMembershipCount,
+                    },
+                }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
             }
             
             case 'create-super-admin': {
