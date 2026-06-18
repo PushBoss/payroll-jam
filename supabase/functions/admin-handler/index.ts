@@ -735,6 +735,42 @@ const deleteByColumn = async (
     return { table, column, deleted: count || 0, skipped: false };
 };
 
+const anonymizeAuditLogsForUsers = async (adminClient: any, userIds: string[], actorName = 'Deleted user') => {
+    const ids = [...new Set(userIds.filter(Boolean))];
+    if (ids.length === 0) {
+        return { table: 'audit_logs', column: 'actor_id', anonymized: 0, deleted: 0, skipped: true };
+    }
+
+    const { error, count } = await adminClient
+        .from('audit_logs')
+        .update({ actor_id: null, actor_name: actorName }, { count: 'exact' })
+        .in('actor_id', ids);
+
+    if (!error) {
+        return { table: 'audit_logs', column: 'actor_id', anonymized: count || 0, deleted: 0, skipped: false };
+    }
+
+    if (isIgnorableDeleteError(error)) {
+        return { table: 'audit_logs', column: 'actor_id', anonymized: 0, deleted: 0, skipped: true };
+    }
+
+    // Some older databases may have actor_id as NOT NULL. In that case, delete
+    // the audit rows so app_users cleanup is still possible for test accounts.
+    const { error: deleteError, count: deleteCount } = await adminClient
+        .from('audit_logs')
+        .delete({ count: 'exact' })
+        .in('actor_id', ids);
+
+    if (deleteError) {
+        if (isIgnorableDeleteError(deleteError)) {
+            return { table: 'audit_logs', column: 'actor_id', anonymized: 0, deleted: 0, skipped: true };
+        }
+        throw deleteError;
+    }
+
+    return { table: 'audit_logs', column: 'actor_id', anonymized: 0, deleted: deleteCount || 0, skipped: false };
+};
+
 const toTimestamp = (value?: string | null) => {
     if (!value) return 0;
     const time = new Date(value).getTime();
@@ -1951,6 +1987,12 @@ serve(async (req: Request) => {
                     .update({ reseller_id: null }, { count: 'exact' })
                     .eq('reseller_id', companyId);
                 if (unlinkClientsError && !isIgnorableDeleteError(unlinkClientsError)) throw unlinkClientsError;
+
+                const deletableProfileIds = (companyUsers || [])
+                    .filter((companyUser: any) => String(companyUser.role || '').toUpperCase() !== 'SUPER_ADMIN')
+                    .map((companyUser: any) => companyUser.id)
+                    .filter(Boolean);
+                deletionResults.push(await anonymizeAuditLogsForUsers(adminClient, deletableProfileIds, 'Deleted company user'));
 
                 const { error: profileDeleteError, count: deletedProfileCount } = await adminClient
                     .from('app_users')
@@ -3570,6 +3612,8 @@ serve(async (req: Request) => {
 
                 const authUserId = targetUser?.auth_user_id;
                 const userCompanyId = companyId || targetUser?.company_id;
+
+                await anonymizeAuditLogsForUsers(adminClient, [userId], 'Deleted user');
 
                 // If OWNER, delete their company too
                 if (userRole === 'OWNER' && userCompanyId) {
