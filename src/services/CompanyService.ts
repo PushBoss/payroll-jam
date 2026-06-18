@@ -206,16 +206,25 @@ export const CompanyService = {
     if (error) throw error;
   },
 
-  deleteCompany: async (companyId: string) => {
+  deleteCompany: async (companyId: string, confirmationName?: string) => {
     if (!supabase) return false;
 
-    const { error } = await supabase.from('companies').delete().eq('id', companyId);
+    const { data, error } = await supabase.functions.invoke('admin-handler', {
+      body: {
+        action: 'delete-company-deep',
+        payload: {
+          companyId,
+          confirmationName,
+        },
+      },
+    });
+
     if (error) {
-      console.error('Error deleting company:', error);
+      console.error('Error deep deleting company:', error);
       return false;
     }
 
-    return true;
+    return Boolean(data?.success);
   },
 
   getGlobalConfig: async (): Promise<GlobalConfig | null> => {

@@ -199,6 +199,11 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
         request.documentType.toLowerCase().includes('contract') &&
         ['PENDING', 'APPROVED', 'GENERATED', 'DELIVERED'].includes(request.status)
     );
+    const activeProfileChangeRequest = documentRequests.find((request) =>
+        request.employeeId === employeeId &&
+        request.documentType === 'Profile Change Request' &&
+        request.status === 'PENDING'
+    );
 
     const handleLeaveSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -577,6 +582,31 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
 
         await Promise.resolve(onSaveDocumentRequest(request));
         toast.success('Employment contract request sent to your employer.');
+    };
+
+    const handleProfileChangeRequest = async () => {
+        if (!onSaveDocumentRequest) {
+            toast.error('Profile change requests are not available right now.');
+            return;
+        }
+
+        const requestedChanges = window.prompt('What profile details should your employer update?');
+        if (!requestedChanges?.trim()) return;
+
+        const request: DocumentRequest = {
+            id: `PROFILE-REQ-${employeeId}-${Date.now()}`,
+            companyId: companyData?.id,
+            employeeId,
+            employeeName,
+            templateId: 'PROFILE_CHANGE_REQUEST',
+            documentType: 'Profile Change Request',
+            purpose: requestedChanges.trim(),
+            status: 'PENDING',
+            requestedAt: new Date().toISOString(),
+        };
+
+        await Promise.resolve(onSaveDocumentRequest(request));
+        toast.success('Profile change request sent to your employer.');
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1382,8 +1412,12 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                     </div>
                     
                     <div className="mt-8 pt-6 border-t border-gray-100 flex justify-end">
-                         <button className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50">
-                            Request Change
+                         <button
+                            onClick={handleProfileChangeRequest}
+                            disabled={Boolean(activeProfileChangeRequest)}
+                            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                         >
+                            {activeProfileChangeRequest ? 'Change Requested' : 'Request Change'}
                          </button>
                     </div>
                 </div>

@@ -846,9 +846,19 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         const tenant = tenants.find(t => t.id === id);
         if (!tenant) return;
 
-        if (confirm(`Are you sure you want to delete ${tenant.companyName}? This action is irreversible and will delete all associated data.`)) {
+        const confirmationName = window.prompt(
+            `This permanently deletes ${tenant.companyName}'s operational data, users, payroll records, documents, timesheets, and settings. Audit/payment ledgers may be retained for compliance.\n\nType the exact company name to continue:`
+        );
+
+        if (confirmationName === null) return;
+        if (confirmationName !== tenant.companyName) {
+            toast.error('Company name did not match. Delete cancelled.');
+            return;
+        }
+
+        if (confirm(`Final confirmation: permanently delete ${tenant.companyName}? This action cannot be undone.`)) {
             try {
-                const success = await CompanyService.deleteCompany(id);
+                const success = await CompanyService.deleteCompany(id, confirmationName);
                 if (success) {
                     setTenants(prev => prev.filter(t => t.id !== id));
                     toast.success("Tenant deleted from records");

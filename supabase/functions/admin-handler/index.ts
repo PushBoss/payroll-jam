@@ -696,6 +696,41 @@ const addMonths = (date: Date, months: number) => {
     return next;
 };
 
+const isIgnorableDeleteError = (error: any) => {
+    const code = String(error?.code || '');
+    const message = String(error?.message || '').toLowerCase();
+    return (
+        code === '42P01' ||
+        code === '42703' ||
+        code === 'PGRST204' ||
+        code === 'PGRST205' ||
+        message.includes('does not exist') ||
+        message.includes('could not find')
+    );
+};
+
+const deleteByColumn = async (
+    adminClient: any,
+    table: string,
+    column: string,
+    companyId: string,
+    exactValue?: string,
+) => {
+    const { error, count } = await adminClient
+        .from(table)
+        .delete({ count: 'exact' })
+        .eq(column, exactValue || companyId);
+
+    if (error) {
+        if (isIgnorableDeleteError(error)) {
+            return { table, column, deleted: 0, skipped: true };
+        }
+        throw error;
+    }
+
+    return { table, column, deleted: count || 0, skipped: false };
+};
+
 const toTimestamp = (value?: string | null) => {
     if (!value) return 0;
     const time = new Date(value).getTime();
@@ -1844,6 +1879,97 @@ serve(async (req: Request) => {
                 const paged = sorted.slice(from, to + 1);
 
                 return new Response(JSON.stringify({ companies: paged, total: count }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'delete-company-deep': {
+                await assertSuperAdmin(adminClient, authUser);
+                const companyId = typeof payload?.companyId === 'string' ? payload.companyId : '';
+                const confirmationName = typeof payload?.confirmationName === 'string' ? payload.confirmationName.trim() : '';
+
+                if (!companyId) throw new Error('companyId is required');
+
+                const { data: company, error: companyError } = await adminClient
+                    .from('companies')
+                    .select('id, name, owner_id')
+                    .eq('id', companyId)
+                    .maybeSingle();
+
+                if (companyError) throw companyError;
+                if (!company) throw new Error('Company not found');
+                if (confirmationName !== company.name) {
+                    throw new Error(`Type the exact company name to delete: ${company.name}`);
+                }
+
+                const { data: companyUsers } = await adminClient
+                    .from('app_users')
+                    .select('id, auth_user_id, email, role')
+                    .eq('company_id', companyId);
+
+                const deletionResults: Array<Record<string, unknown>> = [];
+                const deleteCompanyRows = async (table: string, column = 'company_id') => {
+                    deletionResults.push(await deleteByColumn(adminClient, table, column, companyId));
+                };
+
+                // Operational child data first. Cascades cover some of these, but explicit
+                // deletes make the outcome predictable across older customer databases.
+                for (const table of [
+                    'document_requests',
+                    'attendance_shifts',
+                    'attendance_attempts',
+                    'attendance_badges',
+                    'timesheets',
+                    'leave_requests',
+                    'employee_ytd',
+                    'pay_run_snapshots',
+                    'pay_runs',
+                    'employees',
+                    'document_templates',
+                    'expert_referrals',
+                    'payment_history',
+                    'subscriptions',
+                    'dimepay_billing_intents',
+                    'diagnostic_logs',
+                ]) {
+                    await deleteCompanyRows(table);
+                }
+
+                deletionResults.push(await deleteByColumn(adminClient, 'reseller_clients', 'client_company_id', companyId));
+                deletionResults.push(await deleteByColumn(adminClient, 'reseller_clients', 'reseller_id', companyId));
+                deletionResults.push(await deleteByColumn(adminClient, 'reseller_invites', 'client_company_id', companyId));
+                deletionResults.push(await deleteByColumn(adminClient, 'account_members', 'account_id', companyId));
+                deletionResults.push(await deleteByColumn(adminClient, 'company_locations', 'company_id', companyId));
+
+                const { error: unlinkClientsError, count: unlinkedClientCount } = await adminClient
+                    .from('companies')
+                    .update({ reseller_id: null }, { count: 'exact' })
+                    .eq('reseller_id', companyId);
+                if (unlinkClientsError && !isIgnorableDeleteError(unlinkClientsError)) throw unlinkClientsError;
+
+                const { error: profileDeleteError, count: deletedProfileCount } = await adminClient
+                    .from('app_users')
+                    .delete({ count: 'exact' })
+                    .eq('company_id', companyId)
+                    .neq('role', 'SUPER_ADMIN');
+                if (profileDeleteError && !isIgnorableDeleteError(profileDeleteError)) throw profileDeleteError;
+
+                const { error: companyDeleteError, count: deletedCompanyCount } = await adminClient
+                    .from('companies')
+                    .delete({ count: 'exact' })
+                    .eq('id', companyId);
+                if (companyDeleteError) throw companyDeleteError;
+
+                return new Response(JSON.stringify({
+                    success: true,
+                    company: { id: company.id, name: company.name },
+                    deletedCompanyCount: deletedCompanyCount || 0,
+                    deletedProfileCount: deletedProfileCount || 0,
+                    unlinkedClientCount: unlinkedClientCount || 0,
+                    affectedUsers: companyUsers || [],
+                    deletionResults,
+                    retained: ['auth.users identities', 'audit_logs', 'dimepay_ledger', 'dimepay_webhook_events'],
+                }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });
             }
