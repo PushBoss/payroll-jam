@@ -573,7 +573,7 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
 
         const request: DocumentRequest = {
             id: `DOCREQ-${employeeId}-${Date.now()}`,
-            companyId: companyData?.id,
+            companyId: companyData?.id || employee?.companyId,
             employeeId,
             employeeName,
             templateId: getTemplateByIntent('contract')?.id || 'DOC-EMPLOYEE-CONTRACT',
@@ -606,7 +606,7 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
         try {
             const request: DocumentRequest = {
                 id: `PROFILE-REQ-${employeeId}-${Date.now()}`,
-                companyId: companyData?.id,
+                companyId: companyData?.id || employee?.companyId,
                 employeeId,
                 employeeName,
                 templateId: 'PROFILE_CHANGE_REQUEST',

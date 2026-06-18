@@ -58,7 +58,22 @@ export const DocumentService = {
       .select('*')
       .single();
 
-    if (error) throw error;
+    if (error) {
+      const { data: fallbackData, error: fallbackError } = await supabase.functions.invoke('admin-handler', {
+        body: {
+          action: 'save-document-request',
+          payload: {
+            companyId,
+            documentRequest: request,
+          },
+        },
+      });
+
+      if (fallbackError) throw fallbackError;
+      if (fallbackData?.error) throw new Error(fallbackData.error);
+      return mapDocumentRequestRow(fallbackData?.documentRequest || request);
+    }
+
     return mapDocumentRequestRow(data || request);
   },
 };

@@ -178,11 +178,20 @@ export const useAppData = ({ user, updateUser, impersonate, navigateTo }: UseApp
   };
 
   const handleSaveDocumentRequest = async (request: DocumentRequest) => {
-    const targetCompanyId = user?.companyId || companyData?.id || request.companyId;
+    const requestEmployee = employees.find((employee) =>
+      employee.id === request.employeeId ||
+      employee.email.trim().toLowerCase() === user?.email?.trim().toLowerCase()
+    );
+    const targetCompanyId = user?.companyId || companyData?.id || request.companyId || requestEmployee?.companyId;
     const requestWithCompany = {
       ...request,
       companyId: targetCompanyId || request.companyId,
     };
+
+    if (isSupabaseMode && !targetCompanyId) {
+      toast.error('Could not identify your company for this document request. Please refresh and try again.');
+      return requestWithCompany;
+    }
 
     setDocumentRequests((prev) => {
       const existingIndex = prev.findIndex((item) => item.id === request.id);

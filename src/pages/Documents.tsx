@@ -65,6 +65,10 @@ export const Documents: React.FC<DocumentsProps> = ({ templates, employees, comp
   const [editorCategory, setEditorCategory] = useState<TemplateCategory>(TemplateCategory.LETTER);
   const [editorContent, setEditorContent] = useState('');
   const [editorLogoUrl, setEditorLogoUrl] = useState('');
+  const sortedDocumentRequests = [...documentRequests].sort((a, b) =>
+    new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime()
+  );
+  const pendingDocumentRequests = sortedDocumentRequests.filter((request) => request.status === 'PENDING');
 
   useEffect(() => {
     const missingDefaults = DEFAULT_EMPLOYEE_TEMPLATES.filter((defaultTemplate) => (
@@ -479,18 +483,25 @@ export const Documents: React.FC<DocumentsProps> = ({ templates, employees, comp
          </button>
       </div>
 
-      {/* Pending Requests Section */}
-      {documentRequests.some(r => r.status === 'PENDING') && (
-        <div className="bg-yellow-50 border-l-4 border-yellow-400 rounded-lg p-6">
+      {/* Employee Document Requests Section */}
+      <div className="bg-yellow-50 border-l-4 border-yellow-400 rounded-lg p-6">
           <div className="flex items-center mb-4">
             <Icons.Alert className="w-5 h-5 text-yellow-600 mr-2" />
-            <h3 className="font-bold text-gray-900">Pending Document Requests</h3>
-            <span className="ml-2 bg-yellow-200 text-yellow-800 text-xs font-bold px-2 py-0.5 rounded-full">
-              {documentRequests.filter(r => r.status === 'PENDING').length}
-            </span>
+            <h3 className="font-bold text-gray-900">Employee Document Requests</h3>
+            {pendingDocumentRequests.length > 0 && (
+              <span className="ml-2 bg-yellow-200 text-yellow-800 text-xs font-bold px-2 py-0.5 rounded-full">
+                {pendingDocumentRequests.length} pending
+              </span>
+            )}
           </div>
-          <div className="space-y-3">
-            {documentRequests.filter(r => r.status === 'PENDING').map(req => (
+
+          {sortedDocumentRequests.length === 0 ? (
+            <div className="rounded-lg bg-white p-4 text-sm text-gray-500 shadow-sm">
+              No employee document requests yet. Contract and profile change requests from the employee portal will appear here.
+            </div>
+          ) : (
+            <div className="space-y-3">
+            {sortedDocumentRequests.map(req => (
               <div key={req.id} className="bg-white p-4 rounded-lg flex items-center justify-between shadow-sm">
                 <div className="flex items-center">
                   <Icons.Document className="w-5 h-5 text-gray-400 mr-3" />
@@ -502,26 +513,37 @@ export const Documents: React.FC<DocumentsProps> = ({ templates, employees, comp
                     {req.purpose && <p className="mt-1 text-xs text-gray-500">{req.purpose}</p>}
                   </div>
                 </div>
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => handleApproveRequest(req.id)}
-                    className="px-3 py-1.5 bg-green-100 text-green-700 rounded hover:bg-green-200 text-sm font-medium flex items-center"
-                  >
-                    <Icons.CheckMark className="w-4 h-4 mr-1" />
-                    Approve
-                  </button>
-                  <button
-                    onClick={() => handleRejectRequest(req.id)}
-                    className="px-3 py-1.5 bg-red-100 text-red-700 rounded hover:bg-red-200 text-sm font-medium"
-                  >
-                    Reject
-                  </button>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${
+                    req.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
+                    req.status === 'APPROVED' || req.status === 'GENERATED' || req.status === 'DELIVERED' ? 'bg-green-100 text-green-800' :
+                    'bg-red-100 text-red-800'
+                  }`}>
+                    {req.status}
+                  </span>
+                  {req.status === 'PENDING' && (
+                    <>
+                      <button
+                        onClick={() => handleApproveRequest(req.id)}
+                        className="px-3 py-1.5 bg-green-100 text-green-700 rounded hover:bg-green-200 text-sm font-medium flex items-center"
+                      >
+                        <Icons.CheckMark className="w-4 h-4 mr-1" />
+                        Approve
+                      </button>
+                      <button
+                        onClick={() => handleRejectRequest(req.id)}
+                        className="px-3 py-1.5 bg-red-100 text-red-700 rounded hover:bg-red-200 text-sm font-medium"
+                      >
+                        Reject
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             ))}
-          </div>
+            </div>
+          )}
         </div>
-      )}
     </div>
   );
 };

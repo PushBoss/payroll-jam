@@ -168,6 +168,10 @@ const assertCompanyAccess = async (
         return callerProfile;
     }
 
+    if (callerRole === 'EMPLOYEE' && callerProfile.company_id === companyId) {
+        return callerProfile;
+    }
+
     if ((callerRole === 'OWNER' || callerRole === 'ADMIN' || callerRole === 'MANAGER' || callerRole === 'RESELLER') && callerProfile.company_id === companyId) {
         return callerProfile;
     }
@@ -2985,6 +2989,73 @@ serve(async (req: Request) => {
                 if (error) throw error;
 
                 return new Response(JSON.stringify({ success: true }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'save-document-request': {
+                const { companyId, documentRequest } = payload || {};
+                if (!companyId) throw new Error('companyId is required');
+                if (!documentRequest || typeof documentRequest !== 'object') throw new Error('documentRequest payload is required');
+
+                const callerProfile = await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'MANAGER', 'RESELLER', 'SUPER_ADMIN', 'EMPLOYEE']);
+                const callerRole = normalizeRole(callerProfile.role);
+                const requestRecord = documentRequest as Record<string, any>;
+                const status = String(requestRecord.status || 'PENDING').toUpperCase();
+                const allowedStatuses = new Set(['PENDING', 'APPROVED', 'REJECTED', 'GENERATED', 'DELIVERED']);
+
+                if (!allowedStatuses.has(status)) throw new Error('Invalid document request status');
+                if (!requestRecord.id) throw new Error('document request id is required');
+                if (!requestRecord.employeeId && !requestRecord.employee_id) throw new Error('employeeId is required');
+
+                const employeeId = String(requestRecord.employeeId || requestRecord.employee_id);
+                const { data: employee, error: employeeError } = await adminClient
+                    .from('employees')
+                    .select('id, email, first_name, last_name, company_id')
+                    .eq('id', employeeId)
+                    .eq('company_id', companyId)
+                    .maybeSingle();
+
+                if (employeeError) throw employeeError;
+                if (!employee) throw new Error('Employee not found for this company');
+
+                if (callerRole === 'EMPLOYEE') {
+                    const employeeEmail = String(employee.email || '').trim().toLowerCase();
+                    const callerEmail = String(authUser?.email || callerProfile.email || '').trim().toLowerCase();
+                    if (!employeeEmail || employeeEmail !== callerEmail) throw new Error('Unauthorized');
+                    if (status !== 'PENDING') throw new Error('Employees can only create pending document requests');
+                }
+
+                const documentRequestPayload = {
+                    id: String(requestRecord.id),
+                    company_id: companyId,
+                    employee_id: employeeId,
+                    employee_name: String(
+                        requestRecord.employeeName ||
+                        requestRecord.employee_name ||
+                        `${employee.first_name || ''} ${employee.last_name || ''}`.trim()
+                    ),
+                    template_id: String(requestRecord.templateId || requestRecord.template_id || ''),
+                    document_type: String(requestRecord.documentType || requestRecord.document_type || ''),
+                    purpose: String(requestRecord.purpose || ''),
+                    status,
+                    requested_at: requestRecord.requestedAt || requestRecord.requested_at || new Date().toISOString(),
+                    reviewed_by: callerRole === 'EMPLOYEE' ? null : (requestRecord.reviewedBy || requestRecord.reviewed_by || null),
+                    reviewed_at: callerRole === 'EMPLOYEE' ? null : (requestRecord.reviewedAt || requestRecord.reviewed_at || null),
+                    rejection_reason: callerRole === 'EMPLOYEE' ? null : (requestRecord.rejectionReason || requestRecord.rejection_reason || null),
+                    generated_content: requestRecord.generatedContent || requestRecord.generated_content || null,
+                    file_url: requestRecord.fileUrl || requestRecord.file_url || null,
+                };
+
+                const { data: savedRequest, error: saveError } = await adminClient
+                    .from('document_requests')
+                    .upsert(documentRequestPayload)
+                    .select('*')
+                    .maybeSingle();
+
+                if (saveError) throw saveError;
+
+                return new Response(JSON.stringify({ success: true, documentRequest: savedRequest }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });
             }

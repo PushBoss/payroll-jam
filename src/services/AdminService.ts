@@ -74,6 +74,7 @@ export const AdminService = {
       // Map Employees
       const employees: Employee[] = (data.employees || []).map((e: Record<string, unknown>) => ({
         ...e,
+        companyId: e.company_id as string | undefined,
         firstName: e.first_name,
         lastName: e.last_name,
         grossSalary: (e.pay_data as Record<string, unknown>)?.grossSalary ?? e.gross_salary,

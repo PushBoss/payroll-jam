@@ -242,6 +242,7 @@ export const EmployeeService = {
       const payData = getPayDataFromRow(e);
       return {
       id: e.id,
+      companyId: e.company_id,
       firstName: e.first_name,
       lastName: e.last_name,
       email: e.email,
@@ -439,6 +440,7 @@ export const EmployeeService = {
       return {
         employee: {
           id: row.id,
+          companyId: row.company_id,
           firstName: row.first_name,
           lastName: row.last_name,
           email: row.email,
