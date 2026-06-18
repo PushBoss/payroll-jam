@@ -206,7 +206,7 @@ export const CompanyService = {
     if (error) throw error;
   },
 
-  deleteCompany: async (companyId: string, confirmationName?: string) => {
+  deleteCompany: async (companyId: string, confirmationName?: string, options?: { deleteAuthUsers?: boolean }) => {
     if (!supabase) return false;
 
     const { data, error } = await supabase.functions.invoke('admin-handler', {
@@ -215,6 +215,7 @@ export const CompanyService = {
         payload: {
           companyId,
           confirmationName,
+          deleteAuthUsers: options?.deleteAuthUsers === true,
         },
       },
     });

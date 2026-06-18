@@ -1887,6 +1887,7 @@ serve(async (req: Request) => {
                 await assertSuperAdmin(adminClient, authUser);
                 const companyId = typeof payload?.companyId === 'string' ? payload.companyId : '';
                 const confirmationName = typeof payload?.confirmationName === 'string' ? payload.confirmationName.trim() : '';
+                const deleteAuthUsers = payload?.deleteAuthUsers === true;
 
                 if (!companyId) throw new Error('companyId is required');
 
@@ -1960,6 +1961,59 @@ serve(async (req: Request) => {
                     .eq('id', companyId);
                 if (companyDeleteError) throw companyDeleteError;
 
+                const authDeletionResults: Array<Record<string, unknown>> = [];
+                if (deleteAuthUsers) {
+                    for (const companyUser of (companyUsers || [])) {
+                        const authUserId = companyUser.auth_user_id || companyUser.id;
+                        const email = String(companyUser.email || '').trim().toLowerCase();
+                        const role = String(companyUser.role || '').toUpperCase();
+
+                        if (!authUserId) {
+                            authDeletionResults.push({ email, deleted: false, reason: 'missing auth user id' });
+                            continue;
+                        }
+                        if (authUserId === authUser.id) {
+                            authDeletionResults.push({ email, authUserId, deleted: false, reason: 'refused to delete current super admin session' });
+                            continue;
+                        }
+                        if (role === 'SUPER_ADMIN') {
+                            authDeletionResults.push({ email, authUserId, deleted: false, reason: 'refused to delete super admin identity' });
+                            continue;
+                        }
+
+                        const { count: otherMembershipCount, error: otherMembershipError } = await adminClient
+                            .from('account_members')
+                            .select('*', { count: 'exact', head: true })
+                            .eq('user_id', authUserId)
+                            .neq('account_id', companyId);
+                        if (otherMembershipError && !isIgnorableDeleteError(otherMembershipError)) throw otherMembershipError;
+                        if ((otherMembershipCount || 0) > 0) {
+                            authDeletionResults.push({ email, authUserId, deleted: false, reason: 'user has memberships in other accounts' });
+                            continue;
+                        }
+
+                        if (email) {
+                            const { count: employeeElsewhereCount, error: employeeElsewhereError } = await adminClient
+                                .from('employees')
+                                .select('*', { count: 'exact', head: true })
+                                .ilike('email', email)
+                                .neq('company_id', companyId);
+                            if (employeeElsewhereError && !isIgnorableDeleteError(employeeElsewhereError)) throw employeeElsewhereError;
+                            if ((employeeElsewhereCount || 0) > 0) {
+                                authDeletionResults.push({ email, authUserId, deleted: false, reason: 'email is an employee in another company' });
+                                continue;
+                            }
+                        }
+
+                        const { error: authDeleteError } = await adminClient.auth.admin.deleteUser(authUserId);
+                        if (authDeleteError) {
+                            authDeletionResults.push({ email, authUserId, deleted: false, reason: authDeleteError.message || 'auth delete failed' });
+                        } else {
+                            authDeletionResults.push({ email, authUserId, deleted: true });
+                        }
+                    }
+                }
+
                 return new Response(JSON.stringify({
                     success: true,
                     company: { id: company.id, name: company.name },
@@ -1967,8 +2021,14 @@ serve(async (req: Request) => {
                     deletedProfileCount: deletedProfileCount || 0,
                     unlinkedClientCount: unlinkedClientCount || 0,
                     affectedUsers: companyUsers || [],
+                    authDeletionResults,
                     deletionResults,
-                    retained: ['auth.users identities', 'audit_logs', 'dimepay_ledger', 'dimepay_webhook_events'],
+                    retained: [
+                        ...(deleteAuthUsers ? [] : ['auth.users identities']),
+                        'audit_logs',
+                        'dimepay_ledger',
+                        'dimepay_webhook_events'
+                    ],
                 }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });

@@ -856,9 +856,13 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             return;
         }
 
+        const deleteAuthUsers = window.confirm(
+            `Also delete Supabase Auth login identities for users in ${tenant.companyName}?\n\nUse this for test accounts when you need to reuse the same email. Choose Cancel for real customers or shared employee accounts.`
+        );
+
         if (confirm(`Final confirmation: permanently delete ${tenant.companyName}? This action cannot be undone.`)) {
             try {
-                const success = await CompanyService.deleteCompany(id, confirmationName);
+                const success = await CompanyService.deleteCompany(id, confirmationName, { deleteAuthUsers });
                 if (success) {
                     setTenants(prev => prev.filter(t => t.id !== id));
                     toast.success("Tenant deleted from records");
