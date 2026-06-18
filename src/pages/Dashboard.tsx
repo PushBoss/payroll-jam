@@ -6,6 +6,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { useAuth } from '../context/AuthContext';
 import { getPendingInvitationsByEmail, acceptMultipleInvitations } from '../features/employees/inviteService';
 import { PendingInvitationsUI } from '../components/PendingInvitationsUI';
+import { getNextPayDateInfo, getS01AlertInfo } from '../utils/payrollSchedule';
 
 const checkedInvitationEmails = new Set<string>();
 
@@ -193,6 +194,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ employees, leaveRequests, 
     return { missingTRN, missingNIS, missingBank };
   }, [employees]);
 
+  const nextPayDate = useMemo(
+    () => getNextPayDateInfo(payRunHistory, companyData?.payFrequency),
+    [payRunHistory, companyData?.payFrequency]
+  );
+
+  const s01Alert = useMemo(
+    () => getS01AlertInfo(payRunHistory),
+    [payRunHistory]
+  );
+
   return (
     <div className="space-y-6">
       <PendingInvitationsUI 
@@ -235,13 +246,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ employees, leaveRequests, 
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-500">Next Pay Date</p>
-              <p className="text-3xl font-bold text-gray-900 mt-2">Feb 25</p>
+              <p className="text-3xl font-bold text-gray-900 mt-2">{nextPayDate.display}</p>
             </div>
             <div className="p-3 bg-jam-yellow/20 rounded-full">
               <Icons.Calendar className="w-6 h-6 text-yellow-700" />
             </div>
           </div>
-          <p className="text-xs text-gray-500 mt-3">Monthly Cycle</p>
+          <p className="text-xs text-gray-500 mt-3">{nextPayDate.cycleLabel}</p>
         </div>
 
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
@@ -427,11 +438,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ employees, leaveRequests, 
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           <h3 className="text-lg font-semibold text-gray-800 mb-4">Compliance Alerts</h3>
           <div className="space-y-4">
-            <div className="p-4 bg-yellow-50 border border-yellow-100 rounded-lg flex items-start">
-              <Icons.Alert className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+            <div className={`p-4 border rounded-lg flex items-start ${s01Alert.isOverdue ? 'bg-red-50 border-red-100' : 'bg-yellow-50 border-yellow-100'}`}>
+              <Icons.Alert className={`w-5 h-5 mt-0.5 flex-shrink-0 ${s01Alert.isOverdue ? 'text-red-600' : 'text-yellow-600'}`} />
               <div className="ml-3">
-                <h4 className="text-sm font-semibold text-yellow-800">SO1 Due</h4>
-                <p className="text-xs text-yellow-700 mt-1">Monthly statutory remittance (SO1) for January is due on Feb 14th.</p>
+                <h4 className={`text-sm font-semibold ${s01Alert.isOverdue ? 'text-red-800' : 'text-yellow-800'}`}>{s01Alert.title}</h4>
+                <p className={`text-xs mt-1 ${s01Alert.isOverdue ? 'text-red-700' : 'text-yellow-700'}`}>{s01Alert.message}</p>
               </div>
             </div>
             <div className="p-4 bg-green-50 border border-green-100 rounded-lg flex items-start">
