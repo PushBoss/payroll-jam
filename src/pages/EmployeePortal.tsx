@@ -108,6 +108,9 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
     const [contractRequested, setContractRequested] = useState(false);
     const [p24PreviewContent, setP24PreviewContent] = useState<string | null>(null);
     const [isLogTimeOpen, setIsLogTimeOpen] = useState(false);
+    const [isProfileChangeModalOpen, setIsProfileChangeModalOpen] = useState(false);
+    const [profileChangeDetails, setProfileChangeDetails] = useState('');
+    const [isSubmittingProfileChange, setIsSubmittingProfileChange] = useState(false);
     const [manualEntry, setManualEntry] = useState({
         date: toDateInputValue(new Date()),
         startTime: '09:00',
@@ -584,29 +587,45 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
         toast.success('Employment contract request sent to your employer.');
     };
 
-    const handleProfileChangeRequest = async () => {
+    const handleProfileChangeRequest = async (event?: React.FormEvent) => {
+        event?.preventDefault();
+
         if (!onSaveDocumentRequest) {
             toast.error('Profile change requests are not available right now.');
             return;
         }
 
-        const requestedChanges = window.prompt('What profile details should your employer update?');
-        if (!requestedChanges?.trim()) return;
+        const requestedChanges = profileChangeDetails.trim();
+        if (requestedChanges.length < 5) {
+            toast.error('Tell your employer what needs to change.');
+            return;
+        }
 
-        const request: DocumentRequest = {
-            id: `PROFILE-REQ-${employeeId}-${Date.now()}`,
-            companyId: companyData?.id,
-            employeeId,
-            employeeName,
-            templateId: 'PROFILE_CHANGE_REQUEST',
-            documentType: 'Profile Change Request',
-            purpose: requestedChanges.trim(),
-            status: 'PENDING',
-            requestedAt: new Date().toISOString(),
-        };
+        setIsSubmittingProfileChange(true);
 
-        await Promise.resolve(onSaveDocumentRequest(request));
-        toast.success('Profile change request sent to your employer.');
+        try {
+            const request: DocumentRequest = {
+                id: `PROFILE-REQ-${employeeId}-${Date.now()}`,
+                companyId: companyData?.id,
+                employeeId,
+                employeeName,
+                templateId: 'PROFILE_CHANGE_REQUEST',
+                documentType: 'Profile Change Request',
+                purpose: requestedChanges,
+                status: 'PENDING',
+                requestedAt: new Date().toISOString(),
+            };
+
+            await Promise.resolve(onSaveDocumentRequest(request));
+            toast.success('Profile change request sent to your employer.');
+            setProfileChangeDetails('');
+            setIsProfileChangeModalOpen(false);
+        } catch (error) {
+            console.error('Failed to submit profile change request:', error);
+            toast.error(error instanceof Error ? error.message : 'Failed to send profile change request.');
+        } finally {
+            setIsSubmittingProfileChange(false);
+        }
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1413,7 +1432,7 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                     
                     <div className="mt-8 pt-6 border-t border-gray-100 flex justify-end">
                          <button
-                            onClick={handleProfileChangeRequest}
+                            onClick={() => setIsProfileChangeModalOpen(true)}
                             disabled={Boolean(activeProfileChangeRequest)}
                             className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
                          >
@@ -1421,6 +1440,67 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                          </button>
                     </div>
                 </div>
+
+                {isProfileChangeModalOpen && (
+                    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4">
+                        <div className="w-full max-w-lg overflow-hidden rounded-xl bg-white shadow-2xl">
+                            <div className="flex items-start justify-between gap-4 border-b border-gray-100 bg-gray-50 p-5">
+                                <div>
+                                    <h3 className="text-lg font-bold text-gray-900">Request Profile Changes</h3>
+                                    <p className="mt-1 text-sm text-gray-500">
+                                        Tell your employer which details need to be updated.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsProfileChangeModalOpen(false)}
+                                    className="rounded-lg p-1 text-gray-400 hover:bg-white hover:text-gray-700"
+                                    aria-label="Close profile change request"
+                                >
+                                    <Icons.Close className="h-5 w-5" />
+                                </button>
+                            </div>
+
+                            <form onSubmit={handleProfileChangeRequest} className="space-y-4 p-5">
+                                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600">
+                                    Your company admin will review this before changes appear in your profile.
+                                </div>
+
+                                <div>
+                                    <label htmlFor="profile-change-details" className="mb-1 block text-sm font-medium text-gray-700">
+                                        Requested changes
+                                    </label>
+                                    <textarea
+                                        id="profile-change-details"
+                                        rows={5}
+                                        value={profileChangeDetails}
+                                        onChange={(event) => setProfileChangeDetails(event.target.value)}
+                                        className="w-full rounded-lg border border-gray-300 p-3 text-sm text-gray-900 focus:border-jam-orange focus:ring-2 focus:ring-jam-orange"
+                                        placeholder="Example: Please update my phone number to 876-555-0199 and correct my address..."
+                                        autoFocus
+                                    />
+                                </div>
+
+                                <div className="flex flex-col-reverse gap-3 border-t border-gray-100 pt-4 sm:flex-row sm:justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsProfileChangeModalOpen(false)}
+                                        className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={isSubmittingProfileChange || profileChangeDetails.trim().length < 5}
+                                        className="rounded-lg bg-jam-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                        {isSubmittingProfileChange ? 'Sending...' : 'Send Request'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                )}
             </div>
          );
     }
