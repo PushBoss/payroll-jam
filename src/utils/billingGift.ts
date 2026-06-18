@@ -29,6 +29,15 @@ export const toBillingGift = (value: unknown): BillingGift | undefined => {
     employeeLimitOverride: typeof value.employeeLimitOverride === 'string'
       ? value.employeeLimitOverride
       : undefined,
+    reason: typeof value.reason === 'string'
+      ? value.reason as BillingGift['reason']
+      : undefined,
+    tierGranted: typeof value.tierGranted === 'string'
+      ? value.tierGranted as BillingGift['tierGranted']
+      : undefined,
+    manualPaymentLabel: typeof value.manualPaymentLabel === 'string'
+      ? value.manualPaymentLabel
+      : undefined,
   };
 };
 

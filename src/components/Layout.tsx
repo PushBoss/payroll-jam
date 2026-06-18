@@ -21,6 +21,7 @@ interface LayoutProps {
   isOverLimit?: boolean; // Soft Lock Prop
   companyData?: CompanySettings;
   supportWidget?: GlobalConfig['supportWidget'];
+  onContactSupport?: () => void;
 }
 
 export const Layout: React.FC<LayoutProps> = ({
@@ -33,7 +34,8 @@ export const Layout: React.FC<LayoutProps> = ({
   subscriptionStatus = 'ACTIVE',
   isOverLimit = false,
   companyData,
-  supportWidget
+  supportWidget,
+  onContactSupport
 }) => {
   const { user, logout, stopImpersonation } = useAuth();
 
@@ -123,6 +125,14 @@ export const Layout: React.FC<LayoutProps> = ({
     e.preventDefault();
     void logout();
     window.location.href = '/login';
+  };
+
+  const handleNavClick = (path: string) => {
+    if (variant === 'portal' && path === 'contact-us' && onContactSupport) {
+      onContactSupport();
+      return;
+    }
+    onNavigate(path);
   };
 
   return (
@@ -237,7 +247,7 @@ export const Layout: React.FC<LayoutProps> = ({
             {navItems.map((item) => (
               <button
                 key={item.id}
-                onClick={() => onNavigate(item.id)}
+                onClick={() => handleNavClick(item.id)}
                 className={`w-full flex items-center px-4 py-3 rounded-lg transition-colors ${currentPath === item.id
                   ? 'bg-jam-orange text-jam-black font-semibold'
                   : 'text-gray-400 hover:bg-gray-900 hover:text-white'
@@ -295,7 +305,7 @@ export const Layout: React.FC<LayoutProps> = ({
                   <button
                     key={item.id}
                     onClick={() => {
-                      onNavigate(item.id);
+                      handleNavClick(item.id);
                       setIsMobileMenuOpen(false);
                     }}
                     className={`w-full flex items-center px-4 py-3 rounded-lg ${currentPath === item.id

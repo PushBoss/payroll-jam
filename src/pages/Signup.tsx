@@ -88,6 +88,15 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
     const paymentConfig = storage.getGlobalConfig();
     const payPalEnabled = false; // PayPal disabled - only using DimePay
     const dimePayEnabled = paymentConfig?.dimepay?.enabled ?? true; // DimePay enabled by default
+    const bankTransfer = paymentConfig?.bankTransfer || {
+        enabled: true,
+        bankName: 'NCB (National Commercial Bank)',
+        accountName: 'Balance Investments Limited',
+        accountNumber: '404286331',
+        accountType: 'Savings Account',
+        branch: 'UWI Branch',
+        instructions: 'After making the deposit, your account will be activated within 24 hours. You will receive a confirmation email once payment is verified.'
+    };
 
     const [formData, setFormData] = useState({
         name: '',
@@ -1001,7 +1010,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                     {/* Payment Method Selection */}
                                     <div className="mb-6">
                                         <label className="block text-sm font-medium text-gray-700 mb-3">Select Payment Method</label>
-                                        <div className={`grid ${resellerInviteToken ? 'grid-cols-3' : 'grid-cols-2'} gap-3`}>
+                                        <div className={`grid ${resellerInviteToken && bankTransfer.enabled !== false ? 'grid-cols-3' : 'grid-cols-1 sm:grid-cols-2'} gap-3`}>
                                             <button
                                                 type="button"
                                                 onClick={() => setPaymentMethod('card')}
@@ -1014,18 +1023,20 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                                 <span className="text-sm font-medium">Card Payment</span>
                                                 <span className="text-xs text-gray-500 mt-1">Visa, Mastercard</span>
                                             </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => setPaymentMethod('direct-deposit')}
-                                                className={`flex flex-col items-center justify-center p-4 border-2 rounded-lg transition-all ${paymentMethod === 'direct-deposit'
-                                                    ? 'border-jam-orange bg-orange-50'
-                                                    : 'border-gray-200 hover:border-gray-300'
-                                                    }`}
-                                            >
-                                                <Icons.Building className="w-6 h-6 mb-2" />
-                                                <span className="text-sm font-medium">Direct Deposit</span>
-                                                <span className="text-xs text-gray-500 mt-1">Bank Transfer</span>
-                                            </button>
+                                            {bankTransfer.enabled !== false && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setPaymentMethod('direct-deposit')}
+                                                    className={`flex flex-col items-center justify-center p-4 border-2 rounded-lg transition-all ${paymentMethod === 'direct-deposit'
+                                                        ? 'border-jam-orange bg-orange-50'
+                                                        : 'border-gray-200 hover:border-gray-300'
+                                                        }`}
+                                                >
+                                                    <Icons.Building className="w-6 h-6 mb-2" />
+                                                    <span className="text-sm font-medium">Direct Deposit</span>
+                                                    <span className="text-xs text-gray-500 mt-1">Bank Transfer</span>
+                                                </button>
+                                            )}
                                             {resellerInviteToken && (
                                                 <button
                                                     type="button"
@@ -1090,19 +1101,19 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                             </h3>
                                             <div className="space-y-3 text-sm text-gray-700">
                                                 <div>
-                                                    <span className="font-medium">Bank Name:</span> NCB (National Commercial Bank)
+                                                    <span className="font-medium">Bank Name:</span> {bankTransfer.bankName}
                                                 </div>
                                                 <div>
-                                                    <span className="font-medium">Account Name:</span> Balance Investments Limited
+                                                    <span className="font-medium">Account Name:</span> {bankTransfer.accountName}
                                                 </div>
                                                 <div>
-                                                    <span className="font-medium">Account Number:</span> 404286331
+                                                    <span className="font-medium">Account Number:</span> {bankTransfer.accountNumber}
                                                 </div>
                                                 <div>
-                                                    <span className="font-medium">Account Type:</span> Savings Account
+                                                    <span className="font-medium">Account Type:</span> {bankTransfer.accountType || 'Savings Account'}
                                                 </div>
                                                 <div>
-                                                    <span className="font-medium">Branch:</span> UWI Branch
+                                                    <span className="font-medium">Branch:</span> {bankTransfer.branch || 'UWI Branch'}
                                                 </div>
                                                 <div>
                                                     <span className="font-medium">Amount:</span> JMD ${pricing.total.toLocaleString()}
@@ -1113,8 +1124,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                             </div>
                                             <div className="mt-4 p-3 bg-white rounded border border-blue-100">
                                                 <p className="text-xs text-gray-600">
-                                                    <strong>Note:</strong> After making the deposit, your account will be activated within 24 hours.
-                                                    You'll receive a confirmation email once payment is verified.
+                                                    <strong>Note:</strong> {bankTransfer.instructions || 'After making the deposit, your account will be activated within 24 hours. You will receive a confirmation email once payment is verified.'}
                                                 </p>
                                             </div>
                                             <button

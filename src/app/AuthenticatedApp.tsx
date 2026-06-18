@@ -1,8 +1,9 @@
-import React, { Suspense, useEffect, useMemo } from 'react';
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import { Toaster, toast } from 'sonner';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Layout } from '../components/Layout';
 import { CookieConsent } from '../components/CookieConsent';
+import { ContactSupportModal } from '../components/ContactSupportModal';
 import { User, Role } from '../core/types';
 import { getFeatureUpgradeMessage, hasFeatureAccess } from '../utils/featureAccess';
 import { AppLoadingFallback } from './AppLoadingFallback';
@@ -47,6 +48,7 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
   appData,
 }) => {
   const navigate = (path: string) => navigateTo(path as AppRoute);
+  const [isContactSupportOpen, setIsContactSupportOpen] = useState(false);
   const navigateWithEditRun = (path: string, params?: { editRunId?: string }) =>
     navigateTo(path as AppRoute, params);
 
@@ -232,6 +234,7 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
             onRequestLeave={appData.handleSaveLeaveRequest}
             payRunHistory={appData.payRunHistory}
             timesheets={appData.timesheets}
+            templates={appData.templates}
             companyData={appData.companyData || undefined}
             onUpdateEmployee={appData.handleUpdateEmployee}
             onClockIn={appData.handleClockAttendance}
@@ -249,6 +252,7 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
             onRequestLeave={appData.handleSaveLeaveRequest}
             payRunHistory={appData.payRunHistory}
             timesheets={appData.timesheets}
+            templates={appData.templates}
             companyData={appData.companyData || undefined}
             onUpdateEmployee={appData.handleUpdateEmployee}
             onClockIn={appData.handleClockAttendance}
@@ -265,6 +269,7 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
             leaveRequests={appData.leaveRequests}
             onRequestLeave={appData.handleSaveLeaveRequest}
             timesheets={appData.timesheets}
+            templates={appData.templates}
             companyData={appData.companyData || undefined}
             onUpdateEmployee={appData.handleUpdateEmployee}
             onClockIn={appData.handleClockAttendance}
@@ -282,6 +287,7 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
             onRequestLeave={appData.handleSaveLeaveRequest}
             payRunHistory={appData.payRunHistory}
             timesheets={appData.timesheets}
+            templates={appData.templates}
             companyData={appData.companyData || undefined}
             onUpdateEmployee={appData.handleUpdateEmployee}
             onClockIn={appData.handleClockAttendance}
@@ -299,6 +305,7 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
             onRequestLeave={appData.handleSaveLeaveRequest}
             payRunHistory={appData.payRunHistory}
             timesheets={appData.timesheets}
+            templates={appData.templates}
             companyData={appData.companyData || undefined}
             onUpdateEmployee={appData.handleUpdateEmployee}
             onClockIn={appData.handleClockAttendance}
@@ -316,6 +323,7 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
             onRequestLeave={appData.handleSaveLeaveRequest}
             payRunHistory={appData.payRunHistory}
             timesheets={appData.timesheets}
+            templates={appData.templates}
             companyData={appData.companyData || undefined}
             onUpdateEmployee={appData.handleUpdateEmployee}
             onClockIn={appData.handleClockAttendance}
@@ -363,11 +371,19 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
         systemBanner={appData.globalConfig?.systemBanner}
         companyData={appData.companyData || undefined}
         supportWidget={appData.globalConfig?.supportWidget}
+        onContactSupport={() => setIsContactSupportOpen(true)}
         subscriptionStatus={appData.companyData?.subscriptionStatus}
         isOverLimit={appData.subscription.isOverLimit}
       >
         <Toaster richColors position="top-right" />
         <Suspense fallback={<AppLoadingFallback />}>{renderPage()}</Suspense>
+        {isContactSupportOpen && (
+          <ContactSupportModal
+            user={user}
+            companyData={appData.companyData || undefined}
+            onClose={() => setIsContactSupportOpen(false)}
+          />
+        )}
         <CookieConsent />
       </Layout>
     </ErrorBoundary>

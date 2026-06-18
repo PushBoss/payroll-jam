@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Icons } from '../components/Icons';
 import { DocumentTemplate, TemplateCategory, DOCUMENT_PLACEHOLDERS, Employee, CompanySettings } from '../core/types';
 
@@ -9,6 +9,43 @@ interface DocumentsProps {
   companyData: CompanySettings;
   onUpdateTemplates: (templates: DocumentTemplate[]) => void;
 }
+
+const DEFAULT_EMPLOYEE_TEMPLATES: DocumentTemplate[] = [
+  {
+    id: 'DOC-EMPLOYEE-JOB-LETTER',
+    name: 'Employee Job Letter',
+    category: TemplateCategory.JOB_LETTER,
+    content: `{{currentDate}}
+
+To Whom It May Concern,
+
+This letter confirms that {{firstName}} {{lastName}} is employed by {{companyName}} as {{role}}.
+
+Employment started on {{hireDate}}. Current gross salary is {{grossSalary}}.
+
+This letter is issued upon employee request.
+
+Sincerely,
+{{companyName}}`,
+    lastModified: new Date().toISOString().split('T')[0],
+  },
+  {
+    id: 'DOC-EMPLOYEE-CONTRACT',
+    name: 'Employee Contract',
+    category: TemplateCategory.CONTRACT,
+    content: `EMPLOYMENT CONTRACT
+
+This employment contract confirms the employment arrangement between {{companyName}} and {{firstName}} {{lastName}}.
+
+Role: {{role}}
+Start Date: {{hireDate}}
+Gross Salary: {{grossSalary}}
+
+Additional terms should be completed by HR before issuing this document.`,
+    lastModified: new Date().toISOString().split('T')[0],
+    requiresApproval: true,
+  },
+];
 
 export const Documents: React.FC<DocumentsProps> = ({ templates, employees, companyData, onUpdateTemplates }) => {
   const [activeTab, setActiveTab] = useState<'list' | 'create' | 'generate'>('list');
@@ -24,6 +61,16 @@ export const Documents: React.FC<DocumentsProps> = ({ templates, employees, comp
   const [editorName, setEditorName] = useState('');
   const [editorCategory, setEditorCategory] = useState<TemplateCategory>(TemplateCategory.LETTER);
   const [editorContent, setEditorContent] = useState('');
+
+  useEffect(() => {
+    const missingDefaults = DEFAULT_EMPLOYEE_TEMPLATES.filter((defaultTemplate) => (
+      !templates.some((template) => template.id === defaultTemplate.id || template.name.toLowerCase() === defaultTemplate.name.toLowerCase())
+    ));
+
+    if (missingDefaults.length > 0) {
+      onUpdateTemplates([...templates, ...missingDefaults]);
+    }
+  }, [templates, onUpdateTemplates]);
 
   const handleApproveRequest = (requestId: string) => {
     setPendingRequests(prev => prev.map(req => 
@@ -102,11 +149,11 @@ export const Documents: React.FC<DocumentsProps> = ({ templates, employees, comp
       '{{lastName}}': emp.lastName,
       '{{trn}}': emp.trn,
       '{{grossSalary}}': `$${emp.grossSalary.toLocaleString()}`,
-      '{{role}}': emp.role,
+      '{{role}}': emp.jobTitle || String(emp.role),
       '{{hireDate}}': emp.hireDate,
       '{{companyName}}': companyData.name,
       '{{currentDate}}': new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
-      '{{address}}': '123 Street, Kingston' // Mock address as it's not fully in Employee type yet
+      '{{address}}': emp.address || 'Address not provided'
     };
 
     Object.keys(replacements).forEach(key => {

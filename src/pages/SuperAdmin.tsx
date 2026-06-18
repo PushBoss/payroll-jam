@@ -76,6 +76,15 @@ const DEFAULT_PAYMENT_CONFIG: GlobalConfig = {
         position: 'bottom-right',
         customCss: ''
     },
+    bankTransfer: {
+        enabled: true,
+        bankName: 'NCB (National Commercial Bank)',
+        accountName: 'Balance Investments Limited',
+        accountNumber: '404286331',
+        accountType: 'Savings Account',
+        branch: 'UWI Branch',
+        instructions: 'After making the deposit, your account will be activated within 24 hours. Use the signup email as the payment reference.'
+    },
     emailjs: {
         serviceId: '',
         templateId: '',
@@ -293,6 +302,8 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     const [giftingTenant, setGiftingTenant] = useState<ResellerClient | null>(null);
     const [giftMonths, setGiftMonths] = useState(1);
     const [giftNote, setGiftNote] = useState('');
+    const [manualPaymentReason, setManualPaymentReason] = useState<'FREE_GIFT' | 'BANK_TRANSFER' | 'CARD_PAYMENT' | 'DIFFICULTY_UPGRADING'>('FREE_GIFT');
+    const [manualPaymentPlan, setManualPaymentPlan] = useState<ResellerClient['plan']>('Starter');
     const [isGiftingAccess, setIsGiftingAccess] = useState(false);
 
     // Super Admin User State
@@ -835,6 +846,8 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         setGiftingTenant(null);
         setGiftMonths(1);
         setGiftNote('');
+        setManualPaymentReason('FREE_GIFT');
+        setManualPaymentPlan('Starter');
         setIsGiftingAccess(false);
     };
 
@@ -851,6 +864,14 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                         companyId: giftingTenant.id,
                         months: giftMonths,
                         note: giftNote.trim(),
+                        reason: manualPaymentReason,
+                        plan: manualPaymentPlan,
+                        manualPaymentLabel: {
+                            FREE_GIFT: 'Free Gift',
+                            BANK_TRANSFER: 'Bank Transfer',
+                            CARD_PAYMENT: 'Card Payment',
+                            DIFFICULTY_UPGRADING: 'Difficulty Upgrading',
+                        }[manualPaymentReason],
                     },
                 },
             });
@@ -862,6 +883,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 tenant.id === giftingTenant.id
                     ? {
                         ...tenant,
+                        plan: manualPaymentPlan,
                         billingGift: updatedCompany?.billingGift ?? tenant.billingGift,
                         hasActiveBillingGift: updatedCompany?.hasActiveBillingGift ?? true,
                     }
@@ -872,13 +894,13 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 { id: 'sys', name: 'Super Admin', email: 'sys', role: Role.SUPER_ADMIN },
                 'UPDATE',
                 'Company',
-                `Gifted ${giftMonths} free month${giftMonths === 1 ? '' : 's'} to tenant: ${giftingTenant.companyName}`
+                `Applied manual payment access for ${giftMonths} month${giftMonths === 1 ? '' : 's'} to tenant: ${giftingTenant.companyName}`
             );
-            toast.success(`Gifted ${giftMonths} free month${giftMonths === 1 ? '' : 's'} to ${giftingTenant.companyName}`);
+            toast.success(`Applied ${giftMonths} month${giftMonths === 1 ? '' : 's'} of ${manualPaymentPlan} access to ${giftingTenant.companyName}`);
             closeGiftModal();
         } catch (error: any) {
-            console.error('Error gifting free months:', error);
-            toast.error(error.message || 'Failed to gift free months');
+            console.error('Error applying manual payment access:', error);
+            toast.error(error.message || 'Failed to apply manual payment access');
             setIsGiftingAccess(false);
         }
     };
@@ -1630,10 +1652,12 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                                         setGiftingTenant(tenant);
                                                         setGiftMonths(1);
                                                         setGiftNote('');
+                                                        setManualPaymentReason('FREE_GIFT');
+                                                        setManualPaymentPlan(tenant.plan === 'Free' ? 'Starter' : tenant.plan);
                                                     }}
                                                     className="text-amber-600 hover:text-amber-700 text-xs font-bold uppercase"
                                                 >
-                                                    {tenant.hasActiveBillingGift ? 'Extend Gift' : 'Gift Month'}
+                                                    Manual Payment
                                                 </button>
                                                 <button onClick={() => handleSuspend(tenant.id)} className="text-gray-500 hover:text-gray-900 text-xs font-bold uppercase">
                                                     {tenant.status === 'ACTIVE' ? 'Suspend' : 'Activate'}
@@ -2662,6 +2686,88 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     </div>
                 </div>
 
+                {/* Bank Transfer Configuration */}
+                <div className="mb-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <div className="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 className="text-sm font-bold text-gray-900">Bank Transfer Details</h3>
+                            <p className="text-xs text-gray-500">Shown to clients who choose bank transfer during signup.</p>
+                        </div>
+                        <label className="flex items-center gap-2 text-xs font-bold uppercase text-gray-500">
+                            <input
+                                type="checkbox"
+                                checked={paymentConfig.bankTransfer?.enabled ?? true}
+                                onChange={(e) => setPaymentConfig({
+                                    ...paymentConfig,
+                                    bankTransfer: {
+                                        enabled: e.target.checked,
+                                        bankName: paymentConfig.bankTransfer?.bankName || 'NCB (National Commercial Bank)',
+                                        accountName: paymentConfig.bankTransfer?.accountName || 'Balance Investments Limited',
+                                        accountNumber: paymentConfig.bankTransfer?.accountNumber || '404286331',
+                                        accountType: paymentConfig.bankTransfer?.accountType || 'Savings Account',
+                                        branch: paymentConfig.bankTransfer?.branch || 'UWI Branch',
+                                        instructions: paymentConfig.bankTransfer?.instructions || ''
+                                    }
+                                })}
+                                className="h-4 w-4 text-jam-orange focus:ring-jam-orange"
+                            />
+                            Enabled
+                        </label>
+                    </div>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        {[
+                            ['Bank Name', 'bankName', 'NCB (National Commercial Bank)'],
+                            ['Account Name', 'accountName', 'Balance Investments Limited'],
+                            ['Account Number', 'accountNumber', '404286331'],
+                            ['Account Type', 'accountType', 'Savings Account'],
+                            ['Branch', 'branch', 'UWI Branch'],
+                        ].map(([label, key, fallback]) => (
+                            <div key={key}>
+                                <label className="block text-xs font-bold text-gray-600 uppercase mb-1">{label}</label>
+                                <input
+                                    type="text"
+                                    value={(paymentConfig.bankTransfer as any)?.[key] || ''}
+                                    onChange={(e) => setPaymentConfig({
+                                        ...paymentConfig,
+                                        bankTransfer: {
+                                            enabled: paymentConfig.bankTransfer?.enabled ?? true,
+                                            bankName: paymentConfig.bankTransfer?.bankName || 'NCB (National Commercial Bank)',
+                                            accountName: paymentConfig.bankTransfer?.accountName || 'Balance Investments Limited',
+                                            accountNumber: paymentConfig.bankTransfer?.accountNumber || '404286331',
+                                            accountType: paymentConfig.bankTransfer?.accountType || 'Savings Account',
+                                            branch: paymentConfig.bankTransfer?.branch || 'UWI Branch',
+                                            instructions: paymentConfig.bankTransfer?.instructions || '',
+                                            [key]: e.target.value || fallback,
+                                        }
+                                    })}
+                                    className="w-full border border-gray-300 rounded p-2 text-sm"
+                                />
+                            </div>
+                        ))}
+                        <div className="md:col-span-2">
+                            <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Instructions</label>
+                            <textarea
+                                rows={3}
+                                value={paymentConfig.bankTransfer?.instructions || ''}
+                                onChange={(e) => setPaymentConfig({
+                                    ...paymentConfig,
+                                    bankTransfer: {
+                                        enabled: paymentConfig.bankTransfer?.enabled ?? true,
+                                        bankName: paymentConfig.bankTransfer?.bankName || 'NCB (National Commercial Bank)',
+                                        accountName: paymentConfig.bankTransfer?.accountName || 'Balance Investments Limited',
+                                        accountNumber: paymentConfig.bankTransfer?.accountNumber || '404286331',
+                                        accountType: paymentConfig.bankTransfer?.accountType || 'Savings Account',
+                                        branch: paymentConfig.bankTransfer?.branch || 'UWI Branch',
+                                        instructions: e.target.value
+                                    }
+                                })}
+                                placeholder="After making the deposit, your account will be activated within 24 hours."
+                                className="w-full border border-gray-300 rounded p-2 text-sm"
+                            />
+                        </div>
+                    </div>
+                </div>
+
                 {/* Growth Analytics Configuration */}
                 <div className="mb-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                     <div className="flex justify-between items-start mb-4">
@@ -3507,9 +3613,9 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     <div className="w-full max-w-lg overflow-hidden rounded-xl bg-white shadow-2xl animate-scale-in">
                         <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 p-6">
                             <div>
-                                <h3 className="text-xl font-bold text-gray-900">Gift Free Months</h3>
+                                <h3 className="text-xl font-bold text-gray-900">Manual Payment</h3>
                                 <p className="mt-1 text-sm text-gray-500">
-                                    Temporarily unlock payroll and employee-limit gating for {giftingTenant.companyName}.
+                                    Record a support-approved payment or access override for {giftingTenant.companyName}.
                                 </p>
                             </div>
                             <button onClick={closeGiftModal} className="text-gray-400 hover:text-gray-600">
@@ -3518,10 +3624,37 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                         </div>
                         <form onSubmit={handleGiftMonths} className="space-y-5 p-6">
                             <div className="rounded-lg border border-amber-100 bg-amber-50 p-4 text-sm text-amber-900">
-                                The gifted window keeps the tenant on their current plan, but temporarily treats billing as active and lifts the employee cap.
+                                This applies a temporary active billing window, records the reason, and can move the tenant to the selected tier.
                             </div>
                             <div>
-                                <label className="mb-1 block text-xs font-bold uppercase text-gray-500">Months To Gift</label>
+                                <label className="mb-1 block text-xs font-bold uppercase text-gray-500">Support Action</label>
+                                <select
+                                    className="w-full rounded border border-gray-300 px-3 py-2"
+                                    value={manualPaymentReason}
+                                    onChange={(event) => setManualPaymentReason(event.target.value as typeof manualPaymentReason)}
+                                >
+                                    <option value="FREE_GIFT">Free Gift</option>
+                                    <option value="BANK_TRANSFER">Bank Transfer</option>
+                                    <option value="CARD_PAYMENT">Card Payment</option>
+                                    <option value="DIFFICULTY_UPGRADING">Difficulty Upgrading</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="mb-1 block text-xs font-bold uppercase text-gray-500">Tier To Grant</label>
+                                <select
+                                    className="w-full rounded border border-gray-300 px-3 py-2"
+                                    value={manualPaymentPlan}
+                                    onChange={(event) => setManualPaymentPlan(event.target.value as ResellerClient['plan'])}
+                                >
+                                    <option value="Free">Free</option>
+                                    <option value="Starter">Starter</option>
+                                    <option value="Pro">Pro</option>
+                                    <option value="Enterprise">Enterprise</option>
+                                    <option value="Reseller">Reseller</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="mb-1 block text-xs font-bold uppercase text-gray-500">Months To Apply</label>
                                 <input
                                     type="number"
                                     min={1}
@@ -3531,14 +3664,14 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                     value={giftMonths}
                                     onChange={(event) => setGiftMonths(Math.min(12, Math.max(1, Number(event.target.value) || 1)))}
                                 />
-                                <p className="mt-1 text-xs text-gray-500">Each gift extends from today, or from the end of an existing active gift.</p>
+                                <p className="mt-1 text-xs text-gray-500">Each window extends from today, or from the end of an existing active manual access period.</p>
                             </div>
                             <div>
                                 <label className="mb-1 block text-xs font-bold uppercase text-gray-500">Internal Note</label>
                                 <textarea
                                     rows={3}
                                     className="w-full rounded border border-gray-300 px-3 py-2"
-                                    placeholder="Optional note for why this grace period was granted"
+                                    placeholder="Bank transfer reference, card-payment note, or why support applied this access."
                                     value={giftNote}
                                     onChange={(event) => setGiftNote(event.target.value)}
                                 />
@@ -3552,7 +3685,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                     disabled={isGiftingAccess}
                                     className="rounded bg-jam-orange px-6 py-2 font-bold text-jam-black hover:bg-yellow-500 disabled:cursor-not-allowed disabled:opacity-60"
                                 >
-                                    {isGiftingAccess ? 'Applying...' : 'Apply Gift'}
+                                    {isGiftingAccess ? 'Applying...' : 'Apply Manual Payment'}
                                 </button>
                             </div>
                         </form>

@@ -334,6 +334,9 @@ export interface BillingGift {
   monthsGranted: number;
   note?: string;
   employeeLimitOverride?: string;
+  reason?: 'FREE_GIFT' | 'BANK_TRANSFER' | 'CARD_PAYMENT' | 'DIFFICULTY_UPGRADING';
+  tierGranted?: PlanLabel;
+  manualPaymentLabel?: string;
 }
 
 export interface ChatMessage {
@@ -521,6 +524,15 @@ export interface GlobalConfig {
     whatsappUrl: string;
     position: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
     customCss?: string;
+  };
+  bankTransfer?: {
+    enabled: boolean;
+    bankName: string;
+    accountName: string;
+    accountNumber: string;
+    accountType?: string;
+    branch?: string;
+    instructions?: string;
   };
   emailjs?: {
     serviceId: string;

@@ -1,10 +1,10 @@
 
 import React, { useState, useMemo } from 'react';
 import { Icons } from '../components/Icons';
-import { User, PayRunLineItem, LeaveType, WeeklyTimesheet, TimeEntry, LeaveRequest, Employee, PayRun, CompanySettings } from '../core/types';
+import { User, PayRunLineItem, LeaveType, WeeklyTimesheet, TimeEntry, LeaveRequest, Employee, PayRun, CompanySettings, DocumentTemplate, TemplateCategory } from '../core/types';
 import { PayslipView } from '../components/PayslipView';
 import { MultiDateCalendar } from '../components/MultiDateCalendar';
-import { generateP24CSV } from '../utils/exportHelpers';
+import { downloadFile, generateP24CSV } from '../utils/exportHelpers';
 import { decodeClockInPayload, getCompanyLocations, normalizeAttendancePassCode } from '../utils/attendance';
 import { toast } from 'sonner';
 import { AttendanceClockPayload, AttendanceClockResult } from '../services/PayrollService';
@@ -17,6 +17,7 @@ interface PortalProps {
     onRequestLeave: (req: LeaveRequest) => void;
     payRunHistory?: PayRun[];
     timesheets?: WeeklyTimesheet[];
+    templates?: DocumentTemplate[];
     companyData?: CompanySettings;
     onUpdateEmployee?: (emp: Employee) => void | boolean | Promise<void | boolean>;
     onClockIn?: (payload: AttendanceClockPayload) => Promise<AttendanceClockResult | false>;
@@ -68,7 +69,30 @@ const summarizeEntries = (entries: TimeEntry[]) => entries.reduce(
 
 const isOpenAttendanceEntry = (entry: TimeEntry) => Boolean(entry.startTime && !entry.endTime);
 
-export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = 'home', leaveRequests, onRequestLeave, payRunHistory = [], timesheets = [], companyData, onUpdateEmployee, onClockIn, onSaveTimesheet, onNavigate }) => {
+const DEFAULT_JOB_LETTER_TEMPLATE = `{{currentDate}}
+
+To Whom It May Concern,
+
+This letter confirms that {{firstName}} {{lastName}} is employed by {{companyName}} as {{role}}.
+
+Employment started on {{hireDate}}. Current gross salary is {{grossSalary}}.
+
+This letter is issued upon employee request.
+
+Sincerely,
+{{companyName}}`;
+
+const DEFAULT_CONTRACT_TEMPLATE = `EMPLOYMENT CONTRACT
+
+This employment contract confirms the employment arrangement between {{companyName}} and {{firstName}} {{lastName}}.
+
+Role: {{role}}
+Start Date: {{hireDate}}
+Gross Salary: {{grossSalary}}
+
+Additional terms are maintained by the employer in the company document center.`;
+
+export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = 'home', leaveRequests, onRequestLeave, payRunHistory = [], timesheets = [], templates = [], companyData, onUpdateEmployee, onClockIn, onSaveTimesheet, onNavigate }) => {
     // Check if company plan allows Employee Portal access
     const hasPortalAccess = companyData && 
         (companyData.plan === 'Starter' || 
@@ -79,6 +103,15 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
     const [jobLetterRequest, setJobLetterRequest] = useState(false);
     const [uploadingDocument, setUploadingDocument] = useState(false);
     const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+    const [contractRequested, setContractRequested] = useState(false);
+    const [p24PreviewContent, setP24PreviewContent] = useState<string | null>(null);
+    const [isLogTimeOpen, setIsLogTimeOpen] = useState(false);
+    const [manualEntry, setManualEntry] = useState({
+        date: toDateInputValue(new Date()),
+        startTime: '09:00',
+        endTime: '17:00',
+        breakDuration: 60,
+    });
     
     // Leave State
     const [leaveType, setLeaveType] = useState<LeaveType>(LeaveType.VACATION);
@@ -287,12 +320,182 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
         onSaveTimesheet?.({...currentWeek, status: 'SUBMITTED'});
     };
 
-    const handleDownloadP24 = () => {
-        if (companyData) {
-            generateP24CSV(companyData, payRunHistory, employee, user);
-        } else {
-            alert("Company data is unavailable for P24 generation.");
+    const handleManualEntryChange = <K extends keyof typeof manualEntry>(key: K, value: typeof manualEntry[K]) => {
+        setManualEntry((entry) => ({ ...entry, [key]: value }));
+    };
+
+    const handleLogManualTime = async () => {
+        if (!onSaveTimesheet) {
+            toast.error('Timesheet saving is not available right now.');
+            return;
         }
+
+        const entryHours = calculateEntryHours(
+            manualEntry.startTime,
+            manualEntry.endTime,
+            Number(manualEntry.breakDuration) || 0
+        );
+
+        if (entryHours <= 0) {
+            toast.error('Enter a valid start time, end time, and break duration.');
+            return;
+        }
+
+        const { weekStartDate, weekEndDate } = getWeekBounds(new Date(`${manualEntry.date}T12:00:00`));
+        const existingTimesheet = employeeTimesheets.find((timesheet) => timesheet.weekStartDate === weekStartDate);
+        const newEntry: TimeEntry = {
+            id: `ENTRY-EMP-MANUAL-${Date.now()}`,
+            date: manualEntry.date,
+            startTime: manualEntry.startTime,
+            endTime: manualEntry.endTime,
+            breakDuration: Number(manualEntry.breakDuration) || 0,
+            totalHours: entryHours,
+            isOvertime: entryHours > 8,
+            source: 'MANUAL',
+        };
+
+        const entries = [...(existingTimesheet?.entries || []), newEntry];
+        const totals = summarizeEntries(entries);
+        const timesheet: WeeklyTimesheet = {
+            id: existingTimesheet?.id || `TS-EMP-MANUAL-${employeeId}-${weekStartDate}`,
+            employeeId,
+            employeeName,
+            companyId: companyData?.id || existingTimesheet?.companyId,
+            weekStartDate,
+            weekEndDate,
+            status: 'SUBMITTED',
+            totalRegularHours: totals.regular,
+            totalOvertimeHours: totals.overtime,
+            entries,
+            source: 'MANUAL',
+            locationId: existingTimesheet?.locationId,
+            locationName: existingTimesheet?.locationName,
+            clockInAt: existingTimesheet?.clockInAt,
+        };
+
+        const result = await Promise.resolve(onSaveTimesheet(timesheet));
+        if (result !== false) {
+            toast.success('Manual time submitted for approval.');
+            setIsLogTimeOpen(false);
+            setManualEntry({
+                date: toDateInputValue(new Date()),
+                startTime: '09:00',
+                endTime: '17:00',
+                breakDuration: 60,
+            });
+        }
+    };
+
+    const getSafeCompanyData = (): CompanySettings => ({
+        id: companyData?.id,
+        name: companyData?.name || 'Your Company',
+        email: companyData?.email || '',
+        trn: companyData?.trn || '',
+        address: companyData?.address || 'Company address unavailable',
+        phone: companyData?.phone || '',
+        bankName: companyData?.bankName || '',
+        accountNumber: companyData?.accountNumber || '',
+        branchCode: companyData?.branchCode || '',
+        plan: companyData?.plan,
+    });
+
+    const getP24Year = () => {
+        const latestRun = [...payRunHistory]
+            .sort((a, b) => new Date(b.payDate || b.periodStart).getTime() - new Date(a.payDate || a.periodStart).getTime())[0];
+        return latestRun?.periodStart?.slice(0, 4) || String(new Date().getFullYear());
+    };
+
+    const buildP24Content = (year = getP24Year()) => {
+        const name = employee ? `${employee.firstName} ${employee.lastName}` : user.name;
+        const empId = employee ? employee.id : user.id;
+        const relevantRuns = payRunHistory.filter(run => run.periodStart.startsWith(year));
+        const stats = relevantRuns.reduce((summary, run) => {
+            const line = run.lineItems.find(li => li.employeeId === empId || li.employeeName === name);
+            if (!line) return summary;
+            return {
+                gross: summary.gross + line.grossPay + line.additions,
+                nis: summary.nis + line.nis,
+                nht: summary.nht + line.nht,
+                edTax: summary.edTax + line.edTax,
+                paye: summary.paye + line.paye,
+            };
+        }, { gross: 0, nis: 0, nht: 0, edTax: 0, paye: 0 });
+
+        if (stats.gross === 0) {
+            toast.error('No earnings found for this tax year.');
+            return null;
+        }
+
+        const company = getSafeCompanyData();
+        const netPay = stats.gross - (stats.nis + stats.nht + stats.edTax + stats.paye);
+        return [
+            `P24 CERTIFICATE OF PAY AND TAX DEDUCTED - ${year}`,
+            `Employer: ${company.name}`,
+            `Address: ${company.address.replace(/\n/g, ' ')}`,
+            '',
+            `Employee: ${name}`,
+            `TRN: ${employee?.trn || '000-000-000'}`,
+            `NIS: ${employee?.nis || 'A000000'}`,
+            '',
+            'ITEM,AMOUNT',
+            `Total Gross Emoluments,$${stats.gross.toFixed(2)}`,
+            `National Insurance (NIS),$${stats.nis.toFixed(2)}`,
+            `National Housing Trust (NHT),$${stats.nht.toFixed(2)}`,
+            `Education Tax,$${stats.edTax.toFixed(2)}`,
+            `Income Tax (PAYE),$${stats.paye.toFixed(2)}`,
+            `Net Pay,$${netPay.toFixed(2)}`,
+        ].join('\n');
+    };
+
+    const handleDownloadP24 = () => {
+        const company = getSafeCompanyData();
+        generateP24CSV(company, payRunHistory, employee, user, getP24Year());
+    };
+
+    const handleViewP24 = () => {
+        const content = buildP24Content();
+        if (content) setP24PreviewContent(content);
+    };
+
+    const fillDocumentTemplate = (content: string) => {
+        const replacements: Record<string, string> = {
+            '{{firstName}}': employee?.firstName || user.name.split(' ')[0] || user.name,
+            '{{lastName}}': employee?.lastName || user.name.split(' ').slice(1).join(' '),
+            '{{trn}}': employee?.trn || 'N/A',
+            '{{grossSalary}}': `$${(employee?.grossSalary || 0).toLocaleString()}`,
+            '{{role}}': employee?.jobTitle || 'Employee',
+            '{{hireDate}}': employee?.hireDate || employee?.joiningDate || 'N/A',
+            '{{companyName}}': companyData?.name || 'Your Company',
+            '{{currentDate}}': new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
+            '{{address}}': employee?.address || 'N/A',
+        };
+
+        return Object.entries(replacements).reduce((filled, [key, value]) => (
+            filled.replace(new RegExp(key, 'g'), value)
+        ), content);
+    };
+
+    const getTemplateByIntent = (intent: 'job-letter' | 'contract') => {
+        if (intent === 'job-letter') {
+            return templates.find((template) =>
+                template.category === TemplateCategory.JOB_LETTER ||
+                template.name.toLowerCase().includes('job letter') ||
+                template.name.toLowerCase().includes('employment letter')
+            );
+        }
+
+        return templates.find((template) =>
+            template.category === TemplateCategory.CONTRACT ||
+            template.name.toLowerCase().includes('contract')
+        );
+    };
+
+    const downloadEmployeeDocument = (intent: 'job-letter' | 'contract') => {
+        const template = getTemplateByIntent(intent);
+        const fallback = intent === 'job-letter' ? DEFAULT_JOB_LETTER_TEMPLATE : DEFAULT_CONTRACT_TEMPLATE;
+        const content = fillDocumentTemplate(template?.content || fallback);
+        const filename = `${intent === 'job-letter' ? 'Job_Letter' : 'Employment_Contract'}_${employeeName.replace(/\s+/g, '_')}.txt`;
+        downloadFile(filename, content, 'text/plain');
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -411,6 +614,44 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
         );
     }
 
+    if (p24PreviewContent) {
+        return (
+            <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 p-4">
+                <div className="w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-2xl">
+                    <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 p-4">
+                        <div>
+                            <h3 className="font-bold text-gray-900">P24 Preview</h3>
+                            <p className="text-xs text-gray-500">Review your annual income certificate before downloading.</p>
+                        </div>
+                        <button onClick={() => setP24PreviewContent(null)} className="text-gray-400 hover:text-gray-700">
+                            <Icons.Close className="h-5 w-5" />
+                        </button>
+                    </div>
+                    <pre className="max-h-[70vh] overflow-auto whitespace-pre-wrap bg-white p-6 text-sm leading-6 text-gray-800">
+                        {p24PreviewContent}
+                    </pre>
+                    <div className="flex justify-end gap-3 border-t border-gray-100 bg-gray-50 p-4">
+                        <button
+                            onClick={() => setP24PreviewContent(null)}
+                            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-white"
+                        >
+                            Close
+                        </button>
+                        <button
+                            onClick={() => {
+                                downloadFile(`P24_${employeeName.replace(/\s+/g, '_')}_${getP24Year()}.csv`, p24PreviewContent, 'text/csv');
+                                setP24PreviewContent(null);
+                            }}
+                            className="rounded-lg bg-jam-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+                        >
+                            Download CSV
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     if (view === 'clock-in') {
         const qrParam = new URLSearchParams(window.location.search).get('qr');
         const payload = decodeClockInPayload(qrParam);
@@ -516,12 +757,98 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                         <p className="text-gray-500 mt-1">Week of {currentWeek.weekStartDate}</p>
                     </div>
                     <div className="flex items-center gap-3">
+                        <button
+                            type="button"
+                            onClick={() => setIsLogTimeOpen(true)}
+                            className="flex items-center justify-center rounded-lg bg-jam-orange px-4 py-2 text-sm font-semibold text-jam-black hover:bg-yellow-500"
+                        >
+                            <Icons.Plus className="mr-2 h-4 w-4" />
+                            Log Hours
+                        </button>
                          <div className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2 shadow-sm sm:w-auto">
                             <p className="text-xs text-gray-500 uppercase font-bold">Total Hours</p>
                             <p className="text-xl font-bold text-jam-black">{currentWeek.totalRegularHours.toFixed(1)}</p>
                          </div>
                     </div>
                 </div>
+
+                {isLogTimeOpen && (
+                    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4">
+                        <div className="w-full max-w-xl overflow-hidden rounded-xl bg-white shadow-2xl">
+                            <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 p-4">
+                                <div>
+                                    <h3 className="font-bold text-gray-900">Log Hours</h3>
+                                    <p className="text-xs text-gray-500">Submit a manual time entry for manager approval.</p>
+                                </div>
+                                <button onClick={() => setIsLogTimeOpen(false)} className="text-gray-400 hover:text-gray-700">
+                                    <Icons.Close className="h-5 w-5" />
+                                </button>
+                            </div>
+                            <div className="space-y-4 p-6">
+                                <div>
+                                    <label className="mb-1 block text-xs font-bold uppercase text-gray-500">Work Date</label>
+                                    <input
+                                        type="date"
+                                        value={manualEntry.date}
+                                        onChange={(event) => handleManualEntryChange('date', event.target.value)}
+                                        className="w-full rounded-lg border border-gray-300 p-2 text-sm"
+                                    />
+                                </div>
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                                    <div>
+                                        <label className="mb-1 block text-xs font-bold uppercase text-gray-500">Start Time</label>
+                                        <input
+                                            type="time"
+                                            value={manualEntry.startTime}
+                                            onChange={(event) => handleManualEntryChange('startTime', event.target.value)}
+                                            className="w-full rounded-lg border border-gray-300 p-2 text-sm"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-1 block text-xs font-bold uppercase text-gray-500">End Time</label>
+                                        <input
+                                            type="time"
+                                            value={manualEntry.endTime}
+                                            onChange={(event) => handleManualEntryChange('endTime', event.target.value)}
+                                            className="w-full rounded-lg border border-gray-300 p-2 text-sm"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-1 block text-xs font-bold uppercase text-gray-500">Break (minutes)</label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="5"
+                                            value={manualEntry.breakDuration}
+                                            onChange={(event) => handleManualEntryChange('breakDuration', Number(event.target.value))}
+                                            className="w-full rounded-lg border border-gray-300 p-2 text-sm"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+                                    Total for this entry:{' '}
+                                    <span className="font-bold text-gray-900">
+                                        {calculateEntryHours(manualEntry.startTime, manualEntry.endTime, Number(manualEntry.breakDuration) || 0)} hours
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="flex justify-end gap-3 border-t border-gray-100 bg-gray-50 p-4">
+                                <button
+                                    onClick={() => setIsLogTimeOpen(false)}
+                                    className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-white"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleLogManualTime}
+                                    className="rounded-lg bg-jam-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+                                >
+                                    Submit Hours
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                      {/* Header */}
@@ -603,7 +930,7 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                         })}
                         {currentWeek.entries.length === 0 && (
                             <div className="p-8 text-center text-sm text-gray-500">
-                                No hours logged for this week yet. Use Clock In/Out to start a shift.
+                                No hours logged for this week yet. Use Clock In/Out or Log Hours to submit time.
                             </div>
                         )}
                     </div>
@@ -800,15 +1127,25 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                             <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center animate-fade-in">
                                 <Icons.Check className="w-6 h-6 text-green-600 mx-auto mb-2" />
                                 <p className="text-sm font-bold text-green-800">Letter Generated!</p>
-                                <p className="text-xs text-green-600 mt-1">Sent to {user.email}</p>
-                                <button onClick={() => setJobLetterRequest(false)} className="mt-3 text-xs underline text-green-800">Reset</button>
+                                <p className="text-xs text-green-600 mt-1">Ready to download from your company template.</p>
+                                <div className="mt-3 flex gap-2">
+                                    <button onClick={() => downloadEmployeeDocument('job-letter')} className="flex-1 rounded-lg bg-green-600 px-3 py-2 text-xs font-bold text-white hover:bg-green-700">
+                                        Download TXT
+                                    </button>
+                                    <button onClick={() => setJobLetterRequest(false)} className="flex-1 rounded-lg border border-green-200 px-3 py-2 text-xs font-bold text-green-800 hover:bg-green-100">
+                                        Reset
+                                    </button>
+                                </div>
                             </div>
                         ) : (
                             <button 
-                                onClick={() => setJobLetterRequest(true)}
+                                onClick={() => {
+                                    setJobLetterRequest(true);
+                                    downloadEmployeeDocument('job-letter');
+                                }}
                                 className="w-full py-2 bg-jam-black text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors"
                             >
-                                Generate Instant Letter
+                                Generate & Download Letter
                             </button>
                         )}
                     </div>
@@ -819,12 +1156,34 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                         </div>
                         <h3 className="font-bold text-gray-900 mb-2">Employment Contract</h3>
                         <p className="text-sm text-gray-500 mb-6">
-                            View and download your signed employment agreement.
+                            Download your employment contract when a company template is available, or request a copy from HR.
                         </p>
-                        <button className="w-full py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors flex items-center justify-center">
-                            <Icons.DownloadCloud className="w-4 h-4 mr-2" />
-                            Download PDF
-                        </button>
+                        {getTemplateByIntent('contract') ? (
+                            <button
+                                onClick={() => downloadEmployeeDocument('contract')}
+                                className="w-full py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors flex items-center justify-center"
+                            >
+                                <Icons.DownloadCloud className="w-4 h-4 mr-2" />
+                                Download Contract
+                            </button>
+                        ) : contractRequested ? (
+                            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-center">
+                                <Icons.Check className="mx-auto mb-2 h-5 w-5 text-blue-600" />
+                                <p className="text-sm font-bold text-blue-800">Contract requested</p>
+                                <p className="mt-1 text-xs text-blue-600">Your employer can upload or generate it from Document Center.</p>
+                            </div>
+                        ) : (
+                            <button
+                                onClick={() => {
+                                    setContractRequested(true);
+                                    toast.success('Employment contract request recorded.');
+                                }}
+                                className="w-full py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors flex items-center justify-center"
+                            >
+                                <Icons.Document className="w-4 h-4 mr-2" />
+                                Request Contract
+                            </button>
+                        )}
                     </div>
                 </div>
 
@@ -842,13 +1201,22 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                                     <p className="text-xs text-gray-500">Tax Year 2024 • Required for tax filing</p>
                                 </div>
                             </div>
-                            <button 
-                                onClick={handleDownloadP24}
-                                className="text-jam-orange hover:text-yellow-600 text-sm font-medium flex items-center"
-                            >
-                                <Icons.Download className="w-4 h-4 mr-1" />
-                                Download
-                            </button>
+                            <div className="flex items-center gap-3">
+                                <button
+                                    onClick={handleViewP24}
+                                    className="text-gray-600 hover:text-gray-900 text-sm font-medium flex items-center"
+                                >
+                                    <Icons.Eye className="w-4 h-4 mr-1" />
+                                    View
+                                </button>
+                                <button
+                                    onClick={handleDownloadP24}
+                                    className="text-jam-orange hover:text-yellow-600 text-sm font-medium flex items-center"
+                                >
+                                    <Icons.Download className="w-4 h-4 mr-1" />
+                                    Download
+                                </button>
+                            </div>
                         </div>
                          <div className="px-6 py-4 flex items-center justify-between">
                             <div className="flex items-center">
@@ -1092,6 +1460,13 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                             >
                                 <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">My Hours</span>
                                 <Icons.Timer className="w-4 h-4 text-gray-400 group-hover:text-jam-orange" />
+                            </button>
+                            <button
+                                onClick={() => onNavigate?.('portal-timesheets')}
+                                className="w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg transition-all group hover:border-jam-orange hover:bg-orange-50"
+                            >
+                                <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">Log Hours</span>
+                                <Icons.Plus className="w-4 h-4 text-gray-400 group-hover:text-jam-orange" />
                             </button>
                             {isPendingVerification && (
                                 <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">

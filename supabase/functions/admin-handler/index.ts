@@ -677,6 +677,9 @@ const toBillingGift = (value: unknown) => {
         employeeLimitOverride: typeof raw.employeeLimitOverride === 'string'
             ? raw.employeeLimitOverride
             : undefined,
+        reason: typeof raw.reason === 'string' ? raw.reason : undefined,
+        tierGranted: typeof raw.tierGranted === 'string' ? raw.tierGranted : undefined,
+        manualPaymentLabel: typeof raw.manualPaymentLabel === 'string' ? raw.manualPaymentLabel : undefined,
     };
 };
 
@@ -1850,10 +1853,17 @@ serve(async (req: Request) => {
                 const companyId = payload?.companyId;
                 const requestedMonths = Number(payload?.months);
                 const note = typeof payload?.note === 'string' ? payload.note.trim() : '';
+                const reason = typeof payload?.reason === 'string' ? payload.reason : 'FREE_GIFT';
+                const requestedPlan = typeof payload?.plan === 'string' ? payload.plan : '';
+                const manualPaymentLabel = typeof payload?.manualPaymentLabel === 'string' ? payload.manualPaymentLabel : '';
+                const allowedPlans = new Set(['Free', 'Starter', 'Pro', 'Enterprise', 'Reseller']);
 
                 if (!companyId) throw new Error('companyId is required');
                 if (!Number.isInteger(requestedMonths) || requestedMonths < 1 || requestedMonths > 12) {
                     throw new Error('months must be an integer between 1 and 12');
+                }
+                if (requestedPlan && !allowedPlans.has(requestedPlan)) {
+                    throw new Error('plan must be a valid tier');
                 }
 
                 const { data: company, error: companyError } = await adminClient
@@ -1881,16 +1891,25 @@ serve(async (req: Request) => {
                     monthsGranted: requestedMonths,
                     note: note || existingGift?.note,
                     employeeLimitOverride: 'Unlimited',
+                    reason,
+                    tierGranted: requestedPlan || existingGift?.tierGranted,
+                    manualPaymentLabel: manualPaymentLabel || existingGift?.manualPaymentLabel,
                 };
+
+                const companyUpdate: Record<string, unknown> = {
+                    settings: {
+                        ...existingSettings,
+                        billingGift,
+                    },
+                };
+
+                if (requestedPlan) {
+                    companyUpdate.plan = requestedPlan;
+                }
 
                 const { error: updateError } = await adminClient
                     .from('companies')
-                    .update({
-                        settings: {
-                            ...existingSettings,
-                            billingGift,
-                        },
-                    })
+                    .update(companyUpdate)
                     .eq('id', companyId);
 
                 if (updateError) throw updateError;
@@ -1900,6 +1919,7 @@ serve(async (req: Request) => {
                     company: {
                         id: company.id,
                         companyName: company.name,
+                        plan: requestedPlan || undefined,
                         billingGift,
                         hasActiveBillingGift: true,
                     },
