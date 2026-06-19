@@ -93,7 +93,7 @@ export const Compliance: React.FC<ComplianceProps> = ({ payRunHistory = [], comp
           return;
       }
       // Pass single run as array to helper
-      generateS01CSV(companyData, [run]);
+      generateS01CSV(companyData, [run], employees);
       toast.success(`S01 for ${s01Period} generated`);
   };
 
@@ -102,7 +102,7 @@ export const Compliance: React.FC<ComplianceProps> = ({ payRunHistory = [], comp
           toast.error("Company data missing");
           return;
       }
-      generateS02CSV(companyData, payRunHistory, s02Year);
+      generateS02CSV(companyData, payRunHistory, employees, s02Year);
       toast.success(`S02 Annual Return for ${s02Year} generated`);
   };
 

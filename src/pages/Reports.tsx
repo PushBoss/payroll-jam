@@ -154,11 +154,18 @@ export const Reports: React.FC<ReportsProps> = ({
     }
   };
 
-  const handleExportS01 = () => {
+  const handleExportS01 = async () => {
     if (companyData && displayHistory.length > 0) {
+      // Ensure line items are loaded before generating
+      let runsToUse = displayHistory;
+      if (onLoadFullPayRunHistory) {
+        const fullHistory = await onLoadFullPayRunHistory();
+        if (fullHistory) runsToUse = fullHistory;
+      }
+
       // Filter pay runs by selected month
       const [year, month] = selectedMonth.split('-').map(Number);
-      const filteredRuns = displayHistory.filter(run => {
+      const filteredRuns = runsToUse.filter(run => {
         const runDate = new Date(run.periodStart);
         return runDate.getFullYear() === year && (runDate.getMonth() + 1) === month;
       });
@@ -168,7 +175,7 @@ export const Reports: React.FC<ReportsProps> = ({
         return;
       }
 
-      generateS01CSV(companyData, filteredRuns);
+      generateS01CSV(companyData, filteredRuns, employees);
     } else {
       alert("No data available to generate S01.");
     }
@@ -192,9 +199,17 @@ export const Reports: React.FC<ReportsProps> = ({
     toast.success("GL CSV Exported");
   };
 
-  const handleExportS02 = () => {
+  const handleExportS02 = async () => {
     if (companyData && displayHistory.length > 0) {
-      generateS02CSV(companyData, displayHistory);
+      // Ensure line items are loaded before generating
+      let runsToUse = displayHistory;
+      if (onLoadFullPayRunHistory) {
+        const fullHistory = await onLoadFullPayRunHistory();
+        if (fullHistory) runsToUse = fullHistory;
+      }
+
+      const currentYear = new Date().getFullYear().toString();
+      generateS02CSV(companyData, runsToUse, employees, currentYear);
     } else {
       alert("No data available to generate S02.");
     }

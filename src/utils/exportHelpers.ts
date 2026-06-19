@@ -1,5 +1,6 @@
 import { PayRun, CompanySettings, IntegrationConfig, Employee, User } from '../core/types';
 import { normalizeBankCode } from '../features/payroll/payrunWorkflow';
+import { calculateEmployerContributions } from '../features/payroll/jamaica2026Fiscal';
 import { toast } from 'sonner';
 
 export const downloadFile = (filename: string, content: string, type: string) => {
@@ -218,25 +219,49 @@ export const generateFullRegisterCSV = (payRuns: PayRun[]) => {
     downloadFile(`Payroll_Register_Full.csv`, content, 'text/csv');
 };
 
-export const generateS01CSV = (company: CompanySettings, payRuns: PayRun[]) => {
+export const generateS01CSV = (company: CompanySettings, payRuns: PayRun[], employees: Employee[] = []) => {
     if (!payRuns || payRuns.length === 0) {
         toast.error("No finalized payroll data found.");
         return;
     }
-    
-    const run = payRuns[0]; 
-    const totalGross = run.totalGross;
-    
-    // Estimates
-    const empNIS = run.lineItems.reduce((acc, item) => acc + item.nis, 0);
-    const empNHT = run.lineItems.reduce((acc, item) => acc + item.nht, 0);
-    const empEdTax = run.lineItems.reduce((acc, item) => acc + item.edTax, 0);
-    const empPAYE = run.lineItems.reduce((acc, item) => acc + item.paye, 0);
 
-    const employerNIS = totalGross * 0.03; 
-    const employerNHT = totalGross * 0.03;
-    const employerEdTax = totalGross * 0.035;
-    const employerHEART = totalGross * 0.03;
+    // Aggregate across ALL pay runs for the period
+    let totalGross = 0;
+    let empNIS = 0;
+    let empNHT = 0;
+    let empEdTax = 0;
+    let empPAYE = 0;
+    let employerNIS = 0;
+    let employerNHT = 0;
+    let employerEdTax = 0;
+    let employerHEART = 0;
+
+    payRuns.forEach(run => {
+        totalGross += run.totalGross;
+        run.lineItems.forEach(item => {
+            empNIS += item.nis;
+            empNHT += item.nht;
+            empEdTax += item.edTax;
+            empPAYE += item.paye;
+
+            // Use actual employer contributions stored on the line item;
+            // fall back to calculating from gross only when missing
+            if (item.employerContributions) {
+                employerNIS += item.employerContributions.employerNIS;
+                employerNHT += item.employerContributions.employerNHT;
+                employerEdTax += item.employerContributions.employerEdTax;
+                employerHEART += item.employerContributions.employerHEART;
+            } else {
+                // Look up employee type for accurate fallback calculation
+                const emp = employees.find(e => e.id === item.employeeId);
+                const fallback = calculateEmployerContributions(item.grossPay, emp?.employeeType);
+                employerNIS += fallback.employerNIS;
+                employerNHT += fallback.employerNHT;
+                employerEdTax += fallback.employerEdTax;
+                employerHEART += fallback.employerHEART;
+            }
+        });
+    });
 
     const totalNIS = empNIS + employerNIS;
     const totalNHT = empNHT + employerNHT;
@@ -244,11 +269,14 @@ export const generateS01CSV = (company: CompanySettings, payRuns: PayRun[]) => {
     
     const grandTotal = totalNIS + totalNHT + totalEdTax + empPAYE + employerHEART;
 
+    // Use the first run's periodStart for the header label
+    const periodLabel = payRuns[0].periodStart;
+
     let content = `S01 MONTHLY REMITTANCE FORM\n`;
     content += `Company Name,${company.name}\n`;
     content += `TRN,${company.trn}\n`;
     content += `Address,"${company.address.replace(/\n/g, ' ')}"\n`;
-    content += `Period,${run.periodStart}\n\n`;
+    content += `Period,${periodLabel}\n\n`;
     
     content += `SECTION A: SUMMARY OF EMOLUMENTS\n`;
     content += `Total Gross Emoluments,,$${totalGross.toFixed(2)}\n\n`;
@@ -263,18 +291,31 @@ export const generateS01CSV = (company: CompanySettings, payRuns: PayRun[]) => {
 
     content += `TOTAL PAYABLE,,,$${grandTotal.toFixed(2)}\n`;
 
-    downloadFile(`S01_Remittance_${run.periodStart}.csv`, content, 'text/csv');
+    downloadFile(`S01_Remittance_${periodLabel}.csv`, content, 'text/csv');
 };
 
-export const generateS02CSV = (company: CompanySettings, payRuns: PayRun[], year: string = '2025') => {
-    const relevantRuns = payRuns.filter(run => run.periodStart.startsWith(year));
+export const generateS02CSV = (company: CompanySettings, payRuns: PayRun[], employees: Employee[] = [], year?: string) => {
+    const effectiveYear = year || new Date().getFullYear().toString();
+    const relevantRuns = payRuns.filter(run => run.periodStart.startsWith(effectiveYear));
     
     if (relevantRuns.length === 0) {
-        toast.error(`No payroll data found for year ${year}.`);
+        toast.error(`No payroll data found for year ${effectiveYear}.`);
         return;
     }
 
-    const empMap = new Map<string, any>();
+    const empMap = new Map<string, {
+        id: string;
+        name: string;
+        gross: number;
+        nis: number;
+        nht: number;
+        edTax: number;
+        paye: number;
+        employerNIS: number;
+        employerNHT: number;
+        employerEdTax: number;
+        employerHEART: number;
+    }>();
 
     relevantRuns.forEach(run => {
         run.lineItems.forEach(line => {
@@ -285,7 +326,11 @@ export const generateS02CSV = (company: CompanySettings, payRuns: PayRun[], year
                 nis: 0,
                 nht: 0,
                 edTax: 0,
-                paye: 0
+                paye: 0,
+                employerNIS: 0,
+                employerNHT: 0,
+                employerEdTax: 0,
+                employerHEART: 0
             };
 
             existing.gross += line.grossPay + line.additions;
@@ -293,26 +338,41 @@ export const generateS02CSV = (company: CompanySettings, payRuns: PayRun[], year
             existing.nht += line.nht;
             existing.edTax += line.edTax;
             existing.paye += line.paye;
+
+            // Use actual employer contributions; fall back to calculation
+            if (line.employerContributions) {
+                existing.employerNIS += line.employerContributions.employerNIS;
+                existing.employerNHT += line.employerContributions.employerNHT;
+                existing.employerEdTax += line.employerContributions.employerEdTax;
+                existing.employerHEART += line.employerContributions.employerHEART;
+            } else {
+                const emp = employees.find(e => e.id === line.employeeId);
+                const fallback = calculateEmployerContributions(line.grossPay, emp?.employeeType);
+                existing.employerNIS += fallback.employerNIS;
+                existing.employerNHT += fallback.employerNHT;
+                existing.employerEdTax += fallback.employerEdTax;
+                existing.employerHEART += fallback.employerHEART;
+            }
             
             empMap.set(line.employeeId, existing);
         });
     });
 
-    let content = `S02 EMPLOYER'S ANNUAL RETURN - ${year}\n`;
+    let content = `S02 EMPLOYER'S ANNUAL RETURN - ${effectiveYear}\n`;
     content += `Company: ${company.name},TRN: ${company.trn}\n`;
     content += `Address,"${company.address.replace(/\n/g, ' ')}"\n\n`;
-    content += `Employee Name,TRN,NIS Number,Total Gross,Employee NIS,Employer NIS,Employee NHT,Employer NHT,Employee EdTax,Employer EdTax,PAYE,HEART (3%)\n`;
+    content += `Employee Name,TRN,NIS Number,Total Gross,Employee NIS,Employer NIS,Employee NHT,Employer NHT,Employee EdTax,Employer EdTax,PAYE,HEART\n`;
 
     empMap.forEach(stats => {
-        const emplrNIS = stats.gross * 0.03; 
-        const emplrNHT = stats.gross * 0.03; 
-        const emplrEd = stats.gross * 0.035;
-        const heart = stats.gross * 0.03;
+        // Look up real TRN and NIS from the employees array
+        const emp = employees.find(e => e.id === stats.id);
+        const trn = emp?.trn || 'N/A';
+        const nisNumber = emp?.nis || 'N/A';
 
-        content += `"${stats.name}",000-000-000,A000000,$${stats.gross.toFixed(2)},$${stats.nis.toFixed(2)},$${emplrNIS.toFixed(2)},$${stats.nht.toFixed(2)},$${emplrNHT.toFixed(2)},$${stats.edTax.toFixed(2)},$${emplrEd.toFixed(2)},$${stats.paye.toFixed(2)},$${heart.toFixed(2)}\n`;
+        content += `"${stats.name}",${trn},${nisNumber},$${stats.gross.toFixed(2)},$${stats.nis.toFixed(2)},$${stats.employerNIS.toFixed(2)},$${stats.nht.toFixed(2)},$${stats.employerNHT.toFixed(2)},$${stats.edTax.toFixed(2)},$${stats.employerEdTax.toFixed(2)},$${stats.paye.toFixed(2)},$${stats.employerHEART.toFixed(2)}\n`;
     });
 
-    downloadFile(`S02_Annual_Return_${year}.csv`, content, 'text/csv');
+    downloadFile(`S02_Annual_Return_${effectiveYear}.csv`, content, 'text/csv');
 };
 
 export const generateP24CSV = (company: CompanySettings, payRuns: PayRun[], employee: Employee | undefined, user: User, year: string = '2025') => {
