@@ -3728,7 +3728,7 @@ serve(async (req: Request) => {
 
             case 'promote-vercel-deployment': {
                 await assertSuperAdmin(adminClient, authUser);
-                const { deploymentId, targetVersion, releaseNotes, productionDomain } = payload;
+                const { deploymentId, targetVersion, releaseNotes, productionDomain, skipAlias } = payload;
                 
                 if (!deploymentId || !targetVersion) {
                     throw new Error('Missing deploymentId or targetVersion');
@@ -3745,25 +3745,7 @@ serve(async (req: Request) => {
                     throw new Error('Production domain alias not provided');
                 }
 
-                // 1. Alias the Vercel deployment to the production domain
-                const aliasResponse = await fetch(`https://api.vercel.com/v2/deployments/${deploymentId}/aliases?teamId=`, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        alias: productionDomain
-                    })
-                });
-
-                if (!aliasResponse.ok) {
-                    const errorText = await aliasResponse.text();
-                    console.error('Vercel Alias error:', errorText);
-                    throw new Error(`Failed to assign production domain alias: ${errorText}`);
-                }
-
-                // 2. Update system_settings in Supabase
+                // 1. Update system_settings in Supabase first (so we successfully promote the version internally)
                 const { error: dbError } = await adminClient
                     .from('system_settings')
                     .update({
@@ -3775,7 +3757,32 @@ serve(async (req: Request) => {
 
                 if (dbError) throw dbError;
 
-                return new Response(JSON.stringify({ success: true, version: targetVersion }), {
+                // 2. Alias the Vercel deployment to the production domain (if not skipped)
+                let aliasWarning = null;
+                if (!skipAlias) {
+                    const aliasResponse = await fetch(`https://api.vercel.com/v2/deployments/${deploymentId}/aliases`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            alias: productionDomain
+                        })
+                    });
+
+                    if (!aliasResponse.ok) {
+                        const errorText = await aliasResponse.text();
+                        console.error('Vercel Alias error:', errorText);
+                        aliasWarning = `Vercel Alias Error: ${errorText}`;
+                    }
+                }
+
+                return new Response(JSON.stringify({ 
+                    success: true, 
+                    version: targetVersion,
+                    warning: aliasWarning 
+                }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });
             }

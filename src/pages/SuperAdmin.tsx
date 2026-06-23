@@ -403,6 +403,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     const [targetVersion, setTargetVersion] = useState('');
     const [releaseNotesInput, setReleaseNotesInput] = useState('');
     const [productionDomain, setProductionDomain] = useState('payroll-jam.com');
+    const [skipAlias, setSkipAlias] = useState(true);
     const [isPromoting, setIsPromoting] = useState(false);
 
     // Broadcasts State
@@ -2092,25 +2093,37 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         if (!selectedDeployment) return;
         setIsPromoting(true);
         try {
-            const { error } = await supabase!.functions.invoke('admin-handler', {
+            const { data, error } = await supabase!.functions.invoke('admin-handler', {
                 body: { 
                     action: 'promote-vercel-deployment',
                     payload: {
                         deploymentId: selectedDeployment.uid,
                         targetVersion,
                         releaseNotes: releaseNotesInput,
-                        productionDomain
+                        productionDomain,
+                        skipAlias
                     }
                 }
             });
             if (error) throw error;
-            toast.success('Deployment promoted successfully!');
+            
+            if (data?.success === false) {
+                toast.error(data.error || 'Failed to promote deployment');
+                return;
+            }
+
+            if (data?.warning) {
+                toast.warning('Version promoted internally, but Vercel alias failed: ' + data.warning, { duration: 6000 });
+            } else {
+                toast.success('Deployment promoted successfully!');
+            }
+            
             setCurrentVersion(targetVersion);
             setLatestReleaseNotes(releaseNotesInput);
             setSelectedDeployment(null);
-        } catch (err) {
+        } catch (err: any) {
             console.error('Promotion error:', err);
-            toast.error('Failed to promote deployment');
+            toast.error(err.message || 'Failed to promote deployment');
         } finally {
             setIsPromoting(false);
         }
@@ -2218,15 +2231,28 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Production Domain</label>
-                                <input
-                                    type="text"
-                                    className="w-full border border-gray-300 rounded p-2 text-gray-500 bg-gray-50"
-                                    value={productionDomain}
-                                    onChange={e => setProductionDomain(e.target.value)}
-                                />
-                                <p className="text-xs text-gray-400 mt-1">The Vercel domain alias to assign this deployment to.</p>
+                                <label className="flex items-center space-x-2">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={skipAlias}
+                                        onChange={e => setSkipAlias(e.target.checked)}
+                                        className="form-checkbox h-4 w-4 text-jam-black rounded border-gray-300"
+                                    />
+                                    <span className="text-sm font-medium text-gray-700">Skip Vercel Aliasing (I use GitHub Auto-Deploy)</span>
+                                </label>
                             </div>
+                            {!skipAlias && (
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Production Domain</label>
+                                    <input
+                                        type="text"
+                                        className="w-full border border-gray-300 rounded p-2 text-gray-500 bg-gray-50"
+                                        value={productionDomain}
+                                        onChange={e => setProductionDomain(e.target.value)}
+                                    />
+                                    <p className="text-xs text-gray-400 mt-1">The Vercel domain alias to assign this deployment to.</p>
+                                </div>
+                            )}
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Release Notes</label>
                                 <textarea
