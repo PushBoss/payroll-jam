@@ -353,6 +353,8 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
       case 'sa-health':
       case 'sa-plans':
       case 'sa-users':
+      case 'sa-releases':
+      case 'sa-broadcasts':
       case 'sa-logs':
       case 'sa-settings':
         return (

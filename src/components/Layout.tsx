@@ -91,6 +91,8 @@ export const Layout: React.FC<LayoutProps> = ({
     { id: 'sa-health', label: 'System Health', icon: Icons.Zap, feature: null },
     { id: 'sa-plans', label: 'Plan Config', icon: Icons.FileEdit, feature: null },
     { id: 'sa-users', label: 'Administrators', icon: Icons.Shield, feature: null },
+    { id: 'sa-releases', label: 'Releases', icon: Icons.Plane, feature: null },
+    { id: 'sa-broadcasts', label: 'Broadcasts', icon: Icons.Mail, feature: null },
     { id: 'sa-logs', label: 'Audit Logs', icon: Icons.Reports, feature: null },
     { id: 'sa-settings', label: 'Platform Settings', icon: Icons.Settings, feature: null },
   ];

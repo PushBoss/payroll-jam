@@ -368,6 +368,7 @@ export interface ResellerClient {
   billingGift?: BillingGift;
   hasActiveBillingGift?: boolean;
   mrr: number;
+  isTestCompany?: boolean;
   createdAt?: string;
   accountCreatedAt?: string;
   lastLoginAt?: string;

@@ -58,6 +58,7 @@ interface PayingClient {
     latestLedgerState?: string | null;
     latestLedgerEventType?: string | null;
     risk: 'ok' | 'attention' | 'critical';
+    isTestCompany?: boolean;
     createdAt?: string;
     accountCreatedAt?: string | null;
     lastLoginAt?: string | null;
@@ -336,6 +337,7 @@ const isActiveBillingStatus = (status?: string) => {
 };
 
 const isRevenueActiveClient = (client: PayingClient) => {
+    if (client.isTestCompany) return false;
     const companyStatus = String(client.status || '').toUpperCase();
     const subscriptionStatus = String(client.subscriptionStatus || '').toLowerCase();
 
@@ -350,7 +352,7 @@ const getMonthKey = (date: Date) => `${date.getFullYear()}-${String(date.getMont
 const getMonthEnd = (year: number, monthIndex: number) => new Date(year, monthIndex + 1, 0, 23, 59, 59, 999);
 
 export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, onImpersonate, initialTab }) => {
-    const [activeTab, setActiveTab] = useState<'overview' | 'tenants' | 'users' | 'plans' | 'logs' | 'settings' | 'health' | 'billing' | 'pending-payments' | 'paying-clients'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'tenants' | 'users' | 'plans' | 'logs' | 'settings' | 'health' | 'billing' | 'pending-payments' | 'paying-clients' | 'releases' | 'broadcasts'>('overview');
     const hasLoadedGlobalConfigRef = useRef(false);
 
     // Payment Settings State
@@ -392,6 +394,22 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     // Logs State
     const [logs, setLogs] = useState<AuditLogEntry[]>([]);
 
+    // Releases State
+    const [vercelDeployments, setVercelDeployments] = useState<any[]>([]);
+    const [currentVersion, setCurrentVersion] = useState('1.0.0');
+    const [latestReleaseNotes, setLatestReleaseNotes] = useState('');
+    const [isLoadingReleases, setIsLoadingReleases] = useState(false);
+    const [selectedDeployment, setSelectedDeployment] = useState<any | null>(null);
+    const [targetVersion, setTargetVersion] = useState('');
+    const [releaseNotesInput, setReleaseNotesInput] = useState('');
+    const [productionDomain, setProductionDomain] = useState('payroll-jam.com');
+    const [isPromoting, setIsPromoting] = useState(false);
+
+    // Broadcasts State
+    const [broadcasts, setBroadcasts] = useState<any[]>([]);
+    const [broadcastForm, setBroadcastForm] = useState({ subject: '', audience: 'ALL_USERS', bodyMarkdown: '' });
+    const [isSendingBroadcast, setIsSendingBroadcast] = useState(false);
+
     // Billing State
     const [revenueData, setRevenueData] = useState<{ name: string; revenue: number }[]>([]);
     const [isLoadingBilling, setIsLoadingBilling] = useState(false);
@@ -422,6 +440,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     const [payingClientRiskFilter, setPayingClientRiskFilter] = useState<'ALL' | PayingClient['risk']>('ALL');
     const [payingClientActivitySort, setPayingClientActivitySort] = useState<ClientActivitySort>('created_desc');
     const [selectedPayingClient, setSelectedPayingClient] = useState<PayingClient | null>(null);
+    const [selectedTenant, setSelectedTenant] = useState<ResellerClient | null>(null);
     const [emailDraft, setEmailDraft] = useState<EmailDraft | null>(null);
 
     // Database Connection State & Wizard
@@ -452,6 +471,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     // Stats - These are now primarily fetched via Edge Function for accuracy across pages
     // We fall back to local count if edge function isn't used
     const calculateTenantMRR = (tenant: ResellerClient) => {
+        if (tenant.isTestCompany) return 0;
         if (tenant.status !== 'ACTIVE') return 0;
         const plan = plans.find(p => p.name === tenant.plan);
         if (!plan) return Number(tenant.mrr || 0);
@@ -462,9 +482,9 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     const derivedTenantMRR = tenants.reduce((acc, tenant) => acc + calculateTenantMRR(tenant), 0);
     const totalMRR = (platformStats.totalMRR > 0) ? platformStats.totalMRR : derivedTenantMRR;
     const totalARR = totalMRR * 12;
-    const totalTenants = (platformStats.totalTenants > 0) ? platformStats.totalTenants : tenants.length;
-    const activeTenants = (platformStats.activeTenants > 0) ? platformStats.activeTenants : tenants.filter(t => t.status === 'ACTIVE').length;
-    const totalEmployees = (platformStats.totalEmployees > 0) ? platformStats.totalEmployees : tenants.reduce((acc, t) => acc + (t.employeeCount || 0), 0);
+    const totalTenants = (platformStats.totalTenants > 0) ? platformStats.totalTenants : tenants.filter(t => !t.isTestCompany).length;
+    const activeTenants = (platformStats.activeTenants > 0) ? platformStats.activeTenants : tenants.filter(t => t.status === 'ACTIVE' && !t.isTestCompany).length;
+    const totalEmployees = (platformStats.totalEmployees > 0) ? platformStats.totalEmployees : tenants.filter(t => !t.isTestCompany).reduce((acc, t) => acc + (t.employeeCount || 0), 0);
     const pendingApprovals = platformStats.pendingApprovals;
     const dimePayStatus = getDimePayStatus(paymentConfig);
     const trendWindowSize: Record<GrowthTrendRange, number> = { '1M': 2, '6M': 6, '1Y': 12 };
@@ -785,6 +805,40 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
 
     // Check DB Connection when Settings tab is active
     useEffect(() => {
+        if (activeTab === 'releases') {
+            const loadReleases = async () => {
+                setIsLoadingReleases(true);
+                try {
+                    const { data, error } = await supabase!.functions.invoke('admin-handler', {
+                        body: { action: 'get-vercel-deployments', payload: {} }
+                    });
+                    if (error) throw error;
+                    
+                    setCurrentVersion(data.current_version || '1.0.0');
+                    setLatestReleaseNotes(data.latest_release_notes || '');
+                    setVercelDeployments(data.deployments || []);
+                    
+                    if (data.error) {
+                        toast.error(data.error);
+                    }
+                } catch (err) {
+                    console.error('Failed to load Vercel deployments:', err);
+                    toast.error('Failed to load deployments');
+                } finally {
+                    setIsLoadingReleases(false);
+                }
+            };
+            loadReleases();
+        }
+
+        if (activeTab === 'broadcasts') {
+            const loadBroadcasts = async () => {
+                const { data } = await supabase!.from('system_broadcasts').select('*').order('created_at', { ascending: false });
+                if (data) setBroadcasts(data);
+            };
+            loadBroadcasts();
+        }
+
         if (activeTab === 'settings') {
             handleCheckDb();
         }
@@ -1220,6 +1274,32 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             mrr: client.mrr,
             createdAt: client.createdAt
         });
+    };
+
+    const handleToggleTestCompany = async (companyId: string, isTestCompany: boolean) => {
+        try {
+            const { error } = await supabase!.functions.invoke('admin-handler', {
+                body: { action: 'toggle-test-company', payload: { companyId, isTestCompany } }
+            });
+            if (error) throw error;
+
+            // Update local paying clients state
+            setPayingClients(prev => prev.map(c => c.id === companyId ? { ...c, isTestCompany } : c));
+
+            // Update selected paying client if open
+            setSelectedPayingClient(prev => prev && prev.id === companyId ? { ...prev, isTestCompany } : prev);
+
+            // Update tenants state (for the tenants tab)
+            setTenants(prev => prev.map(t => t.id === companyId ? { ...t, isTestCompany } as any : t));
+
+            // Update selected tenant if open
+            setSelectedTenant(prev => prev && prev.id === companyId ? { ...prev, isTestCompany } as any : prev);
+
+            toast.success(isTestCompany ? 'Marked as test company' : 'Removed test company flag');
+        } catch (error) {
+            console.error('Error toggling test company:', error);
+            toast.error('Failed to update test company status');
+        }
     };
 
     const handleSaveGlobalTaxConfig = async (config: TaxConfig) => {
@@ -1702,8 +1782,19 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                     </tr>
                                 ) : (
                                     filteredTenants.map(tenant => (
-                                        <tr key={tenant.id} className="hover:bg-gray-50 border-b border-gray-100 last:border-0">
-                                            <td className="px-6 py-4 font-medium text-gray-900">{tenant.companyName}</td>
+                                        <tr
+                                            key={tenant.id}
+                                            onClick={() => setSelectedTenant(tenant)}
+                                            className={`cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-0 ${(tenant as any).isTestCompany ? 'opacity-60' : ''}`}
+                                        >
+                                            <td className="px-6 py-4">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-medium text-gray-900">{tenant.companyName}</span>
+                                                    {(tenant as any).isTestCompany && (
+                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-100 text-purple-700">🧪 Test</span>
+                                                    )}
+                                                </div>
+                                            </td>
                                             <td className="px-6 py-4 text-sm text-gray-500">
                                                 {tenant.contactName}
                                                 <div className="text-xs text-gray-400">{tenant.email}</div>
@@ -1738,11 +1829,12 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                                 )}
                                             </td>
                                             <td className="px-6 py-4 text-right space-x-2">
-                                                <button onClick={() => onImpersonate(tenant)} className="text-jam-orange hover:text-yellow-600 text-xs font-bold uppercase">
+                                                <button onClick={(e) => { e.stopPropagation(); onImpersonate(tenant); }} className="text-jam-orange hover:text-yellow-600 text-xs font-bold uppercase">
                                                     Manage
                                                 </button>
                                                 <button
-                                                    onClick={() => {
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
                                                         setGiftingTenant(tenant);
                                                         setGiftMonths(1);
                                                         setGiftNote('');
@@ -1754,10 +1846,10 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                                 >
                                                     Manual Payment
                                                 </button>
-                                                <button onClick={() => handleSuspend(tenant.id)} className="text-gray-500 hover:text-gray-900 text-xs font-bold uppercase">
+                                                <button onClick={(e) => { e.stopPropagation(); handleSuspend(tenant.id); }} className="text-gray-500 hover:text-gray-900 text-xs font-bold uppercase">
                                                     {tenant.status === 'ACTIVE' ? 'Suspend' : 'Activate'}
                                                 </button>
-                                                <button onClick={() => handleDeleteTenant(tenant.id)} className="text-red-400 hover:text-red-600">
+                                                <button onClick={(e) => { e.stopPropagation(); handleDeleteTenant(tenant.id); }} className="text-red-400 hover:text-red-600">
                                                     <Icons.Trash className="w-4 h-4" />
                                                 </button>
                                             </td>
@@ -1996,6 +2088,287 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         </div>
     );
 
+    const handlePromoteDeployment = async () => {
+        if (!selectedDeployment) return;
+        setIsPromoting(true);
+        try {
+            const { error } = await supabase!.functions.invoke('admin-handler', {
+                body: { 
+                    action: 'promote-vercel-deployment',
+                    payload: {
+                        deploymentId: selectedDeployment.uid,
+                        targetVersion,
+                        releaseNotes: releaseNotesInput,
+                        productionDomain
+                    }
+                }
+            });
+            if (error) throw error;
+            toast.success('Deployment promoted successfully!');
+            setCurrentVersion(targetVersion);
+            setLatestReleaseNotes(releaseNotesInput);
+            setSelectedDeployment(null);
+        } catch (err) {
+            console.error('Promotion error:', err);
+            toast.error('Failed to promote deployment');
+        } finally {
+            setIsPromoting(false);
+        }
+    };
+
+    const renderReleases = () => (
+        <div className="space-y-6 animate-fade-in relative">
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                <div className="flex justify-between items-center mb-6">
+                    <div>
+                        <h3 className="text-lg font-bold text-gray-900">Release Management</h3>
+                        <p className="text-sm text-gray-500">Manage Vercel deployments and promote to production.</p>
+                    </div>
+                    <div className="text-right">
+                        <p className="text-xs font-bold text-gray-500 uppercase">Current Live Version</p>
+                        <p className="text-2xl font-black text-jam-orange">v{currentVersion}</p>
+                    </div>
+                </div>
+
+                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 mb-6">
+                    <p className="text-sm font-bold text-gray-700 mb-2">Latest Release Notes</p>
+                    <p className="text-sm text-gray-600 whitespace-pre-wrap">{latestReleaseNotes || 'No notes provided.'}</p>
+                </div>
+
+                {isLoadingReleases ? (
+                    <div className="py-12 text-center text-gray-500">Loading Vercel deployments...</div>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-gray-50 text-gray-500">
+                                <tr>
+                                    <th className="px-4 py-3 font-medium rounded-tl-lg">Commit Message</th>
+                                    <th className="px-4 py-3 font-medium">Branch</th>
+                                    <th className="px-4 py-3 font-medium">State</th>
+                                    <th className="px-4 py-3 font-medium">Created At</th>
+                                    <th className="px-4 py-3 font-medium text-right rounded-tr-lg">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {vercelDeployments.map(dep => (
+                                    <tr key={dep.uid} className="hover:bg-gray-50">
+                                        <td className="px-4 py-3 text-gray-900 font-medium">
+                                            {dep.meta?.githubCommitMessage || 'Manual Deployment'}
+                                            <div className="text-xs text-gray-500 font-mono mt-1">{dep.uid.substring(0, 8)}...</div>
+                                        </td>
+                                        <td className="px-4 py-3 text-gray-600">
+                                            {dep.meta?.githubCommitRef ? (
+                                                <span className="bg-gray-100 px-2 py-1 rounded text-xs font-mono">{dep.meta.githubCommitRef}</span>
+                                            ) : '-'}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <span className={`px-2 py-1 rounded-full text-xs font-bold uppercase ${dep.state === 'READY' ? 'bg-green-100 text-green-800' : dep.state === 'ERROR' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>
+                                                {dep.state}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-gray-500">
+                                            {new Date(dep.created).toLocaleString()}
+                                        </td>
+                                        <td className="px-4 py-3 text-right">
+                                            <div className="flex justify-end space-x-2">
+                                                <a href={`https://${dep.url}`} target="_blank" rel="noopener noreferrer" className="text-jam-orange hover:text-yellow-600 text-sm font-medium">Preview</a>
+                                                {dep.state === 'READY' && (
+                                                    <button 
+                                                        onClick={() => {
+                                                            setSelectedDeployment(dep);
+                                                            setTargetVersion('');
+                                                            setReleaseNotesInput(dep.meta?.githubCommitMessage || '');
+                                                        }}
+                                                        className="text-gray-700 hover:text-jam-black font-medium text-sm border px-2 py-1 rounded border-gray-200"
+                                                    >
+                                                        Promote
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+
+            {selectedDeployment && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                    <div className="w-full max-w-lg overflow-hidden rounded-xl bg-white shadow-2xl animate-scale-in">
+                        <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 p-6">
+                            <div>
+                                <h3 className="text-xl font-bold text-gray-900">Promote Deployment</h3>
+                                <p className="text-sm text-gray-500">Attach production domain to selected build.</p>
+                            </div>
+                            <button onClick={() => setSelectedDeployment(null)} className="text-gray-400 hover:text-gray-600">
+                                <Icons.Close className="h-6 w-6" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Target Version Number</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. 1.0.1"
+                                    className="w-full border border-gray-300 rounded p-2"
+                                    value={targetVersion}
+                                    onChange={e => setTargetVersion(e.target.value)}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Production Domain</label>
+                                <input
+                                    type="text"
+                                    className="w-full border border-gray-300 rounded p-2 text-gray-500 bg-gray-50"
+                                    value={productionDomain}
+                                    onChange={e => setProductionDomain(e.target.value)}
+                                />
+                                <p className="text-xs text-gray-400 mt-1">The Vercel domain alias to assign this deployment to.</p>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Release Notes</label>
+                                <textarea
+                                    rows={4}
+                                    className="w-full border border-gray-300 rounded p-2"
+                                    value={releaseNotesInput}
+                                    onChange={e => setReleaseNotesInput(e.target.value)}
+                                />
+                            </div>
+                        </div>
+                        <div className="p-6 border-t border-gray-100 flex justify-end space-x-3 bg-gray-50">
+                            <button onClick={() => setSelectedDeployment(null)} className="px-4 py-2 text-gray-500">Cancel</button>
+                            <button 
+                                onClick={handlePromoteDeployment}
+                                disabled={isPromoting || !targetVersion || !productionDomain}
+                                className="bg-jam-black text-white px-6 py-2 rounded font-bold hover:bg-gray-800 disabled:opacity-50"
+                            >
+                                {isPromoting ? 'Promoting...' : 'Confirm Rollout'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+
+    const handleSendBroadcast = async () => {
+        if (!broadcastForm.subject || !broadcastForm.bodyMarkdown) return;
+        setIsSendingBroadcast(true);
+        try {
+            const { data, error } = await supabase!.functions.invoke('admin-handler', {
+                body: { 
+                    action: 'send-platform-broadcast',
+                    payload: {
+                        subject: broadcastForm.subject,
+                        bodyMarkdown: broadcastForm.bodyMarkdown,
+                        targetAudience: broadcastForm.audience
+                    }
+                }
+            });
+            if (error) throw error;
+            toast.success(`Broadcast sent successfully to ${data.count} recipients!`);
+            setBroadcastForm({ subject: '', audience: 'ALL_USERS', bodyMarkdown: '' });
+            // Refresh broadcasts
+            const { data: refreshed } = await supabase!.from('system_broadcasts').select('*').order('created_at', { ascending: false });
+            if (refreshed) setBroadcasts(refreshed);
+        } catch (err: any) {
+            console.error('Broadcast error:', err);
+            toast.error(err.message || 'Failed to send broadcast');
+        } finally {
+            setIsSendingBroadcast(false);
+        }
+    };
+
+    const renderBroadcasts = () => (
+        <div className="space-y-6 animate-fade-in grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                <div className="mb-6">
+                    <h3 className="text-lg font-bold text-gray-900">New Platform Broadcast</h3>
+                    <p className="text-sm text-gray-500">Send an email update to the user base.</p>
+                </div>
+                
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Subject</label>
+                        <input
+                            type="text"
+                            placeholder="e.g. Platform Update: New Features!"
+                            className="w-full border border-gray-300 rounded p-2"
+                            value={broadcastForm.subject}
+                            onChange={e => setBroadcastForm({ ...broadcastForm, subject: e.target.value })}
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Target Audience</label>
+                        <select
+                            className="w-full border border-gray-300 rounded p-2 bg-white"
+                            value={broadcastForm.audience}
+                            onChange={e => setBroadcastForm({ ...broadcastForm, audience: e.target.value })}
+                        >
+                            <option value="ALL_USERS">All Active Users</option>
+                            <option value="OWNERS_ONLY">Company Owners & Resellers Only</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Message (Markdown supported)</label>
+                        <textarea
+                            rows={8}
+                            className="w-full border border-gray-300 rounded p-2 font-mono text-sm"
+                            placeholder="Write your email body here..."
+                            value={broadcastForm.bodyMarkdown}
+                            onChange={e => setBroadcastForm({ ...broadcastForm, bodyMarkdown: e.target.value })}
+                        />
+                    </div>
+                    
+                    <button 
+                        onClick={handleSendBroadcast}
+                        disabled={isSendingBroadcast || !broadcastForm.subject || !broadcastForm.bodyMarkdown}
+                        className="w-full bg-jam-black text-white px-6 py-3 rounded-lg font-bold hover:bg-gray-800 disabled:opacity-50 flex items-center justify-center transition-colors"
+                    >
+                        {isSendingBroadcast ? 'Sending...' : 'Send Broadcast'}
+                        <Icons.ArrowRight className="w-4 h-4 ml-2" />
+                    </button>
+                </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                <div className="mb-6">
+                    <h3 className="text-lg font-bold text-gray-900">Past Broadcasts</h3>
+                    <p className="text-sm text-gray-500">History of platform announcements.</p>
+                </div>
+
+                <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
+                    {broadcasts.length === 0 ? (
+                        <div className="text-center py-12 text-gray-500 border-2 border-dashed border-gray-200 rounded-lg">
+                            <Icons.Mail className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                            <p className="text-sm">No past broadcasts found.</p>
+                        </div>
+                    ) : (
+                        broadcasts.map(b => (
+                            <div key={b.id} className="p-4 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors bg-gray-50">
+                                <div className="flex justify-between items-start mb-2">
+                                    <h4 className="font-bold text-gray-900 line-clamp-1 flex-1 pr-4">{b.subject}</h4>
+                                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase shrink-0 ${b.status === 'COMPLETED' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                        {b.status}
+                                    </span>
+                                </div>
+                                <div className="flex items-center text-xs text-gray-500 mb-3 space-x-4">
+                                    <span>Audience: {b.target_audience === 'ALL_USERS' ? 'All Users' : 'Owners Only'}</span>
+                                    <span>{new Date(b.created_at).toLocaleString()}</span>
+                                </div>
+                                <p className="text-sm text-gray-600 line-clamp-3 bg-white p-3 rounded border border-gray-100 font-mono text-xs">
+                                    {b.body_markdown}
+                                </p>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+
     const renderPendingPayments = () => (
         <div className="space-y-6 animate-fade-in">
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -2093,10 +2466,12 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             return matchesSearch && matchesPlan && matchesRisk;
         }), payingClientActivitySort);
 
-        const totalClientMRR = filteredClients.reduce((sum, client) => sum + Number(client.mrr || 0), 0);
+        const totalClientMRR = filteredClients.filter(c => !c.isTestCompany).reduce((sum, client) => sum + Number(client.mrr || 0), 0);
         const totalClientARR = totalClientMRR * 12;
-        const clientsNeedingAttention = filteredClients.filter((client) => client.risk !== 'ok').length;
-        const clientsWithCards = filteredClients.filter((client) => client.paymentMethod !== 'No card on file').length;
+        const clientsNeedingAttention = filteredClients.filter((client) => !client.isTestCompany && client.risk !== 'ok').length;
+        const clientsWithCards = filteredClients.filter((client) => !client.isTestCompany && client.paymentMethod !== 'No card on file').length;
+        const realClientCount = filteredClients.filter(c => !c.isTestCompany).length;
+        const testClientCount = filteredClients.filter(c => c.isTestCompany).length;
 
         const riskClasses: Record<PayingClient['risk'], string> = {
             ok: 'bg-green-100 text-green-800',
@@ -2109,7 +2484,8 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                     <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
                         <p className="text-xs text-gray-500 uppercase font-bold mb-1">Paying Clients</p>
-                        <p className="text-2xl font-bold text-gray-900">{filteredClients.length}</p>
+                        <p className="text-2xl font-bold text-gray-900">{realClientCount}</p>
+                        {testClientCount > 0 && <p className="text-xs text-gray-400 mt-1">{testClientCount} test excluded</p>}
                     </div>
                     <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
                         <p className="text-xs text-gray-500 uppercase font-bold mb-1">Filtered MRR</p>
@@ -2214,10 +2590,15 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                         <tr
                                             key={client.id}
                                             onClick={() => setSelectedPayingClient(client)}
-                                            className="cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-0"
+                                            className={`cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-0 ${client.isTestCompany ? 'opacity-60' : ''}`}
                                         >
                                             <td className="px-5 py-4">
-                                                <div className="font-medium text-gray-900">{client.companyName}</div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-medium text-gray-900">{client.companyName}</span>
+                                                    {client.isTestCompany && (
+                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-100 text-purple-700">🧪 Test</span>
+                                                    )}
+                                                </div>
                                                 <div className="text-xs text-gray-500">{client.activeEmployees} active employees</div>
                                             </td>
                                             <td className="px-5 py-4">
@@ -3473,6 +3854,8 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 {activeTab === 'paying-clients' && renderPayingClients()}
                 {activeTab === 'pending-payments' && renderPendingPayments()}
                 {activeTab === 'users' && renderAdmins()}
+                {activeTab === 'releases' && renderReleases()}
+                {activeTab === 'broadcasts' && renderBroadcasts()}
                 {activeTab === 'logs' && renderLogs()}
                 {activeTab === 'settings' && renderSettings()}
                 {activeTab === 'health' && renderHealth()}
@@ -3484,14 +3867,33 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl bg-white shadow-2xl animate-scale-in">
                         <div className="sticky top-0 z-10 flex items-start justify-between border-b border-gray-100 bg-gray-50 p-6">
                             <div>
-                                <h3 className="text-xl font-bold text-gray-900">{selectedPayingClient.companyName}</h3>
+                                <div className="flex items-center gap-3">
+                                    <h3 className="text-xl font-bold text-gray-900">{selectedPayingClient.companyName}</h3>
+                                    {selectedPayingClient.isTestCompany && (
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase bg-purple-100 text-purple-700">🧪 Test</span>
+                                    )}
+                                </div>
                                 <p className="mt-1 text-sm text-gray-500">
                                     Paying customer details, activity, billing notes, and support signals.
                                 </p>
                             </div>
-                            <button onClick={() => setSelectedPayingClient(null)} className="text-gray-400 hover:text-gray-600">
-                                <Icons.Close className="h-6 w-6" />
-                            </button>
+                            <div className="flex items-center gap-4">
+                                <label className="flex items-center gap-2 cursor-pointer select-none" title="Flag as test company — excluded from revenue metrics">
+                                    <span className="text-xs font-medium text-gray-500">Test Company</span>
+                                    <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={selectedPayingClient.isTestCompany || false}
+                                        onClick={() => handleToggleTestCompany(selectedPayingClient.id, !selectedPayingClient.isTestCompany)}
+                                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${selectedPayingClient.isTestCompany ? 'bg-purple-500' : 'bg-gray-300'}`}
+                                    >
+                                        <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${selectedPayingClient.isTestCompany ? 'translate-x-[18px]' : 'translate-x-[3px]'}`} />
+                                    </button>
+                                </label>
+                                <button onClick={() => setSelectedPayingClient(null)} className="text-gray-400 hover:text-gray-600">
+                                    <Icons.Close className="h-6 w-6" />
+                                </button>
+                            </div>
                         </div>
 
                         <div className="space-y-6 p-6">
@@ -3619,6 +4021,138 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                             </button>
                                             <button onClick={() => handleManagePayingClient(selectedPayingClient)} className="rounded-lg bg-jam-black px-3 py-2 text-sm font-medium text-white hover:bg-gray-800">
                                                 Manage Company
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {selectedTenant && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                    <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl bg-white shadow-2xl animate-scale-in">
+                        <div className="sticky top-0 z-10 flex items-start justify-between border-b border-gray-100 bg-gray-50 p-6">
+                            <div>
+                                <div className="flex items-center gap-3">
+                                    <h3 className="text-xl font-bold text-gray-900">{selectedTenant.companyName}</h3>
+                                    {(selectedTenant as any).isTestCompany && (
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase bg-purple-100 text-purple-700">🧪 Test</span>
+                                    )}
+                                </div>
+                                <p className="mt-1 text-sm text-gray-500">
+                                    Company details, activity, billing, and admin contact.
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <label className="flex items-center gap-2 cursor-pointer select-none" title="Flag as test company — excluded from revenue metrics">
+                                    <span className="text-xs font-medium text-gray-500">Test Company</span>
+                                    <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={(selectedTenant as any).isTestCompany || false}
+                                        onClick={() => handleToggleTestCompany(selectedTenant.id, !(selectedTenant as any).isTestCompany)}
+                                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${(selectedTenant as any).isTestCompany ? 'bg-purple-500' : 'bg-gray-300'}`}
+                                    >
+                                        <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${(selectedTenant as any).isTestCompany ? 'translate-x-[18px]' : 'translate-x-[3px]'}`} />
+                                    </button>
+                                </label>
+                                <button onClick={() => setSelectedTenant(null)} className="text-gray-400 hover:text-gray-600">
+                                    <Icons.Close className="h-6 w-6" />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="space-y-6 p-6">
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                                <div className="rounded-xl border border-gray-200 p-4">
+                                    <p className="text-xs font-bold uppercase text-gray-500">Plan</p>
+                                    <p className="mt-1 text-lg font-bold text-gray-900">{selectedTenant.plan}</p>
+                                    <p className="text-xs text-gray-500">{selectedTenant.subscriptionStatus || selectedTenant.status}</p>
+                                </div>
+                                <div className="rounded-xl border border-gray-200 p-4">
+                                    <p className="text-xs font-bold uppercase text-gray-500">MRR</p>
+                                    <p className="mt-1 text-lg font-bold text-jam-orange">JMD {(selectedTenant.mrr || 0).toLocaleString()}</p>
+                                    <p className="text-xs text-gray-500">ARR JMD {((selectedTenant.mrr || 0) * 12).toLocaleString()}</p>
+                                </div>
+                                <div className="rounded-xl border border-gray-200 p-4">
+                                    <p className="text-xs font-bold uppercase text-gray-500">Last Login</p>
+                                    <p className="mt-1 text-lg font-bold text-gray-900">{formatActivityDate(selectedTenant.lastLoginAt)}</p>
+                                    <p className="text-xs text-gray-500">Created {formatActivityDate(selectedTenant.accountCreatedAt || selectedTenant.createdAt, 'N/A')}</p>
+                                </div>
+                                <div className="rounded-xl border border-gray-200 p-4">
+                                    <p className="text-xs font-bold uppercase text-gray-500">Employees</p>
+                                    <p className="mt-1 text-lg font-bold text-gray-900">{selectedTenant.employeeCount}</p>
+                                    <p className="text-xs text-gray-500">{selectedTenant.status === 'ACTIVE' ? 'Active workspace' : selectedTenant.status}</p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                                <div className="rounded-xl border border-gray-200 p-5">
+                                    <div className="mb-4 flex items-center gap-2">
+                                        <Icons.CalendarDays className="h-5 w-5 text-gray-400" />
+                                        <h4 className="font-bold text-gray-900">Billing & Manual Payment</h4>
+                                    </div>
+                                    <div className="space-y-3 text-sm">
+                                        <div className="flex justify-between gap-4">
+                                            <span className="text-gray-500">Status</span>
+                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${selectedTenant.status === 'ACTIVE' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                                {selectedTenant.status}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between gap-4">
+                                            <span className="text-gray-500">Manual access</span>
+                                            <span className="font-medium text-gray-900">
+                                                {selectedTenant.billingGift?.giftedUntil
+                                                    ? `${getManualPaymentAccessLabel(selectedTenant.billingGift)} through ${formatGiftedUntil(selectedTenant.billingGift.giftedUntil)}`
+                                                    : 'None'}
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <p className="text-gray-500">Internal note</p>
+                                            <p className="mt-1 rounded-lg bg-gray-50 p-3 text-gray-800">
+                                                {selectedTenant.billingGift?.note || 'No manual payment note recorded.'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="rounded-xl border border-gray-200 p-5">
+                                    <div className="mb-4 flex items-center gap-2">
+                                        <Icons.Users className="h-5 w-5 text-gray-400" />
+                                        <h4 className="font-bold text-gray-900">Admin Contact</h4>
+                                    </div>
+                                    <div className="space-y-3 text-sm">
+                                        <div>
+                                            <p className="text-gray-500">Primary contact</p>
+                                            <p className="font-medium text-gray-900">{selectedTenant.contactName}</p>
+                                            <p className="text-gray-500">{selectedTenant.email}</p>
+                                            {selectedTenant.phone && <p className="text-gray-500">{selectedTenant.phone}</p>}
+                                        </div>
+                                        <div className="flex flex-wrap gap-2 pt-2">
+                                            <button
+                                                onClick={() => {
+                                                    setSelectedTenant(null);
+                                                    onImpersonate(selectedTenant);
+                                                }}
+                                                className="rounded-lg bg-jam-black px-3 py-2 text-sm font-medium text-white hover:bg-gray-800"
+                                            >
+                                                Manage Company
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setSelectedTenant(null);
+                                                    setGiftingTenant(selectedTenant);
+                                                    setGiftMonths(1);
+                                                    setGiftNote('');
+                                                    setManualPaymentAction('FREE_GIFT');
+                                                    setManualPaymentReason('STANDARD_PAYMENT');
+                                                    setManualPaymentPlan(selectedTenant.plan === 'Free' ? 'Starter' : normalizeManualPaymentPlan(selectedTenant.plan));
+                                                }}
+                                                className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                                            >
+                                                Manual Payment
                                             </button>
                                         </div>
                                     </div>

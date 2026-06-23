@@ -2240,6 +2240,7 @@ serve(async (req: Request) => {
                         status: c.status || 'ACTIVE',
                         billingGift,
                         hasActiveBillingGift: isBillingGiftActive(billingGift),
+                        isTestCompany: Boolean(c.settings?.isTestCompany),
                         employeeCount: activeEmployeeCount,
                         mrr,
                         createdAt: c.created_at,
@@ -2496,7 +2497,7 @@ serve(async (req: Request) => {
 
                 if (updateError) throw updateError;
 
-                let emailNotification = { sent: false, error: 'No recipient email found' as string | undefined };
+                let emailNotification: { sent: boolean; error?: string } = { sent: false, error: 'No recipient email found' };
                 if (recipientEmail) {
                     try {
                         emailNotification = await sendManualUpgradeNotification({
@@ -3648,7 +3649,7 @@ serve(async (req: Request) => {
                     adminClient.from('companies').select('*', { count: 'exact', head: true }).eq('status', 'ACTIVE'),
                     adminClient.from('companies').select('*', { count: 'exact', head: true }).in('status', ['PENDING_PAYMENT', 'PENDING_APPROVAL']),
                     adminClient.from('employees').select('*', { count: 'exact', head: true }).eq('status', 'ACTIVE'),
-                    adminClient.from('companies').select('id, plan').eq('status', 'ACTIVE'),
+                    adminClient.from('companies').select('id, plan, settings').eq('status', 'ACTIVE'),
                     adminClient.from('employees').select('company_id').eq('status', 'ACTIVE')
                 ]);
 
@@ -3659,7 +3660,9 @@ serve(async (req: Request) => {
                     return acc;
                 }, {});
 
-                const totalMRR = (activeCompanies || []).reduce((sum: number, company: any) => (
+                const realActiveCompanies = (activeCompanies || []).filter((c: any) => !c.settings?.isTestCompany);
+
+                const totalMRR = realActiveCompanies.reduce((sum: number, company: any) => (
                     sum + calculatePlanMRR(company.plan, activeEmployeeCounts[company.id] || 0)
                 ), 0);
 
@@ -3670,6 +3673,203 @@ serve(async (req: Request) => {
                     totalEmployees: totalEmployees || 0,
                     totalMRR
                 }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'get-vercel-deployments': {
+                await assertSuperAdmin(adminClient, authUser);
+                const projectId = Deno.env.get('VERCEL_PROJECT_ID');
+                const token = Deno.env.get('VERCEL_ACCESS_TOKEN');
+                
+                // Fetch current system_settings first so we always have it
+                const { data: systemSettings } = await adminClient
+                    .from('system_settings')
+                    .select('*')
+                    .eq('id', 1)
+                    .maybeSingle();
+
+                let deployments: any[] = [];
+                let vercelError = null;
+
+                if (!projectId || !token) {
+                    vercelError = 'Vercel API credentials not configured';
+                } else {
+                    try {
+                        const response = await fetch(`https://api.vercel.com/v6/deployments?projectId=${projectId}&limit=10`, {
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            }
+                        });
+
+                        if (!response.ok) {
+                            const errorText = await response.text();
+                            console.error('Vercel API error:', errorText);
+                            vercelError = 'Failed to fetch Vercel deployments (403 Forbidden or other error). Please check your Vercel Access Token permissions.';
+                        } else {
+                            const data = await response.json();
+                            deployments = data.deployments;
+                        }
+                    } catch (e: any) {
+                        console.error('Vercel API exception:', e);
+                        vercelError = e.message;
+                    }
+                }
+
+                return new Response(JSON.stringify({
+                    deployments,
+                    current_version: systemSettings?.current_version || '1.0.0',
+                    latest_release_notes: systemSettings?.latest_release_notes || '',
+                    error: vercelError
+                }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'promote-vercel-deployment': {
+                await assertSuperAdmin(adminClient, authUser);
+                const { deploymentId, targetVersion, releaseNotes, productionDomain } = payload;
+                
+                if (!deploymentId || !targetVersion) {
+                    throw new Error('Missing deploymentId or targetVersion');
+                }
+
+                const projectId = Deno.env.get('VERCEL_PROJECT_ID');
+                const token = Deno.env.get('VERCEL_ACCESS_TOKEN');
+                
+                if (!projectId || !token) {
+                    throw new Error('Vercel API credentials not configured');
+                }
+
+                if (!productionDomain) {
+                    throw new Error('Production domain alias not provided');
+                }
+
+                // 1. Alias the Vercel deployment to the production domain
+                const aliasResponse = await fetch(`https://api.vercel.com/v2/deployments/${deploymentId}/aliases?teamId=`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        alias: productionDomain
+                    })
+                });
+
+                if (!aliasResponse.ok) {
+                    const errorText = await aliasResponse.text();
+                    console.error('Vercel Alias error:', errorText);
+                    throw new Error(`Failed to assign production domain alias: ${errorText}`);
+                }
+
+                // 2. Update system_settings in Supabase
+                const { error: dbError } = await adminClient
+                    .from('system_settings')
+                    .update({
+                        current_version: targetVersion,
+                        latest_release_notes: releaseNotes || '',
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', 1);
+
+                if (dbError) throw dbError;
+
+                return new Response(JSON.stringify({ success: true, version: targetVersion }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'send-platform-broadcast': {
+                await assertSuperAdmin(adminClient, authUser);
+                const { subject, bodyMarkdown, targetAudience } = payload;
+                
+                if (!subject || !bodyMarkdown || !targetAudience) {
+                    throw new Error('Missing subject, bodyMarkdown or targetAudience');
+                }
+
+                // 1. Insert broadcast record
+                const { data: broadcast, error: insertError } = await adminClient
+                    .from('system_broadcasts')
+                    .insert({
+                        subject,
+                        body_markdown: bodyMarkdown,
+                        target_audience: targetAudience,
+                        status: 'SENDING'
+                    })
+                    .select()
+                    .single();
+
+                if (insertError) throw insertError;
+
+                // 2. Fetch users based on audience
+                let query = adminClient.from('app_users').select('email, name').neq('email', null);
+                if (targetAudience === 'OWNERS_ONLY') {
+                    query = query.eq('role', 'OWNER');
+                }
+
+                const { data: users, error: usersError } = await query;
+                if (usersError) throw usersError;
+
+                if (!users || users.length === 0) {
+                    await adminClient.from('system_broadcasts').update({ status: 'COMPLETED', sent_at: new Date().toISOString() }).eq('id', broadcast.id);
+                    return new Response(JSON.stringify({ success: true, count: 0 }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+                }
+
+                // 3. Send emails via Brevo
+                const brevoApiKey = Deno.env.get('SMTP_PASS'); 
+                const fromName = Deno.env.get('SMTP_FROM_NAME') || 'Payroll-Jam';
+                const fromEmail = Deno.env.get('SMTP_FROM_EMAIL') || '9dea0e001@smtp-brevo.com';
+
+                if (!brevoApiKey) {
+                    await adminClient.from('system_broadcasts').update({ status: 'DRAFT' }).eq('id', broadcast.id);
+                    throw new Error('Email service not configured. SMTP_PASS (API Key) missing.');
+                }
+
+                // chunk recipients into batches of 50 to avoid API limits on single requests
+                const chunkSize = 50;
+                const chunks = [];
+                for (let i = 0; i < users.length; i += chunkSize) {
+                    chunks.push(users.slice(i, i + chunkSize));
+                }
+
+                // Transform simple markdown to HTML (paragraphs)
+                const htmlContent = `<div style="font-family: sans-serif; line-height: 1.6; color: #374151;">
+                    ${bodyMarkdown.split('\n').map((line: string) => line.trim() ? `<p>${line}</p>` : '<br/>').join('')}
+                </div>`;
+
+                let sentCount = 0;
+
+                await Promise.all(chunks.map(async (chunk) => {
+                    const bccList = chunk.map((u: any) => ({ email: u.email, name: u.name || 'User' }));
+                    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json',
+                            'api-key': brevoApiKey
+                        },
+                        body: JSON.stringify({
+                            sender: { name: fromName, email: fromEmail },
+                            to: [{ email: fromEmail, name: fromName }], // To ourselves to hide BCCs
+                            bcc: bccList, 
+                            subject: subject,
+                            htmlContent: htmlContent
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        const errText = await response.text();
+                        console.error('Brevo API Error:', errText);
+                    } else {
+                        sentCount += chunk.length;
+                    }
+                }));
+
+                // 4. Mark completed
+                await adminClient.from('system_broadcasts').update({ status: 'COMPLETED', sent_at: new Date().toISOString() }).eq('id', broadcast.id);
+
+                return new Response(JSON.stringify({ success: true, count: sentCount }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });
             }
@@ -3886,6 +4086,8 @@ serve(async (req: Request) => {
                             plan: normalizePlanToFrontend(company.plan),
                             status: companyStatus,
                             subscriptionStatus: subscription?.status || null,
+                            billingGift: toBillingGift(company.settings?.billingGift),
+                            isTestCompany: Boolean(company.settings?.isTestCompany),
                             activeEmployees: employeeCount,
                             mrr,
                             arr: mrr * 12,
@@ -4097,6 +4299,35 @@ serve(async (req: Request) => {
                     .eq('id', clientCompanyId);
 
                 return new Response(JSON.stringify({ success: true }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'toggle-test-company': {
+                await assertSuperAdmin(adminClient, authUser);
+
+                const { companyId, isTestCompany } = payload || {};
+                if (!companyId) throw new Error('companyId is required');
+
+                const { data: existing, error: fetchErr } = await adminClient
+                    .from('companies')
+                    .select('settings')
+                    .eq('id', companyId)
+                    .maybeSingle();
+
+                if (fetchErr) throw fetchErr;
+
+                const currentSettings = (existing?.settings || {}) as Record<string, any>;
+                const updatedSettings = { ...currentSettings, isTestCompany: Boolean(isTestCompany) };
+
+                const { error: updateErr } = await adminClient
+                    .from('companies')
+                    .update({ settings: updatedSettings })
+                    .eq('id', companyId);
+
+                if (updateErr) throw updateErr;
+
+                return new Response(JSON.stringify({ success: true, isTestCompany: Boolean(isTestCompany) }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });
             }
