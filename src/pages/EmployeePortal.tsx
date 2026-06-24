@@ -6,6 +6,7 @@ import { PayslipView } from '../components/PayslipView';
 import { MultiDateCalendar } from '../components/MultiDateCalendar';
 import { downloadFile, generateP24CSV } from '../utils/exportHelpers';
 import { decodeClockInPayload, getCompanyLocations, normalizeAttendancePassCode } from '../utils/attendance';
+import { getNextPayDateInfo } from '../utils/payrollSchedule';
 import { toast } from 'sonner';
 import { AttendanceClockPayload, AttendanceClockResult } from '../services/PayrollService';
 
@@ -157,6 +158,11 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
         });
         return slips.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }, [payRunHistory, employee, user.name]);
+
+    const nextPayDate = useMemo(
+        () => getNextPayDateInfo(payRunHistory || [], companyData?.payFrequency),
+        [payRunHistory, companyData?.payFrequency]
+    );
 
     // Aggregate YTD
     const ytdEarnings = useMemo(() => {
@@ -1569,7 +1575,7 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                     <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-6">
                         <div>
                             <p className="text-sm text-gray-400 uppercase tracking-wider">Next Pay Date</p>
-                            <p className="text-2xl font-bold text-jam-yellow mt-1">Feb 25, 2025</p>
+                            <p className="text-2xl font-bold text-jam-yellow mt-1">{nextPayDate.display}</p>
                         </div>
                         <div>
                             <p className="text-sm text-gray-400 uppercase tracking-wider">YTD Earnings (Net)</p>
