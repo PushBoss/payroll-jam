@@ -304,6 +304,10 @@ export interface PayRunLineItem extends StatutoryDeductions {
   // Bank details for payment file generation
   bankName?: string;
   accountNumber?: string;
+  
+  // Tax Registration
+  trn?: string;
+  nis?: string;
 }
 
 export interface PayRun {

@@ -254,6 +254,8 @@ export function calculateEmployeePayroll(
     employeeId: employee.id,
     employeeName: `${employee.firstName} ${employee.lastName}`,
     employeeCustomId: employee.employeeId,
+    trn: employee.trn,
+    nis: employee.nis,
     grossPay: Math.round(proratedGross * 100) / 100,
     additions: additions,
     deductions: deductions,

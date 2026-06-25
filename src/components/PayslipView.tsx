@@ -55,11 +55,11 @@ export const PayslipDocument: React.FC<PayslipDocumentProps> = ({ data, companyN
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-xs text-gray-500 uppercase">TRN</p>
-                <p className="font-semibold text-gray-900">123-456-789</p>
+                <p className="font-semibold text-gray-900">{data.trn || 'Pending'}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500 uppercase">NIS</p>
-                <p className="font-semibold text-gray-900">A123456</p>
+                <p className="font-semibold text-gray-900">{data.nis || 'Pending'}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500 uppercase">Department</p>

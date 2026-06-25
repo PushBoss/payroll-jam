@@ -639,6 +639,23 @@ export const Settings: React.FC<SettingsProps> = ({
     const [requestRefund, setRequestRefund] = useState(false);
     const [isAddingPaymentMethod, setIsAddingPaymentMethod] = useState(false);
     const [showPlanSelectorModal, setShowPlanSelectorModal] = useState(false);
+    const [appVersion, setAppVersion] = useState<string>('Loading...');
+
+    useEffect(() => {
+        const fetchAppVersion = async () => {
+            try {
+                const { data, error } = await supabase.from('system_settings').select('current_version').eq('id', 1).maybeSingle();
+                if (!error && data?.current_version) {
+                    setAppVersion(data.current_version);
+                } else {
+                    setAppVersion('1.0.4.3');
+                }
+            } catch (err) {
+                setAppVersion('1.0.4.3');
+            }
+        };
+        fetchAppVersion();
+    }, []);
 
     const mapPaymentHistoryToInvoices = (payments: any[]): PaymentRecord[] => (
         payments.map(p => ({
@@ -2063,7 +2080,7 @@ export const Settings: React.FC<SettingsProps> = ({
             })()}
 
             <p className="pt-6 text-center text-xs font-medium text-gray-400">
-                Version 1.0.4.3
+                Version {appVersion}
             </p>
         </div>
     );
