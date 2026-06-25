@@ -24,6 +24,7 @@ import { getUserRoleInAccount, inviteUserToAccount, MemberRole } from '../featur
 import { InviteUserCard } from '../components/InviteUserCard';
 import { AccountMembersCard } from '../components/AccountMembersCard';
 import { TaxConfigCard } from '../features/employees/TaxConfigCard';
+import packageJson from '../../package.json';
 
 const JAMAICA_PARISHES = [
     'Kingston',
@@ -644,14 +645,19 @@ export const Settings: React.FC<SettingsProps> = ({
     useEffect(() => {
         const fetchAppVersion = async () => {
             try {
+                if (!supabase) {
+                    setAppVersion(packageJson.version);
+                    return;
+                }
+
                 const { data, error } = await supabase.from('system_settings').select('current_version').eq('id', 1).maybeSingle();
                 if (!error && data?.current_version) {
                     setAppVersion(data.current_version);
                 } else {
-                    setAppVersion('1.0.4.3');
+                    setAppVersion(packageJson.version);
                 }
             } catch (err) {
-                setAppVersion('1.0.4.3');
+                setAppVersion(packageJson.version);
             }
         };
         fetchAppVersion();

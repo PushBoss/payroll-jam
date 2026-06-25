@@ -307,7 +307,10 @@ export interface PayRunLineItem extends StatutoryDeductions {
   
   // Tax Registration
   trn?: string;
-  nis?: string;
+  nisId?: string;
+
+  // Additional Details
+  jobTitle?: string;
 }
 
 export interface PayRun {
@@ -717,12 +720,14 @@ export interface DbEmployeeRow {
   hourly_rate?: number | null;
   pay_type?: string;
   pay_frequency?: string;
+  employee_type?: string | null;
   pay_data?: {
     grossSalary?: number;
     hourlyRate?: number;
     pieceRateAmount?: number;
     payType?: string;
     payFrequency?: string;
+    employeeType?: string;
   } | null;
   bank_details?: BankAccount | null;
   leave_balance?: { vacation: number; sick: number; personal: number } | null;
@@ -807,6 +812,18 @@ export const toPayType = (value: string | null | undefined): PayType =>
 const PAY_FREQ_VALUES = new Set<string>(Object.values(PayFrequency));
 export const toPayFrequency = (value: string | null | undefined): PayFrequency =>
   PAY_FREQ_VALUES.has(value ?? '') ? (value as PayFrequency) : PayFrequency.MONTHLY;
+
+const EMPLOYEE_TYPE_VALUES = new Set<string>(Object.values(EmployeeType));
+export const toEmployeeType = (value: string | null | undefined): EmployeeType => {
+  const normalized = (value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+
+  if (EMPLOYEE_TYPE_VALUES.has(normalized)) return normalized as EmployeeType;
+  if (normalized === 'FULL_TIME' || normalized === 'PART_TIME') return EmployeeType.STAFF;
+  return EmployeeType.STAFF;
+};
 
 export type PlanLabel = 'Free' | 'Starter' | 'Pro' | 'Enterprise' | 'Reseller';
 const PLAN_LABELS = new Set<string>(['Free', 'Starter', 'Pro', 'Enterprise', 'Reseller']);

@@ -368,6 +368,8 @@ export const Reports: React.FC<ReportsProps> = ({
           companyName={companyData?.name || 'JamCorp Ltd.'}
           payPeriod={printingPayslipRun.periodStart}
           payDate={printingPayslipRun.payDate}
+          employees={employees}
+          payRunHistory={displayHistory}
           onClose={() => setPrintingPayslipRun(null)}
         />
       );
@@ -382,6 +384,8 @@ export const Reports: React.FC<ReportsProps> = ({
           companyName={companyData?.name || 'JamCorp Ltd.'}
           payPeriod={selectedRun.periodStart}
           payDate={selectedRun.payDate}
+          employees={employees}
+          payRunHistory={displayHistory}
           onClose={() => setViewingPayslip(null)}
         />
       );

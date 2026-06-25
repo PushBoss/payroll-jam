@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { Employee, User, LeaveRequest, DbAppUserRow, DbEmployeeRow, toRole, toPayType, toPayFrequency, toEmployeeStatus, CustomDeduction, Deduction } from '../core/types';
+import { Employee, User, LeaveRequest, DbAppUserRow, DbEmployeeRow, toRole, toPayType, toPayFrequency, toEmployeeStatus, toEmployeeType, CustomDeduction, Deduction } from '../core/types';
 
 type EmployeeSaveMode = 'insert' | 'update' | 'upsert';
 type EmployeeSaveOptions = {
@@ -69,13 +69,14 @@ const getCustomDeductionsFromRow = (row: DbEmployeeRow | null): CustomDeduction[
 
 const getPayDataFromRow = (row: DbEmployeeRow | null) => {
   if (!row) return {};
-  if (row.pay_data && typeof row.pay_data === 'object') return row.pay_data;
+  const payData = row.pay_data && typeof row.pay_data === 'object' ? row.pay_data : {};
   return {
-    grossSalary: row.gross_salary,
-    hourlyRate: row.hourly_rate,
-    pieceRateAmount: row.pay_data && typeof row.pay_data === 'object' ? (row.pay_data as any).pieceRateAmount : undefined,
-    payType: row.pay_type,
-    payFrequency: row.pay_frequency
+    grossSalary: payData.grossSalary ?? row.gross_salary,
+    hourlyRate: payData.hourlyRate ?? row.hourly_rate,
+    pieceRateAmount: payData.pieceRateAmount,
+    payType: payData.payType ?? row.pay_type,
+    payFrequency: payData.payFrequency ?? row.pay_frequency,
+    employeeType: payData.employeeType ?? row.employee_type
   };
 };
 
@@ -264,6 +265,7 @@ export const EmployeeService = {
       pieceRateAmount: payData?.pieceRateAmount,
       payType: toPayType(payData?.payType),
       payFrequency: toPayFrequency(payData?.payFrequency),
+      employeeType: toEmployeeType(payData?.employeeType),
 
       bankDetails: e.bank_details || undefined,
       leaveBalance: e.leave_balance || undefined,
@@ -333,7 +335,8 @@ export const EmployeeService = {
       hourlyRate: emp.hourlyRate,
       pieceRateAmount: emp.payType === 'PIECE_RATE' ? emp.pieceRateAmount : undefined,
       payType: emp.payType,
-      payFrequency: emp.payFrequency
+      payFrequency: emp.payFrequency,
+      employeeType: emp.employeeType
     };
 
     const normalizedCustomDeductions = normalizeCustomDeductions(emp.customDeductions);
@@ -372,6 +375,7 @@ export const EmployeeService = {
       hourly_rate: emp.hourlyRate ?? null,
       pay_type: emp.payType,
       pay_frequency: emp.payFrequency,
+      employee_type: emp.employeeType || 'STAFF',
       // JSONB unified columns
       pay_data: payData,
       // Handle the deduction column renaming
@@ -459,6 +463,7 @@ export const EmployeeService = {
           hourlyRate: payData?.hourlyRate,
           payType: toPayType(payData?.payType),
           payFrequency: toPayFrequency(payData?.payFrequency),
+          employeeType: toEmployeeType(payData?.employeeType),
           bankDetails: row.bank_details || undefined,
           leaveBalance: row.leave_balance || undefined,
           allowances: row.allowances || [],

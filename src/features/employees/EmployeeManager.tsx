@@ -649,7 +649,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    {formData.payType === PayType.PIECE_RATE ? 'Estimated Period Gross *' : 'Gross Salary/Rate *'}
+                    {formData.payType === PayType.PIECE_RATE || formData.payType === PayType.HOURLY ? 'Estimated Period Gross *' : 'Gross Salary/Rate *'}
                   </label>
                   <div className="flex items-center">
                     <span className="text-gray-600 mr-2">$</span>

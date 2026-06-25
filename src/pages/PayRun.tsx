@@ -543,6 +543,13 @@ export const PayRun: React.FC<PayRunProps> = ({
     };
 
     const missingEmployees = useMemo(() => getMissingPayRunEmployees(employees, draftItems), [employees, draftItems]);
+    const payslipPayRunHistory = useMemo(() => {
+        if (!currentRun) return payRunHistory;
+        return [
+            ...payRunHistory.filter(run => run.id !== currentRun.id),
+            currentRun
+        ];
+    }, [currentRun, payRunHistory]);
 
     if (step === 'SETUP') {
         return (
@@ -778,6 +785,8 @@ export const PayRun: React.FC<PayRunProps> = ({
                     companyName={companyData.name}
                     payPeriod={currentRun?.periodStart || payPeriod}
                     payDate={currentRun?.payDate || new Date().toISOString().split('T')[0]}
+                    employees={employees}
+                    payRunHistory={payslipPayRunHistory}
                     onClose={() => setViewingPayslip(null)}
                 />
             )}
@@ -788,6 +797,8 @@ export const PayRun: React.FC<PayRunProps> = ({
                     companyName={companyData.name}
                     payPeriod={printingPayslipRun.periodStart}
                     payDate={printingPayslipRun.payDate}
+                    employees={employees}
+                    payRunHistory={payslipPayRunHistory}
                     onClose={() => setPrintingPayslipRun(null)}
                 />
             )}

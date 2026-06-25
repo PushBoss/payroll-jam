@@ -1,26 +1,116 @@
 
 import React, { useEffect } from 'react';
-import { PayRunLineItem } from '../core/types';
+import { Employee, PayRun, PayRunLineItem } from '../core/types';
 import { Icons } from './Icons';
+
+interface PayslipYtdSummary {
+  gross: number;
+  taxableIncome: number;
+  totalDeductions: number;
+  net: number;
+}
 
 interface PayslipDocumentProps {
   data: PayRunLineItem;
   companyName: string;
   payPeriod: string;
   payDate: string;
+  employee?: Employee;
+  payRunHistory?: PayRun[];
+  ytdSummary?: PayslipYtdSummary;
   className?: string;
 }
 
-export const PayslipDocument: React.FC<PayslipDocumentProps> = ({ data, companyName, payPeriod, payDate, className = '' }) => {
-  // Mock YTD Calculations (In a real app, this comes from the backend)
-  const mockYTD = {
-    gross: data.grossPay * 4,
-    tax: data.paye * 4,
-    nis: data.nis * 4,
-    nht: data.nht * 4,
-    edTax: data.edTax * 4,
-    net: data.netPay * 4
+const toMoney = (value: unknown) => {
+  const num = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(num) ? num : 0;
+};
+
+const isSameEmployeeLine = (a: PayRunLineItem, b: PayRunLineItem) => {
+  if (a.employeeId && b.employeeId) return a.employeeId === b.employeeId;
+  return a.employeeName === b.employeeName;
+};
+
+const getTaxableAdditions = (line: PayRunLineItem) => {
+  if (Array.isArray(line.additionsBreakdown) && line.additionsBreakdown.length > 0) {
+    return line.additionsBreakdown
+      .filter(item => item.isTaxable !== false)
+      .reduce((sum, item) => sum + toMoney(item.amount), 0);
+  }
+
+  return toMoney(line.additions);
+};
+
+const summarizeLineForYtd = (line: PayRunLineItem): PayslipYtdSummary => {
+  const gross = toMoney(line.grossPay) + toMoney(line.additions);
+  const taxableIncome = Math.max(0, toMoney(line.grossPay) + getTaxableAdditions(line) - toMoney(line.nis) - toMoney(line.pension));
+
+  return {
+    gross,
+    taxableIncome,
+    totalDeductions: toMoney(line.totalDeductions),
+    net: toMoney(line.netPay)
   };
+};
+
+const calculatePayslipYtd = (
+  data: PayRunLineItem,
+  payRunHistory: PayRun[] = [],
+  payPeriod: string,
+  payDate: string
+): PayslipYtdSummary => {
+  const targetYear = (payPeriod || payDate).slice(0, 4);
+  const targetPeriod = payPeriod || payDate.slice(0, 7);
+  const matchingLines: PayRunLineItem[] = [];
+  let includesCurrentLine = false;
+
+  payRunHistory.forEach(run => {
+    const runPeriod = run.periodStart || run.periodEnd || run.payDate.slice(0, 7);
+    if (!runPeriod.startsWith(targetYear)) return;
+    if (runPeriod > targetPeriod) return;
+    if (run.status !== 'FINALIZED' && runPeriod !== targetPeriod) return;
+
+    const line = run.lineItems?.find(item => isSameEmployeeLine(item, data));
+    if (!line) return;
+
+    matchingLines.push(line);
+    if (runPeriod === targetPeriod) includesCurrentLine = true;
+  });
+
+  if (!includesCurrentLine) {
+    matchingLines.push(data);
+  }
+
+  return matchingLines.reduce((summary, line) => {
+    const lineSummary = summarizeLineForYtd(line);
+    return {
+      gross: summary.gross + lineSummary.gross,
+      taxableIncome: summary.taxableIncome + lineSummary.taxableIncome,
+      totalDeductions: summary.totalDeductions + lineSummary.totalDeductions,
+      net: summary.net + lineSummary.net
+    };
+  }, { gross: 0, taxableIncome: 0, totalDeductions: 0, net: 0 });
+};
+
+const findEmployeeForLine = (line: PayRunLineItem, employees: Employee[] = []) => (
+  employees.find(employee => employee.id === line.employeeId)
+  || employees.find(employee => `${employee.firstName} ${employee.lastName}` === line.employeeName)
+);
+
+export const PayslipDocument: React.FC<PayslipDocumentProps> = ({
+  data,
+  companyName,
+  payPeriod,
+  payDate,
+  employee,
+  payRunHistory = [],
+  ytdSummary,
+  className = ''
+}) => {
+  const ytd = ytdSummary || calculatePayslipYtd(data, payRunHistory, payPeriod, payDate);
+  const trn = data.trn || employee?.trn || 'Pending';
+  const nisId = data.nisId || employee?.nis || 'Pending';
+  const jobTitle = data.jobTitle || employee?.jobTitle || 'General';
 
   return (
     <div className={`bg-white p-8 print:p-0 max-w-3xl mx-auto ${className}`}>
@@ -55,15 +145,15 @@ export const PayslipDocument: React.FC<PayslipDocumentProps> = ({ data, companyN
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-xs text-gray-500 uppercase">TRN</p>
-                <p className="font-semibold text-gray-900">{data.trn || 'Pending'}</p>
+                <p className="font-semibold text-gray-900">{trn}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500 uppercase">NIS</p>
-                <p className="font-semibold text-gray-900">{data.nis || 'Pending'}</p>
+                <p className="font-semibold text-gray-900">{nisId}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500 uppercase">Department</p>
-                <p className="font-semibold text-gray-900">General</p>
+                <p className="text-xs text-gray-500 uppercase">Job Title</p>
+                <p className="font-semibold text-gray-900">{jobTitle}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500 uppercase">Pay Cycle</p>
@@ -171,19 +261,19 @@ export const PayslipDocument: React.FC<PayslipDocumentProps> = ({ data, companyN
             <div className="grid grid-cols-4 gap-4 text-sm">
               <div>
                 <span className="block text-gray-400 text-xs">Gross Pay</span>
-                <span className="font-medium text-gray-700">${mockYTD.gross.toLocaleString()}</span>
+                <span className="font-medium text-gray-700">${ytd.gross.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
               </div>
               <div>
                 <span className="block text-gray-400 text-xs">Taxable Income</span>
-                <span className="font-medium text-gray-700">${(mockYTD.gross - mockYTD.nis).toLocaleString()}</span>
+                <span className="font-medium text-gray-700">${ytd.taxableIncome.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
               </div>
               <div>
-                <span className="block text-gray-400 text-xs">Total Taxes</span>
-                <span className="font-medium text-gray-700">${(mockYTD.tax + mockYTD.edTax).toLocaleString()}</span>
+                <span className="block text-gray-400 text-xs">Total Deductions</span>
+                <span className="font-medium text-gray-700">${ytd.totalDeductions.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
               </div>
               <div>
                 <span className="block text-gray-400 text-xs">Net Pay</span>
-                <span className="font-medium text-gray-700">${mockYTD.net.toLocaleString()}</span>
+                <span className="font-medium text-gray-700">${ytd.net.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
               </div>
             </div>
           </div>
@@ -200,10 +290,26 @@ interface PayslipViewProps {
   companyName: string;
   payPeriod: string;
   payDate: string;
+  employee?: Employee;
+  employees?: Employee[];
+  payRunHistory?: PayRun[];
+  ytdSummary?: PayslipYtdSummary;
   onClose: () => void;
 }
 
-export const PayslipView: React.FC<PayslipViewProps> = ({ data, companyName, payPeriod, payDate, onClose }) => {
+export const PayslipView: React.FC<PayslipViewProps> = ({
+  data,
+  companyName,
+  payPeriod,
+  payDate,
+  employee,
+  employees = [],
+  payRunHistory = [],
+  ytdSummary,
+  onClose
+}) => {
+  const resolvedEmployee = employee || findEmployeeForLine(data, employees);
+
   // Handle Escape key to close
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => {
@@ -260,6 +366,9 @@ export const PayslipView: React.FC<PayslipViewProps> = ({ data, companyName, pay
                 companyName={companyName} 
                 payPeriod={payPeriod} 
                 payDate={payDate} 
+                employee={resolvedEmployee}
+                payRunHistory={payRunHistory}
+                ytdSummary={ytdSummary}
             />
             
             <div className="mb-8 flex justify-center print:hidden">
@@ -278,10 +387,20 @@ interface PayslipPrintBatchProps {
   companyName: string;
   payPeriod: string;
   payDate: string;
+  employees?: Employee[];
+  payRunHistory?: PayRun[];
   onClose: () => void;
 }
 
-export const PayslipPrintBatch: React.FC<PayslipPrintBatchProps> = ({ lineItems, companyName, payPeriod, payDate, onClose }) => {
+export const PayslipPrintBatch: React.FC<PayslipPrintBatchProps> = ({
+  lineItems,
+  companyName,
+  payPeriod,
+  payDate,
+  employees = [],
+  payRunHistory = [],
+  onClose
+}) => {
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -314,6 +433,8 @@ export const PayslipPrintBatch: React.FC<PayslipPrintBatchProps> = ({ lineItems,
               companyName={companyName}
               payPeriod={payPeriod}
               payDate={payDate}
+              employee={findEmployeeForLine(lineItem, employees)}
+              payRunHistory={payRunHistory}
               className="payslip-print-document"
             />
           </div>
@@ -357,6 +478,8 @@ export const PayslipPrintBatch: React.FC<PayslipPrintBatchProps> = ({ lineItems,
                 companyName={companyName}
                 payPeriod={payPeriod}
                 payDate={payDate}
+                employee={findEmployeeForLine(lineItem, employees)}
+                payRunHistory={payRunHistory}
               />
             </div>
           ))}

@@ -745,6 +745,8 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                 companyName="JamCorp Ltd."
                 payPeriod={selectedPayslip.period}
                 payDate={selectedPayslip.date}
+                employee={employee}
+                payRunHistory={payRunHistory}
                 onClose={() => setSelectedPayslip(null)}
             />
         );

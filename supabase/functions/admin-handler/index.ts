@@ -733,7 +733,8 @@ const buildEmployeePayload = (employee: Record<string, any>, companyId: string, 
         hourlyRate: employee.hourlyRate,
         pieceRateAmount: employee.payType === 'PIECE_RATE' ? employee.pieceRateAmount : undefined,
         payType: employee.payType,
-        payFrequency: employee.payFrequency
+        payFrequency: employee.payFrequency,
+        employeeType: employee.employeeType
     };
 
     const normalizedCustomDeductions = normalizeCustomDeductions(employee.customDeductions);

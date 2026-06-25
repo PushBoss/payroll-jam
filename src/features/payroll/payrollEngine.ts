@@ -4,6 +4,7 @@ import {
   LeaveRequest,
   LeaveType,
   PayFrequency,
+  EmployeeType,
   PayrollItemDetail,
   PayRun,
   PayRunCycleFilter,
@@ -162,6 +163,7 @@ const calculateComputedAmounts = ({
   const currentGross = Math.max(0, safeGrossPay + taxableAdditions);
   const taxOverrides = getEmployeeTaxOverrides(context.companyData, employee);
   const standardTaxes = calculateTaxes(currentGross, employee.payFrequency, taxOverrides);
+  const isContractor = employee.employeeType === EmployeeType.CONTRACTOR;
   const ytdData = context.ytdSummaries?.[employee.id] || getEmployeeYTD(context.payRunHistory || [], employee.id, period.year);
   const periodNumber = calculatePeriodNumber(
     employee,
@@ -181,21 +183,32 @@ const calculateComputedAmounts = ({
     taxOverrides
   );
 
-  const finalPAYE = Math.max(0, cumulativePAYE);
-  const totalDeductions = standardTaxes.nis + standardTaxes.nht + standardTaxes.edTax + standardTaxes.pension + finalPAYE + customDeductions;
+  const finalPAYE = isContractor ? 0 : Math.max(0, cumulativePAYE);
+  const nis = isContractor ? 0 : standardTaxes.nis;
+  const nht = isContractor ? 0 : standardTaxes.nht;
+  const edTax = isContractor ? 0 : standardTaxes.edTax;
+  const totalDeductions = nis + nht + edTax + standardTaxes.pension + finalPAYE + customDeductions;
   const netPay = safeGrossPay + allAdditions - totalDeductions;
-  const employerContributions = calculateEmployerContributions(
-    currentGross,
-    employee.payFrequency,
-    resolveCompanyTaxConfig(context.companyData)
-  );
+  const employerContributions = isContractor
+    ? {
+      employerNIS: 0,
+      employerNHT: 0,
+      employerEdTax: 0,
+      employerHEART: 0,
+      totalEmployerCost: 0
+    }
+    : calculateEmployerContributions(
+      currentGross,
+      employee.payFrequency,
+      resolveCompanyTaxConfig(context.companyData)
+    );
 
   return {
     additions: allAdditions,
     deductions: customDeductions,
-    nis: standardTaxes.nis,
-    nht: standardTaxes.nht,
-    edTax: standardTaxes.edTax,
+    nis,
+    nht,
+    edTax,
     paye: finalPAYE,
     pension: standardTaxes.pension,
     totalDeductions,
@@ -346,6 +359,9 @@ export const calculatePayRunLineItem = ({
     employeeId: employee.id,
     employeeName: `${employee.firstName} ${employee.lastName}`,
     employeeCustomId: employee.employeeId,
+    jobTitle: employee.jobTitle,
+    trn: employee.trn,
+    nisId: employee.nis,
     grossPay: toFiniteNumber(grossPay),
     pieceRateAmount: employee.payType === PayType.PIECE_RATE ? pieceRateAmount : undefined,
     pieceCount: employee.payType === PayType.PIECE_RATE ? pieceCount : undefined,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CompanySettings, Employee, LeaveRequest, LeaveType, PayFrequency, PayRun, PayType, Role } from '../../core/types';
+import { CompanySettings, Employee, EmployeeType, LeaveRequest, LeaveType, PayFrequency, PayRun, PayType, Role } from '../../core/types';
 import { calculatePayRunLineItem, calculatePayrollTotals, initializePayRunLineItems, recalculateDraftLineItem } from './payrollEngine';
 
 const defaultCompanyData: CompanySettings = {
@@ -87,6 +87,39 @@ describe('payrollEngine', () => {
 
     expect(lineItem.additionsBreakdown?.some(item => item.name.includes('Unpaid Leave'))).toBe(true);
     expect(lineItem.additions).toBeLessThan(0);
+  });
+
+  it('does not apply statutory or employer taxes to contractors', () => {
+    const contractor: Employee = {
+      ...defaultEmployee,
+      employeeType: EmployeeType.CONTRACTOR,
+      pensionContributionRate: 5
+    };
+
+    const lineItem = calculatePayRunLineItem({
+      employee: contractor,
+      period: '2026-01',
+      context: {
+        timesheets: [],
+        leaveRequests: [],
+        payRunHistory: [],
+        companyData: defaultCompanyData
+      }
+    });
+
+    expect(lineItem.nis).toBe(0);
+    expect(lineItem.nht).toBe(0);
+    expect(lineItem.edTax).toBe(0);
+    expect(lineItem.paye).toBe(0);
+    expect(lineItem.pension).toBe(10000);
+    expect(lineItem.totalDeductions).toBe(10000);
+    expect(lineItem.employerContributions).toEqual({
+      employerNIS: 0,
+      employerNHT: 0,
+      employerEdTax: 0,
+      employerHEART: 0,
+      totalEmployerCost: 0
+    });
   });
 
   it('recalculates draft totals after ad-hoc updates', () => {
