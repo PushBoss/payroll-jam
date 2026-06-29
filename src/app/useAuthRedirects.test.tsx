@@ -5,6 +5,7 @@ import { createRoot, Root } from 'react-dom/client';
 import { Role, User } from '../core/types';
 import { useAuthRedirects } from './useAuthRedirects';
 import { EmployeeService } from '../services/EmployeeService';
+import { CompanyService } from '../services/CompanyService';
 
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -110,7 +111,7 @@ describe('useAuthRedirects', () => {
       useAuthRedirects({
         user: null,
         isLoading: false,
-        currentPath: 'signup',
+        currentPath: 'home',
         navigateTo,
         logout,
         employees: [],
@@ -159,6 +160,33 @@ describe('useAuthRedirects', () => {
         reseller: 'true',
       },
     });
+  });
+
+  it('accepts logged-in reseller invites before generic logged-in handling', async () => {
+    vi.mocked(CompanyService.acceptResellerInvite).mockResolvedValue(true);
+    window.history.replaceState({}, '', '/?flow=reseller_client&token=invite-123&email=test@example.com&reseller=true');
+
+    renderHook(() =>
+      useAuthRedirects({
+        user: makeUser({ companyId: 'company-1' }),
+        isLoading: false,
+        currentPath: 'signup',
+        navigateTo,
+        logout,
+        employees: [],
+        isSupabaseMode: false,
+        companyData: null,
+        setVerifyEmail,
+        setEmployeeAccountSetup,
+      })
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(CompanyService.acceptResellerInvite).toHaveBeenCalledWith('invite-123', 'company-1');
+    expect(navigateTo).not.toHaveBeenCalled();
   });
 
   it('loads employee invite details from the backend when needed', async () => {

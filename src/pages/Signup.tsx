@@ -115,7 +115,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
         phone: '',
         password: '',
         confirmPassword: '',
-        plan: initialPlan,
+        plan: initialPlan === 'Enterprise' ? 'Starter' : initialPlan,
         billingCycle: initialBillingCycle,
         numEmployees: '',
         numCompanies: '', // For reseller plan
@@ -543,7 +543,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
         setIsSubmitting(true);
 
         try {
-            const role = isTeamInvitation ? Role.MANAGER : (formData.plan === 'Reseller' || formData.plan === 'Enterprise' ? Role.RESELLER : Role.OWNER);
+            const role = isTeamInvitation ? Role.MANAGER : (formData.plan === 'Reseller' ? Role.RESELLER : Role.OWNER);
             const isPaidPlan = !isTeamInvitation && formData.plan !== 'Free' && pricing.total > 0;
             const requiresApproval = isPaidPlan && (paymentMethod === 'direct-deposit' || paymentMethod === 'reseller-billing');
 
@@ -790,7 +790,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                                 onChange={(e) => setFormData({ ...formData, plan: e.target.value })}
                                                 className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-jam-orange focus:border-jam-orange sm:text-sm"
                                             >
-                                                {plans.filter(p => p.isActive).map(p => (
+                                                {plans.filter(p => p.isActive && p.name !== 'Enterprise').map(p => (
                                                     <option key={p.id} value={p.name}>{p.name} ({p.limit})</option>
                                                 ))}
                                             </select>

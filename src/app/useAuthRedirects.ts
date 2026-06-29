@@ -96,25 +96,9 @@ export const useAuthRedirects = ({
     const isResellerInvite = signupFlow === 'reseller_client';
     const isTeamMemberInvite = signupFlow === 'team_member';
     const isLegacyUserInvite = signupFlow === 'legacy_user';
+    const emailMatchesUser = Boolean(user && email && user.email.toLowerCase() === email.toLowerCase());
 
-    if (!token) return;
-    if (currentPath === 'signup' && token && !isEmployeeInvite) return;
-
-    if (user && email && user.email === email) {
-      window.history.replaceState({}, '', window.location.pathname);
-      toast.success('You are already logged in!');
-      return;
-    }
-
-    if (user && email && user.email.toLowerCase() !== email.toLowerCase()) {
-      toast.info(`Switching accounts to accept invitation for ${email}...`);
-      logout().then(() => {
-        window.location.reload();
-      });
-      return;
-    }
-
-    if (isResellerInvite && user && user.companyId && email === user.email && token) {
+    if (isResellerInvite && user && user.companyId && emailMatchesUser && token) {
       void (async () => {
         const accepted = await CompanyService.acceptResellerInvite(token, user.companyId || '');
         if (accepted) {
@@ -124,6 +108,23 @@ export const useAuthRedirects = ({
           toast.error('Failed to accept reseller invitation. It may have expired.');
         }
       })();
+      return;
+    }
+
+    if (!token) return;
+    if (currentPath === 'signup' && token && !isEmployeeInvite) return;
+
+    if (user && email && user.email.toLowerCase() !== email.toLowerCase()) {
+      toast.info(`Switching accounts to accept invitation for ${email}...`);
+      logout().then(() => {
+        window.location.reload();
+      });
+      return;
+    }
+
+    if (user && emailMatchesUser) {
+      window.history.replaceState({}, '', window.location.pathname);
+      toast.success('You are already logged in!');
       return;
     }
 

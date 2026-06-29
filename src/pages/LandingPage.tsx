@@ -12,13 +12,14 @@ interface LandingPageProps {
   onSignup: (plan?: string) => void;
   onPricingClick: () => void;
   onFeaturesClick: () => void;
+  onAboutClick: () => void;
   onFaqClick: () => void;
   onContactClick?: () => void;
   onPrivacyClick?: () => void;
   onTermsClick?: () => void;
 }
 
-export const LandingPage: React.FC<LandingPageProps> = ({ plans = [], onLogin, onSignup, onPricingClick, onFeaturesClick, onFaqClick, onContactClick, onPrivacyClick, onTermsClick }) => {
+export const LandingPage: React.FC<LandingPageProps> = ({ plans = [], onLogin, onSignup, onPricingClick, onFeaturesClick, onAboutClick, onFaqClick, onContactClick, onPrivacyClick, onTermsClick }) => {
   // SEO: Update page title and meta tags
   useEffect(() => {
     document.title = 'Payroll-Jam | Jamaican Payroll Software - NIS, NHT & PAYE Compliance';
@@ -134,7 +135,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ plans = [], onLogin, o
         onHomeClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
         onFeaturesClick={onFeaturesClick}
         onPricingClick={onPricingClick}
-        onFaqClick={onFaqClick}
+        onAboutClick={onAboutClick}
         onContactClick={onContactClick}
         onLogin={onLogin}
         onSignup={() => onSignup()}
@@ -398,6 +399,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ plans = [], onLogin, o
       <Footer 
         onFeaturesClick={onFeaturesClick}
         onPricingClick={onPricingClick}
+        onAboutClick={onAboutClick}
         onFaqClick={onFaqClick}
         onPrivacyClick={onPrivacyClick}
         onTermsClick={onTermsClick}

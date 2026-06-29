@@ -10,6 +10,7 @@ import { AppRoute } from './routes';
 import { NavigateFunction } from './useAppNavigation';
 import { AppDataModel } from './useAppData';
 import {
+  AboutUsPage,
   FAQPage,
   FeaturesPage,
   LandingPagePage,
@@ -67,6 +68,7 @@ export const PublicApp: React.FC<PublicAppProps> = ({ currentPath, navigateTo, a
             onSignup={() => openSignup('Starter', 'monthly')}
             onPricingClick={() => navigateTo('pricing')}
             onFeaturesClick={() => navigateTo('features')}
+            onAboutClick={() => navigateTo('about-us')}
             onFaqClick={() => navigateTo('faq')}
             onPrivacyClick={() => navigateTo('privacy-policy')}
             onTermsClick={() => navigateTo('terms-of-service')}
@@ -111,11 +113,26 @@ export const PublicApp: React.FC<PublicAppProps> = ({ currentPath, navigateTo, a
             onLogin={() => navigateTo('login')}
             onBack={() => navigateTo('home')}
             onFeaturesClick={() => navigateTo('features')}
+            onAboutClick={() => navigateTo('about-us')}
             onFaqClick={() => navigateTo('faq')}
             onContactClick={() => navigateTo('contact-us')}
             onPrivacyClick={() => navigateTo('privacy-policy')}
             onTermsClick={() => navigateTo('terms-of-service')}
             plans={appData.plans}
+          />
+        );
+      case 'about-us':
+        return (
+          <AboutUsPage
+            onBack={() => navigateTo('home')}
+            onFeaturesClick={() => navigateTo('features')}
+            onPricingClick={() => navigateTo('pricing')}
+            onAboutClick={() => navigateTo('about-us')}
+            onContactClick={() => navigateTo('contact-us')}
+            onLogin={() => navigateTo('login')}
+            onSignup={() => openSignup('Starter', 'monthly')}
+            onPrivacyClick={() => navigateTo('privacy-policy')}
+            onTermsClick={() => navigateTo('terms-of-service')}
           />
         );
       case 'features':
@@ -125,6 +142,7 @@ export const PublicApp: React.FC<PublicAppProps> = ({ currentPath, navigateTo, a
             onLogin={() => navigateTo('login')}
             onBack={() => navigateTo('home')}
             onPricingClick={() => navigateTo('pricing')}
+            onAboutClick={() => navigateTo('about-us')}
             onFaqClick={() => navigateTo('faq')}
             onContactClick={() => navigateTo('contact-us')}
             onPrivacyClick={() => navigateTo('privacy-policy')}
@@ -139,6 +157,7 @@ export const PublicApp: React.FC<PublicAppProps> = ({ currentPath, navigateTo, a
             onBack={() => navigateTo('home')}
             onPricingClick={() => navigateTo('pricing')}
             onFeaturesClick={() => navigateTo('features')}
+            onAboutClick={() => navigateTo('about-us')}
             onContactClick={() => navigateTo('contact-us')}
             onPrivacyClick={() => navigateTo('privacy-policy')}
             onTermsClick={() => navigateTo('terms-of-service')}
@@ -151,6 +170,7 @@ export const PublicApp: React.FC<PublicAppProps> = ({ currentPath, navigateTo, a
             onBack={() => navigateTo('home')}
             onFeaturesClick={() => navigateTo('features')}
             onPricingClick={() => navigateTo('pricing')}
+            onAboutClick={() => navigateTo('about-us')}
             onFaqClick={() => navigateTo('faq')}
             onContactClick={() => navigateTo('contact-us')}
             onLogin={() => navigateTo('login')}
@@ -165,6 +185,7 @@ export const PublicApp: React.FC<PublicAppProps> = ({ currentPath, navigateTo, a
             onBack={() => navigateTo('home')}
             onFeaturesClick={() => navigateTo('features')}
             onPricingClick={() => navigateTo('pricing')}
+            onAboutClick={() => navigateTo('about-us')}
             onFaqClick={() => navigateTo('faq')}
             onContactClick={() => navigateTo('contact-us')}
             onLogin={() => navigateTo('login')}
@@ -182,6 +203,7 @@ export const PublicApp: React.FC<PublicAppProps> = ({ currentPath, navigateTo, a
             onSignup={(plan: string) => openSignup(plan || 'Free', 'monthly')}
             onPricingClick={() => navigateTo('pricing')}
             onFeaturesClick={() => navigateTo('features')}
+            onAboutClick={() => navigateTo('about-us')}
             onFaqClick={() => navigateTo('faq')}
             onContactClick={() => navigateTo('contact-us')}
             onPrivacyClick={() => navigateTo('privacy-policy')}

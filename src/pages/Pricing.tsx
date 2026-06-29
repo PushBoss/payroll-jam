@@ -11,6 +11,7 @@ interface PricingProps {
   onLogin: () => void;
   onBack: () => void;
   onFeaturesClick?: () => void;
+  onAboutClick?: () => void;
   onFaqClick?: () => void;
   onContactClick?: () => void;
   onPrivacyClick?: () => void;
@@ -18,11 +19,12 @@ interface PricingProps {
   plans: PricingPlan[];
 }
 
-export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onFeaturesClick, onFaqClick, onContactClick, onPrivacyClick, onTermsClick, plans = [] }) => {
+export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onFeaturesClick, onAboutClick, onFaqClick, onContactClick, onPrivacyClick, onTermsClick, plans = [] }) => {
   const [cycle, setCycle] = useState<'monthly' | 'annual'>('monthly');
 
   // Filter only active plans
   const displayPlans = plans.filter(p => p.isActive);
+  const standardPlans = displayPlans.filter((plan) => plan.name !== 'Enterprise');
 
   // Debug: Log plans to verify they're coming from backend
   React.useEffect(() => {
@@ -86,7 +88,7 @@ export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onF
         onHomeClick={onBack}
         onFeaturesClick={onFeaturesClick}
         onPricingClick={() => {}}
-        onFaqClick={onFaqClick}
+        onAboutClick={onAboutClick}
         onContactClick={onContactClick}
         onLogin={onLogin}
         onSignup={() => onSignup('Free', cycle)}
@@ -109,7 +111,7 @@ export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onF
         {/* Pricing Cards */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {displayPlans.map((plan) => (
+            {standardPlans.map((plan) => (
               <div key={plan.id} className={`rounded-2xl p-6 relative flex flex-col border ${plan.highlight ? 'border-jam-black shadow-xl scale-105 z-10' : 'border-gray-200 shadow-sm'} ${plan.color} ${plan.textColor}`}>
                 {plan.highlight && (
                   <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-jam-orange text-jam-black px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide">
@@ -153,6 +155,40 @@ export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onF
               </div>
             ))}
           </div>
+
+          <div className="mt-8 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm lg:p-8">
+            <div className="grid gap-6 lg:grid-cols-[1.2fr_1.6fr_auto] lg:items-center">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-jam-orange">Enterprise</p>
+                <h3 className="mt-2 text-2xl font-bold text-gray-900">Custom payroll support</h3>
+                <p className="mt-2 text-sm text-gray-600">
+                  Built for larger teams with custom workflows, implementation support, and priority service.
+                </p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                {['Everything in Pro', 'Priority support', 'Custom features', 'Dedicated onboarding'].map((feature) => (
+                  <div key={feature} className="flex items-center text-sm text-gray-700">
+                    <Icons.CheckMark className="mr-2 h-4 w-4 flex-shrink-0 text-green-600" />
+                    <span>{feature}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex flex-col gap-3 lg:min-w-[180px]">
+                <div className="text-left lg:text-right">
+                  <div className="text-2xl font-bold text-gray-900">Custom</div>
+                  <div className="text-xs text-gray-500">Manual setup</div>
+                </div>
+                <button
+                  onClick={onContactClick}
+                  className="w-full rounded-lg bg-gray-900 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-gray-800"
+                >
+                  Contact Sales
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="mt-24 bg-gray-50 py-16 border-t border-gray-200">
@@ -177,6 +213,7 @@ export const Pricing: React.FC<PricingProps> = ({ onSignup, onLogin, onBack, onF
       {/* Footer */}
       <Footer
         onFeaturesClick={onFeaturesClick}
+        onAboutClick={onAboutClick}
         onFaqClick={onFaqClick}
         onPrivacyClick={onPrivacyClick}
         onTermsClick={onTermsClick}

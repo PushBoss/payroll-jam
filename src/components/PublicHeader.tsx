@@ -3,11 +3,11 @@ import { Icons } from './Icons';
 import { useAuth } from '../context/AuthContext';
 
 interface PublicHeaderProps {
-  currentPage: 'home' | 'features' | 'pricing' | 'faq' | 'contact-us' | 'privacy-policy' | 'terms-of-service';
+  currentPage: 'home' | 'features' | 'pricing' | 'about-us' | 'faq' | 'contact-us' | 'privacy-policy' | 'terms-of-service';
   onHomeClick: () => void;
   onFeaturesClick?: () => void;
   onPricingClick?: () => void;
-  onFaqClick?: () => void;
+  onAboutClick?: () => void;
   onContactClick?: () => void;
   onLogin?: () => void;
   onSignup?: () => void;
@@ -19,7 +19,7 @@ export const PublicHeader: React.FC<PublicHeaderProps> = ({
   onHomeClick,
   onFeaturesClick,
   onPricingClick,
-  onFaqClick,
+  onAboutClick,
   onContactClick,
   onLogin,
   onSignup,
@@ -32,10 +32,10 @@ export const PublicHeader: React.FC<PublicHeaderProps> = ({
     return [
       { id: 'features', label: 'Features', onClick: onFeaturesClick },
       { id: 'pricing', label: 'Pricing', onClick: onPricingClick },
-      { id: 'faq', label: 'FAQ', onClick: onFaqClick },
+      { id: 'about-us', label: 'About Us', onClick: onAboutClick },
       { id: 'contact-us', label: 'Contact Us', onClick: onContactClick },
-    ].filter((item): item is { id: 'features' | 'pricing' | 'faq' | 'contact-us'; label: string; onClick: () => void } => !!item.onClick);
-  }, [onContactClick, onFaqClick, onFeaturesClick, onPricingClick]);
+    ].filter((item): item is { id: 'features' | 'pricing' | 'about-us' | 'contact-us'; label: string; onClick: () => void } => !!item.onClick);
+  }, [onAboutClick, onContactClick, onFeaturesClick, onPricingClick]);
 
   const closeMobileMenu = () => setIsMobileMenuOpen(false);
   const showAppBack = !!user && !!onAppBack;

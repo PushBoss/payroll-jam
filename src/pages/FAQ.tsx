@@ -10,13 +10,14 @@ interface FAQProps {
   onBack: () => void;
   onPricingClick: () => void;
   onFeaturesClick: () => void;
+  onAboutClick?: () => void;
   onContactClick?: () => void;
   onPrivacyClick?: () => void;
   onTermsClick?: () => void;
   onContactSupport: () => void;
 }
 
-export const FAQ: React.FC<FAQProps> = ({ onSignup, onLogin, onBack, onPricingClick, onFeaturesClick, onContactClick, onPrivacyClick, onTermsClick, onContactSupport }) => {
+export const FAQ: React.FC<FAQProps> = ({ onSignup, onLogin, onBack, onPricingClick, onFeaturesClick, onAboutClick, onContactClick, onPrivacyClick, onTermsClick, onContactSupport }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
 
@@ -98,7 +99,7 @@ export const FAQ: React.FC<FAQProps> = ({ onSignup, onLogin, onBack, onPricingCl
         onHomeClick={onBack}
         onFeaturesClick={onFeaturesClick}
         onPricingClick={onPricingClick}
-        onFaqClick={() => {}}
+        onAboutClick={onAboutClick}
         onContactClick={onContactClick}
         onLogin={onLogin}
         onSignup={onSignup}
@@ -207,6 +208,7 @@ export const FAQ: React.FC<FAQProps> = ({ onSignup, onLogin, onBack, onPricingCl
       <Footer 
         onFeaturesClick={onFeaturesClick}
         onPricingClick={onPricingClick}
+        onAboutClick={onAboutClick}
         onPrivacyClick={onPrivacyClick}
         onTermsClick={onTermsClick}
       />

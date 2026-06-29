@@ -14,6 +14,7 @@ interface ContactUsProps {
   onSignup: () => void;
   onPricingClick: () => void;
   onFeaturesClick: () => void;
+  onAboutClick?: () => void;
   onFaqClick: () => void;
   onContactClick?: () => void;
   onPrivacyClick?: () => void;
@@ -87,6 +88,7 @@ export const ContactUs: React.FC<ContactUsProps> = ({
   onSignup,
   onPricingClick,
   onFeaturesClick,
+  onAboutClick,
   onFaqClick,
   onContactClick,
   onPrivacyClick,
@@ -341,7 +343,7 @@ export const ContactUs: React.FC<ContactUsProps> = ({
           onHomeClick={onBack}
           onFeaturesClick={onFeaturesClick}
           onPricingClick={onPricingClick}
-          onFaqClick={onFaqClick}
+          onAboutClick={onAboutClick}
           onContactClick={onContactClick || (() => {})}
           onLogin={user ? undefined : onLogin}
           onSignup={user ? undefined : onSignup}
@@ -815,6 +817,7 @@ export const ContactUs: React.FC<ContactUsProps> = ({
       <Footer
         onFeaturesClick={onFeaturesClick}
         onPricingClick={onPricingClick}
+        onAboutClick={onAboutClick}
         onFaqClick={onFaqClick}
         onPrivacyClick={onPrivacyClick}
         onTermsClick={onTermsClick}

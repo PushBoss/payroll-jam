@@ -20,7 +20,7 @@ const normalizePlanToFrontend = (plan?: string | null): string => {
         starter: 'Starter',
         professional: 'Pro',
         pro: 'Pro',
-        enterprise: 'Reseller',
+        enterprise: 'Enterprise',
         reseller: 'Reseller'
     };
 
@@ -37,7 +37,7 @@ const normalizePlanToDatabase = (plan?: string | null): string => {
         professional: 'Professional',
         pro: 'Professional',
         enterprise: 'Enterprise',
-        reseller: 'Enterprise'
+        reseller: 'Reseller'
     };
 
     return planMap[normalized] || 'Free';
@@ -48,7 +48,7 @@ const isResellerEquivalentPlan = (plan?: string | null): boolean =>
 
 const hasEmployeePortalAccess = (plan?: string | null): boolean => {
     const normalizedPlan = normalizePlanToFrontend(plan);
-    return ['Starter', 'Pro', 'Reseller'].includes(normalizedPlan);
+    return ['Starter', 'Pro', 'Enterprise', 'Reseller'].includes(normalizedPlan);
 };
 
 const getPlanMonthlyPricing = (plan?: string | null) => {
@@ -57,6 +57,8 @@ const getPlanMonthlyPricing = (plan?: string | null) => {
             return { baseFee: 5000, perEmployeeFee: 0 };
         case 'Pro':
             return { baseFee: 10000, perEmployeeFee: 500 };
+        case 'Enterprise':
+            return { baseFee: 0, perEmployeeFee: 0 };
         case 'Reseller':
             return { baseFee: 3000, perEmployeeFee: 500 };
         default:
@@ -1266,7 +1268,7 @@ serve(async (req: Request) => {
                         account_id: companyId,
                         user_id: userId,
                         email: normalizedEmail,
-                        role: 'OWNER',
+                        role: derivedRole,
                         status: 'accepted',
                         accepted_at: new Date().toISOString(),
                         invited_at: new Date().toISOString(),
@@ -1440,6 +1442,60 @@ serve(async (req: Request) => {
                     acceptedInvitations: pendingInvitations,
                     acceptedCount,
                 }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'cleanup-failed-signup': {
+                const { userId, email, signupFinalizeToken, companyId } = payload || {};
+                const { normalizedEmail } = await assertSignupAuthUser(adminClient, userId, email, signupFinalizeToken, authUser);
+                const expectedCompanyId = String(companyId || '').trim();
+
+                if (expectedCompanyId) {
+                    const dependentTables = ['employees', 'pay_runs', 'subscriptions', 'payment_history'];
+                    let hasDependencies = false;
+
+                    for (const table of dependentTables) {
+                        const { count, error: countError } = await adminClient
+                            .from(table)
+                            .select('id', { count: 'exact', head: true })
+                            .eq('company_id', expectedCompanyId);
+
+                        if (!countError && (count || 0) > 0) {
+                            hasDependencies = true;
+                            break;
+                        }
+                    }
+
+                    if (hasDependencies) {
+                        return new Response(JSON.stringify({ success: false, skipped: true, reason: 'dependent_records_found' }), {
+                            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                        });
+                    }
+
+                    await adminClient
+                        .from('account_members')
+                        .delete()
+                        .eq('account_id', expectedCompanyId)
+                        .eq('email', normalizedEmail);
+
+                    await adminClient
+                        .from('companies')
+                        .delete()
+                        .eq('id', expectedCompanyId)
+                        .eq('owner_id', userId);
+                }
+
+                await adminClient
+                    .from('app_users')
+                    .delete()
+                    .eq('id', userId)
+                    .eq('email', normalizedEmail);
+
+                const { error: deleteAuthError } = await adminClient.auth.admin.deleteUser(userId);
+                if (deleteAuthError) throw deleteAuthError;
+
+                return new Response(JSON.stringify({ success: true }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });
             }

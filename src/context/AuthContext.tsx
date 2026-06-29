@@ -443,7 +443,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       const isCompanySignup = Boolean(userData.companyName?.trim() && userData.companyId);
       const companyCreatorRole =
-        userData.role === Role.RESELLER || userData.plan === 'Reseller' || userData.plan === 'Enterprise'
+        userData.role === Role.RESELLER || userData.plan === 'Reseller'
           ? Role.RESELLER
           : Role.OWNER;
       const effectiveSignupRole = isCompanySignup ? companyCreatorRole : userData.role;
@@ -557,6 +557,53 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         companyStatus = 'ACTIVE';
       }
 
+      const companyPayload = shouldCreateCompany ? {
+        companyId: userData.companyId,
+        name: userData.companyName,
+        trn: '',
+        address: userData.address || '',
+        plan: normalizePlanToDatabase(userData.plan),
+        billingCycle,
+        employeeLimit: parseEmployeeLimit(employeeLimit),
+        status: companyStatus,
+        settings: {
+          email: userData.email,
+          phone: userData.phone || '',
+          contactName: userData.name,
+          companyName: userData.companyName,
+          city: userData.city,
+          parish: userData.parish,
+          acquisitionSource: (userData as any).acquisitionSource,
+          paymentMethod: (userData as any).paymentMethod,
+          signupDetails: {
+            numEmployees: userData.numEmployees,
+            numCompanies: userData.numCompanies,
+            acquisitionSource: (userData as any).acquisitionSource,
+            legalConsentAccepted: userData.legalConsentAccepted,
+            legalConsentAcceptedAt: userData.legalConsentAcceptedAt,
+          },
+        },
+      } : undefined;
+
+      const cleanupFailedSignup = async () => {
+        if (!shouldCreateCompany) return;
+        try {
+          await supabase!.functions.invoke('admin-handler', {
+            body: {
+              action: 'cleanup-failed-signup',
+              payload: {
+                userId: authData.user.id,
+                email: userData.email,
+                signupFinalizeToken,
+                companyId: companyPayload?.companyId,
+              },
+            },
+          });
+        } catch (cleanupError) {
+          console.warn('Signup cleanup failed after finalization error:', cleanupError);
+        }
+      };
+
       const { data: finalizeData, error: finalizeError } = await supabase.functions.invoke('admin-handler', {
         body: {
           action: 'finalize-signup',
@@ -572,39 +619,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             resellerInviteToken: userData.resellerInviteToken || undefined,
             flow: userData.signupFlow || undefined,
             inviteToken: userData.inviteToken || undefined,
-            company: shouldCreateCompany ? {
-              companyId: userData.companyId,
-              name: userData.companyName,
-              trn: '',
-              address: userData.address || '',
-              plan: normalizePlanToDatabase(userData.plan),
-              billingCycle,
-              employeeLimit: parseEmployeeLimit(employeeLimit),
-              status: companyStatus,
-              settings: {
-                email: userData.email,
-                phone: userData.phone || '',
-                contactName: userData.name,
-                companyName: userData.companyName,
-                city: userData.city,
-                parish: userData.parish,
-                acquisitionSource: (userData as any).acquisitionSource,
-                paymentMethod: (userData as any).paymentMethod,
-                signupDetails: {
-                  numEmployees: userData.numEmployees,
-                  numCompanies: userData.numCompanies,
-                  acquisitionSource: (userData as any).acquisitionSource,
-                  legalConsentAccepted: userData.legalConsentAccepted,
-                  legalConsentAcceptedAt: userData.legalConsentAcceptedAt,
-                },
-              },
-            } : undefined,
+            company: companyPayload,
           },
         },
       });
 
-      if (finalizeError) throw finalizeError;
+      if (finalizeError) {
+        await cleanupFailedSignup();
+        throw finalizeError;
+      }
       if (!finalizeData?.success || !finalizeData?.user) {
+        await cleanupFailedSignup();
         throw new Error('Signup finalization failed');
       }
 
@@ -619,7 +644,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         phone: finalizeData.user.phone || undefined
       };
 
-      const pendingInvitations: (AccountMember & { company_name?: string; inviter_name?: string; company_plan?: string })[] = [];
+      const pendingInvitations: (AccountMember & { company_name?: string; inviter_name?: string; company_plan?: string })[] =
+        finalizeData.acceptedCount > 0 ? [] : (finalizeData.acceptedInvitations || []);
 
       // Only log the user in locally if Supabase returned an active session 
       // (which happens if Confirm Email is off, or if created via admin handler).

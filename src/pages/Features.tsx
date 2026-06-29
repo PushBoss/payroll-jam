@@ -9,13 +9,14 @@ interface FeaturesProps {
   onLogin: () => void;
   onBack: () => void;
   onPricingClick: () => void;
+  onAboutClick?: () => void;
   onFaqClick: () => void;
   onContactClick?: () => void;
   onPrivacyClick?: () => void;
   onTermsClick?: () => void;
 }
 
-export const Features: React.FC<FeaturesProps> = ({ onSignup, onLogin, onBack, onPricingClick, onFaqClick, onContactClick, onPrivacyClick, onTermsClick }) => {
+export const Features: React.FC<FeaturesProps> = ({ onSignup, onLogin, onBack, onPricingClick, onAboutClick, onFaqClick, onContactClick, onPrivacyClick, onTermsClick }) => {
   // SEO: Update page title and meta tags
   useEffect(() => {
     document.title = 'Features | Payroll-Jam - Jamaican Payroll & HR Software';
@@ -81,7 +82,7 @@ export const Features: React.FC<FeaturesProps> = ({ onSignup, onLogin, onBack, o
         onHomeClick={onBack}
         onFeaturesClick={() => {}}
         onPricingClick={onPricingClick}
-        onFaqClick={onFaqClick}
+        onAboutClick={onAboutClick}
         onContactClick={onContactClick}
         onLogin={onLogin}
         onSignup={onSignup}
@@ -284,6 +285,7 @@ export const Features: React.FC<FeaturesProps> = ({ onSignup, onLogin, onBack, o
       {/* Footer */}
       <Footer 
         onPricingClick={onPricingClick}
+        onAboutClick={onAboutClick}
         onFaqClick={onFaqClick}
         onPrivacyClick={onPrivacyClick}
         onTermsClick={onTermsClick}

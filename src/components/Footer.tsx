@@ -4,6 +4,7 @@ import { SUPPORT_EMAIL, SUPPORT_MAILTO } from '../constants/support';
 interface FooterProps {
   onFeaturesClick?: () => void;
   onPricingClick?: () => void;
+  onAboutClick?: () => void;
   onPrivacyClick?: () => void;
   onTermsClick?: () => void;
   onFaqClick?: () => void;
@@ -12,6 +13,7 @@ interface FooterProps {
 export const Footer: React.FC<FooterProps> = ({ 
   onFeaturesClick, 
   onPricingClick, 
+  onAboutClick,
   onPrivacyClick, 
   onTermsClick,
   onFaqClick 
@@ -19,9 +21,9 @@ export const Footer: React.FC<FooterProps> = ({
   return (
     <footer className="bg-gray-900 text-white py-12 border-t border-gray-800">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 gap-8 md:grid-cols-5">
           {/* Logo and Description */}
-          <div className="col-span-1 md:col-span-2">
+          <div className="md:col-span-2">
             <div className="flex items-center space-x-2 mb-4">
               <img 
                 src="/assets/icons/apple-touch-icon.png" 
@@ -62,6 +64,17 @@ export const Footer: React.FC<FooterProps> = ({
                   </button>
                 </li>
               )}
+              <li>
+                {onAboutClick ? (
+                  <button onClick={onAboutClick} className="hover:text-white transition-colors">
+                    About Us
+                  </button>
+                ) : (
+                  <a href="/about-us" className="hover:text-white transition-colors">
+                    About Us
+                  </a>
+                )}
+              </li>
             </ul>
           </div>
           
@@ -84,6 +97,22 @@ export const Footer: React.FC<FooterProps> = ({
                 </li>
               )}
             </ul>
+          </div>
+
+          {/* Address */}
+          <div>
+            <h4 className="text-sm font-bold uppercase tracking-wider text-gray-500 mb-4">Address</h4>
+            <address className="not-italic text-sm text-gray-400">
+              <a href="https://maps.app.goo.gl/GLffCTeGnzoB6t2g9" target="_blank" rel="noopener noreferrer" className="block hover:text-white transition-colors">
+                Building A, Aqueduct Flats
+              </a>
+              <a href="https://maps.app.goo.gl/GLffCTeGnzoB6t2g9" target="_blank" rel="noopener noreferrer" className="mt-2 block hover:text-white transition-colors">
+                University of the West Indies, Mona
+              </a>
+              <a href="https://maps.app.goo.gl/GLffCTeGnzoB6t2g9" target="_blank" rel="noopener noreferrer" className="mt-2 block hover:text-white transition-colors">
+                Kingston 7, Jamaica
+              </a>
+            </address>
           </div>
         </div>
 

@@ -6,6 +6,7 @@ interface TermsOfServiceProps {
   onBack: () => void;
   onFeaturesClick?: () => void;
   onPricingClick?: () => void;
+  onAboutClick?: () => void;
   onFaqClick?: () => void;
   onContactClick?: () => void;
   onLogin?: () => void;
@@ -14,7 +15,7 @@ interface TermsOfServiceProps {
   onTermsClick?: () => void;
 }
 
-export const TermsOfService: React.FC<TermsOfServiceProps> = ({ onBack, onFeaturesClick, onPricingClick, onFaqClick, onContactClick, onLogin, onSignup, onPrivacyClick, onTermsClick }) => {
+export const TermsOfService: React.FC<TermsOfServiceProps> = ({ onBack, onFeaturesClick, onPricingClick, onAboutClick, onFaqClick, onContactClick, onLogin, onSignup, onPrivacyClick, onTermsClick }) => {
   return (
     <div className="min-h-screen bg-gray-50">
       <PublicHeader
@@ -22,7 +23,7 @@ export const TermsOfService: React.FC<TermsOfServiceProps> = ({ onBack, onFeatur
         onHomeClick={onBack}
         onFeaturesClick={onFeaturesClick}
         onPricingClick={onPricingClick}
-        onFaqClick={onFaqClick}
+        onAboutClick={onAboutClick}
         onContactClick={onContactClick}
         onLogin={onLogin}
         onSignup={onSignup}
@@ -170,6 +171,7 @@ export const TermsOfService: React.FC<TermsOfServiceProps> = ({ onBack, onFeatur
       <Footer
         onFeaturesClick={onFeaturesClick}
         onPricingClick={onPricingClick}
+        onAboutClick={onAboutClick}
         onFaqClick={onFaqClick}
         onPrivacyClick={onPrivacyClick}
         onTermsClick={onTermsClick}

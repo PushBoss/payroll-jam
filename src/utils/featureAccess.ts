@@ -15,6 +15,7 @@ export const getPlanFeatures = (planName: string | undefined): string[] => {
     case 'Professional':
       return ['Basic Payroll', 'Payslip PDF', 'S01/S02 Reports', 'ACH Bank Files', 'Email Support', 'GL Integration', 'Employee Portal', 'Advanced HR', 'AI Assistant', 'Compliance', 'Documents'];
     case 'Enterprise':
+      return ['Basic Payroll', 'Payslip PDF', 'S01/S02 Reports', 'ACH Bank Files', 'Email Support', 'GL Integration', 'Employee Portal', 'Advanced HR', 'AI Assistant', 'Compliance', 'Documents', 'Priority Support', 'Custom Features'];
     case 'Reseller':
       return ['Basic Payroll', 'Payslip PDF', 'S01/S02 Reports', 'ACH Bank Files', 'Email Support', 'GL Integration', 'Employee Portal', 'Advanced HR', 'AI Assistant', 'Compliance', 'Documents', 'Reseller Dashboard', 'Multi-Company'];
     default:
@@ -45,4 +46,3 @@ export const getFeatureUpgradeMessage = (feature: string, currentPlan: string | 
 
   return 'Upgrade your plan to access this feature';
 };
-

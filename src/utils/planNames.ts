@@ -7,7 +7,7 @@ export const normalizePlanToFrontend = (plan?: string | null): string => {
     starter: 'Starter',
     professional: 'Pro',
     pro: 'Pro',
-    enterprise: 'Reseller',
+    enterprise: 'Enterprise',
     reseller: 'Reseller'
   };
 
@@ -24,7 +24,7 @@ export const normalizePlanToDatabase = (plan?: string | null): string => {
     professional: 'Professional',
     pro: 'Professional',
     enterprise: 'Enterprise',
-    reseller: 'Enterprise'
+    reseller: 'Reseller'
   };
 
   return planMap[normalized] || 'Free';

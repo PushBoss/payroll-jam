@@ -930,8 +930,8 @@ export const Settings: React.FC<SettingsProps> = ({
             handleCompanyUpdate({ ...companyData, plan: upgradeTarget.name as any, subscriptionStatus: 'ACTIVE' });
             auditService.log(currentUser, 'UPDATE', 'Billing', `Upgraded plan to ${upgradeTarget.name}`);
 
-            // Update user role if upgrading to Reseller plan
-            if ((upgradeTarget.name === 'Reseller' || upgradeTarget.name === 'Enterprise') && currentUser) {
+            // Update user role only when upgrading to Reseller plan.
+            if (upgradeTarget.name === 'Reseller' && currentUser) {
                 try {
                     // Update user role in Supabase and locally
                     const updatedUser = { ...currentUser, role: Role.RESELLER };
@@ -965,7 +965,7 @@ export const Settings: React.FC<SettingsProps> = ({
             }
 
             // Send email notification if upgrading to Reseller plan
-            if ((upgradeTarget.name === 'Reseller' || upgradeTarget.name === 'Enterprise') && currentUser?.email) {
+            if (upgradeTarget.name === 'Reseller' && currentUser?.email) {
                 try {
                     const emailResult = await emailService.sendResellerUpgradeNotification(
                         currentUser.email,

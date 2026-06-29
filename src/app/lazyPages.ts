@@ -40,6 +40,7 @@ export const TermsOfServicePage = lazyWithRetry(() => import('../pages/TermsOfSe
 export const LandingPagePage = lazyWithRetry(() => import('../pages/LandingPage').then((m) => ({ default: m.LandingPage })));
 export const PricingPage = lazyWithRetry(() => import('../pages/Pricing').then((m) => ({ default: m.Pricing })));
 export const FeaturesPage = lazyWithRetry(() => import('../pages/Features').then((m) => ({ default: m.Features })));
+export const AboutUsPage = lazyWithRetry(() => import('../pages/AboutUs').then((m) => ({ default: m.AboutUs })));
 export const FAQPage = lazyWithRetry(() => import('../pages/FAQ').then((m) => ({ default: m.FAQ })));
 export const OnboardingPage = lazyWithRetry(() => import('../pages/Onboarding').then((m) => ({ default: m.Onboarding })));
 export const EmployeePortalPage = lazyWithRetry(() => import('../pages/EmployeePortal').then((m) => ({ default: m.EmployeePortal })));
@@ -51,4 +52,3 @@ export const ProfilePage = lazyWithRetry(() => import('../pages/Profile').then((
 export const VerifyEmailPage = lazyWithRetry(() => import('../pages/VerifyEmail').then((m) => ({ default: m.VerifyEmail })));
 export const PublicPayslipDownloadPage = lazyWithRetry(() => import('../pages/PublicPayslipDownload').then((m) => ({ default: m.PublicPayslipDownload })));
 export const EmployeeAccountSetupPage = lazyWithRetry(() => import('../pages/EmployeeAccountSetup').then((m) => ({ default: m.EmployeeAccountSetup })));
-

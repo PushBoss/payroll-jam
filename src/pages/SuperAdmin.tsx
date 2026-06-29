@@ -68,7 +68,7 @@ type ClientActivitySort = 'created_desc' | 'created_asc' | 'last_login_desc' | '
 type GrowthTrendRange = '1M' | '6M' | '1Y';
 type ManualPaymentAction = 'FREE_GIFT' | 'BANK_TRANSFER' | 'CARD_PAYMENT' | 'CASH';
 type ManualPaymentReason = 'STANDARD_PAYMENT' | 'DIFFICULTY_UPGRADING' | 'GOODWILL' | 'TEST_ACCOUNT' | 'OTHER';
-type ManualPaymentPlan = Exclude<ResellerClient['plan'], 'Enterprise'>;
+type ManualPaymentPlan = ResellerClient['plan'];
 
 const MANUAL_PAYMENT_ACTION_LABELS: Record<ManualPaymentAction, string> = {
     FREE_GIFT: 'Free Gift',
@@ -93,8 +93,7 @@ const LEGACY_MANUAL_PAYMENT_LABELS: Record<string, string> = {
     DIFFICULTY_UPGRADING: 'Difficulty Upgrading',
 };
 
-const normalizeManualPaymentPlan = (plan: ResellerClient['plan']): ManualPaymentPlan =>
-    plan === 'Enterprise' ? 'Reseller' : plan;
+const normalizeManualPaymentPlan = (plan: ResellerClient['plan']): ManualPaymentPlan => plan;
 
 const getManualPaymentAccessLabel = (billingGift?: BillingGift | null) => {
     if (!billingGift) return 'Manual access';
@@ -4474,6 +4473,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                     <option value="Free">Free</option>
                                     <option value="Starter">Starter</option>
                                     <option value="Pro">Pro</option>
+                                    <option value="Enterprise">Enterprise</option>
                                     <option value="Reseller">Reseller</option>
                                 </select>
                             </div>
