@@ -51,6 +51,8 @@ Additional terms should be completed by HR before issuing this document.`,
   },
 ];
 
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 export const Documents: React.FC<DocumentsProps> = ({ templates, employees, companyData, onUpdateTemplates, documentRequests = [], onSaveDocumentRequest }) => {
   const [activeTab, setActiveTab] = useState<'list' | 'create' | 'generate'>('list');
   const [currentTemplate, setCurrentTemplate] = useState<DocumentTemplate | null>(null);
@@ -180,7 +182,7 @@ export const Documents: React.FC<DocumentsProps> = ({ templates, employees, comp
     };
 
     Object.keys(replacements).forEach(key => {
-      const regex = new RegExp(key, 'g');
+      const regex = new RegExp(escapeRegExp(key), 'g');
       content = content.replace(regex, replacements[key]);
     });
 

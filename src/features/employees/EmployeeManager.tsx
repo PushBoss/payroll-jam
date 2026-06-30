@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Employee, EmployeeType, PayType, PayFrequency, Role, CustomDeduction, BankAccount, Department } from '../../core/types';
 import { Icons } from '../../components/Icons';
-import { isValidTRN, isValidNIS, isValidEmail, formatTRN } from '../../utils/validators';
+import { isValidTRN, isValidNIS, isValidEmail, formatTRN, formatNIS } from '../../utils/validators';
 
 
 
@@ -824,8 +824,8 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                     className={`w-full border rounded-lg p-3 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange transition-all ${
                       errors.trn ? 'border-red-500 bg-red-50' : 'border-gray-300 bg-white'
                     }`}
-                    placeholder="123456789"
-                    maxLength={9}
+                    placeholder="123-456-789"
+                    maxLength={11}
                   />
                   {errors.trn && (
                     <p className="text-red-600 text-xs mt-1">{errors.trn}</p>
@@ -840,12 +840,12 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                   <input
                     type="text"
                     value={formData.nis}
-                    onChange={e => handleInputChange('nis', e.target.value.toUpperCase())}
+                    onChange={e => handleInputChange('nis', formatNIS(e.target.value))}
                     className={`w-full border rounded-lg p-3 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange transition-all ${
                       errors.nis ? 'border-red-500 bg-red-50' : 'border-gray-300 bg-white'
                     }`}
                     placeholder="A-123-456"
-                    maxLength={11}
+                    maxLength={12}
                   />
                   {errors.nis && (
                     <p className="text-red-600 text-xs mt-1">{errors.nis}</p>

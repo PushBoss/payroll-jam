@@ -218,7 +218,8 @@ describe('Reports page E2E Integration tests', () => {
       '2026-04',
       '$80,000',
       true,
-      ''
+      '',
+      expect.any(Array)
     );
   });
 
@@ -274,7 +275,8 @@ describe('Reports page E2E Integration tests', () => {
       '2026-04',
       '$80,000',
       true,
-      ''
+      '',
+      expect.any(Array)
     );
     expect(emailService.sendPayslipNotification).toHaveBeenNthCalledWith(
       2,
@@ -283,7 +285,8 @@ describe('Reports page E2E Integration tests', () => {
       '2026-04',
       '$90,000',
       true,
-      ''
+      '',
+      expect.any(Array)
     );
   });
 

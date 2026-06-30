@@ -1,17 +1,24 @@
 <!-- ai-context
-feature: support-operations
+feature: support-operations-and-platform-polish
 status: current
-summary: Version 1.0.5 scope for a support role and audited support dashboard.
-do-not-change: Support actions must stay server-controlled, permission-gated, audited, and reversible where possible.
+summary: Version 1.0.5 scope for a support role, audited support dashboard, and critical platform UX/UI bug fixes.
+do-not-change: Support actions must stay server-controlled, permission-gated, audited, and reversible where possible. Bug fixes must not break existing payroll calculation logic.
 -->
 
-# Version 1.0.5 Support Dashboard Plan
+# Version 1.0.5 Support Dashboard & Platform Polish Plan
 
 ## Release Goal
 
-Give Payroll-Jam operators a safer way to help customers without granting full super-admin access for routine support work.
+Give Payroll-Jam operators a safer way to help customers without granting full super-admin access for routine support work, while simultaneously resolving high-friction UI/UX bugs affecting employee management, document previews, and payslip generation.
 
-The support dashboard should make it easy to identify active clients, recently onboarded companies, failed signups, orphaned accounts, and billing/account setup issues. Any high-risk action must be explicit, audited, and recoverable.
+## Platform Bug Fixes & UX Polish (New in 1.0.5)
+
+- [x] **Admin Table Layouts:** Refactor column widths, padding, and row layouts in the Super Admin Tenants and Paying Clients tables to prevent data overflow and ensure clean readability.
+- [x] **Admin Table Sorting:** Add sortable arrow filters to the column headers in the Tenants and Paying Clients tables for easier data navigation.
+- [x] **Document Previews:** Fix the bug preventing document templates from rendering previews on the Documents page.
+- [x] **TRN & NIS Formatting:** Implement input masking on the frontend to automatically format TRN and NIS fields with hyphens (`-`) during user entry. Update the Payslip rendering engine to strictly strip these hyphens before generating the PDF to prevent layout/rendering crashes.
+- [x] **Manual Leave Filtering:** Update the database query for the "Log Manual Leave" employee dropdown to strictly filter out employees with `ARCHIVED` or `TERMINATED` statuses.
+- [x] **Payslip Email Attachments:** Upgrade the payslip email dispatch service to generate the actual PDF file and include it as a direct attachment in the email, rather than just a link.
 
 ## Role Scope
 

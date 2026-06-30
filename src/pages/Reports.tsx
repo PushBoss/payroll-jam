@@ -10,6 +10,7 @@ import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 import { emailService } from '../services/emailService';
 import { hasEmployeePortalAccess } from '../features/payroll/payrunWorkflow';
+import { createPayslipPdfAttachment } from '../utils/payslipPdf';
 
 interface ReportsProps {
   history?: PayRun[];
@@ -245,7 +246,14 @@ export const Reports: React.FC<ReportsProps> = ({
         run.periodStart,
         `$${line.netPay.toLocaleString()}`,
         true,
-        ''
+        '',
+        [createPayslipPdfAttachment({
+          lineItem: line,
+          employee: emp,
+          companyData,
+          payPeriod: run.periodStart,
+          payDate: run.payDate,
+        })]
       );
       
       if (result && !result.success) {
@@ -299,7 +307,14 @@ export const Reports: React.FC<ReportsProps> = ({
             run.periodStart,
             `$${line.netPay.toLocaleString()}`,
             true,
-            ''
+            '',
+            [createPayslipPdfAttachment({
+              lineItem: line,
+              employee: emp,
+              companyData,
+              payPeriod: run.periodStart,
+              payDate: run.payDate,
+            })]
           );
           
           if (result && !result.success) {

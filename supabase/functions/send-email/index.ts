@@ -22,6 +22,10 @@ interface EmailRequest {
   subject: string;
   html: string;
   text?: string;
+  attachments?: {
+    name: string;
+    content: string;
+  }[];
 }
 
 serve(async (req) => {
@@ -38,7 +42,7 @@ serve(async (req) => {
   }
 
   try {
-    const { to, subject, html, text }: EmailRequest = await req.json();
+    const { to, subject, html, text, attachments }: EmailRequest = await req.json();
 
     if (!to || !subject || !html) {
       return new Response(
@@ -60,6 +64,10 @@ serve(async (req) => {
       );
     }
 
+    const validAttachments = Array.isArray(attachments)
+      ? attachments.filter((attachment) => attachment?.name && attachment?.content)
+      : [];
+
     // Call Brevo Transactional Email API
     const brevoResponse = await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
@@ -80,6 +88,7 @@ serve(async (req) => {
         subject: subject,
         htmlContent: html,
         textContent: text || html.replace(/<[^>]*>/g, ''),
+        ...(validAttachments.length > 0 ? { attachment: validAttachments } : {}),
       }),
     });
 
@@ -113,4 +122,3 @@ serve(async (req) => {
     );
   }
 });
-

@@ -1,0 +1,156 @@
+import { CompanySettings, Employee, PayRunLineItem } from '../core/types';
+
+export interface EmailAttachment {
+  name: string;
+  content: string;
+}
+
+interface PayslipPdfInput {
+  lineItem: PayRunLineItem;
+  employee?: Employee;
+  companyData: CompanySettings;
+  payPeriod: string;
+  payDate: string;
+}
+
+const stripIdentifierHyphens = (value?: string) => (value || '').replace(/-/g, '');
+
+const toMoney = (value: unknown) => {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(numeric) ? numeric : 0;
+};
+
+const formatMoney = (value: unknown) => (
+  `JMD ${toMoney(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+);
+
+const normalizePdfText = (value: unknown) => (
+  String(value ?? '')
+    .replace(/[^\x20-\x7E]/g, '?')
+    .replace(/\\/g, '\\\\')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)')
+);
+
+const wrapText = (value: string, maxLength = 88) => {
+  const words = value.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = '';
+
+  words.forEach((word) => {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length > maxLength && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+  });
+
+  if (current) lines.push(current);
+  return lines.length ? lines : [''];
+};
+
+const toPdfBase64 = (pdf: string) => {
+  const bytes = new TextEncoder().encode(pdf);
+  let binary = '';
+  const chunkSize = 0x8000;
+
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    const chunk = bytes.slice(index, index + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+
+  if (typeof btoa === 'function') return btoa(binary);
+  const bufferCtor = (globalThis as unknown as { Buffer?: { from: (value: string, encoding: string) => { toString: (encoding: string) => string } } }).Buffer;
+  return bufferCtor?.from(binary, 'binary').toString('base64') || '';
+};
+
+const createPdfDocument = (lines: string[]) => {
+  const escapedLines = lines.flatMap((line) => wrapText(line));
+  const textCommands = escapedLines
+    .slice(0, 42)
+    .map((line, index) => `${index === 0 ? '' : '0 -16 Td '}(${normalizePdfText(line)}) Tj`)
+    .join('\n');
+
+  const stream = `BT
+/F1 11 Tf
+50 790 Td
+${textCommands}
+ET`;
+
+  const objects = [
+    '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+    '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>\nendobj\n',
+    `4 0 obj\n<< /Length ${stream.length} >>\nstream\n${stream}\nendstream\nendobj\n`,
+    '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n',
+  ];
+
+  let pdf = '%PDF-1.4\n';
+  const offsets = [0];
+
+  objects.forEach((object) => {
+    offsets.push(pdf.length);
+    pdf += object;
+  });
+
+  const xrefOffset = pdf.length;
+  pdf += `xref\n0 ${objects.length + 1}\n`;
+  pdf += '0000000000 65535 f \n';
+  offsets.slice(1).forEach((offset) => {
+    pdf += `${String(offset).padStart(10, '0')} 00000 n \n`;
+  });
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+
+  return pdf;
+};
+
+export const createPayslipPdfAttachment = ({
+  lineItem,
+  employee,
+  companyData,
+  payPeriod,
+  payDate,
+}: PayslipPdfInput): EmailAttachment => {
+  const trn = stripIdentifierHyphens(lineItem.trn || employee?.trn) || 'Pending';
+  const nis = stripIdentifierHyphens(lineItem.nisId || employee?.nis) || 'Pending';
+  const safeEmployeeName = normalizePdfText(lineItem.employeeName || `${employee?.firstName || ''} ${employee?.lastName || ''}`.trim() || 'Employee');
+  const safePeriod = normalizePdfText(payPeriod || 'pay-period');
+  const filenameName = safeEmployeeName.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'employee';
+
+  const lines = [
+    `${companyData.name || 'Payroll-Jam'} Payslip`,
+    `Pay Period: ${payPeriod}`,
+    `Pay Date: ${payDate}`,
+    '',
+    `Employee: ${lineItem.employeeName}`,
+    `Employee ID: ${lineItem.employeeCustomId || employee?.employeeId || 'N/A'}`,
+    `TRN: ${trn}`,
+    `NIS: ${nis}`,
+    `Job Title: ${lineItem.jobTitle || employee?.jobTitle || 'General'}`,
+    '',
+    'Earnings',
+    `Basic Salary: ${formatMoney(lineItem.grossPay)}`,
+    `Additions: ${formatMoney(lineItem.additions)}`,
+    `Gross Pay: ${formatMoney(toMoney(lineItem.grossPay) + toMoney(lineItem.additions))}`,
+    '',
+    'Deductions',
+    `NIS: ${formatMoney(lineItem.nis)}`,
+    `NHT: ${formatMoney(lineItem.nht)}`,
+    `Education Tax: ${formatMoney(lineItem.edTax)}`,
+    `PAYE: ${formatMoney(lineItem.paye)}`,
+    `Pension: ${formatMoney(lineItem.pension)}`,
+    `Other Deductions: ${formatMoney(lineItem.deductions)}`,
+    `Total Deductions: ${formatMoney(lineItem.totalDeductions)}`,
+    '',
+    `Net Pay: ${formatMoney(lineItem.netPay)}`,
+    '',
+    'Generated by Payroll-Jam. This document is valid without a signature.',
+  ];
+
+  return {
+    name: `Payslip_${filenameName}_${safePeriod}.pdf`,
+    content: toPdfBase64(createPdfDocument(lines)),
+  };
+};

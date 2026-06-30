@@ -63,6 +63,9 @@ export const Leave: React.FC<LeaveProps> = ({ requests, employees, onStatusChang
           employee.email?.toLowerCase() === currentUser.email.toLowerCase()
       );
   }, [currentUser, employees]);
+  const selectableLeaveEmployees = useMemo(() => (
+      employees.filter((employee) => employee.status !== 'ARCHIVED' && employee.status !== 'TERMINATED')
+  ), [employees]);
 
   useEffect(() => {
       if (!isEmployeeUser || !currentEmployee) return;
@@ -71,6 +74,14 @@ export const Leave: React.FC<LeaveProps> = ({ requests, employees, onStatusChang
           employeeId: currentEmployee.id
       });
   }, [currentEmployee, isEmployeeUser]);
+
+  useEffect(() => {
+      if (isEmployeeUser || !newReq.employeeId) return;
+      const isSelectable = selectableLeaveEmployees.some((employee) => employee.id === newReq.employeeId);
+      if (!isSelectable) {
+          setNewReq((prev) => ({ ...prev, employeeId: '' }));
+      }
+  }, [isEmployeeUser, newReq.employeeId, selectableLeaveEmployees]);
 
   const handleRequestSubmit = (e: React.FormEvent) => {
       e.preventDefault();
@@ -291,7 +302,7 @@ export const Leave: React.FC<LeaveProps> = ({ requests, employees, onStatusChang
 	                                 onChange={e => setNewReq({...newReq, employeeId: e.target.value})}
 	                              >
 	                                  <option value="">Select Employee</option>
-	                                  {employees.map(e => (
+	                                  {selectableLeaveEmployees.map(e => (
 	                                      <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>
 	                                  ))}
 	                              </select>

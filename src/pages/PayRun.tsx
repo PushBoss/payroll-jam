@@ -25,6 +25,7 @@ import { PayslipPrintBatch, PayslipView } from '../components/PayslipView';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { generateUUID } from '../utils/uuid';
+import { createPayslipPdfAttachment } from '../utils/payslipPdf';
 
 interface PayRunProps {
     employees: Employee[];
@@ -470,7 +471,14 @@ export const PayRun: React.FC<PayRunProps> = ({
                         currentRun.periodStart,
                         `$${line.netPay.toLocaleString()}`,
                         true,
-                        ''
+                        '',
+                        [createPayslipPdfAttachment({
+                            lineItem: line,
+                            employee: emp,
+                            companyData,
+                            payPeriod: currentRun.periodStart,
+                            payDate: currentRun.payDate,
+                        })]
                     );
                     sentCount++;
                 }
@@ -512,7 +520,14 @@ export const PayRun: React.FC<PayRunProps> = ({
                 currentRun.periodStart,
                 `$${line.netPay.toLocaleString()}`,
                 true,
-                ''
+                '',
+                [createPayslipPdfAttachment({
+                    lineItem: line,
+                    employee: emp,
+                    companyData,
+                    payPeriod: currentRun.periodStart,
+                    payDate: currentRun.payDate,
+                })]
             );
             toast.success(`Payslip emailed to ${emp.firstName} ${emp.lastName}`);
         } catch (error) {

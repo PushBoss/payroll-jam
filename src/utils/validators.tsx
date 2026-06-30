@@ -46,7 +46,28 @@ export const isValidEmail = (email: string): boolean => {
  * Formats TRN for display (XXX-XXX-XXX)
  */
 export const formatTRN = (trn: string): string => {
-    const clean = trn.replace(/[^0-9]/g, '');
-    if (clean.length !== 9) return trn;
-    return `${clean.slice(0, 3)}-${clean.slice(3, 6)}-${clean.slice(6, 9)}`;
+    const clean = trn.replace(/[^0-9]/g, '').slice(0, 9);
+    const groups = [clean.slice(0, 3), clean.slice(3, 6), clean.slice(6, 9)].filter(Boolean);
+    return groups.join('-');
+};
+
+/**
+ * Formats NIS for display while typing. Common Jamaica NIS cards use A-123-456.
+ */
+export const formatNIS = (nis: string): string => {
+    const normalized = nis.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (normalized === 'PENDING') return 'PENDING';
+
+    const clean = normalized.slice(0, 9);
+    if (!clean) return '';
+
+    if (/^[A-Z]/.test(clean)) {
+        const prefix = clean.slice(0, 1);
+        const body = clean.slice(1);
+        const groups = [body.slice(0, 3), body.slice(3, 6), body.slice(6)].filter(Boolean);
+        return [prefix, ...groups].join('-');
+    }
+
+    const groups = [clean.slice(0, 3), clean.slice(3, 6), clean.slice(6, 9)].filter(Boolean);
+    return groups.join('-');
 };

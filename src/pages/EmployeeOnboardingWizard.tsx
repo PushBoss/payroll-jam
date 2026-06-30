@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { Employee, BankAccount } from '../core/types';
 import { Icons } from '../components/Icons';
+import { formatNIS, formatTRN } from '../utils/validators';
 
 interface OnboardingWizardProps {
   existingData?: Partial<Employee>;
@@ -148,9 +149,10 @@ export const EmployeeOnboardingWizard: React.FC<OnboardingWizardProps> = ({
                   required
                   type="text"
                   value={formData.trn}
-                  onChange={e => updateField('trn', e.target.value)}
+                  onChange={e => updateField('trn', formatTRN(e.target.value))}
                   className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-jam-orange font-mono text-lg tracking-wider"
                   placeholder="000-000-000"
+                  maxLength={11}
                 />
                 <p className="text-xs text-gray-500 mt-1">Must be a valid 9-digit number.</p>
               </div>
@@ -161,9 +163,10 @@ export const EmployeeOnboardingWizard: React.FC<OnboardingWizardProps> = ({
                   required
                   type="text"
                   value={formData.nis}
-                  onChange={e => updateField('nis', e.target.value)}
+                  onChange={e => updateField('nis', formatNIS(e.target.value))}
                   className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-jam-orange font-mono text-lg tracking-wider"
-                  placeholder="A123456"
+                  placeholder="A-123-456"
+                  maxLength={12}
                 />
               </div>
             </div>

@@ -292,7 +292,15 @@ export const emailService = {
    * @param hasPortalAccess - Whether employee has access to portal (Starter/Pro plans)
    * @param downloadToken - Secure token for direct PDF download (Free plan users)
    */
-  sendPayslipNotification: async (email: string, firstName: string, period: string, netPay: string, hasPortalAccess?: boolean, downloadToken?: string) => {
+  sendPayslipNotification: async (
+    email: string,
+    firstName: string,
+    period: string,
+    netPay: string,
+    hasPortalAccess?: boolean,
+    downloadToken?: string,
+    attachments?: { name: string; content: string }[]
+  ) => {
     hasPortalAccess = hasPortalAccess ?? true; // Default to true if not provided
     
     // Try SMTP first (if API URL is configured)
@@ -300,7 +308,7 @@ export const emailService = {
     if (apiUrl) {
       console.log('📧 Sending payslip notification via SMTP...');
       const loginLink = window.location.origin;
-      const result = await smtpEmailService.sendPayslipNotification(email, firstName, period, netPay, loginLink, hasPortalAccess, downloadToken);
+      const result = await smtpEmailService.sendPayslipNotification(email, firstName, period, netPay, loginLink, hasPortalAccess, downloadToken, attachments);
       if (result.success) {
         return result;
       }

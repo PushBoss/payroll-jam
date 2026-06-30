@@ -65,6 +65,13 @@ interface PayingClient {
 }
 
 type ClientActivitySort = 'created_desc' | 'created_asc' | 'last_login_desc' | 'last_login_asc';
+type SortDirection = 'asc' | 'desc';
+type AdminTableSort<K extends string> = {
+    key: K;
+    direction: SortDirection;
+};
+type TenantTableSortKey = 'companyName' | 'contactName' | 'plan' | 'employeeCount' | 'lastLoginAt' | 'createdAt' | 'status';
+type PayingClientTableSortKey = 'companyName' | 'adminName' | 'plan' | 'mrr' | 'paymentMethod' | 'lastLoginAt' | 'createdAt' | 'accessUntil' | 'latestLedgerState';
 type GrowthTrendRange = '1M' | '6M' | '1Y';
 type ManualPaymentAction = 'FREE_GIFT' | 'BANK_TRANSFER' | 'CARD_PAYMENT' | 'CASH';
 type ManualPaymentReason = 'STANDARD_PAYMENT' | 'DIFFICULTY_UPGRADING' | 'GOODWILL' | 'TEST_ACCOUNT' | 'OTHER';
@@ -306,28 +313,152 @@ const toActivityTime = (value?: string | null) => {
     return Number.isNaN(time) ? 0 : time;
 };
 
-const getSortedByClientActivity = <T extends { createdAt?: string | null; accountCreatedAt?: string | null; lastLoginAt?: string | null }>(
-    records: T[],
-    sort: ClientActivitySort
-) => {
-    return [...records].sort((a, b) => {
-        const createdA = toActivityTime(a.accountCreatedAt || a.createdAt);
-        const createdB = toActivityTime(b.accountCreatedAt || b.createdAt);
-        const loginA = toActivityTime(a.lastLoginAt);
-        const loginB = toActivityTime(b.lastLoginAt);
+const activitySortToTableSort = <K extends string>(
+    sort: ClientActivitySort,
+    createdKey: K,
+    lastLoginKey: K
+): AdminTableSort<K> => {
+    switch (sort) {
+        case 'created_asc':
+            return { key: createdKey, direction: 'asc' };
+        case 'last_login_desc':
+            return { key: lastLoginKey, direction: 'desc' };
+        case 'last_login_asc':
+            return { key: lastLoginKey, direction: 'asc' };
+        case 'created_desc':
+        default:
+            return { key: createdKey, direction: 'desc' };
+    }
+};
 
-        switch (sort) {
-            case 'created_asc':
-                return createdA - createdB;
-            case 'last_login_desc':
-                return loginB - loginA;
-            case 'last_login_asc':
-                return loginA - loginB;
-            case 'created_desc':
-            default:
-                return createdB - createdA;
-        }
-    });
+const compareStrings = (a?: string | null, b?: string | null) => (
+    String(a || '').localeCompare(String(b || ''), undefined, { sensitivity: 'base', numeric: true })
+);
+
+const compareNumbers = (a?: number | null, b?: number | null) => (
+    Number(a || 0) - Number(b || 0)
+);
+
+const compareDates = (a?: string | null, b?: string | null) => (
+    toActivityTime(a) - toActivityTime(b)
+);
+
+const applySortDirection = (result: number, direction: SortDirection) => (
+    direction === 'asc' ? result : -result
+);
+
+const sortTenantsForTable = (
+    records: ResellerClient[],
+    sort: AdminTableSort<TenantTableSortKey>
+) => [...records].sort((a, b) => {
+    let result = 0;
+
+    switch (sort.key) {
+        case 'companyName':
+            result = compareStrings(a.companyName, b.companyName);
+            break;
+        case 'contactName':
+            result = compareStrings(a.contactName, b.contactName);
+            break;
+        case 'plan':
+            result = compareStrings(a.plan, b.plan);
+            break;
+        case 'employeeCount':
+            result = compareNumbers(a.employeeCount, b.employeeCount);
+            break;
+        case 'lastLoginAt':
+            result = compareDates(a.lastLoginAt, b.lastLoginAt);
+            break;
+        case 'status':
+            result = compareStrings(a.status, b.status);
+            break;
+        case 'createdAt':
+        default:
+            result = compareDates(a.accountCreatedAt || a.createdAt, b.accountCreatedAt || b.createdAt);
+            break;
+    }
+
+    return applySortDirection(result, sort.direction);
+});
+
+const sortPayingClientsForTable = (
+    records: PayingClient[],
+    sort: AdminTableSort<PayingClientTableSortKey>
+) => [...records].sort((a, b) => {
+    let result = 0;
+
+    switch (sort.key) {
+        case 'companyName':
+            result = compareStrings(a.companyName, b.companyName);
+            break;
+        case 'adminName':
+            result = compareStrings(a.adminName, b.adminName);
+            break;
+        case 'plan':
+            result = compareStrings(a.plan, b.plan);
+            break;
+        case 'mrr':
+            result = compareNumbers(a.mrr, b.mrr);
+            break;
+        case 'paymentMethod':
+            result = compareStrings(a.paymentMethod, b.paymentMethod);
+            break;
+        case 'lastLoginAt':
+            result = compareDates(a.lastLoginAt, b.lastLoginAt);
+            break;
+        case 'accessUntil':
+            result = compareDates(a.accessUntil, b.accessUntil);
+            break;
+        case 'latestLedgerState':
+            result = compareStrings(a.latestLedgerState || a.latestLedgerEventType, b.latestLedgerState || b.latestLedgerEventType);
+            break;
+        case 'createdAt':
+        default:
+            result = compareDates(a.accountCreatedAt || a.createdAt, b.accountCreatedAt || b.createdAt);
+            break;
+    }
+
+    return applySortDirection(result, sort.direction);
+});
+
+interface SortableTableHeaderProps<K extends string> {
+    label: string;
+    sortKey: K;
+    activeSort: AdminTableSort<K>;
+    onSort: (key: K) => void;
+    align?: 'left' | 'right';
+    className?: string;
+}
+
+const SortableTableHeader = <K extends string>({
+    label,
+    sortKey,
+    activeSort,
+    onSort,
+    align = 'left',
+    className = '',
+}: SortableTableHeaderProps<K>) => {
+    const isActive = activeSort.key === sortKey;
+    const ariaSort = isActive ? (activeSort.direction === 'asc' ? 'ascending' : 'descending') : 'none';
+
+    return (
+        <th className={`px-4 py-3 text-xs font-bold text-gray-500 uppercase ${className}`} aria-sort={ariaSort}>
+            <button
+                type="button"
+                onClick={() => onSort(sortKey)}
+                className={`inline-flex w-full items-center gap-1.5 rounded-md text-xs font-bold uppercase tracking-wide transition-colors hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-jam-orange focus:ring-offset-2 ${align === 'right' ? 'justify-end' : 'justify-start'}`}
+            >
+                <span className="truncate">{label}</span>
+                <span className={`inline-flex h-4 w-4 shrink-0 items-center justify-center ${isActive ? 'text-jam-orange' : 'text-gray-300'}`}>
+                    {isActive && activeSort.direction === 'asc' ? (
+                        <Icons.ChevronUp className="h-3.5 w-3.5" />
+                    ) : (
+                        <Icons.ChevronDown className="h-3.5 w-3.5" />
+                    )}
+                </span>
+            </button>
+        </th>
+    );
 };
 
 const isActiveBillingStatus = (status?: string) => {
@@ -374,6 +505,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState<'ALL' | 'ACTIVE' | 'SUSPENDED'>('ALL');
     const [tenantActivitySort, setTenantActivitySort] = useState<ClientActivitySort>('created_desc');
+    const [tenantTableSort, setTenantTableSort] = useState<AdminTableSort<TenantTableSortKey>>({ key: 'createdAt', direction: 'desc' });
     const [giftingTenant, setGiftingTenant] = useState<ResellerClient | null>(null);
     const [giftMonths, setGiftMonths] = useState(1);
     const [giftNote, setGiftNote] = useState('');
@@ -439,6 +571,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     const [payingClientPlanFilter, setPayingClientPlanFilter] = useState<'ALL' | ResellerClient['plan']>('ALL');
     const [payingClientRiskFilter, setPayingClientRiskFilter] = useState<'ALL' | PayingClient['risk']>('ALL');
     const [payingClientActivitySort, setPayingClientActivitySort] = useState<ClientActivitySort>('created_desc');
+    const [payingClientTableSort, setPayingClientTableSort] = useState<AdminTableSort<PayingClientTableSortKey>>({ key: 'createdAt', direction: 'desc' });
     const [selectedPayingClient, setSelectedPayingClient] = useState<PayingClient | null>(null);
     const [selectedTenant, setSelectedTenant] = useState<ResellerClient | null>(null);
     const [emailDraft, setEmailDraft] = useState<EmailDraft | null>(null);
@@ -465,6 +598,42 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         signupTrend: [],
         activationFunnel: []
     });
+
+    const handleTenantHeaderSort = (key: TenantTableSortKey) => {
+        setTenantTableSort((current) => {
+            const nextDirection: SortDirection = current.key === key && current.direction === 'asc' ? 'desc' : 'asc';
+            return { key, direction: nextDirection };
+        });
+
+        if (key === 'createdAt' || key === 'lastLoginAt') {
+            setTenantPage(0);
+            setTenantActivitySort((current) => {
+                const isSameKey = (key === 'createdAt' && current.startsWith('created')) || (key === 'lastLoginAt' && current.startsWith('last_login'));
+                const nextDirection: SortDirection = isSameKey && current.endsWith('asc') ? 'desc' : 'asc';
+                return key === 'createdAt'
+                    ? (nextDirection === 'asc' ? 'created_asc' : 'created_desc')
+                    : (nextDirection === 'asc' ? 'last_login_asc' : 'last_login_desc');
+            });
+        }
+    };
+
+    const handleTenantActivitySortChange = (sort: ClientActivitySort) => {
+        setTenantActivitySort(sort);
+        setTenantTableSort(activitySortToTableSort(sort, 'createdAt', 'lastLoginAt'));
+        setTenantPage(0);
+    };
+
+    const handlePayingClientHeaderSort = (key: PayingClientTableSortKey) => {
+        setPayingClientTableSort((current) => ({
+            key,
+            direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc',
+        }));
+    };
+
+    const handlePayingClientActivitySortChange = (sort: ClientActivitySort) => {
+        setPayingClientActivitySort(sort);
+        setPayingClientTableSort(activitySortToTableSort(sort, 'createdAt', 'lastLoginAt'));
+    };
     const [isLoadingGrowthAnalytics, setIsLoadingGrowthAnalytics] = useState(false);
     const [growthTrendRange, setGrowthTrendRange] = useState<GrowthTrendRange>('6M');
 
@@ -1702,11 +1871,11 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     );
 
     const renderTenants = () => {
-        const filteredTenants = tenants.filter(t => {
+        const filteredTenants = sortTenantsForTable(tenants.filter(t => {
             const matchesSearch = t.companyName.toLowerCase().includes(searchTerm.toLowerCase()) || (t.email || '').toLowerCase().includes(searchTerm.toLowerCase());
             const matchesFilter = filterStatus === 'ALL' || t.status === filterStatus;
             return matchesSearch && matchesFilter;
-        });
+        }), tenantTableSort);
 
         const totalPages = Math.ceil(tenantTotal / TENANTS_PER_PAGE);
 
@@ -1728,7 +1897,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                         <select
                             className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-jam-orange"
                             value={tenantActivitySort}
-                            onChange={(e) => { setTenantActivitySort(e.target.value as ClientActivitySort); setTenantPage(0); }}
+                            onChange={(e) => handleTenantActivitySortChange(e.target.value as ClientActivitySort)}
                         >
                             <option value="created_desc">Newest signups</option>
                             <option value="created_asc">Oldest signups</option>
@@ -1752,16 +1921,25 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
 
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                     <div className="overflow-x-auto">
-                        <table className="w-full text-left">
+                        <table className="min-w-[1180px] w-full table-fixed text-left">
+                            <colgroup>
+                                <col className="w-[22%]" />
+                                <col className="w-[21%]" />
+                                <col className="w-[10%]" />
+                                <col className="w-[9%]" />
+                                <col className="w-[17%]" />
+                                <col className="w-[12%]" />
+                                <col className="w-[9%]" />
+                            </colgroup>
                             <thead className="bg-gray-50 border-b border-gray-200">
                                 <tr>
-                                    <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">Company</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">Contact</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">Plan</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">Employees</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">Activity</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">Status</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase text-right">Actions</th>
+                                    <SortableTableHeader label="Company" sortKey="companyName" activeSort={tenantTableSort} onSort={handleTenantHeaderSort} />
+                                    <SortableTableHeader label="Contact" sortKey="contactName" activeSort={tenantTableSort} onSort={handleTenantHeaderSort} />
+                                    <SortableTableHeader label="Plan" sortKey="plan" activeSort={tenantTableSort} onSort={handleTenantHeaderSort} />
+                                    <SortableTableHeader label="Employees" sortKey="employeeCount" activeSort={tenantTableSort} onSort={handleTenantHeaderSort} />
+                                    <SortableTableHeader label="Activity" sortKey="lastLoginAt" activeSort={tenantTableSort} onSort={handleTenantHeaderSort} />
+                                    <SortableTableHeader label="Status" sortKey="status" activeSort={tenantTableSort} onSort={handleTenantHeaderSort} />
+                                    <th className="px-4 py-3 text-xs font-bold text-gray-500 uppercase text-right">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -1787,26 +1965,26 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                             onClick={() => setSelectedTenant(tenant)}
                                             className={`cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-0 ${(tenant as any).isTestCompany ? 'opacity-60' : ''}`}
                                         >
-                                            <td className="px-6 py-4">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="font-medium text-gray-900">{tenant.companyName}</span>
+                                            <td className="px-4 py-4 align-top">
+                                                <div className="flex min-w-0 items-center gap-2">
+                                                    <span className="truncate font-medium text-gray-900" title={tenant.companyName}>{tenant.companyName}</span>
                                                     {(tenant as any).isTestCompany && (
-                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-100 text-purple-700">🧪 Test</span>
+                                                        <span className="inline-flex shrink-0 items-center rounded bg-purple-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-purple-700">🧪 Test</span>
                                                     )}
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4 text-sm text-gray-500">
-                                                {tenant.contactName}
-                                                <div className="text-xs text-gray-400">{tenant.email}</div>
-                                                <div className="text-xs text-gray-400">{tenant.phone || 'No phone on file'}</div>
+                                            <td className="px-4 py-4 align-top text-sm text-gray-500">
+                                                <div className="truncate text-gray-700" title={tenant.contactName}>{tenant.contactName}</div>
+                                                <div className="truncate text-xs text-gray-400" title={tenant.email}>{tenant.email}</div>
+                                                <div className="truncate text-xs text-gray-400" title={tenant.phone || 'No phone on file'}>{tenant.phone || 'No phone on file'}</div>
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-4 py-4 align-top">
                                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                                                     {tenant.plan}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-4 text-sm text-gray-500">{tenant.employeeCount}</td>
-                                            <td className="px-6 py-4 text-sm text-gray-500">
+                                            <td className="px-4 py-4 align-top text-sm text-gray-500">{tenant.employeeCount}</td>
+                                            <td className="px-4 py-4 align-top text-sm text-gray-500">
                                                 <div>
                                                     <span className="font-medium text-gray-700">Last login</span>
                                                     <div className="text-xs text-gray-500">{formatActivityDate(tenant.lastLoginAt)}</div>
@@ -1816,42 +1994,46 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                                     <div className="text-xs text-gray-500">{formatActivityDate(tenant.accountCreatedAt || tenant.createdAt, 'N/A')}</div>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-4 py-4 align-top">
                                                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${tenant.status === 'ACTIVE' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                                                     }`}>
                                                     {tenant.status}
                                                 </span>
                                                 {tenant.hasActiveBillingGift && (
-                                                    <div className="mt-2 inline-flex items-center rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
-                                                        <Icons.CalendarDays className="mr-1.5 h-3.5 w-3.5" />
-                                                        {getManualPaymentAccessLabel(tenant.billingGift)} through {formatGiftedUntil(tenant.billingGift?.giftedUntil) || 'active period'}
+                                                    <div className="mt-2 flex max-w-full items-center rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
+                                                        <Icons.CalendarDays className="mr-1.5 h-3.5 w-3.5 shrink-0" />
+                                                        <span className="truncate" title={`${getManualPaymentAccessLabel(tenant.billingGift)} through ${formatGiftedUntil(tenant.billingGift?.giftedUntil) || 'active period'}`}>
+                                                            {getManualPaymentAccessLabel(tenant.billingGift)} through {formatGiftedUntil(tenant.billingGift?.giftedUntil) || 'active period'}
+                                                        </span>
                                                     </div>
                                                 )}
                                             </td>
-                                            <td className="px-6 py-4 text-right space-x-2">
-                                                <button onClick={(e) => { e.stopPropagation(); onImpersonate(tenant); }} className="text-jam-orange hover:text-yellow-600 text-xs font-bold uppercase">
-                                                    Manage
-                                                </button>
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setGiftingTenant(tenant);
-                                                        setGiftMonths(1);
-                                                        setGiftNote('');
-                                                        setManualPaymentAction('FREE_GIFT');
-                                                        setManualPaymentReason('STANDARD_PAYMENT');
-                                                        setManualPaymentPlan(tenant.plan === 'Free' ? 'Starter' : normalizeManualPaymentPlan(tenant.plan));
-                                                    }}
-                                                    className="text-amber-600 hover:text-amber-700 text-xs font-bold uppercase"
-                                                >
-                                                    Manual Payment
-                                                </button>
-                                                <button onClick={(e) => { e.stopPropagation(); handleSuspend(tenant.id); }} className="text-gray-500 hover:text-gray-900 text-xs font-bold uppercase">
-                                                    {tenant.status === 'ACTIVE' ? 'Suspend' : 'Activate'}
-                                                </button>
-                                                <button onClick={(e) => { e.stopPropagation(); handleDeleteTenant(tenant.id); }} className="text-red-400 hover:text-red-600">
-                                                    <Icons.Trash className="w-4 h-4" />
-                                                </button>
+                                            <td className="px-4 py-4 align-top">
+                                                <div className="flex flex-wrap justify-end gap-2">
+                                                    <button onClick={(e) => { e.stopPropagation(); onImpersonate(tenant); }} className="text-jam-orange hover:text-yellow-600 text-xs font-bold uppercase whitespace-nowrap">
+                                                        Manage
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setGiftingTenant(tenant);
+                                                            setGiftMonths(1);
+                                                            setGiftNote('');
+                                                            setManualPaymentAction('FREE_GIFT');
+                                                            setManualPaymentReason('STANDARD_PAYMENT');
+                                                            setManualPaymentPlan(tenant.plan === 'Free' ? 'Starter' : normalizeManualPaymentPlan(tenant.plan));
+                                                        }}
+                                                        className="text-amber-600 hover:text-amber-700 text-xs font-bold uppercase whitespace-nowrap"
+                                                    >
+                                                        Manual Payment
+                                                    </button>
+                                                    <button onClick={(e) => { e.stopPropagation(); handleSuspend(tenant.id); }} className="text-gray-500 hover:text-gray-900 text-xs font-bold uppercase whitespace-nowrap">
+                                                        {tenant.status === 'ACTIVE' ? 'Suspend' : 'Activate'}
+                                                    </button>
+                                                    <button onClick={(e) => { e.stopPropagation(); handleDeleteTenant(tenant.id); }} className="text-red-400 hover:text-red-600">
+                                                        <Icons.Trash className="w-4 h-4" />
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))
@@ -2480,7 +2662,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     );
 
     const renderPayingClients = () => {
-        const filteredClients = getSortedByClientActivity(payingClients.filter((client) => {
+        const filteredClients = sortPayingClientsForTable(payingClients.filter((client) => {
             const query = payingClientSearch.trim().toLowerCase();
             const matchesSearch = !query
                 || client.companyName.toLowerCase().includes(query)
@@ -2489,7 +2671,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             const matchesPlan = payingClientPlanFilter === 'ALL' || client.plan === payingClientPlanFilter;
             const matchesRisk = payingClientRiskFilter === 'ALL' || client.risk === payingClientRiskFilter;
             return matchesSearch && matchesPlan && matchesRisk;
-        }), payingClientActivitySort);
+        }), payingClientTableSort);
 
         const totalClientMRR = filteredClients.filter(c => !c.isTestCompany).reduce((sum, client) => sum + Number(client.mrr || 0), 0);
         const totalClientARR = totalClientMRR * 12;
@@ -2571,7 +2753,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                             <select
                                 className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-jam-orange"
                                 value={payingClientActivitySort}
-                                onChange={(event) => setPayingClientActivitySort(event.target.value as ClientActivitySort)}
+                                onChange={(event) => handlePayingClientActivitySortChange(event.target.value as ClientActivitySort)}
                             >
                                 <option value="created_desc">Newest signups</option>
                                 <option value="created_asc">Oldest signups</option>
@@ -2582,18 +2764,29 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     </div>
 
                     <div className="overflow-x-auto">
-                        <table className="w-full text-left">
+                        <table className="min-w-[1480px] w-full table-fixed text-left">
+                            <colgroup>
+                                <col className="w-[16%]" />
+                                <col className="w-[15%]" />
+                                <col className="w-[9%]" />
+                                <col className="w-[9%]" />
+                                <col className="w-[15%]" />
+                                <col className="w-[12%]" />
+                                <col className="w-[9%]" />
+                                <col className="w-[9%]" />
+                                <col className="w-[6%]" />
+                            </colgroup>
                             <thead className="bg-gray-50 border-b border-gray-200">
                                 <tr>
-                                    <th className="px-5 py-4 text-xs font-bold text-gray-500 uppercase">Company</th>
-                                    <th className="px-5 py-4 text-xs font-bold text-gray-500 uppercase">Admin</th>
-                                    <th className="px-5 py-4 text-xs font-bold text-gray-500 uppercase">Plan</th>
-                                    <th className="px-5 py-4 text-xs font-bold text-gray-500 uppercase">MRR</th>
-                                    <th className="px-5 py-4 text-xs font-bold text-gray-500 uppercase">Payment</th>
-                                    <th className="px-5 py-4 text-xs font-bold text-gray-500 uppercase">Activity</th>
-                                    <th className="px-5 py-4 text-xs font-bold text-gray-500 uppercase">Access</th>
-                                    <th className="px-5 py-4 text-xs font-bold text-gray-500 uppercase">Ledger</th>
-                                    <th className="px-5 py-4 text-xs font-bold text-gray-500 uppercase text-right">Actions</th>
+                                    <SortableTableHeader label="Company" sortKey="companyName" activeSort={payingClientTableSort} onSort={handlePayingClientHeaderSort} />
+                                    <SortableTableHeader label="Admin" sortKey="adminName" activeSort={payingClientTableSort} onSort={handlePayingClientHeaderSort} />
+                                    <SortableTableHeader label="Plan" sortKey="plan" activeSort={payingClientTableSort} onSort={handlePayingClientHeaderSort} />
+                                    <SortableTableHeader label="MRR" sortKey="mrr" activeSort={payingClientTableSort} onSort={handlePayingClientHeaderSort} />
+                                    <SortableTableHeader label="Payment" sortKey="paymentMethod" activeSort={payingClientTableSort} onSort={handlePayingClientHeaderSort} />
+                                    <SortableTableHeader label="Activity" sortKey="lastLoginAt" activeSort={payingClientTableSort} onSort={handlePayingClientHeaderSort} />
+                                    <SortableTableHeader label="Access" sortKey="accessUntil" activeSort={payingClientTableSort} onSort={handlePayingClientHeaderSort} />
+                                    <SortableTableHeader label="Ledger" sortKey="latestLedgerState" activeSort={payingClientTableSort} onSort={handlePayingClientHeaderSort} />
+                                    <th className="px-4 py-3 text-xs font-bold text-gray-500 uppercase text-right">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -2617,21 +2810,21 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                             onClick={() => setSelectedPayingClient(client)}
                                             className={`cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-0 ${client.isTestCompany ? 'opacity-60' : ''}`}
                                         >
-                                            <td className="px-5 py-4">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="font-medium text-gray-900">{client.companyName}</span>
+                                            <td className="px-4 py-4 align-top">
+                                                <div className="flex min-w-0 items-center gap-2">
+                                                    <span className="truncate font-medium text-gray-900" title={client.companyName}>{client.companyName}</span>
                                                     {client.isTestCompany && (
-                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-100 text-purple-700">🧪 Test</span>
+                                                        <span className="inline-flex shrink-0 items-center rounded bg-purple-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-purple-700">🧪 Test</span>
                                                     )}
                                                 </div>
                                                 <div className="text-xs text-gray-500">{client.activeEmployees} active employees</div>
                                             </td>
-                                            <td className="px-5 py-4">
-                                                <div className="text-sm text-gray-900">{client.adminName}</div>
-                                                <div className="text-xs text-gray-500">{client.adminEmail}</div>
-                                                {client.adminPhone && <div className="text-xs text-gray-400">{client.adminPhone}</div>}
+                                            <td className="px-4 py-4 align-top">
+                                                <div className="truncate text-sm text-gray-900" title={client.adminName}>{client.adminName}</div>
+                                                <div className="truncate text-xs text-gray-500" title={client.adminEmail}>{client.adminEmail}</div>
+                                                {client.adminPhone && <div className="truncate text-xs text-gray-400" title={client.adminPhone}>{client.adminPhone}</div>}
                                             </td>
-                                            <td className="px-5 py-4">
+                                            <td className="px-4 py-4 align-top">
                                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                                                     {client.plan}
                                                 </span>
@@ -2641,14 +2834,14 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                                     </span>
                                                 </div>
                                             </td>
-                                            <td className="px-5 py-4">
+                                            <td className="px-4 py-4 align-top">
                                                 <div className="text-sm font-bold text-gray-900">JMD {client.mrr.toLocaleString()}</div>
                                                 <div className="text-xs text-gray-500">ARR JMD {client.arr.toLocaleString()}</div>
                                             </td>
-                                            <td className="px-5 py-4">
-                                                <div className="text-sm text-gray-900">{client.paymentMethod}</div>
+                                            <td className="px-4 py-4 align-top">
+                                                <div className="truncate text-sm text-gray-900" title={client.paymentMethod}>{client.paymentMethod}</div>
                                                 <div
-                                                    className="text-xs text-gray-500"
+                                                    className="truncate text-xs text-gray-500"
                                                     title={client.dimeSubscriptionId
                                                         ? 'DimePay has an active recurring subscription schedule for this company.'
                                                         : 'No automated recurring DimePay subscription schedule is attached yet. This usually means the company is on manual, reseller, legacy, or pending card-binding billing.'}
@@ -2661,21 +2854,21 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                                     </div>
                                                 )}
                                             </td>
-                                            <td className="px-5 py-4">
+                                            <td className="px-4 py-4 align-top">
                                                 <div className="text-sm text-gray-900">{formatActivityDate(client.lastLoginAt)}</div>
                                                 <div className="text-xs text-gray-500">Created {formatActivityDate(client.accountCreatedAt || client.createdAt, 'N/A')}</div>
                                             </td>
-                                            <td className="px-5 py-4">
-                                                <div className="text-sm text-gray-900">{client.subscriptionStatus || client.status}</div>
+                                            <td className="px-4 py-4 align-top">
+                                                <div className="truncate text-sm text-gray-900" title={client.subscriptionStatus || client.status}>{client.subscriptionStatus || client.status}</div>
                                                 <div className="text-xs text-gray-500">
                                                     {client.accessUntil ? `Until ${new Date(client.accessUntil).toLocaleDateString()}` : 'No access date'}
                                                 </div>
                                             </td>
-                                            <td className="px-5 py-4">
-                                                <div className="text-sm text-gray-900">{client.latestLedgerState || 'No events'}</div>
-                                                <div className="text-xs text-gray-500">{client.latestLedgerEventType || 'Awaiting DimePay event'}</div>
+                                            <td className="px-4 py-4 align-top">
+                                                <div className="truncate text-sm text-gray-900" title={client.latestLedgerState || 'No events'}>{client.latestLedgerState || 'No events'}</div>
+                                                <div className="truncate text-xs text-gray-500" title={client.latestLedgerEventType || 'Awaiting DimePay event'}>{client.latestLedgerEventType || 'Awaiting DimePay event'}</div>
                                             </td>
-                                            <td className="px-5 py-4 text-right">
+                                            <td className="px-4 py-4 align-top text-right">
                                                 <div className="flex justify-end gap-2">
                                                     <button
                                                         onClick={(event) => {

@@ -30,6 +30,10 @@ export interface EmailPayload {
   subject: string;
   html: string;
   text?: string;
+  attachments?: {
+    name: string;
+    content: string;
+  }[];
 }
 
 import { supabase } from './supabaseClient';
@@ -509,15 +513,19 @@ Thank you for choosing Payroll-Jam as your payroll solution!
     netPay: string,
     loginLink: string,
     hasPortalAccess: boolean = true,
-    downloadToken?: string
+    downloadToken?: string,
+    attachments?: EmailPayload['attachments']
   ): Promise<{ success: boolean; message?: string }> => {
+    const hasAttachment = Boolean(attachments?.length);
     const buttonText = hasPortalAccess ? 'View Payslip in Portal' : 'Download PDF';
     const buttonUrl = hasPortalAccess 
       ? buildAppUrl('portal-home', undefined, loginLink)
       : buildAppUrl('download-payslip', { token: downloadToken }, loginLink);
-    const instructionText = hasPortalAccess 
-      ? 'Log in to your employee portal to view your full payslip and access all your pay history.'
-      : 'Click the button below to view and download your payslip PDF. No login required.';
+    const instructionText = hasAttachment
+      ? 'Your payslip PDF is attached to this email. You can also use the button below as a backup access option.'
+      : hasPortalAccess
+        ? 'Log in to your employee portal to view your full payslip and access all your pay history.'
+        : 'Click the button below to view and download your payslip PDF. No login required.';
     
     console.log('📨 SMTP Email Service - Payslip notification:', {
       to: email,
@@ -566,16 +574,18 @@ Thank you for choosing Payroll-Jam as your payroll solution!
       </html>
     `;
 
-    const textContent = hasPortalAccess
-      ? `Hi ${firstName}, Your payslip for ${period} is now available. Net Pay: ${netPay}. Log in to your employee portal: ${buttonUrl}`
-      : `Hi ${firstName}, Your payslip for ${period} is now available. Net Pay: ${netPay}. Download your PDF here (no login required): ${buttonUrl}`;
+    const textContent = hasAttachment
+      ? `Hi ${firstName}, Your payslip for ${period} is attached. Net Pay: ${netPay}. Backup access link: ${buttonUrl}`
+      : hasPortalAccess
+        ? `Hi ${firstName}, Your payslip for ${period} is now available. Net Pay: ${netPay}. Log in to your employee portal: ${buttonUrl}`
+        : `Hi ${firstName}, Your payslip for ${period} is now available. Net Pay: ${netPay}. Download your PDF here (no login required): ${buttonUrl}`;
     
     return await smtpEmailService.sendEmail({
       to: email,
       subject: `Your Payslip for ${period} is Ready`,
       html: htmlContent,
       text: textContent,
+      attachments,
     });
   },
 };
-

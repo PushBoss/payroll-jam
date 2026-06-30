@@ -97,6 +97,8 @@ const findEmployeeForLine = (line: PayRunLineItem, employees: Employee[] = []) =
   || employees.find(employee => `${employee.firstName} ${employee.lastName}` === line.employeeName)
 );
 
+const stripIdentifierHyphens = (value?: string) => (value || '').replace(/-/g, '');
+
 export const PayslipDocument: React.FC<PayslipDocumentProps> = ({
   data,
   companyName,
@@ -108,8 +110,8 @@ export const PayslipDocument: React.FC<PayslipDocumentProps> = ({
   className = ''
 }) => {
   const ytd = ytdSummary || calculatePayslipYtd(data, payRunHistory, payPeriod, payDate);
-  const trn = data.trn || employee?.trn || 'Pending';
-  const nisId = data.nisId || employee?.nis || 'Pending';
+  const trn = stripIdentifierHyphens(data.trn || employee?.trn) || 'Pending';
+  const nisId = stripIdentifierHyphens(data.nisId || employee?.nis) || 'Pending';
   const jobTitle = data.jobTitle || employee?.jobTitle || 'General';
 
   return (
