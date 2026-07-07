@@ -159,6 +159,8 @@ describe('payrunWorkflow', () => {
     expect(hasEmployeePortalAccess('Starter')).toBe(true);
     expect(hasEmployeePortalAccess('Pro')).toBe(true);
     expect(hasEmployeePortalAccess('Professional')).toBe(true);
+    expect(hasEmployeePortalAccess('Enterprise')).toBe(true);
+    expect(hasEmployeePortalAccess('Reseller')).toBe(true);
 
     const token = createPayslipDownloadToken(
       { employeeId: 'emp-1', employeeName: 'Jane Doe', grossPay: 100000, additions: 0, deductions: 0, nis: 0, nht: 0, edTax: 0, paye: 0, pension: 0, totalDeductions: 0, netPay: 70000 },

@@ -9,6 +9,7 @@ import { decodeClockInPayload, getCompanyLocations, normalizeAttendancePassCode 
 import { getNextPayDateInfo } from '../utils/payrollSchedule';
 import { toast } from 'sonner';
 import { AttendanceClockPayload, AttendanceClockResult } from '../services/PayrollService';
+import { hasEmployeePortalAccess } from '../features/payroll/payrunWorkflow';
 
 interface PortalProps {
     user: User;
@@ -97,10 +98,7 @@ Additional terms are maintained by the employer in the company document center.`
 
 export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = 'home', leaveRequests, onRequestLeave, payRunHistory = [], timesheets = [], templates = [], documentRequests = [], companyData, onUpdateEmployee, onClockIn, onSaveTimesheet, onSaveDocumentRequest, onNavigate }) => {
     // Check if company plan allows Employee Portal access
-    const hasPortalAccess = companyData && 
-        (companyData.plan === 'Starter' || 
-         companyData.plan === 'Pro' || 
-         companyData.plan === 'Professional');
+    const hasPortalAccess = companyData && hasEmployeePortalAccess(companyData.plan);
     
     const [selectedPayslip, setSelectedPayslip] = useState<{data: PayRunLineItem, period: string, date: string} | null>(null);
     const [jobLetterRequest, setJobLetterRequest] = useState(false);
@@ -724,11 +722,11 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
                     </div>
                     <h2 className="text-2xl font-bold text-gray-900 mb-2">Employee Portal Access Required</h2>
                     <p className="text-gray-600 mb-6">
-                        The Employee Portal is available on Starter and Pro plans. Please ask your administrator to upgrade.
+                        The Employee Portal is available on Starter plans and above. Please ask your administrator to upgrade.
                     </p>
                     <div className="bg-gray-50 rounded-lg p-4 text-left mb-6">
                         <p className="text-sm text-gray-700 mb-2"><strong>Current Plan:</strong> {companyData?.plan || 'Free'}</p>
-                        <p className="text-sm text-gray-700"><strong>Required:</strong> Starter or Pro</p>
+                        <p className="text-sm text-gray-700"><strong>Required:</strong> Starter and above</p>
                     </div>
                     <p className="text-xs text-gray-500">
                         Contact your company administrator to upgrade your plan and unlock this feature.
