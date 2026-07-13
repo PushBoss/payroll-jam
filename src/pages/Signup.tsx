@@ -1257,8 +1257,8 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
 
                 {/* Right Side - Order Summary */}
                 {!isTeamInvitation && (
-                    <div className="hidden lg:block relative flex-1 bg-gray-50 w-0 border-l border-gray-200">
-                        <div className="absolute inset-0 flex flex-col justify-center px-12">
+                    <div className="hidden lg:block flex-1 bg-gray-50 w-0 border-l border-gray-200">
+                        <div className="sticky top-0 h-screen flex flex-col justify-center px-12 overflow-y-auto py-12">
                             <div className="max-w-md mx-auto w-full bg-white p-8 rounded-2xl shadow-lg border border-gray-100">
                                 <h3 className="text-lg font-medium text-gray-900 mb-6">Order Summary</h3>
                                 <div className="pb-6 border-b border-gray-100">
