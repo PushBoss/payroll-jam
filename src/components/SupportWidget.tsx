@@ -15,11 +15,15 @@ export const SupportWidget: React.FC<SupportWidgetProps> = ({ config }) => {
     'bottom-right': 'bottom-5 right-5',
   }[config.position || 'bottom-right'];
 
+  const href = config.whatsappMessage
+    ? `${config.whatsappUrl}${config.whatsappUrl.includes('?') ? '&' : '?'}text=${encodeURIComponent(config.whatsappMessage)}`
+    : config.whatsappUrl;
+
   return (
     <>
       {config.customCss && <style>{config.customCss}</style>}
       <a
-        href={config.whatsappUrl}
+        href={href}
         target="_blank"
         rel="noopener noreferrer"
         className={`payroll-jam-support-widget fixed ${positionClass} z-[90] inline-flex items-center gap-2 rounded-full bg-green-500 px-4 py-3 text-sm font-bold text-white shadow-lg transition-transform hover:scale-105 hover:bg-green-600 no-print`}

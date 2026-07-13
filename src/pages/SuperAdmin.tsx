@@ -3525,6 +3525,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                     supportWidget: {
                                         enabled: e.target.checked,
                                         whatsappUrl: paymentConfig.supportWidget?.whatsappUrl || 'https://wa.me/18765550123',
+                                        whatsappMessage: paymentConfig.supportWidget?.whatsappMessage || '',
                                         position: paymentConfig.supportWidget?.position || 'bottom-right',
                                         customCss: paymentConfig.supportWidget?.customCss || ''
                                     }
@@ -3545,6 +3546,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                     supportWidget: {
                                         enabled: paymentConfig.supportWidget?.enabled || false,
                                         whatsappUrl: e.target.value,
+                                        whatsappMessage: paymentConfig.supportWidget?.whatsappMessage || '',
                                         position: paymentConfig.supportWidget?.position || 'bottom-right',
                                         customCss: paymentConfig.supportWidget?.customCss || ''
                                     }
@@ -3552,6 +3554,28 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                 placeholder="https://wa.me/18765550123"
                                 className="w-full border border-gray-300 rounded p-2 text-sm"
                             />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Pre-filled Message</label>
+                            <textarea
+                                rows={3}
+                                value={paymentConfig.supportWidget?.whatsappMessage || ''}
+                                onChange={(e) => setPaymentConfig({
+                                    ...paymentConfig,
+                                    supportWidget: {
+                                        enabled: paymentConfig.supportWidget?.enabled || false,
+                                        whatsappUrl: paymentConfig.supportWidget?.whatsappUrl || 'https://wa.me/18765550123',
+                                        whatsappMessage: e.target.value,
+                                        position: paymentConfig.supportWidget?.position || 'bottom-right',
+                                        customCss: paymentConfig.supportWidget?.customCss || ''
+                                    }
+                                })}
+                                placeholder="Hi! I need help with my Payroll-Jam account..."
+                                className="w-full border border-gray-300 rounded p-2 text-sm"
+                            />
+                            <p className="text-xs text-gray-500 mt-1">
+                                Pre-fills the chat when a user opens WhatsApp from the widget. Leave blank for no pre-filled message.
+                            </p>
                         </div>
                         <div>
                             <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Placement</label>
@@ -3562,6 +3586,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                     supportWidget: {
                                         enabled: paymentConfig.supportWidget?.enabled || false,
                                         whatsappUrl: paymentConfig.supportWidget?.whatsappUrl || 'https://wa.me/18765550123',
+                                        whatsappMessage: paymentConfig.supportWidget?.whatsappMessage || '',
                                         position: e.target.value as NonNullable<GlobalConfig['supportWidget']>['position'],
                                         customCss: paymentConfig.supportWidget?.customCss || ''
                                     }
@@ -3584,6 +3609,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                     supportWidget: {
                                         enabled: paymentConfig.supportWidget?.enabled || false,
                                         whatsappUrl: paymentConfig.supportWidget?.whatsappUrl || 'https://wa.me/18765550123',
+                                        whatsappMessage: paymentConfig.supportWidget?.whatsappMessage || '',
                                         position: paymentConfig.supportWidget?.position || 'bottom-right',
                                         customCss: e.target.value
                                     }

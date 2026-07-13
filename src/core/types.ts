@@ -533,6 +533,7 @@ export interface GlobalConfig {
   supportWidget?: {
     enabled: boolean;
     whatsappUrl: string;
+    whatsappMessage?: string;
     position: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
     customCss?: string;
   };
