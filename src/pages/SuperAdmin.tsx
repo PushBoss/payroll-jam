@@ -599,6 +599,9 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         signupTrend: [],
         activationFunnel: []
     });
+    const [activationDrillDown, setActivationDrillDown] = useState<{ stage: number; label: string } | null>(null);
+    const [drillDownTenants, setDrillDownTenants] = useState<any[]>([]);
+    const [isLoadingDrillDown, setIsLoadingDrillDown] = useState(false);
 
     const handleTenantHeaderSort = (key: TenantTableSortKey) => {
         setTenantTableSort((current) => {
@@ -1045,6 +1048,35 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
 
         loadGrowthAnalytics();
     }, [activeTab, paymentConfig.monthlySignupGoal]);
+
+    useEffect(() => {
+        if (!activationDrillDown) {
+            setDrillDownTenants([]);
+            return;
+        }
+
+        const loadDrillDownTenants = async () => {
+            setIsLoadingDrillDown(true);
+            try {
+                const { data, error } = await supabase!.functions.invoke('admin-handler', {
+                    body: {
+                        action: 'get-activation-funnel-tenants',
+                        payload: { stage: activationDrillDown.stage, page: 0, pageSize: 100 }
+                    }
+                });
+                if (error) throw error;
+                setDrillDownTenants(data?.companies || []);
+            } catch (error) {
+                console.error('Error loading activation funnel drill-down:', error);
+                toast.error('Failed to load tenants for this stage');
+                setDrillDownTenants([]);
+            } finally {
+                setIsLoadingDrillDown(false);
+            }
+        };
+
+        loadDrillDownTenants();
+    }, [activationDrillDown]);
 
     const handleCheckDb = async () => {
         setIsCheckingDb(true);
@@ -1846,8 +1878,13 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                     </ResponsiveContainer>
                                 </div>
                                 <div className="space-y-3">
-                                    {growthAnalytics.activationFunnel.map((item) => (
-                                        <div key={item.step} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                                    {growthAnalytics.activationFunnel.map((item, index) => (
+                                        <button
+                                            key={item.step}
+                                            type="button"
+                                            onClick={() => setActivationDrillDown({ stage: index + 1, label: item.step.replace(/^\d+\.\s*/, '') })}
+                                            className="w-full text-left rounded-lg border border-gray-200 bg-gray-50 p-3 hover:border-jam-orange hover:bg-orange-50 transition-colors"
+                                        >
                                             <div className="flex items-center justify-between gap-3">
                                                 <p className="text-sm font-bold text-gray-900">{item.step}</p>
                                                 <span className="text-xs font-bold text-gray-500">{item.rate}%</span>
@@ -1856,7 +1893,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                                 <p className="text-2xl font-bold text-gray-900">{item.count}</p>
                                                 <p className="text-xs text-gray-500">of signups</p>
                                             </div>
-                                        </div>
+                                        </button>
                                     ))}
                                 </div>
                             </div>
@@ -3956,6 +3993,56 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
 
     return (
         <div className="space-y-8 animate-fade-in relative">
+            {/* Activation Funnel Drill-Down Modal */}
+            {activationDrillDown && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh]">
+                        <div className="bg-jam-black text-white p-6 flex justify-between items-center shrink-0">
+                            <div>
+                                <h3 className="text-xl font-bold">{activationDrillDown.label}</h3>
+                                <p className="text-xs text-gray-400">
+                                    Tenants whose furthest onboarding stage is "{activationDrillDown.label}"
+                                </p>
+                            </div>
+                            <button onClick={() => setActivationDrillDown(null)} className="text-gray-400 hover:text-white">
+                                <Icons.Close className="w-6 h-6" />
+                            </button>
+                        </div>
+                        <div className="p-6 overflow-y-auto">
+                            {isLoadingDrillDown ? (
+                                <div className="flex items-center justify-center py-12">
+                                    <Icons.Refresh className="w-6 h-6 animate-spin text-jam-orange" />
+                                </div>
+                            ) : drillDownTenants.length === 0 ? (
+                                <p className="text-center text-gray-500 py-12 text-sm">No tenants currently stuck at this stage.</p>
+                            ) : (
+                                <div className="space-y-2">
+                                    {drillDownTenants.map((tenant) => {
+                                        const daysSinceSignup = tenant.createdAt
+                                            ? Math.max(0, Math.floor((Date.now() - new Date(tenant.createdAt).getTime()) / 86400000))
+                                            : null;
+                                        return (
+                                            <div key={tenant.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                                <div>
+                                                    <p className="text-sm font-bold text-gray-900">{tenant.companyName}</p>
+                                                    <p className="text-xs text-gray-500">{tenant.contactName} &bull; {tenant.email}{tenant.phone ? ` · ${tenant.phone}` : ''}</p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-xs font-bold text-gray-700">{tenant.plan}</p>
+                                                    <p className="text-xs text-gray-400">
+                                                        {daysSinceSignup === null ? '—' : `${daysSinceSignup}d since signup`}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Connection Wizard Modal */}
             {connectWizard.open && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">

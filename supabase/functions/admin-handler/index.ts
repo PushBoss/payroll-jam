@@ -970,6 +970,51 @@ const sortByClientActivity = <T extends { createdAt?: string | null; accountCrea
     });
 };
 
+// Shared per-company enrichment used by get-all-companies and get-activation-funnel-tenants:
+// owner lookup, auth activity, active employee count, MRR. Takes raw `companies` rows
+// (id, name, email, plan, status, settings, created_at).
+const enrichCompanies = async (adminClient: any, companies: any[]) => {
+    return Promise.all((companies || []).map(async (c: any) => {
+        const billingGift = toBillingGift(c.settings?.billingGift);
+        const { data: ownerRows } = await adminClient
+            .from('app_users')
+            .select('id, auth_user_id, name, email, phone, role')
+            .eq('company_id', c.id)
+            .in('role', ['OWNER', 'ADMIN']);
+        const ownerData = (ownerRows || []).find((user: any) => user.role === 'OWNER') || ownerRows?.[0] || null;
+        const ownerAuthUserId = ownerData?.auth_user_id || ownerData?.id;
+        const authActivity = await getAuthActivityForUser(adminClient, ownerAuthUserId);
+
+        // Accurate employee count instead of settings cache
+        const { count: empCount } = await adminClient
+            .from('employees')
+            .select('*', { count: 'exact', head: true })
+            .eq('company_id', c.id)
+            .eq('status', 'ACTIVE');
+
+        const activeEmployeeCount = empCount || 0;
+        const mrr = calculatePlanMRR(c.plan, activeEmployeeCount);
+
+        return {
+            id: c.id,
+            companyName: c.name,
+            email: c.email || ownerData?.email || '',
+            phone: c.settings?.phone || ownerData?.phone || '',
+            contactName: ownerData?.name || c.settings?.contactName || 'N/A',
+            plan: normalizePlanToFrontend(c.plan),
+            status: c.status || 'ACTIVE',
+            billingGift,
+            hasActiveBillingGift: isBillingGiftActive(billingGift),
+            isTestCompany: Boolean(c.settings?.isTestCompany),
+            employeeCount: activeEmployeeCount,
+            mrr,
+            createdAt: c.created_at,
+            accountCreatedAt: authActivity.accountCreatedAt || c.created_at,
+            lastLoginAt: authActivity.lastLoginAt
+        };
+    }));
+};
+
 const normalizeSignupEmail = (email?: string | null) => String(email || '').trim().toLowerCase();
 
 const ACQUISITION_SOURCES = new Set(['Google Search', 'Word of Mouth / Referral', 'Social Media', 'Other']);
@@ -2265,46 +2310,7 @@ serve(async (req: Request) => {
 
                 if (compError) throw compError;
 
-                // Enrich with owner name from app_users
-                const enriched = await Promise.all((companies || []).map(async (c: any) => {
-                    const billingGift = toBillingGift(c.settings?.billingGift);
-                    const { data: ownerRows } = await adminClient
-                        .from('app_users')
-                        .select('id, auth_user_id, name, email, phone, role')
-                        .eq('company_id', c.id)
-                        .in('role', ['OWNER', 'ADMIN']);
-                    const ownerData = (ownerRows || []).find((user: any) => user.role === 'OWNER') || ownerRows?.[0] || null;
-                    const ownerAuthUserId = ownerData?.auth_user_id || ownerData?.id;
-                    const authActivity = await getAuthActivityForUser(adminClient, ownerAuthUserId);
-
-                    // Accurate employee count instead of settings cache
-                    const { count: empCount } = await adminClient
-                        .from('employees')
-                        .select('*', { count: 'exact', head: true })
-                        .eq('company_id', c.id)
-                        .eq('status', 'ACTIVE');
-
-                    const activeEmployeeCount = empCount || 0;
-                    const mrr = calculatePlanMRR(c.plan, activeEmployeeCount);
-
-                    return {
-                        id: c.id,
-                        companyName: c.name,
-                        email: c.email || ownerData?.email || '',
-                        phone: c.settings?.phone || ownerData?.phone || '',
-                        contactName: ownerData?.name || c.settings?.contactName || 'N/A',
-                        plan: normalizePlanToFrontend(c.plan),
-                        status: c.status || 'ACTIVE',
-                        billingGift,
-                        hasActiveBillingGift: isBillingGiftActive(billingGift),
-                        isTestCompany: Boolean(c.settings?.isTestCompany),
-                        employeeCount: activeEmployeeCount,
-                        mrr,
-                        createdAt: c.created_at,
-                        accountCreatedAt: authActivity.accountCreatedAt || c.created_at,
-                        lastLoginAt: authActivity.lastLoginAt
-                    };
-                }));
+                const enriched = await enrichCompanies(adminClient, companies || []);
 
                 const searchLower = String(payload?.search || '').trim().toLowerCase();
                 const statusFilter = payload?.status || 'ALL';
@@ -2320,6 +2326,57 @@ serve(async (req: Request) => {
                 const paged = sorted.slice(from, to + 1);
 
                 return new Response(JSON.stringify({ companies: paged, total: filtered.length }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'get-activation-funnel-tenants': {
+                await assertSuperAdmin(adminClient, authUser);
+
+                const stageOrder = Number(payload?.stage);
+                if (![1, 2, 3, 4].includes(stageOrder)) {
+                    throw new Error('stage must be 1, 2, 3, or 4');
+                }
+
+                const page = payload?.page ?? 0;
+                const pageSize = payload?.pageSize ?? 20;
+                const from = page * pageSize;
+                const to = from + pageSize - 1;
+
+                const since = new Date();
+                since.setMonth(since.getMonth() - 11);
+                since.setDate(1);
+                since.setHours(0, 0, 0, 0);
+
+                const { data: classifications, error: classifyError } = await adminClient.rpc('get_activation_funnel_companies', {
+                    start_date: since.toISOString(),
+                    end_date: new Date().toISOString()
+                });
+
+                if (classifyError) throw classifyError;
+
+                const matchingIds = (classifications || [])
+                    .filter((row: any) => row.stage_order === stageOrder)
+                    .map((row: any) => row.company_id);
+
+                if (matchingIds.length === 0) {
+                    return new Response(JSON.stringify({ companies: [], total: 0 }), {
+                        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                    });
+                }
+
+                const { data: companies, error: compError } = await adminClient
+                    .from('companies')
+                    .select('id, name, email, plan, status, settings, created_at')
+                    .in('id', matchingIds)
+                    .order('created_at', { ascending: false });
+
+                if (compError) throw compError;
+
+                const enriched = await enrichCompanies(adminClient, companies || []);
+                const paged = enriched.slice(from, to + 1);
+
+                return new Response(JSON.stringify({ companies: paged, total: enriched.length }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });
             }
