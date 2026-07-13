@@ -4253,7 +4253,7 @@ serve(async (req: Request) => {
 
             case 'approve-payment': {
                 if (!authUser) throw new Error('Unauthorized');
-                
+
                 const { data: profile } = await adminClient.from('app_users').select('role').eq('id', authUser.id).maybeSingle();
                 if (profile?.role?.toUpperCase() !== 'SUPER_ADMIN') {
                     throw new Error('Unauthorized: Super Admin required');
@@ -4269,6 +4269,70 @@ serve(async (req: Request) => {
                     .select();
 
                 if (error) throw error;
+
+                // If this approval is for an upgrade-via-bank-transfer (not the initial
+                // signup activation - finalize-signup already created that subscription
+                // row), finalize the pending plan change now that the transfer is verified.
+                const { data: pendingIntent } = await adminClient
+                    .from('dimepay_billing_intents')
+                    .select('*')
+                    .eq('company_id', companyId)
+                    .eq('flow', 'subscription_update')
+                    .eq('status', 'pending')
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (pendingIntent) {
+                    const nowIso = new Date().toISOString();
+                    const nextBillingDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+                    const { data: subscription } = await adminClient
+                        .from('subscriptions')
+                        .select('id')
+                        .eq('company_id', companyId)
+                        .order('created_at', { ascending: false })
+                        .limit(1)
+                        .maybeSingle();
+
+                    const subscriptionPayload = {
+                        company_id: companyId,
+                        plan_name: pendingIntent.plan_name,
+                        plan_type: pendingIntent.plan_type || String(pendingIntent.plan_name || '').toLowerCase(),
+                        status: 'active',
+                        amount: pendingIntent.amount,
+                        currency: pendingIntent.currency || 'JMD',
+                        next_billing_date: nextBillingDate,
+                        access_until: nextBillingDate,
+                        auto_renew: true,
+                        updated_at: nowIso,
+                    };
+
+                    if (subscription?.id) {
+                        await adminClient.from('subscriptions').update(subscriptionPayload).eq('id', subscription.id);
+                    } else {
+                        await adminClient.from('subscriptions').insert({ ...subscriptionPayload, start_date: nowIso, created_at: nowIso });
+                    }
+
+                    await adminClient
+                        .from('payment_history')
+                        .update({ status: 'completed' })
+                        .eq('company_id', companyId)
+                        .eq('status', 'pending')
+                        .eq('payment_method', 'bank_transfer')
+                        .contains('metadata', { idempotency_key: pendingIntent.idempotency_key });
+
+                    await adminClient
+                        .from('dimepay_billing_intents')
+                        .update({ status: 'succeeded', updated_at: nowIso })
+                        .eq('id', pendingIntent.id);
+
+                    await adminClient
+                        .from('companies')
+                        .update({ plan: pendingIntent.plan_name })
+                        .eq('id', companyId);
+                }
+
                 return new Response(JSON.stringify({ success: true, company: data }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });

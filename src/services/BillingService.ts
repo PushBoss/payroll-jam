@@ -139,5 +139,89 @@ export const BillingService = {
       .limit(limit);
     if (error) return [];
     return data || [];
+  },
+
+  listPaymentMethods: async (companyId: string) => {
+    const response = await fetch(`/api/payment-methods/list?company_id=${encodeURIComponent(companyId)}`);
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.error || 'Failed to load payment methods');
+    }
+    return (data.paymentMethods || []).map((m: any) => ({
+      id: m.id,
+      dimeCardToken: m.dime_card_token,
+      cardLast4: m.card_last4,
+      cardBrand: m.card_brand,
+      cardExpiryMonth: m.card_expiry_month,
+      cardExpiryYear: m.card_expiry_year,
+      isPrimary: m.is_primary,
+      createdAt: m.created_at
+    }));
+  },
+
+  setPrimaryPaymentMethod: async (companyId: string, paymentMethodId: string) => {
+    const response = await fetch('/api/payment-methods/set-primary', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ company_id: companyId, payment_method_id: paymentMethodId })
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.error || 'Failed to set primary payment method');
+    }
+    return data;
+  },
+
+  removePaymentMethod: async (companyId: string, paymentMethodId: string) => {
+    const response = await fetch('/api/payment-methods/remove', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ company_id: companyId, payment_method_id: paymentMethodId })
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.error || 'Failed to remove payment method');
+    }
+    return data;
+  },
+
+  upgradeWithExistingCard: async (params: { companyId: string; paymentMethodId: string; planName: string; planType?: string; amount: number; currency?: string; billingFrequency?: string }) => {
+    const response = await fetch('/api/upgrade-subscription', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        company_id: params.companyId,
+        payment_method_id: params.paymentMethodId,
+        plan_name: params.planName,
+        plan_type: params.planType,
+        amount: params.amount,
+        currency: params.currency || 'JMD',
+        billing_frequency: params.billingFrequency
+      })
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.error || 'Failed to upgrade subscription');
+    }
+    return data;
+  },
+
+  initiateBankTransferUpgrade: async (params: { companyId: string; planName: string; planType?: string; amount: number; currency?: string }) => {
+    const response = await fetch('/api/initiate-bank-transfer-upgrade', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        company_id: params.companyId,
+        plan_name: params.planName,
+        plan_type: params.planType,
+        amount: params.amount,
+        currency: params.currency || 'JMD'
+      })
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.error || 'Failed to initiate bank-transfer upgrade');
+    }
+    return data;
   }
 };

@@ -13,6 +13,7 @@ import {
   verifyDimePayJwt
 } from './_dimepayJwt.js';
 import { appendDimePayLedgerEvent } from './_dimepayLedger.js';
+import { upsertCardOnFile } from './_paymentMethods.js';
 
 const monthFromNow = () => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -207,6 +208,21 @@ const applySubscriptionCreated = async (data: any) => {
   const subscriptionId = data.subscription_id || data.dime_subscription_id || data.dimepay_subscription_id;
   const accessUntil = data.access_until || data.next_billing_date || monthFromNow();
   const existing = await findSubscription(data);
+
+  // The embedded payment widget charges + binds this card immediately at DimePay -
+  // our local primary designation must match what was actually charged.
+  const chargedCardToken = data.card_token;
+  if (chargedCardToken) {
+    await upsertCardOnFile({
+      companyId,
+      dimeCardToken: chargedCardToken,
+      cardRequestToken: data.card_request_token,
+      cardLast4: data.card_last4 || data.last_four_digits,
+      cardBrand: data.card_brand || data.card_scheme,
+      forcePrimary: true
+    });
+  }
+
   const metadata = {
     ...(existing?.metadata || {}),
     ...(data.metadata || {}),
@@ -385,11 +401,51 @@ const applyCardRequestSucceeded = async (data: any, req: VercelRequest) => {
   const cardLastFour = data.last_four_digits || data.card_last4 || data.card_last_four;
   const cardBrand = data.card_scheme || data.card_brand;
   const customerId = data.customer_id || data.dime_customer_id;
+  const cardRequestToken = data.card_request_token || data.request_token;
+
+  // Record the card in the vault first. Only the company's first saved card becomes
+  // primary - a 2nd+ card must not rebind the live DimePay subscription or overwrite
+  // subscriptions' card fields, since that would silently hijack active billing.
+  const upsertResult = await upsertCardOnFile({
+    companyId,
+    dimeCardToken: cardToken,
+    cardRequestToken,
+    cardLast4: cardLastFour,
+    cardBrand
+  });
+
+  if (!upsertResult.ok) {
+    if (intentId) {
+      await supabase
+        .from('dimepay_billing_intents')
+        .update({ status: 'failed', updated_at: new Date().toISOString() })
+        .eq('id', intentId);
+    }
+    console.warn('DimePay card_request webhook: payment_methods cap reached for company', companyId);
+    return;
+  }
+
+  if (!upsertResult.isNewPrimary) {
+    // Saved as a secondary card - active billing/subscription state is unaffected.
+    if (intentId) {
+      await supabase
+        .from('dimepay_billing_intents')
+        .update({
+          status: 'succeeded',
+          card_request_token: cardRequestToken || intent?.card_request_token,
+          dime_card_token: cardToken,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', intentId);
+    }
+    return;
+  }
+
   const metadata = {
     ...(existing?.metadata || {}),
     ...(intent?.metadata || {}),
     dime_card_token: cardToken,
-    card_request_token: data.card_request_token || data.request_token,
+    card_request_token: cardRequestToken,
     card_last4: cardLastFour,
     card_brand: cardBrand,
     card_verification_status: data.status,
@@ -469,7 +525,7 @@ const applyCardRequestSucceeded = async (data: any, req: VercelRequest) => {
       .from('dimepay_billing_intents')
       .update({
         status: 'succeeded',
-        card_request_token: data.card_request_token || intent?.card_request_token,
+        card_request_token: cardRequestToken || intent?.card_request_token,
         dime_card_token: cardToken,
         dime_customer_id: customerId || null,
         dime_subscription_id: remoteSubscriptionId || null,

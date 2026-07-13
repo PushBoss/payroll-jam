@@ -132,7 +132,6 @@ Plans:  Free → Starter → Pro → Enterprise → Reseller
 | File | Why it is dead | Real implementation |
 |---|---|---|
 | `src/middleware.ts` | Uses Next.js APIs — this is a **Vite SPA**, not Next.js | Route guards: `src/app/useAuthRedirects.ts` |
-| `src/app/api/cron/expiry-check/route.ts` | Next.js App Router format — never runs on Vercel Vite | Billing expiry: not yet wired |
 | `src/services/supabaseService_monolith_DO_NOT_USE.ts` | Retired legacy file | Use individual service files in `src/services/` |
 | `src/services/mockBackend.ts` | Dev fixture data, not wired in production | Real data via EmployeeService → Supabase |
 

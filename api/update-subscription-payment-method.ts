@@ -2,8 +2,11 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabaseAdmin } from './_supabaseAdmin.js';
 import {
   resolveDimePayEnvironment,
-  updateDimePaySubscriptionCard
+  updateDimePaySubscriptionCard,
+  buildCardReferenceId
 } from './_dimepay.js';
+import { appendDimePayLedgerEvent } from './_dimepayLedger.js';
+import { upsertCardOnFile, MAX_PAYMENT_METHODS } from './_paymentMethods.js';
 
 const compact = <T extends Record<string, any>>(value: T) => Object.fromEntries(
   Object.entries(value).filter(([, entry]) => entry !== undefined)
@@ -56,6 +59,54 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!resolvedSubscriptionId || !localSubscriptionId) {
       resolvedSubscriptionId = resolvedSubscriptionId || subscription?.dime_subscription_id || subscription?.dimepay_subscription_id;
       localSubscriptionId = localSubscriptionId || subscription?.id;
+    }
+
+    // Record the tokenized card in the vault. Only a company's FIRST card becomes primary
+    // automatically - additional cards are saved but don't touch the live DimePay binding
+    // or subscriptions' card fields until the user explicitly sets them primary.
+    const upsertResult = await upsertCardOnFile({
+      companyId: company_id,
+      dimeCardToken: card_token,
+      cardRequestToken: card_request_token,
+      cardLast4: card_last4,
+      cardBrand: card_brand
+    });
+
+    if (!upsertResult.ok) {
+      return res.status(400).json({ error: `You already have ${MAX_PAYMENT_METHODS} saved payment methods. Remove one before adding another.` });
+    }
+
+    const ledgerReferenceId = buildCardReferenceId({
+      companyId: company_id,
+      flow: resolvedSubscriptionId ? 'subscription_update' : 'card_update',
+      localSubscriptionId,
+      dimepaySubscriptionId: resolvedSubscriptionId
+    });
+
+    await appendDimePayLedgerEvent(
+      { type: 'card_request.succeeded', data: { reference_id: ledgerReferenceId, company_id, card_request_token } },
+      { source: 'update-subscription-payment-method', card_last4, card_brand, is_new_primary: upsertResult.isNewPrimary }
+    );
+
+    if (card_request_token) {
+      await supabaseAdmin
+        .from('dimepay_billing_intents')
+        .update({
+          status: 'succeeded',
+          dime_card_token: card_token,
+          updated_at: new Date().toISOString()
+        })
+        .eq('company_id', company_id)
+        .eq('card_request_token', card_request_token);
+    }
+
+    if (!upsertResult.isNewPrimary) {
+      // Secondary card saved for later use - nothing about active billing changes.
+      return res.status(200).json({
+        success: true,
+        paymentMethod: upsertResult.method,
+        message: 'Card saved to your payment methods.'
+      });
     }
 
     let remoteUpdate: any = {
@@ -144,18 +195,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: 'Failed to update local subscription metadata' });
     }
 
-    if (card_request_token) {
-      await supabaseAdmin
-        .from('dimepay_billing_intents')
-        .update({
-          status: 'succeeded',
-          dime_card_token: card_token,
-          updated_at: new Date().toISOString()
-        })
-        .eq('company_id', company_id)
-        .eq('card_request_token', card_request_token);
-    }
-
     const { data: company } = await supabaseAdmin
       .from('companies')
       .select('settings')
@@ -181,6 +220,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(remoteUpdate.ok || remoteUpdate.skipped ? 200 : 202).json({
       success: remoteUpdate.ok || remoteUpdate.skipped,
       remoteUpdate,
+      paymentMethod: upsertResult.method,
       message: remoteUpdate.ok
         ? 'Subscription payment method updated successfully'
         : 'Card saved locally for legacy billing catch-up.'

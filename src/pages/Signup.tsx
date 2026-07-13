@@ -7,6 +7,8 @@ import { getPlanPriceDetails } from '../utils/pricing';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { storage } from '../services/storage';
 import { dimePayService } from '../services/dimePayService';
+import { BankTransferInstructions } from '../components/billing/BankTransferInstructions';
+import { CardTokenizeCard } from '../components/billing/CardTokenizeCard';
 import { acceptMultipleInvitations, AccountMember } from '../features/employees/inviteService';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
@@ -68,6 +70,10 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
     const [showMobileSummary, setShowMobileSummary] = useState(false);
     const [pendingInvitations, setPendingInvitations] = useState<(AccountMember & { company_name?: string; inviter_name?: string; company_plan?: string })[]>([]);
     const [newUserId, setNewUserId] = useState<string | null>(null);
+
+    // Bank transfer still requires a card on file for renewals - this tracks the required second step.
+    const [directDepositCardStep, setDirectDepositCardStep] = useState(false);
+    const pendingDirectDepositCardRef = useRef<{ cardToken: string; cardRequestToken?: string; cardLast4?: string; cardBrand?: string; cardExpiry?: string } | null>(null);
 
     // Timer Ref for cleanup
     const timerRef = useRef<any>(null);
@@ -592,6 +598,23 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
             const actualUserId = signupResult.userId;
             setNewUserId(actualUserId);
 
+            // Persist the card tokenized during the bank-transfer "card required" step now
+            // that the company row actually exists (it didn't when the card was tokenized).
+            if (paymentMethod === 'direct-deposit' && pendingDirectDepositCardRef.current) {
+                try {
+                    await dimePayService.updateSubscriptionPaymentMethod({
+                        companyId,
+                        cardToken: pendingDirectDepositCardRef.current.cardToken,
+                        cardRequestToken: pendingDirectDepositCardRef.current.cardRequestToken,
+                        cardLast4: pendingDirectDepositCardRef.current.cardLast4,
+                        cardBrand: pendingDirectDepositCardRef.current.cardBrand,
+                        cardExpiry: pendingDirectDepositCardRef.current.cardExpiry
+                    });
+                } catch (cardPersistError) {
+                    console.error('⚠️ Failed to persist card on file after bank-transfer signup (will rely on DimePay webhook fallback):', cardPersistError);
+                }
+            }
+
             // Check if there are pending invitations
             if (signupResult && signupResult.pendingInvitations && signupResult.pendingInvitations.length > 0) {
                 console.log('📬 Found pending invitations:', signupResult.pendingInvitations.length);
@@ -1103,54 +1126,52 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                         </div>
                                     )}
 
-                                    {paymentMethod === 'direct-deposit' && (
-                                        <div className="mb-6 p-6 bg-blue-50 border border-blue-200 rounded-lg">
-                                            <h3 className="font-semibold text-gray-900 mb-4 flex items-center">
-                                                <Icons.Building className="w-5 h-5 mr-2 text-blue-600" />
-                                                Direct Deposit Payment Instructions
-                                            </h3>
-                                            <div className="space-y-3 text-sm text-gray-700">
-                                                <div>
-                                                    <span className="font-medium">Bank Name:</span> {bankTransfer.bankName}
-                                                </div>
-                                                <div>
-                                                    <span className="font-medium">Account Name:</span> {bankTransfer.accountName}
-                                                </div>
-                                                <div>
-                                                    <span className="font-medium">Account Number:</span> {bankTransfer.accountNumber}
-                                                </div>
-                                                <div>
-                                                    <span className="font-medium">Account Type:</span> {bankTransfer.accountType || 'Savings Account'}
-                                                </div>
-                                                <div>
-                                                    <span className="font-medium">Branch:</span> {bankTransfer.branch || 'UWI Branch'}
-                                                </div>
-                                                <div>
-                                                    <span className="font-medium">Amount:</span> JMD ${pricing.total.toLocaleString()}
-                                                </div>
-                                                <div className="pt-2 border-t border-blue-200">
-                                                    <span className="font-medium">Reference:</span> {formData.email}
-                                                </div>
+                                    {paymentMethod === 'direct-deposit' && !directDepositCardStep && (
+                                        <BankTransferInstructions
+                                            bankTransfer={bankTransfer}
+                                            amount={pricing.total}
+                                            currency="JMD"
+                                            referenceLabel={formData.email}
+                                            isSubmitting={isSubmitting}
+                                            confirmLabel="I've Made the Payment - Continue"
+                                            onConfirm={() => setDirectDepositCardStep(true)}
+                                        />
+                                    )}
+
+                                    {paymentMethod === 'direct-deposit' && directDepositCardStep && (
+                                        <div className="mb-6">
+                                            <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg text-xs text-gray-700">
+                                                A card is required to keep your subscription active for renewals, even though you're paying this cycle by bank transfer.
                                             </div>
-                                            <div className="mt-4 p-3 bg-white rounded border border-blue-100">
-                                                <p className="text-xs text-gray-600">
-                                                    <strong>Note:</strong> {bankTransfer.instructions || 'After making the deposit, your account will be activated within 24 hours. You will receive a confirmation email once payment is verified.'}
-                                                </p>
-                                            </div>
+                                            <CardTokenizeCard
+                                                mountId="dimepay-signup-direct-deposit-card"
+                                                successToast="Card verified."
+                                                initiate={() => dimePayService.createCardRequest({
+                                                    companyId,
+                                                    // 'card_update', not 'signup': this only tokenizes the card for renewals.
+                                                    // 'signup' would make the webhook immediately CHARGE it via
+                                                    // createDimePayRecurringSubscription, contradicting "pay by transfer".
+                                                    flow: 'card_update',
+                                                    planName: formData.plan,
+                                                    planType: formData.plan.toLowerCase(),
+                                                    amount: pricing.total,
+                                                    currency: 'JMD',
+                                                    redirectUrl: `${window.location.origin}/api/billing/dimepay/card-return`
+                                                })}
+                                                onVerified={async (result) => {
+                                                    pendingDirectDepositCardRef.current = result;
+                                                }}
+                                                onSuccess={() => {
+                                                    void handleSubmit();
+                                                }}
+                                            />
                                             <button
                                                 type="button"
-                                                onClick={handleSubmit}
+                                                onClick={() => setDirectDepositCardStep(false)}
                                                 disabled={isSubmitting}
-                                                className="w-full mt-4 py-3 px-4 bg-jam-black text-white rounded-lg hover:bg-gray-800 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                                                className="w-full mt-3 text-sm text-gray-600 hover:text-gray-900"
                                             >
-                                                {isSubmitting ? (
-                                                    <>
-                                                        <Icons.Refresh className="w-5 h-5 animate-spin mr-2" />
-                                                        Creating Account...
-                                                    </>
-                                                ) : (
-                                                    "I've Made the Payment - Create Account"
-                                                )}
+                                                Back to payment instructions
                                             </button>
                                         </div>
                                     )}

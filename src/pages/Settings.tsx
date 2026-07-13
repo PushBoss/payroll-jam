@@ -15,6 +15,8 @@ import { UserService } from '../services/UserService';
 
 import { dimePayService } from '../services/dimePayService';
 import { emailService } from '../services/emailService';
+import { CardTokenizeCard } from '../components/billing/CardTokenizeCard';
+import { BankTransferInstructions } from '../components/billing/BankTransferInstructions';
 import { generateUUID } from '../utils/uuid';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
@@ -228,205 +230,17 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ plan, currentUser, onClos
 };
 
 const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({ currentUser, currentSubscription, onClose, onSuccess }) => {
-    const [isLoading, setIsLoading] = useState(true);
-    const [isApplying, setIsApplying] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [cardUrl, setCardUrl] = useState<string | null>(null);
-    const [cardRequestToken, setCardRequestToken] = useState<string | null>(null);
-    const [cardClientKey, setCardClientKey] = useState<string | null>(null);
-    const [cardEnvironment, setCardEnvironment] = useState<'sandbox' | 'production'>('sandbox');
-    const [verificationStatus, setVerificationStatus] = useState<string>('Initializing secure card form...');
-    const [verificationSignal, setVerificationSignal] = useState(0);
-    const appliedRef = useRef(false);
-
-    const persistVerifiedCard = async (details: any) => {
-        const cardToken = details.token || details.card_token;
-        if (!cardToken || !currentUser?.companyId) {
-            throw new Error('Verified card token was not returned by DimePay.');
-        }
-
-        await dimePayService.updateSubscriptionPaymentMethod({
-            companyId: currentUser.companyId,
-            localSubscriptionId: currentSubscription?.id,
-            subscriptionId: currentSubscription?.dimepaySubscriptionId,
-            cardToken,
-            cardRequestToken: details.card_request_token || cardRequestToken || undefined,
-            cardLast4: details.last_four_digits || details.card_last4 || details.card_last_four,
-            cardBrand: details.card_scheme || details.card_brand,
-            cardExpiry: details.card_expiry
-        });
-    };
-
-    useEffect(() => {
-        let cancelled = false;
-
-        const init = async () => {
-            if (!currentUser?.companyId) {
-                setError('Missing company information.');
-                setIsLoading(false);
-                return;
-            }
-
-            try {
-                const data = await BillingService.initiateCardUpdate(currentUser.id, {
-                    companyId: currentUser.companyId,
-                    subscription: currentSubscription
-                });
-
-                if (cancelled) return;
-
-                setCardUrl(data.card_url);
-                setCardRequestToken(data.card_request_token || data.token);
-                setCardClientKey(data.client_key || data.client_id || null);
-                setCardEnvironment(data.environment === 'production' ? 'production' : 'sandbox');
-                setVerificationStatus('Complete verification in the secure form below.');
-            } catch (requestError: any) {
-                if (!cancelled) {
-                    setError(requestError.message || 'Failed to initialize card verification.');
-                }
-            } finally {
-                if (!cancelled) {
-                    setIsLoading(false);
-                }
-            }
-        };
-
-        void init();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [currentSubscription?.dimepaySubscriptionId, currentSubscription?.id, currentUser?.companyId]);
-
-    useEffect(() => {
-        if (!cardRequestToken || !currentUser?.companyId || appliedRef.current) return;
-
-        let cancelled = false;
-
-        const poll = async () => {
-            try {
-                const details = await dimePayService.getCardDetails(cardRequestToken);
-                if (cancelled) return;
-
-                const status = details.status || 'PENDING';
-                setVerificationStatus(
-                    status === 'SUCCESS'
-                        ? 'Card verified. Saving payment method...'
-                        : 'Waiting for DimePay verification...'
-                );
-
-                if (status === 'SUCCESS' && details.token && !appliedRef.current) {
-                    appliedRef.current = true;
-                    setIsApplying(true);
-                    await persistVerifiedCard(details);
-
-                    if (!cancelled) {
-                        toast.success('Payment method saved successfully.');
-                        await onSuccess();
-                    }
-                }
-            } catch (pollError: any) {
-                if (!cancelled) {
-                    setVerificationStatus(pollError.message || 'Waiting for card verification...');
-                }
-            } finally {
-                if (!cancelled) {
-                    setIsApplying(false);
-                }
-            }
-        };
-
-        void poll();
-        const interval = window.setInterval(() => void poll(), 3000);
-
-        return () => {
-            cancelled = true;
-            window.clearInterval(interval);
-        };
-    }, [cardRequestToken, currentSubscription?.dimepaySubscriptionId, currentSubscription?.id, currentUser?.companyId, onSuccess, verificationSignal]);
-
-    useEffect(() => {
-        if (!cardRequestToken) return;
-
-        const handleCardReturn = (event: MessageEvent) => {
-            if (event.data?.type !== 'dimepay-card-return') return;
-            setVerificationStatus('Verification submitted. Saving card details...');
-            setVerificationSignal(Date.now());
-        };
-
-        window.addEventListener('message', handleCardReturn);
-        return () => window.removeEventListener('message', handleCardReturn);
-    }, [cardRequestToken]);
-
-    useEffect(() => {
-        if (!cardRequestToken || !cardClientKey || cardUrl || isLoading || error) return;
-
-        let cancelled = false;
-        let timer: number | undefined;
-        const mountId = 'dimepay-card-widget';
-
-        const mountCardWidget = () => {
-            if (cancelled) return;
-
-            const mountElement = document.getElementById(mountId);
-            const dimepaySDK = (window as any).dimepay || (window as any).DimePay;
-
-            if (!mountElement || !dimepaySDK?.initCard) {
-                timer = window.setTimeout(mountCardWidget, 150);
-                return;
-            }
-
-            try {
-                dimepaySDK.initCard({
-                    mountId,
-                    card_request_token: cardRequestToken,
-                    client_id: cardClientKey,
-                    origin: window.location.origin,
-                    test: cardEnvironment !== 'production',
-                    styles: {
-                        primaryColor: '#FFA500',
-                        buttonColor: '#000000',
-                        buttonTextColor: '#FFFFFF',
-                        backgroundColor: '#FFFFFF'
-                    },
-                    onReady: () => {
-                        if (!cancelled) setVerificationStatus('Complete verification in the secure form below.');
-                    },
-                    onSuccess: async () => {
-                        if (cancelled || appliedRef.current) return;
-                        appliedRef.current = true;
-                        setIsApplying(true);
-                        const details = await dimePayService.getCardDetails(cardRequestToken, cardEnvironment);
-                        await persistVerifiedCard(details);
-                        toast.success('Payment method saved successfully.');
-                        await onSuccess();
-                    },
-                    onFailed: (err: any) => {
-                        if (!cancelled) setVerificationStatus(err?.message || 'Card verification failed.');
-                    },
-                    onError: (err: any) => {
-                        if (!cancelled) setVerificationStatus(err?.message || 'Card verification could not be completed.');
-                    },
-                    onLoading: () => {
-                        if (!cancelled) setVerificationStatus('Loading secure card form...');
-                    }
-                });
-            } catch (sdkError: any) {
-                if (!cancelled) {
-                    setError(sdkError.message || 'Failed to load secure card form.');
-                }
-            }
-        };
-
-        mountCardWidget();
-
-        return () => {
-            cancelled = true;
-            if (timer) window.clearTimeout(timer);
-            const mountElement = document.getElementById(mountId);
-            if (mountElement) mountElement.innerHTML = '';
-        };
-    }, [cardRequestToken, cardClientKey, cardUrl, cardEnvironment, isLoading, error, onSuccess]);
+    if (!currentUser?.companyId) {
+        return (
+            <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 text-center">
+                    <Icons.Alert className="w-10 h-10 text-red-500 mb-3 mx-auto" />
+                    <p className="text-red-600 font-medium mb-4">Missing company information.</p>
+                    <button onClick={onClose} className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-sm">Close</button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -438,59 +252,27 @@ const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({ currentUser, cu
                     </div>
                     <button onClick={onClose}><Icons.Close className="w-6 h-6 text-gray-400 hover:text-white" /></button>
                 </div>
-                <div className="p-6 overflow-y-auto space-y-4">
-                    <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
-                        <div>
-                            <p className="text-sm font-semibold text-gray-900">Verification status</p>
-                            <p className="text-xs text-gray-500 mt-1">{verificationStatus}</p>
-                        </div>
-                        {isApplying && <Icons.Refresh className="w-5 h-5 text-jam-orange animate-spin" />}
-                    </div>
-
-                    {isLoading ? (
-                        <div className="h-[480px] flex flex-col items-center justify-center text-center">
-                            <Icons.Refresh className="w-8 h-8 animate-spin text-jam-orange mb-3" />
-                            <p className="text-sm text-gray-600">Preparing secure card verification...</p>
-                        </div>
-                    ) : error ? (
-                        <div className="h-[240px] flex flex-col items-center justify-center text-center">
-                            <Icons.Alert className="w-10 h-10 text-red-500 mb-3" />
-                            <p className="text-red-600 font-medium mb-2">Unable to start card verification</p>
-                            <p className="text-xs text-gray-500 max-w-md">{error}</p>
-                        </div>
-                    ) : cardUrl ? (
-                        <>
-                            <iframe
-                                src={cardUrl}
-                                title="DimePay card verification"
-                                className="w-full h-[520px] rounded-lg border border-gray-200"
-                            />
-                            <div className="flex justify-between items-center text-xs text-gray-500">
-                                <span>If the secure form does not load, open it in a new tab.</span>
-                                <a
-                                    href={cardUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="text-jam-orange font-semibold hover:underline"
-                                >
-                                    Open verification page
-                                </a>
-                            </div>
-                        </>
-                    ) : cardRequestToken && cardClientKey ? (
-                        <div
-                            id="dimepay-card-widget"
-                            className="w-full min-h-[520px] rounded-lg border border-gray-200 bg-white overflow-hidden"
-                        />
-                    ) : (
-                        <div className="h-[240px] flex flex-col items-center justify-center text-center">
-                            <Icons.Alert className="w-10 h-10 text-yellow-500 mb-3" />
-                            <p className="text-gray-800 font-medium mb-2">Card form is not ready yet</p>
-                            <p className="text-xs text-gray-500 max-w-md">
-                                DimePay returned no hosted form URL or SDK client key. Check the card-request response and DimePay credentials.
-                            </p>
-                        </div>
-                    )}
+                <div className="p-6 overflow-y-auto">
+                    <CardTokenizeCard
+                        initiate={() => BillingService.initiateCardUpdate(currentUser.id, {
+                            companyId: currentUser.companyId,
+                            subscription: currentSubscription
+                        })}
+                        onVerified={async (result) => {
+                            await dimePayService.updateSubscriptionPaymentMethod({
+                                companyId: currentUser.companyId!,
+                                localSubscriptionId: currentSubscription?.id,
+                                subscriptionId: currentSubscription?.dimepaySubscriptionId,
+                                cardToken: result.cardToken,
+                                cardRequestToken: result.cardRequestToken,
+                                cardLast4: result.cardLast4,
+                                cardBrand: result.cardBrand,
+                                cardExpiry: result.cardExpiry
+                            });
+                        }}
+                        onSuccess={onSuccess}
+                        successToast="Payment method saved successfully."
+                    />
                 </div>
             </div>
         </div>
@@ -557,6 +339,368 @@ const PlanSelectorModal: React.FC<PlanSelectorModalProps> = ({ plans, currentPla
                     )}
                 </div>
             </div>
+        </div>
+    );
+};
+
+interface PaymentMethodChoiceModalProps {
+    plan: PricingPlan;
+    currentUser: User | null;
+    onClose: () => void;
+    onAddNewCard: () => void;
+    onSuccess: () => Promise<void> | void;
+}
+
+const bankTransferDefaults = {
+    enabled: true,
+    bankName: 'NCB (National Commercial Bank)',
+    accountName: 'Balance Investments Limited',
+    accountNumber: '404286331',
+    accountType: 'Savings Account',
+    branch: 'UWI Branch',
+    instructions: 'After making the deposit, your account will be activated within 24 hours. You will receive a confirmation email once payment is verified.'
+};
+
+const PaymentMethodChoiceModal: React.FC<PaymentMethodChoiceModalProps> = ({ plan, currentUser, onClose, onAddNewCard, onSuccess }) => {
+    const { amount: price } = getPlanPriceDetails(plan, 'monthly');
+    const paymentConfig = storage.getGlobalConfig();
+    const bankTransfer = { ...bankTransferDefaults, ...(paymentConfig?.bankTransfer || {}) };
+
+    const [mode, setMode] = useState<'card' | 'bank-transfer'>('card');
+    const [methods, setMethods] = useState<any[]>([]);
+    const [isLoadingMethods, setIsLoadingMethods] = useState(true);
+    const [selectedMethodId, setSelectedMethodId] = useState<string | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [showCardStepForTransfer, setShowCardStepForTransfer] = useState(false);
+    const [cardJustAdded, setCardJustAdded] = useState(false);
+
+    useEffect(() => {
+        let cancelled = false;
+        const load = async () => {
+            if (!currentUser?.companyId) {
+                setIsLoadingMethods(false);
+                return;
+            }
+            try {
+                const list = await BillingService.listPaymentMethods(currentUser.companyId);
+                if (cancelled) return;
+                setMethods(list);
+                const primary = list.find((m: any) => m.isPrimary);
+                setSelectedMethodId(primary?.id || list[0]?.id || null);
+            } catch (err) {
+                console.error('Failed to load payment methods:', err);
+            } finally {
+                if (!cancelled) setIsLoadingMethods(false);
+            }
+        };
+        void load();
+        return () => { cancelled = true; };
+    }, [currentUser?.companyId]);
+
+    const handlePayWithExistingCard = async () => {
+        if (!currentUser?.companyId || !selectedMethodId) return;
+        setIsSubmitting(true);
+        setError(null);
+        try {
+            await BillingService.upgradeWithExistingCard({
+                companyId: currentUser.companyId,
+                paymentMethodId: selectedMethodId,
+                planName: plan.name,
+                planType: plan.name.toLowerCase(),
+                amount: price
+            });
+            await onSuccess();
+        } catch (err: any) {
+            setError(err.message || 'Failed to upgrade with this card.');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleBankTransferConfirm = async () => {
+        if (!currentUser?.companyId) return;
+        if (methods.length === 0 && !cardJustAdded) {
+            setShowCardStepForTransfer(true);
+            return;
+        }
+        setIsSubmitting(true);
+        setError(null);
+        try {
+            await BillingService.initiateBankTransferUpgrade({
+                companyId: currentUser.companyId,
+                planName: plan.name,
+                planType: plan.name.toLowerCase(),
+                amount: price
+            });
+            toast.success('Upgrade request submitted. Your plan will update once the transfer is verified.');
+            onClose();
+        } catch (err: any) {
+            setError(err.message || 'Failed to submit upgrade request.');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] animate-scale-in text-gray-800">
+                <div className="bg-jam-black text-white p-6 flex justify-between items-center shrink-0">
+                    <div>
+                        <h3 className="text-xl font-bold">Pay for {plan.name}</h3>
+                        <p className="text-xs text-gray-400">Choose how you'd like to pay</p>
+                    </div>
+                    <button onClick={onClose}><Icons.Close className="w-6 h-6 text-gray-400 hover:text-white" /></button>
+                </div>
+                <div className="p-6 overflow-y-auto space-y-4">
+                    <div className="grid grid-cols-2 gap-3">
+                        <button
+                            type="button"
+                            onClick={() => { setMode('card'); setShowCardStepForTransfer(false); }}
+                            className={`flex flex-col items-center justify-center p-4 border-2 rounded-lg transition-all ${mode === 'card' ? 'border-jam-orange bg-orange-50' : 'border-gray-200 hover:border-gray-300'}`}
+                        >
+                            <Icons.CreditCard className="w-6 h-6 mb-2" />
+                            <span className="text-sm font-medium">Card</span>
+                        </button>
+                        {bankTransfer.enabled !== false && (
+                            <button
+                                type="button"
+                                onClick={() => setMode('bank-transfer')}
+                                className={`flex flex-col items-center justify-center p-4 border-2 rounded-lg transition-all ${mode === 'bank-transfer' ? 'border-jam-orange bg-orange-50' : 'border-gray-200 hover:border-gray-300'}`}
+                            >
+                                <Icons.Building className="w-6 h-6 mb-2" />
+                                <span className="text-sm font-medium">Bank Transfer</span>
+                            </button>
+                        )}
+                    </div>
+
+                    {error && (
+                        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">{error}</div>
+                    )}
+
+                    {mode === 'card' && (
+                        isLoadingMethods ? (
+                            <div className="py-8 flex justify-center"><Icons.Refresh className="w-6 h-6 animate-spin text-jam-orange" /></div>
+                        ) : methods.length > 0 ? (
+                            <div className="space-y-3">
+                                <div className="space-y-2">
+                                    {methods.map((m) => (
+                                        <label key={m.id} className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer ${selectedMethodId === m.id ? 'border-jam-orange bg-orange-50' : 'border-gray-200'}`}>
+                                            <div className="flex items-center gap-3">
+                                                <input
+                                                    type="radio"
+                                                    name="payment-method"
+                                                    checked={selectedMethodId === m.id}
+                                                    onChange={() => setSelectedMethodId(m.id)}
+                                                />
+                                                <span className="text-sm font-medium capitalize">{m.cardBrand || 'Card'} •••• {m.cardLast4}</span>
+                                            </div>
+                                            {m.isPrimary && <span className="text-xs font-semibold text-jam-orange">Primary</span>}
+                                        </label>
+                                    ))}
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handlePayWithExistingCard}
+                                    disabled={isSubmitting || !selectedMethodId}
+                                    className="w-full py-3 bg-jam-black text-white font-bold rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50"
+                                >
+                                    {isSubmitting ? 'Processing...' : `Pay $${price.toLocaleString()} with selected card`}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={onAddNewCard}
+                                    disabled={isSubmitting}
+                                    className="w-full py-2 text-sm text-jam-orange font-semibold hover:underline"
+                                >
+                                    + Add a new card instead
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="text-center py-4">
+                                <p className="text-sm text-gray-600 mb-4">No saved cards yet.</p>
+                                <button
+                                    type="button"
+                                    onClick={onAddNewCard}
+                                    className="w-full py-3 bg-jam-black text-white font-bold rounded-lg hover:bg-gray-800 transition-colors"
+                                >
+                                    Add a card to pay ${price.toLocaleString()}
+                                </button>
+                            </div>
+                        )
+                    )}
+
+                    {mode === 'bank-transfer' && !showCardStepForTransfer && (
+                        <BankTransferInstructions
+                            bankTransfer={bankTransfer}
+                            amount={price}
+                            currency="JMD"
+                            referenceLabel={currentUser?.email || ''}
+                            isSubmitting={isSubmitting}
+                            confirmLabel="I've Made the Payment - Submit for Approval"
+                            submittingLabel="Submitting..."
+                            onConfirm={handleBankTransferConfirm}
+                        />
+                    )}
+
+                    {mode === 'bank-transfer' && showCardStepForTransfer && (
+                        <div>
+                            <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg text-xs text-gray-700">
+                                A card is required on file before paying by bank transfer, since it's a subscription. Add one below, then submit your transfer.
+                            </div>
+                            <CardTokenizeCard
+                                mountId="dimepay-upgrade-transfer-card"
+                                successToast="Card added."
+                                initiate={() => BillingService.initiateCardUpdate(currentUser!.id, { companyId: currentUser!.companyId })}
+                                onVerified={async (result) => {
+                                    await dimePayService.updateSubscriptionPaymentMethod({
+                                        companyId: currentUser!.companyId!,
+                                        cardToken: result.cardToken,
+                                        cardRequestToken: result.cardRequestToken,
+                                        cardLast4: result.cardLast4,
+                                        cardBrand: result.cardBrand,
+                                        cardExpiry: result.cardExpiry
+                                    });
+                                }}
+                                onSuccess={() => {
+                                    setCardJustAdded(true);
+                                    setShowCardStepForTransfer(false);
+                                }}
+                            />
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const MAX_SAVED_PAYMENT_METHODS = 5;
+
+interface PaymentMethodsCardProps {
+    currentUser: User | null;
+    currentSubscription?: any;
+}
+
+const PaymentMethodsCard: React.FC<PaymentMethodsCardProps> = ({ currentUser, currentSubscription }) => {
+    const [methods, setMethods] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [busyId, setBusyId] = useState<string | null>(null);
+    const [showAddModal, setShowAddModal] = useState(false);
+
+    const load = async () => {
+        if (!currentUser?.companyId) {
+            setIsLoading(false);
+            return;
+        }
+        setIsLoading(true);
+        try {
+            const list = await BillingService.listPaymentMethods(currentUser.companyId);
+            setMethods(list);
+        } catch (err) {
+            console.error('Failed to load payment methods:', err);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        void load();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentUser?.companyId]);
+
+    const handleSetPrimary = async (id: string) => {
+        if (!currentUser?.companyId) return;
+        setBusyId(id);
+        try {
+            await BillingService.setPrimaryPaymentMethod(currentUser.companyId, id);
+            toast.success('Primary payment method updated.');
+            await load();
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to set primary payment method.');
+        } finally {
+            setBusyId(null);
+        }
+    };
+
+    const handleRemove = async (id: string) => {
+        if (!currentUser?.companyId) return;
+        if (!confirm('Remove this payment method?')) return;
+        setBusyId(id);
+        try {
+            await BillingService.removePaymentMethod(currentUser.companyId, id);
+            toast.success('Payment method removed.');
+            await load();
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to remove payment method.');
+        } finally {
+            setBusyId(null);
+        }
+    };
+
+    return (
+        <div className="bg-white p-6 rounded-xl border border-gray-200">
+            <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-bold">Payment Methods</h3>
+                <button
+                    onClick={() => setShowAddModal(true)}
+                    disabled={methods.length >= MAX_SAVED_PAYMENT_METHODS}
+                    title={methods.length >= MAX_SAVED_PAYMENT_METHODS ? `Maximum of ${MAX_SAVED_PAYMENT_METHODS} saved cards reached` : undefined}
+                    className="bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed text-gray-800 text-sm font-semibold px-4 py-2 rounded-lg transition-colors border border-gray-300"
+                >
+                    + Add payment method
+                </button>
+            </div>
+            {isLoading ? (
+                <div className="flex items-center justify-center py-6">
+                    <Icons.Refresh className="w-5 h-5 animate-spin text-jam-orange" />
+                </div>
+            ) : methods.length === 0 ? (
+                <p className="text-gray-500 text-sm">No saved cards yet.</p>
+            ) : (
+                <div className="space-y-2">
+                    {methods.map((m) => (
+                        <div key={m.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                            <div className="flex items-center gap-3">
+                                <Icons.CreditCard className="w-5 h-5 text-gray-500" />
+                                <div>
+                                    <p className="text-sm font-semibold text-gray-900 capitalize">{m.cardBrand || 'Card'} •••• {m.cardLast4}</p>
+                                    {m.isPrimary && <p className="text-xs font-semibold text-jam-orange">Primary</p>}
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                {!m.isPrimary && (
+                                    <button
+                                        onClick={() => handleSetPrimary(m.id)}
+                                        disabled={busyId === m.id}
+                                        className="text-xs font-semibold text-jam-orange hover:underline disabled:opacity-50"
+                                    >
+                                        Set as primary
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => handleRemove(m.id)}
+                                    disabled={busyId === m.id}
+                                    className="text-xs font-semibold text-red-600 hover:underline disabled:opacity-50"
+                                >
+                                    Remove
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+            {showAddModal && (
+                <PaymentMethodModal
+                    currentUser={currentUser}
+                    currentSubscription={currentSubscription}
+                    onClose={() => setShowAddModal(false)}
+                    onSuccess={async () => {
+                        setShowAddModal(false);
+                        await load();
+                    }}
+                />
+            )}
         </div>
     );
 };
@@ -632,6 +776,7 @@ export const Settings: React.FC<SettingsProps> = ({
     const [, setIsCheckingDb] = useState(false);
 
     const [upgradeTarget, setUpgradeTarget] = useState<PricingPlan | null>(null);
+    const [paymentMethodChoiceTarget, setPaymentMethodChoiceTarget] = useState<PricingPlan | null>(null);
     const [invoices, setInvoices] = useState<PaymentRecord[]>([]);
     const [currentSubscription, setCurrentSubscription] = useState<any>(null);
     const [isLoadingBilling, setIsLoadingBilling] = useState(false);
@@ -917,94 +1062,113 @@ export const Settings: React.FC<SettingsProps> = ({
 
     const handleUpgradeClick = (planName: string) => {
         const targetPlan = plans.find(p => p.name === planName);
-        if (targetPlan) setUpgradeTarget(targetPlan);
+        if (!targetPlan) return;
+        const { amount: price } = getPlanPriceDetails(targetPlan, 'monthly');
+        // Free-plan switches (or a plan with no charge) skip payment-method selection entirely.
+        if (price <= 0) {
+            setUpgradeTarget(targetPlan);
+            return;
+        }
+        setPaymentMethodChoiceTarget(targetPlan);
+    };
+
+    const finalizeUpgrade = async (targetPlan: PricingPlan) => {
+        if (!currentUser?.companyId) return;
+
+        // Update local company data
+        handleCompanyUpdate({ ...companyData, plan: targetPlan.name as any, subscriptionStatus: 'ACTIVE' });
+        auditService.log(currentUser, 'UPDATE', 'Billing', `Upgraded plan to ${targetPlan.name}`);
+
+        // Update user role only when upgrading to Reseller plan.
+        if (targetPlan.name === 'Reseller' && currentUser) {
+            try {
+                // Update user role in Supabase and locally
+                const updatedUser = { ...currentUser, role: Role.RESELLER };
+                await UserService.saveUser(updatedUser);
+                updateUser({ role: Role.RESELLER });
+
+                // Add their current company as a company they manage
+                // This allows them to continue managing their own company as a reseller
+                if (currentUser.companyId) {
+                    try {
+                        await ResellerService.saveResellerClientWithServiceRole(
+                            currentUser.companyId,
+                            currentUser.companyId,
+                            {
+                                status: 'ACTIVE',
+                                accessLevel: 'FULL',
+                                monthlyBaseFee: 0, // No fee for their own company
+                                perEmployeeFee: 0,
+                                discountRate: 100 // 100% discount (free)
+                            }
+                        );
+                        console.log('✅ Added own company as managed company');
+                    } catch (clientError) {
+                        console.warn('Could not add company as reseller client (may already exist):', clientError);
+                        // Non-critical error, continue
+                    }
+                }
+            } catch (error) {
+                console.error('Error updating user role:', error);
+            }
+        }
+
+        // Send email notification if upgrading to Reseller plan
+        if (targetPlan.name === 'Reseller' && currentUser?.email) {
+            try {
+                const emailResult = await emailService.sendResellerUpgradeNotification(
+                    currentUser.email,
+                    companyData?.name || 'Your Company',
+                    currentUser.name || 'User'
+                );
+
+                if (emailResult.success && !emailResult.message?.includes('Simulation')) {
+                    toast.success(`Successfully upgraded to ${targetPlan.name}! Check your email for details.`);
+                } else {
+                    toast.success(`Successfully switched to ${targetPlan.name}!`);
+                }
+            } catch (error) {
+                console.error('Email notification failed:', error);
+                toast.success(`Successfully switched to ${targetPlan.name}!`);
+            }
+
+            // Reload page to ensure reseller dashboard loads properly
+            setTimeout(() => {
+                window.location.href = '/partner';
+            }, 1500);
+        } else {
+            toast.success(`Successfully switched to ${targetPlan.name}!`);
+        }
+
+        // Reload billing data (wait for the record to land - synchronous upgrades land
+        // immediately, webhook-driven ones (embedded payment widget) take a moment)
+        setIsLoadingBilling(true);
+        try {
+            const synced = await waitForBillingSync(currentUser.companyId, 10, 1500);
+            await refreshBillingData(currentUser.companyId);
+
+            if (!synced) {
+                toast.warning('Payment received, but subscription confirmation has not arrived yet. If this persists, check DimePay webhook configuration for this environment.');
+            }
+        } finally {
+            setIsLoadingBilling(false);
+        }
     };
 
     const handleUpgradeSuccess = async (_paymentData?: any) => {
-        if (upgradeTarget && currentUser?.companyId) {
-            // Note: DimePay webhook will automatically create/update subscription record
-            // and payment record, so we don't need to do it here
-            console.log('✅ Payment successful via DimePay - webhook will handle subscription creation');
-
-            // Update local company data
-            handleCompanyUpdate({ ...companyData, plan: upgradeTarget.name as any, subscriptionStatus: 'ACTIVE' });
-            auditService.log(currentUser, 'UPDATE', 'Billing', `Upgraded plan to ${upgradeTarget.name}`);
-
-            // Update user role only when upgrading to Reseller plan.
-            if (upgradeTarget.name === 'Reseller' && currentUser) {
-                try {
-                    // Update user role in Supabase and locally
-                    const updatedUser = { ...currentUser, role: Role.RESELLER };
-                    await UserService.saveUser(updatedUser);
-                    updateUser({ role: Role.RESELLER });
-
-                    // Add their current company as a company they manage
-                    // This allows them to continue managing their own company as a reseller
-                    if (currentUser.companyId) {
-                        try {
-                            await ResellerService.saveResellerClientWithServiceRole(
-                                currentUser.companyId,
-                                currentUser.companyId,
-                                {
-                                    status: 'ACTIVE',
-                                    accessLevel: 'FULL',
-                                    monthlyBaseFee: 0, // No fee for their own company
-                                    perEmployeeFee: 0,
-                                    discountRate: 100 // 100% discount (free)
-                                }
-                            );
-                            console.log('✅ Added own company as managed company');
-                        } catch (clientError) {
-                            console.warn('Could not add company as reseller client (may already exist):', clientError);
-                            // Non-critical error, continue
-                        }
-                    }
-                } catch (error) {
-                    console.error('Error updating user role:', error);
-                }
-            }
-
-            // Send email notification if upgrading to Reseller plan
-            if (upgradeTarget.name === 'Reseller' && currentUser?.email) {
-                try {
-                    const emailResult = await emailService.sendResellerUpgradeNotification(
-                        currentUser.email,
-                        companyData?.name || 'Your Company',
-                        currentUser.name || 'User'
-                    );
-
-                    if (emailResult.success && !emailResult.message?.includes('Simulation')) {
-                        toast.success(`Successfully upgraded to ${upgradeTarget.name}! Check your email for details.`);
-                    } else {
-                        toast.success(`Successfully switched to ${upgradeTarget.name}!`);
-                    }
-                } catch (error) {
-                    console.error('Email notification failed:', error);
-                    toast.success(`Successfully switched to ${upgradeTarget.name}!`);
-                }
-
-                // Reload page to ensure reseller dashboard loads properly
-                setTimeout(() => {
-                    window.location.href = '/partner';
-                }, 1500);
-            } else {
-                toast.success(`Successfully switched to ${upgradeTarget.name}!`);
-            }
-
+        if (upgradeTarget) {
+            const targetPlan = upgradeTarget;
             setUpgradeTarget(null);
+            await finalizeUpgrade(targetPlan);
+        }
+    };
 
-            // Reload billing data (wait for webhook to create subscription/payment rows)
-            setIsLoadingBilling(true);
-            try {
-                const synced = await waitForBillingSync(currentUser.companyId, 10, 1500);
-                await refreshBillingData(currentUser.companyId);
-
-                if (!synced) {
-                    toast.warning('Payment received, but subscription confirmation has not arrived yet. If this persists, check DimePay webhook configuration for this environment.');
-                }
-            } finally {
-                setIsLoadingBilling(false);
-            }
+    const handlePaymentMethodChoiceSuccess = async () => {
+        if (paymentMethodChoiceTarget) {
+            const targetPlan = paymentMethodChoiceTarget;
+            setPaymentMethodChoiceTarget(null);
+            toast.success('Upgrade payment received!');
+            await finalizeUpgrade(targetPlan);
         }
     };
 
@@ -1193,6 +1357,19 @@ export const Settings: React.FC<SettingsProps> = ({
     return (
         <div className="space-y-6">
             {upgradeTarget && <CheckoutModal plan={upgradeTarget} currentUser={currentUser} onClose={() => setUpgradeTarget(null)} onSuccess={handleUpgradeSuccess} />}
+            {paymentMethodChoiceTarget && (
+                <PaymentMethodChoiceModal
+                    plan={paymentMethodChoiceTarget}
+                    currentUser={currentUser}
+                    onClose={() => setPaymentMethodChoiceTarget(null)}
+                    onAddNewCard={() => {
+                        const target = paymentMethodChoiceTarget;
+                        setPaymentMethodChoiceTarget(null);
+                        setUpgradeTarget(target);
+                    }}
+                    onSuccess={handlePaymentMethodChoiceSuccess}
+                />
+            )}
             {showPlanSelectorModal && (
                 <PlanSelectorModal
                     plans={plans}
@@ -1558,6 +1735,8 @@ export const Settings: React.FC<SettingsProps> = ({
                             </div>
                         )}
                     </div>
+
+                    <PaymentMethodsCard currentUser={currentUser} currentSubscription={currentSubscription} />
 
                     <div className="bg-white p-6 rounded-xl border border-gray-200">
                         <h3 className="text-lg font-bold mb-4">Payment History</h3>
