@@ -2258,9 +2258,9 @@ serve(async (req: Request) => {
                 const from = page * pageSize;
                 const to = from + pageSize - 1;
 
-                const { data: companies, error: compError, count } = await adminClient
+                const { data: companies, error: compError } = await adminClient
                     .from('companies')
-                    .select('id, name, email, plan, status, settings, created_at', { count: 'exact' })
+                    .select('id, name, email, plan, status, settings, created_at')
                     .order('created_at', { ascending: false });
 
                 if (compError) throw compError;
@@ -2306,10 +2306,20 @@ serve(async (req: Request) => {
                     };
                 }));
 
-                const sorted = sortByClientActivity(enriched, sort);
+                const searchLower = String(payload?.search || '').trim().toLowerCase();
+                const statusFilter = payload?.status || 'ALL';
+
+                const filtered = enriched.filter((c: any) => {
+                    const matchesSearch = !searchLower || [c.companyName, c.email, c.contactName, c.phone]
+                        .some((value) => String(value || '').toLowerCase().includes(searchLower));
+                    const matchesStatus = statusFilter === 'ALL' || c.status === statusFilter;
+                    return matchesSearch && matchesStatus;
+                });
+
+                const sorted = sortByClientActivity(filtered, sort);
                 const paged = sorted.slice(from, to + 1);
 
-                return new Response(JSON.stringify({ companies: paged, total: count }), {
+                return new Response(JSON.stringify({ companies: paged, total: filtered.length }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });
             }

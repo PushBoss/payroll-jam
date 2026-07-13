@@ -503,6 +503,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
 
     const [isLoadingTenants, setIsLoadingTenants] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState<'ALL' | 'ACTIVE' | 'SUSPENDED'>('ALL');
     const [tenantActivitySort, setTenantActivitySort] = useState<ClientActivitySort>('created_desc');
     const [tenantTableSort, setTenantTableSort] = useState<AdminTableSort<TenantTableSortKey>>({ key: 'createdAt', direction: 'desc' });
@@ -1071,6 +1072,12 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         }
     };
 
+    // Debounce search input so we don't re-fetch on every keystroke.
+    useEffect(() => {
+        const timer = setTimeout(() => setDebouncedSearchTerm(searchTerm), 350);
+        return () => clearTimeout(timer);
+    }, [searchTerm]);
+
     // --- Fetch Tenants from Supabase via Edge Function (bypasses RLS) ---
     useEffect(() => {
         async function fetchDBTenants() {
@@ -1079,7 +1086,13 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 const { data, error } = await supabase!.functions.invoke('admin-handler', {
                     body: {
                         action: 'get-all-companies',
-                        payload: { page: tenantPage, pageSize: TENANTS_PER_PAGE, sort: tenantActivitySort }
+                        payload: {
+                            page: tenantPage,
+                            pageSize: TENANTS_PER_PAGE,
+                            sort: tenantActivitySort,
+                            search: debouncedSearchTerm,
+                            status: filterStatus
+                        }
                     }
                 });
                 if (error) throw error;
@@ -1094,7 +1107,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             }
         }
         fetchDBTenants();
-    }, [activeTab, tenantPage, tenantActivitySort]); // Re-fetch whenever tab, page, or sort changes
+    }, [activeTab, tenantPage, tenantActivitySort, debouncedSearchTerm, filterStatus]); // Re-fetch whenever tab, page, sort, search, or status filter changes
 
     // --- Handlers ---
     const handleSuspend = async (id: string) => {
@@ -1871,11 +1884,9 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     );
 
     const renderTenants = () => {
-        const filteredTenants = sortTenantsForTable(tenants.filter(t => {
-            const matchesSearch = t.companyName.toLowerCase().includes(searchTerm.toLowerCase()) || (t.email || '').toLowerCase().includes(searchTerm.toLowerCase());
-            const matchesFilter = filterStatus === 'ALL' || t.status === filterStatus;
-            return matchesSearch && matchesFilter;
-        }), tenantTableSort);
+        // Search and status filtering now happen server-side (get-all-companies) across
+        // all tenants, not just the current page - `tenants` is already the correct set.
+        const filteredTenants = sortTenantsForTable(tenants, tenantTableSort);
 
         const totalPages = Math.ceil(tenantTotal / TENANTS_PER_PAGE);
 
@@ -1908,7 +1919,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                             {(['ALL', 'ACTIVE', 'SUSPENDED'] as const).map(status => (
                                 <button
                                     key={status}
-                                    onClick={() => setFilterStatus(status)}
+                                    onClick={() => { setFilterStatus(status); setTenantPage(0); }}
                                     className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterStatus === status ? 'bg-jam-black text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                                         }`}
                                 >
