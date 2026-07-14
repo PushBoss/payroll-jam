@@ -142,7 +142,7 @@ export const BillingService = {
   },
 
   listPaymentMethods: async (companyId: string) => {
-    const response = await fetch(`/api/payment-methods/list?company_id=${encodeURIComponent(companyId)}`);
+    const response = await fetch(`/api/payment-methods?company_id=${encodeURIComponent(companyId)}`);
     const data = await response.json();
     if (!response.ok) {
       throw new Error(data?.error || 'Failed to load payment methods');
@@ -160,10 +160,10 @@ export const BillingService = {
   },
 
   setPrimaryPaymentMethod: async (companyId: string, paymentMethodId: string) => {
-    const response = await fetch('/api/payment-methods/set-primary', {
+    const response = await fetch('/api/payment-methods', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ company_id: companyId, payment_method_id: paymentMethodId })
+      body: JSON.stringify({ action: 'set-primary', company_id: companyId, payment_method_id: paymentMethodId })
     });
     const data = await response.json();
     if (!response.ok) {
@@ -173,10 +173,10 @@ export const BillingService = {
   },
 
   removePaymentMethod: async (companyId: string, paymentMethodId: string) => {
-    const response = await fetch('/api/payment-methods/remove', {
+    const response = await fetch('/api/payment-methods', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ company_id: companyId, payment_method_id: paymentMethodId })
+      body: JSON.stringify({ action: 'remove', company_id: companyId, payment_method_id: paymentMethodId })
     });
     const data = await response.json();
     if (!response.ok) {
@@ -190,6 +190,7 @@ export const BillingService = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        payment_method: 'card',
         company_id: params.companyId,
         payment_method_id: params.paymentMethodId,
         plan_name: params.planName,
@@ -207,10 +208,11 @@ export const BillingService = {
   },
 
   initiateBankTransferUpgrade: async (params: { companyId: string; planName: string; planType?: string; amount: number; currency?: string }) => {
-    const response = await fetch('/api/initiate-bank-transfer-upgrade', {
+    const response = await fetch('/api/upgrade-subscription', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        payment_method: 'bank_transfer',
         company_id: params.companyId,
         plan_name: params.planName,
         plan_type: params.planType,

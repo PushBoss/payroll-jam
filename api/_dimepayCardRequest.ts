@@ -98,7 +98,7 @@ export default async function cardRequestHandler(req: VercelRequest, res: Vercel
     const idempotencyKey = `${billingFlow}:${resolvedCompanyId}:${resolvedLocalSubscriptionId || 'none'}:${intentId}`;
     const dimePayEnvironment = resolveDimePayEnvironment(environment, req);
     const credentials = getDimePayCredentials(dimePayEnvironment);
-    const webhookUrl = buildAbsoluteUrl(req, '/api/webhooks/dimepay');
+    const webhookUrl = buildAbsoluteUrl(req, '/api/dimepay-webhook');
     const resolvedRedirectUrl = normalizeDimePayExternalUrl(req, redirect_url || redirectUrl, '/dashboard/billing');
     const referenceId = buildCardReferenceId({
       flow: billingFlow,

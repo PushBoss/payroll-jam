@@ -205,8 +205,8 @@ export const dimePayService = {
             // Fee routing
             pass_fees_to: passFeesTo === 'CUSTOMER' ? 'CUSTOMER' : 'MERCHANT',
 
-            webhookUrl: `${window.location.origin}/api/webhooks/dimepay`,
-            webhook_url: `${window.location.origin}/api/webhooks/dimepay`
+            webhookUrl: `${window.location.origin}/api/dimepay-webhook`,
+            webhook_url: `${window.location.origin}/api/dimepay-webhook`
         };
 
         // Add Recurring properties if appropriate

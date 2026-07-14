@@ -36,7 +36,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const webhookUrl = normalizeDimePayExternalUrl(
       req,
       payloadObject.webhookUrl || payloadObject.webhook_url,
-      '/api/webhooks/dimepay'
+      '/api/dimepay-webhook'
     );
     const credentials = getDimePayCredentials(resolveDimePayEnvironment(environment, req));
     const jwt = signDimePayJwt({
