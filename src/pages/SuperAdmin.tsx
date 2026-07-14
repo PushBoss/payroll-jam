@@ -2302,7 +2302,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                         </div>
                         <button
                             onClick={() => handleToggleMaintenance(!paymentConfig.maintenanceMode)}
-                            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${paymentConfig.maintenanceMode ? 'bg-jam-orange' : 'bg-gray-200'}`}
+                            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${paymentConfig.maintenanceMode ? 'bg-jam-orange' : 'bg-gray-200'}`}
                         >
                             <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${paymentConfig.maintenanceMode ? 'translate-x-5' : 'translate-x-0'}`} />
                         </button>
@@ -2613,7 +2613,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                     <span>Audience: {b.target_audience === 'ALL_USERS' ? 'All Users' : 'Owners Only'}</span>
                                     <span>{new Date(b.created_at).toLocaleString()}</span>
                                 </div>
-                                <p className="text-sm text-gray-600 line-clamp-3 bg-white p-3 rounded border border-gray-100 font-mono text-xs">
+                                <p className="text-gray-600 line-clamp-3 bg-white p-3 rounded border border-gray-100 font-mono text-xs">
                                     {b.body_markdown}
                                 </p>
                             </div>
@@ -3238,7 +3238,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     {/* Local Connection Warning */}
                     {dbStatus?.connected && isUsingLocalOverrides() && (
                         <div className="mt-3 bg-yellow-50 border border-yellow-200 p-3 rounded-md text-xs text-yellow-800 flex items-start">
-                            <Icons.Alert className="w-4 h-4 mr-2 flex-shrink-0" />
+                            <Icons.Alert className="w-4 h-4 mr-2 shrink-0" />
                             <div>
                                 <strong>Local Override Active:</strong> You are connected via browser storage manually entered keys.
                                 <p className="mt-1">This will <strong>NOT work</strong> in Incognito mode or on other devices. To fix this, add the keys to your Vercel Environment Variables.</p>
@@ -3995,7 +3995,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         <div className="space-y-8 animate-fade-in relative">
             {/* Activation Funnel Drill-Down Modal */}
             {activationDrillDown && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
                     <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh]">
                         <div className="bg-jam-black text-white p-6 flex justify-between items-center shrink-0">
                             <div>
@@ -4045,7 +4045,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
 
             {/* Connection Wizard Modal */}
             {connectWizard.open && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
                     <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
                         <div className="bg-jam-black text-white p-6 flex justify-between items-center">
                             <div>
@@ -4069,7 +4069,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                     <p className="text-gray-600">
                                         We couldn't connect to Supabase. Environment variables might be missing.
                                     </p>
-                                    <div className="bg-gray-100 p-4 rounded text-left text-sm font-mono mt-4 border border-gray-200 break-words">
+                                    <div className="bg-gray-100 p-4 rounded text-left text-sm font-mono mt-4 border border-gray-200 wrap-break-word">
                                         <p className="text-red-600 font-bold mb-1">Error:</p>
                                         {dbStatus?.details || 'Unknown Error'}
                                     </div>
