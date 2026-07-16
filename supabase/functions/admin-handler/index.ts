@@ -3404,7 +3404,14 @@ serve(async (req: Request) => {
                 const { data, error } = await query.maybeSingle();
 
                 if (error) throw error;
-                if (!data) {
+
+                // Invite links are only valid while onboarding is outstanding. Once an
+                // employee is active (or archived/terminated), the token is stale — don't
+                // let a leaked/forwarded link keep resolving to full employee PII forever.
+                const lookupStatus = data ? normalizeEmployeeStatus(data.status) : null;
+                const isLookupPending = lookupStatus === 'PENDING_ONBOARDING' || lookupStatus === 'PENDING_VERIFICATION';
+
+                if (!data || !isLookupPending) {
                     return new Response(JSON.stringify({ employee: null }), {
                         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                     });
@@ -3435,8 +3442,8 @@ serve(async (req: Request) => {
                 if (!employee) throw new Error('Invite link is invalid or has expired.');
 
                 const employeeStatus = normalizeEmployeeStatus(employee.status);
-                if (employeeStatus === 'ARCHIVED' || employeeStatus === 'TERMINATED') {
-                    throw new Error('This employee invite is no longer active.');
+                if (employeeStatus !== 'PENDING_ONBOARDING' && employeeStatus !== 'PENDING_VERIFICATION') {
+                    throw new Error('This invite link has already been used or is no longer active.');
                 }
 
                 if (!hasEmployeePortalAccess(employee.companies?.plan)) {
@@ -3547,7 +3554,7 @@ serve(async (req: Request) => {
                     .from('employees')
                     .update({
                         status: 'ACTIVE',
-                        onboarding_token: normalizedToken,
+                        onboarding_token: null,
                     })
                     .eq('id', employee.id)
                     .eq('company_id', employee.company_id);

@@ -508,6 +508,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         });
         authData = response.data;
         authError = response.error;
+
+        // When "Confirm email" is enabled, Supabase returns a fake success response
+        // (a made-up user with an empty identities array) instead of an error when the
+        // email is already registered, to prevent account enumeration. Treat it as the
+        // "already registered" case so the existing recovery/error handling below applies.
+        if (!authError && authData?.user && Array.isArray(authData.user.identities) && authData.user.identities.length === 0) {
+          authData = { user: null, session: null };
+          authError = { message: 'User already registered', code: 'user_already_exists' } as any;
+        }
       }
 
       if (authError) {

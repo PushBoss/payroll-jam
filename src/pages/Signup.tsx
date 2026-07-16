@@ -832,7 +832,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                         <label className="block text-sm font-medium text-gray-700">
                                             Phone {!isTeamInvitation && <span className="text-red-500">*</span>}
                                         </label>
-                                        <input required={!isTeamInvitation} type="tel" inputMode="tel" autoComplete="tel" pattern="[0-9\\s()+-]{7,20}" title="Enter a valid phone number using digits, spaces, +, -, or parentheses." value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: sanitizePhoneInput(e.target.value) })} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
+                                        <input required={!isTeamInvitation} type="tel" inputMode="tel" autoComplete="tel" pattern="[0-9\s\(\)+\-]{7,20}" title="Enter a valid phone number using digits, spaces, +, -, or parentheses." value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: sanitizePhoneInput(e.target.value) })} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-jam-orange focus:border-jam-orange sm:text-sm" />
                                     </div>
                                     {!isTeamInvitation && (
                                         <>
