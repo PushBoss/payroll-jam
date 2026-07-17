@@ -107,7 +107,7 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
 
   const filteredSheets = weekSheets.filter(ts => {
     if (filter === 'ALL') return true;
-    if (filter === 'PENDING') return ts.status === 'SUBMITTED';
+    if (filter === 'PENDING') return ts.status === 'SUBMITTED' || ts.status === 'DRAFT';
     return ts.status === filter;
   });
 
@@ -130,7 +130,7 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
   const weekDisplay = `${new Date(currentWeekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
   const activeEmployees = employees.filter((employee) => employee.status !== 'ARCHIVED' && employee.status !== 'TERMINATED');
 
-  const pendingCount = weekSheets.filter(t => t.status === 'SUBMITTED').length;
+  const pendingCount = weekSheets.filter(t => t.status === 'SUBMITTED' || t.status === 'DRAFT').length;
   const totalOvertime = filteredSheets.reduce((acc, t) => acc + t.totalOvertimeHours, 0);
   const submittedOrApprovedCount = weekSheets.filter(t => t.status === 'SUBMITTED' || t.status === 'APPROVED').length;
   const submissionRate = weekSheets.length > 0 ? Math.round((submittedOrApprovedCount / weekSheets.length) * 100) : 0;
@@ -656,7 +656,7 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
                     </span>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    {ts.status === 'SUBMITTED' ? (
+                    {(ts.status === 'SUBMITTED' || ts.status === 'DRAFT') ? (
                       <div className="flex justify-end space-x-2">
                          <button 
                            onClick={() => handleApprove(ts)}
