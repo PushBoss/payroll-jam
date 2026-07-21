@@ -23,10 +23,10 @@ type TabType = 'identity' | 'org' | 'compliance' | 'banking' | 'statutory' | 'de
 
 // Maps each form field to the tab it lives on — derived from actual JSX structure
 const TAB_FIELDS: Record<TabType, string[]> = {
-  identity:   ['firstName', 'lastName', 'email', 'phone', 'address', 'hireDate', 'joiningDate', 'emergencyContact'],
-  org:        ['jobTitle', 'department', 'role', 'status'],
+  identity:   ['firstName', 'lastName', 'email', 'phone', 'address', 'emergencyContact'],
+  org:        ['jobTitle', 'department', 'role', 'status', 'hireDate', 'joiningDate'],
   compliance: ['employeeType', 'payType', 'payFrequency', 'grossSalary', 'hourlyRate', 'pieceRateAmount'],
-  banking:    ['bankDetails'],
+  banking:    ['bankName', 'bankAccountNumber'],
   statutory:  ['trn', 'nis', 'pensionContributionRate', 'pensionProvider'],
   deductions: ['customDeductions', 'deductionError'],
 };
@@ -133,17 +133,32 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
         [field]: value
       } as BankAccount
     }));
+    const errorField = field === 'accountNumber' ? 'bankAccountNumber' : field;
+    if (errors[errorField]) {
+      setErrors(prev => {
+        const next = { ...prev };
+        delete next[errorField];
+        return next;
+      });
+    }
   };
 
   const validateForm = (): { valid: boolean; newErrors: Record<string, string> } => {
     const newErrors: Record<string, string> = {};
+    const isNewEmployee = !employee?.id;
 
     if (!formData.firstName?.trim()) newErrors.firstName = 'First name is required';
     if (!formData.lastName?.trim()) newErrors.lastName = 'Last name is required';
     if (!formData.email?.trim()) newErrors.email = 'Email is required';
     if (!isValidEmail(formData.email)) newErrors.email = 'Invalid email format';
-    if (formData.trn && !isValidTRN(formData.trn)) newErrors.trn = 'Invalid TRN format';
-    if (formData.nis && formData.nis !== 'PENDING' && !isValidNIS(formData.nis)) {
+    if (isNewEmployee && !formData.trn?.trim()) {
+      newErrors.trn = 'TRN is required';
+    } else if (formData.trn && !isValidTRN(formData.trn)) {
+      newErrors.trn = 'Invalid TRN format';
+    }
+    if (isNewEmployee && !formData.nis?.trim()) {
+      newErrors.nis = 'NIS number is required';
+    } else if (formData.nis && formData.nis !== 'PENDING' && !isValidNIS(formData.nis)) {
       newErrors.nis = 'Invalid NIS format';
     }
     if (formData.grossSalary <= 0) newErrors.grossSalary = 'Gross salary/rate must be greater than 0';
@@ -155,6 +170,8 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
     }
     if (!formData.hireDate) newErrors.hireDate = 'Hire date is required';
     if (formData.joiningDate && !formData.hireDate) newErrors.hireDate = 'Hire date is required if joining date is set';
+    if (isNewEmployee && !formData.bankDetails?.bankName) newErrors.bankName = 'Bank name is required';
+    if (isNewEmployee && !formData.bankDetails?.accountNumber?.trim()) newErrors.bankAccountNumber = 'Account number is required';
 
     setErrors(newErrors);
     return { valid: Object.keys(newErrors).length === 0, newErrors };
@@ -736,7 +753,9 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                   <select
                     value={formData.bankDetails?.bankName || 'NCB'}
                     onChange={e => handleBankDetailsChange('bankName', e.target.value as any)}
-                    className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange bg-white transition-all"
+                    className={`w-full border rounded-lg p-3 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange transition-all ${
+                      errors.bankName ? 'border-red-500 bg-red-50' : 'border-gray-300 bg-white'
+                    }`}
                   >
                     <option value="NCB">NCB</option>
                     <option value="BNS">Bank of Nova Scotia</option>
@@ -744,6 +763,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                     <option value="SAGICOR">Sagicor Bank</option>
                     <option value="OTHER">Other</option>
                   </select>
+                  {errors.bankName && <p className="text-red-600 text-xs mt-1">{errors.bankName}</p>}
                 </div>
 
                 <div>
@@ -767,9 +787,12 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                     type="text"
                     value={formData.bankDetails?.accountNumber || ''}
                     onChange={e => handleBankDetailsChange('accountNumber', e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange bg-white transition-all"
+                    className={`w-full border rounded-lg p-3 text-sm focus:ring-2 focus:ring-jam-orange focus:border-jam-orange transition-all ${
+                      errors.bankAccountNumber ? 'border-red-500 bg-red-50' : 'border-gray-300 bg-white'
+                    }`}
                     placeholder="0123456789"
                   />
+                  {errors.bankAccountNumber && <p className="text-red-600 text-xs mt-1">{errors.bankAccountNumber}</p>}
                 </div>
 
                 <div>
