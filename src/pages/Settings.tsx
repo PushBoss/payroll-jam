@@ -721,7 +721,7 @@ export const Settings: React.FC<SettingsProps> = ({
     const { user: currentUser, updateUser } = useAuth();
     const { account } = useAccount();
     const [userRole, setUserRole] = useState<MemberRole | null>(null);
-    const [activeTab, setActiveTab] = useState<'company' | 'billing' | 'organization' | 'taxes' | 'integrations' | 'users'>('organization');
+    const [activeTab, setActiveTab] = useState<'company' | 'billing' | 'organization' | 'taxes' | 'integrations' | 'users'>('company');
 
     // Debug: Log plans when component mounts or plans change
     useEffect(() => {
