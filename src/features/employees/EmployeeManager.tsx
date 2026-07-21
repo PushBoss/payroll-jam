@@ -327,16 +327,17 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`inline-flex items-center gap-1.5 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                  activeTab === tab.id
+                  tabsWithErrors.has(tab.id)
+                    ? 'border-red-500 text-red-600 hover:text-red-700 hover:border-red-600'
+                    : activeTab === tab.id
                     ? 'border-jam-orange text-jam-black'
-                    : tabsWithErrors.has(tab.id)
-                    ? 'border-transparent text-red-500 hover:text-red-700 hover:border-red-300'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
+                aria-invalid={tabsWithErrors.has(tab.id)}
               >
                 {tab.label}
                 {tabsWithErrors.has(tab.id) && (
-                  <span className="flex h-2 w-2 shrink-0">
+                  <span className="relative flex h-2 w-2 shrink-0">
                     <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-red-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
                   </span>
