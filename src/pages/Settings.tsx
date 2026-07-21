@@ -74,7 +74,7 @@ const getGoogleMapsUrl = (latitude: number, longitude: number) =>
 
 interface SettingsProps {
     companyData?: CompanySettings;
-    onUpdateCompany: (data: CompanySettings) => void;
+    onUpdateCompany: (data: CompanySettings) => void | Promise<void>;
     taxConfig: TaxConfig;
     onUpdateTaxConfig: (data: TaxConfig) => void;
     integrationConfig: IntegrationConfig;
@@ -916,7 +916,9 @@ export const Settings: React.FC<SettingsProps> = ({
 
 
 
-    const handleCompanyUpdate = (newData: CompanySettings) => { onUpdateCompany(newData); };
+    const handleCompanyUpdate = async (newData: CompanySettings) => {
+        await onUpdateCompany(newData);
+    };
 
     const handleUseCurrentLocation = () => {
         if (!navigator.geolocation) {
@@ -1075,8 +1077,10 @@ export const Settings: React.FC<SettingsProps> = ({
     const finalizeUpgrade = async (targetPlan: PricingPlan) => {
         if (!currentUser?.companyId) return;
 
-        // Update local company data
-        handleCompanyUpdate({ ...companyData, plan: targetPlan.name as any, subscriptionStatus: 'ACTIVE' });
+        // Persist the company plan before changing the user's role. A failed plan
+        // write must not turn the account into a reseller while its tenant remains
+        // on the previous tier.
+        await handleCompanyUpdate({ ...companyData, plan: targetPlan.name as any, subscriptionStatus: 'ACTIVE' });
         auditService.log(currentUser, 'UPDATE', 'Billing', `Upgraded plan to ${targetPlan.name}`);
 
         // Update user role only when upgrading to Reseller plan.

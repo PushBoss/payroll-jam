@@ -67,17 +67,6 @@ export const useAppData = ({ user, updateUser, impersonate, navigateTo }: UseApp
   // Dynamic user role synchronization based on company subscription plan
   useEffect(() => {
     if (companyData && user && !user.originalRole) {
-      // Special recovery for Reseller email (aarongardiner6@gmail.com) if it was accidentally downgraded
-      if (user.email === 'aarongardiner6@gmail.com' && user.role !== Role.RESELLER) {
-        console.log('🔄 Restoring reseller role for aarongardiner6@gmail.com');
-        const updatedUser = { ...user, role: Role.RESELLER };
-        updateUser({ role: Role.RESELLER });
-        UserService.saveUser(updatedUser).catch((err: any) =>
-          console.error('Failed to restore Reseller role to DB:', err)
-        );
-        return;
-      }
-
       const isResellerPlan = isResellerEquivalentPlan(companyData.plan);
       if (isResellerPlan && (user.role === Role.OWNER || user.role === Role.ADMIN)) {
         console.log('🔄 Syncing user role to RESELLER due to Reseller plan');
