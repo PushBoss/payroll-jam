@@ -479,6 +479,52 @@ const getActiveLocation = async (adminClient: any, companyId: string, locationId
     return location;
 };
 
+// Company settings historically stored branches as JSON while attendance uses
+// company_locations. Materialize a configured branch on first QR use so older
+// companies (and the Main Branch fallback) can use attendance without a manual
+// database repair.
+const getOrCreateAttendanceLocation = async (adminClient: any, companyId: string, locationId: string) => {
+    const existing = await getActiveLocation(adminClient, companyId, locationId).catch((error: any) => {
+        const message = String(error?.message || '');
+        if (message.includes('invalid input syntax for type uuid') || message.includes('Active branch location not found')) return null;
+        throw error;
+    });
+    if (existing) return existing;
+
+    const { data: company, error: companyError } = await adminClient
+        .from('companies')
+        .select('settings')
+        .eq('id', companyId)
+        .maybeSingle();
+    if (companyError) throw companyError;
+
+    const configuredLocations = Array.isArray(company?.settings?.locations) ? company.settings.locations : [];
+    const configured = configuredLocations.find((location: any) => String(location?.id) === locationId);
+    const isMainBranchFallback = locationId === `${companyId}-main`;
+    if (!configured && !isMainBranchFallback) throw new Error('Active branch location not found');
+
+    const latitude = Number(configured?.latitude ?? 18.0179);
+    const longitude = Number(configured?.longitude ?? -76.8099);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+        throw new Error('Branch location has invalid coordinates');
+    }
+
+    const { data: created, error: createError } = await adminClient
+        .from('company_locations')
+        .insert({
+            company_id: companyId,
+            name: String(configured?.name || 'Main Branch'),
+            latitude,
+            longitude,
+            geofence_radius_meters: Number(configured?.geofenceRadiusMeters || 100),
+            is_active: true,
+        })
+        .select('id, company_id, name, latitude, longitude, geofence_radius_meters, is_active')
+        .single();
+    if (createError) throw createError;
+    return created;
+};
+
 const logAttendanceAttempt = async (
     adminClient: any,
     attempt: {
@@ -2969,7 +3015,7 @@ serve(async (req: Request) => {
                 if (!locationId) throw new Error('locationId required');
 
                 await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'MANAGER', 'RESELLER', 'SUPER_ADMIN']);
-                const location = await getActiveLocation(adminClient, companyId, locationId);
+                const location = await getOrCreateAttendanceLocation(adminClient, companyId, locationId);
 
                 const { data: activeBadges, error: activeBadgesError } = await adminClient
                     .from('attendance_badges')

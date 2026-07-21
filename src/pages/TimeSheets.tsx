@@ -191,7 +191,16 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
       };
     }
 
-    const qrPayload = encodeClockInPayload(companyData.id, selectedLocation.id);
+    // Badge creation resolves legacy/settings-only branches to a real database
+    // location UUID. QR clock-ins must use that UUID, not the old local ID.
+    if (!attendanceBadge?.locationId) {
+      setQrImageUrl('');
+      return () => {
+        active = false;
+      };
+    }
+
+    const qrPayload = encodeClockInPayload(companyData.id, attendanceBadge.locationId);
     const clockInUrl = buildAppUrl('portal-clock-in', { qr: qrPayload });
 
     QRCode.toDataURL(clockInUrl, {
@@ -212,7 +221,7 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
     return () => {
       active = false;
     };
-  }, [companyData?.id, qrModalOpen, selectedLocation?.id]);
+  }, [attendanceBadge?.locationId, companyData?.id, qrModalOpen, selectedLocation?.id]);
 
   const handleManualEntryChange = <K extends keyof typeof manualEntry>(key: K, value: typeof manualEntry[K]) => {
     setManualEntry((entry) => ({ ...entry, [key]: value }));
