@@ -8,6 +8,7 @@ import { downloadFile, generateP45CSV } from '../utils/exportHelpers';
 import { emailService } from '../services/emailService';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
+import { getSubscriptionLimits } from '../hooks/useSubscription';
 import { isValidEmail } from '../utils/validators';
 import { generateUUID } from '../utils/uuid';
 import { createEmployeeEditTrace, TraceLogger } from '../utils/employeeEditTrace';
@@ -91,31 +92,15 @@ export const Employees: React.FC<EmployeesProps> = ({
         role: Role.EMPLOYEE
     });
 
-    const getPlanLimit = (planName: string | undefined) => {
-        // Normalize plan name
-        const normalizedName = planName === 'Professional' ? 'Pro' : planName;
-        const planObj = plans.find(p => p.name === normalizedName);
-        if (planObj && planObj.limit) {
-            const limitStr = planObj.limit.split(' ')[0];
-            return limitStr === 'Unlimited' ? 99999 : parseInt(limitStr) || 5;
-        }
-
-        switch (planName) {
-            case 'Free': return 5;
-            case 'Starter': return 25;
-            case 'Pro': case 'Professional': return 99999;
-            case 'Enterprise': return 99999;
-            default: return 5;
-        }
-    };
+    const subscriptionLimits = getSubscriptionLimits(
+        employees,
+        companyData || ({ plan: 'Free' } as CompanySettings),
+        plans,
+        users,
+    );
 
     const checkPlanLimit = (countToAdd = 1) => {
-        const currentActiveEmployees = employees.filter(e => e.status !== 'TERMINATED' && e.status !== 'ARCHIVED').length;
-        const currentUsers = users.length;
-        const totalCount = currentActiveEmployees + currentUsers;
-        const limit = getPlanLimit(companyData?.plan);
-
-        if (totalCount + countToAdd > limit) {
+        if (subscriptionLimits.isSuspended || subscriptionLimits.currentCount + countToAdd > subscriptionLimits.maxEmployees) {
             setShowUpgradeModal(true);
             return false;
         }
@@ -502,7 +487,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                             </div>
                             <h3 className="text-2xl font-bold text-gray-900 mb-2 text-center">Plan Limit Reached</h3>
                             <p className="text-gray-600 mb-6 text-center">
-                                You have reached the <strong>{getPlanLimit(companyData?.plan)} employee limit</strong> for your current plan.
+                                You have reached the <strong>{subscriptionLimits.maxEmployees} employee limit</strong> for your current plan.
                             </p>
 
                             {/* Available Plans */}
@@ -578,9 +563,25 @@ export const Employees: React.FC<EmployeesProps> = ({
                     departments={departments}
                     onUpdateDepartments={onUpdateDepartments}
                     onImportComplete={async (employeesToSave, skippedCount) => {
-                        const newCount = employeesToSave.filter(e => !employees.some(existing => existing.id === e.id)).length;
-                        if (!checkPlanLimit(newCount)) {
-                            setIsCsvWizardOpen(false);
+                        // Apply the entire import to a copy first. This counts new active
+                        // rows and reactivated employees, while allowing updates and
+                        // archived/terminated imports without consuming a seat.
+                        const projectedEmployees = new Map(employees.map((employee) => [employee.id, employee]));
+                        employeesToSave.forEach((employee) => projectedEmployees.set(employee.id, employee));
+                        const projectedLimits = getSubscriptionLimits(
+                            [...projectedEmployees.values()],
+                            companyData || ({ plan: 'Free' } as CompanySettings),
+                            plans,
+                            users,
+                        );
+
+                        if (projectedLimits.isSuspended || projectedLimits.currentCount > projectedLimits.maxEmployees) {
+                            toast.error(
+                                projectedLimits.isSuspended
+                                    ? 'Your subscription is suspended. Reactivate it before importing employees.'
+                                    : `This import would use ${projectedLimits.currentCount} of your ${projectedLimits.maxEmployees} available employee slots. Upgrade your plan or archive employees first.`,
+                            );
+                            setShowUpgradeModal(true);
                             return false;
                         }
 

@@ -120,4 +120,27 @@ describe('useSubscription gift overrides', () => {
     expect(limits.isSuspended).toBe(true);
     expect(limits.canRunPayroll).toBe(false);
   });
+
+  it('does not allow another employee when all plan slots are occupied', () => {
+    const company = makeCompany({ subscriptionStatus: 'ACTIVE' });
+    const employees = Array.from({ length: 5 }, (_, index) => ({
+      id: `emp-${index}`,
+      firstName: 'Test',
+      lastName: `Employee ${index}`,
+      email: `employee-${index}@example.com`,
+      trn: `TRN${index}`,
+      nis: `NIS${index}`,
+      grossSalary: 1000,
+      payType: 'SALARIED' as const,
+      payFrequency: 'MONTHLY' as const,
+      role: 'EMPLOYEE' as const,
+      status: 'ACTIVE' as const,
+      hireDate: '2025-01-01',
+    }));
+
+    const limits = getSubscriptionLimits(employees, company, plans, []);
+
+    expect(limits.isOverLimit).toBe(false);
+    expect(limits.canAddEmployee).toBe(false);
+  });
 });

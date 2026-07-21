@@ -48,7 +48,10 @@ export const getSubscriptionLimits = (
   const effectiveSubscriptionStatus = getEffectiveSubscriptionStatus(companyData);
   const isSuspended = effectiveSubscriptionStatus === 'SUSPENDED';
   const isPastDue = effectiveSubscriptionStatus === 'PAST_DUE';
-  const canAddEmployee = !isOverLimit && !isSuspended;
+  // `isOverLimit` is intentionally strict so the UI can distinguish an
+  // already-over-limit workspace from one that is exactly at its allowance.
+  // Adding is not permitted in either case once every available slot is used.
+  const canAddEmployee = currentCount < maxEmployees && !isSuspended;
   const canRunPayroll = !isSuspended;
 
   return {

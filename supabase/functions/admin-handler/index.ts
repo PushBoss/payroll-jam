@@ -3742,6 +3742,60 @@ serve(async (req: Request) => {
 
                 const employeeRecord = buildEmployeePayload(cleanEmployee, companyId, mode);
                 edgeLog('edge-payload-built', 'ok', { keysInPayload: Object.keys(employeeRecord as object).length });
+
+                // The browser performs a full import preflight, but each row is still
+                // protected here. CSV imports save sequentially, so this prevents a
+                // stale client (or a direct function call) from exceeding the
+                // company's persisted employee allowance.
+                const isBillableEmployee = (status: unknown) => {
+                    const normalized = String(status || 'ACTIVE').toUpperCase();
+                    return normalized !== 'TERMINATED' && normalized !== 'ARCHIVED';
+                };
+                const incomingIsBillable = isBillableEmployee(employeeRecord.status);
+                const { data: existingEmployee, error: existingEmployeeError } = await adminClient
+                    .from('employees')
+                    .select('id, status')
+                    .eq('id', cleanEmployee.id)
+                    .eq('company_id', companyId)
+                    .maybeSingle();
+                if (existingEmployeeError) throw existingEmployeeError;
+
+                const isNewBillableEmployee = incomingIsBillable
+                    && (!existingEmployee || !isBillableEmployee(existingEmployee.status));
+
+                if (isNewBillableEmployee) {
+                    const [{ data: company, error: companyError }, { count: activeEmployeeCount, error: employeeCountError }, { count: userCount, error: userCountError }] = await Promise.all([
+                        adminClient.from('companies').select('plan, employee_limit, settings').eq('id', companyId).single(),
+                        adminClient.from('employees').select('id', { count: 'exact', head: true }).eq('company_id', companyId).not('status', 'in', '("TERMINATED","ARCHIVED")'),
+                        adminClient.from('app_users').select('id', { count: 'exact', head: true }).eq('company_id', companyId),
+                    ]);
+                    if (companyError) throw companyError;
+                    if (employeeCountError) throw employeeCountError;
+                    if (userCountError) throw userCountError;
+
+                    const plan = String(company?.plan || 'FREE').toUpperCase();
+                    const billingGift = company?.settings?.billingGift;
+                    const giftExpiresAt = billingGift?.giftedUntil ? new Date(billingGift.giftedUntil) : null;
+                    const hasActiveGift = giftExpiresAt
+                        && Number.isFinite(giftExpiresAt.getTime())
+                        && giftExpiresAt.getTime() >= Date.now();
+                    const giftLimitOverride = hasActiveGift && typeof billingGift?.employeeLimitOverride === 'string'
+                        ? billingGift.employeeLimitOverride
+                        : undefined;
+                    const fallbackLimit = ['PRO', 'PROFESSIONAL', 'ENTERPRISE', 'RESELLER'].includes(plan) ? 999999 : plan === 'STARTER' ? 25 : 5;
+                    const configuredLimit = Number(company?.employee_limit);
+                    const overrideLimitMatch = giftLimitOverride?.match(/\d+/);
+                    const employeeLimit = String(giftLimitOverride || '').toUpperCase() === 'UNLIMITED'
+                        ? 999999
+                        : overrideLimitMatch
+                            ? Number(overrideLimitMatch[0])
+                        : Number.isFinite(configuredLimit) && configuredLimit > 0 ? configuredLimit : fallbackLimit;
+                    const occupiedSeats = (activeEmployeeCount || 0) + (userCount || 0);
+
+                    if (occupiedSeats >= employeeLimit) {
+                        throw new Error(`Employee limit reached (${employeeLimit}). Upgrade your plan or archive an employee before adding another.`);
+                    }
+                }
                 let result;
 
                 // Fallback loop for schema mismatches
