@@ -279,7 +279,11 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
 
     setIsSavingTimeEntry(true);
     try {
-      await onUpdate(timesheet);
+      const saved = await onUpdate(timesheet);
+      if (saved === false) {
+        toast.error('Time entry was not saved. Please correct the issue and try again.');
+        return;
+      }
       setCurrentWeekStart(weekStartDate);
       setLogTimeModalOpen(false);
       setManualEntry((entry) => ({

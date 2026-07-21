@@ -183,7 +183,13 @@ export const useWorkforceData = ({ user, isSupabaseMode, activeCompanyId }: UseW
     setLeaveRequests((prev) => [request, ...prev]);
     const targetCompanyId = activeCompanyId || user?.companyId;
     if (isSupabaseMode && targetCompanyId) {
-      await EmployeeService.saveLeaveRequest(request, targetCompanyId);
+      try {
+        await EmployeeService.saveLeaveRequest(request, targetCompanyId);
+      } catch (error: any) {
+        setLeaveRequests((prev) => prev.filter((item) => item.id !== request.id));
+        toast.error(error?.message || 'Leave request was not saved. Please try again.');
+        throw error;
+      }
     }
   };
 

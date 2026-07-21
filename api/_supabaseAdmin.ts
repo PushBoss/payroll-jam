@@ -29,13 +29,15 @@ loadLocalEnvFile('.env.local');
 loadLocalEnvFile('.env');
 
 const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
+// Deliberately no VITE_-prefixed fallback here: Vite bundles any VITE_* var into
+// the client build, so the service role key must never be reachable under that name.
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!supabaseUrl || !serviceRoleKey) {
   // Throwing here keeps the error loud in logs and prevents silent data-loss.
   // Vercel will surface this as a function crash if env vars are misconfigured.
   throw new Error(
-    'Missing Supabase admin env vars. Set SUPABASE_URL (or VITE_SUPABASE_URL) and SUPABASE_SERVICE_ROLE_KEY (or VITE_SUPABASE_SERVICE_ROLE_KEY).'
+    'Missing Supabase admin env vars. Set SUPABASE_URL (or VITE_SUPABASE_URL) and SUPABASE_SERVICE_ROLE_KEY.'
   );
 }
 

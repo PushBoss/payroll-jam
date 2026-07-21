@@ -11,7 +11,7 @@ const getSupabaseFunctionsUrl = () => {
 
 const sendNotificationEmail = async (to: string, subject: string, html: string) => {
   const functionsUrl = getSupabaseFunctionsUrl();
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!functionsUrl || !serviceRoleKey) {
     console.error('Cannot send expiry email: SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY not configured');
     return false;
@@ -58,7 +58,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const warningCutoff = new Date(now.getTime() + WARNING_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
     const nowIso = now.toISOString();
 
-    const results = { expiringWarned: 0, expiredNotified: 0, errors: [] as string[] };
+    const results = { expiringWarned: 0, expiredNotified: 0, downgradedToFree: 0, errors: [] as string[] };
+
+    const { data: cancellationsDue, error: cancellationError } = await supabase
+      .from('subscriptions')
+      .select('id, company_id, metadata, access_until, next_billing_date, end_date')
+      .eq('status', 'cancelled')
+      .eq('auto_renew', false)
+      .or(`access_until.lt.${nowIso},next_billing_date.lt.${nowIso},end_date.lt.${nowIso}`);
+
+    if (cancellationError) throw cancellationError;
+
+    for (const subscription of cancellationsDue || []) {
+      if (subscription.metadata?.downgraded_to_free_at) continue;
+      const { error: companyError } = await supabase
+        .from('companies')
+        .update({ plan: 'Free', status: 'ACTIVE' })
+        .eq('id', subscription.company_id);
+      if (companyError) {
+        results.errors.push(`Failed to downgrade cancelled subscription ${subscription.id}`);
+        continue;
+      }
+      await supabase.from('subscriptions').update({
+        metadata: { ...(subscription.metadata || {}), downgraded_to_free_at: nowIso },
+        updated_at: nowIso
+      }).eq('id', subscription.id);
+      results.downgradedToFree += 1;
+    }
 
     // "Expiring soon": no live DimePay recurring subscription bound (bank-transfer
     // accounts, or any account without a working card) - nothing will auto-renew these.

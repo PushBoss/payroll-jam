@@ -546,8 +546,12 @@ export default async function dimePayWebhookHandler(req: VercelRequest, res: Ver
     const { event, verification } = verifyAndExtractEvent(req);
     const audit = await logWebhookEvent(event, true, verification);
 
+    // A subscription event can arrive before Signup has created its company row.
+    // Do not let the audit row turn that transient failure into permanent data loss:
+    // all projections below are idempotent (payment history is keyed by transaction
+    // id and subscriptions are upserted), so a gateway retry is safe.
     if (audit.duplicate) {
-      return res.status(200).json({ received: true, duplicate: true });
+      console.warn('Reprocessing duplicate DimePay webhook event to reconcile an earlier incomplete projection.');
     }
 
     const ledger = await appendDimePayLedgerEvent(event, redact(event));
@@ -598,7 +602,7 @@ export default async function dimePayWebhookHandler(req: VercelRequest, res: Ver
     return res.status(200).json({ received: true });
   } catch (error: any) {
     console.error('DimePay webhook processing error:', error);
-    return res.status(error.message?.includes('signature') || error.message?.includes('JWT') ? 401 : 200).json({
+    return res.status(error.message?.includes('signature') || error.message?.includes('JWT') ? 401 : 500).json({
       received: false,
       error: error.message || 'DimePay webhook processing failed'
     });

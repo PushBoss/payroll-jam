@@ -19,8 +19,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const { subscription_id, company_id, request_refund } = req.body;
 
-    if (!subscription_id || !company_id) {
-      return res.status(400).json({ error: 'Missing subscription_id or company_id' });
+    if (!company_id) {
+      return res.status(400).json({ error: 'Missing company_id' });
+    }
+
+    const { data: subscriptionRecord, error: subscriptionError } = await supabaseAdmin
+      .from('subscriptions')
+      .select('id, dime_subscription_id, dimepay_subscription_id, next_billing_date, metadata')
+      .eq('company_id', company_id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (subscriptionError || !subscriptionRecord) {
+      return res.status(404).json({ error: 'No subscription was found for this company' });
+    }
+
+    const resolvedSubscriptionId = subscription_id && subscription_id !== 'legacy'
+      ? subscription_id
+      : (subscriptionRecord.dime_subscription_id || subscriptionRecord.dimepay_subscription_id);
+
+    if (!resolvedSubscriptionId) {
+      return res.status(409).json({ error: 'This subscription has no DimePay reference yet. Add a payment method or contact support.' });
     }
 
     console.log(`🔄 Cancelling DimePay subscription: ${subscription_id} (refund requested: ${!!request_refund})`);
@@ -28,17 +48,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const environment = resolveDimePayEnvironment(undefined, req);
     const remoteCancellation = await cancelDimePaySubscription({
       environment,
-      subscriptionId: subscription_id
+      subscriptionId: resolvedSubscriptionId
     });
 
     if (!remoteCancellation.ok) {
       console.warn('⚠️ Remote DimePay cancellation did not confirm:', remoteCancellation.error);
     }
 
+    if (!remoteCancellation.ok) {
+      return res.status(502).json({ error: remoteCancellation.error || 'DimePay did not confirm cancellation. Your subscription was not changed.' });
+    }
+
     const { data: currentSubscription } = await supabaseAdmin
       .from('subscriptions')
       .select('next_billing_date, metadata')
-      .eq('dimepay_subscription_id', subscription_id)
+      .or(`dime_subscription_id.eq.${resolvedSubscriptionId},dimepay_subscription_id.eq.${resolvedSubscriptionId}`)
       .eq('company_id', company_id)
       .maybeSingle();
 
@@ -60,8 +84,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           refund_status: isRefundRequested ? 'pending' : undefined
         }
       })
-      .eq('dimepay_subscription_id', subscription_id)
-      .eq('company_id', company_id);
+      .eq('id', currentSubscription?.id || subscriptionRecord.id);
 
     if (updateError) {
       console.error('❌ Error updating subscription in database:', updateError);
