@@ -36,7 +36,7 @@ export const parseComplianceReport = async (file: File): Promise<ParsedComplianc
   const headers = rows[headerIndex].map(cellText);
   const reportType: ComplianceReportType = headers[0] === 'Surname' ? 'S01' : 'S02';
   const requiredHeaders = reportType === 'S01'
-    ? ['Surname', 'Firstname', 'Employee TRN ', 'Employee NIS']
+    ? ['Surname', 'Firstname', 'Employee TRN', 'Employee NIS']
     : ['Employee Name', 'TRN', 'NIS Number', 'Total Gross'];
   if (!requiredHeaders.every((header) => headers.includes(header))) {
     throw new Error(`The ${reportType} columns do not match the accepted TAJ format.`);
