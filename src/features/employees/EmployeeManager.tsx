@@ -145,18 +145,17 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
 
   const validateForm = (): { valid: boolean; newErrors: Record<string, string> } => {
     const newErrors: Record<string, string> = {};
-    const isNewEmployee = !employee?.id;
 
     if (!formData.firstName?.trim()) newErrors.firstName = 'First name is required';
     if (!formData.lastName?.trim()) newErrors.lastName = 'Last name is required';
     if (!formData.email?.trim()) newErrors.email = 'Email is required';
     if (!isValidEmail(formData.email)) newErrors.email = 'Invalid email format';
-    if (isNewEmployee && !formData.trn?.trim()) {
+    if (!formData.trn?.trim()) {
       newErrors.trn = 'TRN is required';
     } else if (formData.trn && !isValidTRN(formData.trn)) {
       newErrors.trn = 'Invalid TRN format';
     }
-    if (isNewEmployee && !formData.nis?.trim()) {
+    if (!formData.nis?.trim()) {
       newErrors.nis = 'NIS number is required';
     } else if (formData.nis && formData.nis !== 'PENDING' && !isValidNIS(formData.nis)) {
       newErrors.nis = 'Invalid NIS format';
@@ -170,8 +169,8 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
     }
     if (!formData.hireDate) newErrors.hireDate = 'Hire date is required';
     if (formData.joiningDate && !formData.hireDate) newErrors.hireDate = 'Hire date is required if joining date is set';
-    if (isNewEmployee && !formData.bankDetails?.bankName) newErrors.bankName = 'Bank name is required';
-    if (isNewEmployee && !formData.bankDetails?.accountNumber?.trim()) newErrors.bankAccountNumber = 'Account number is required';
+    if (!formData.bankDetails?.bankName) newErrors.bankName = 'Bank name is required';
+    if (!formData.bankDetails?.accountNumber?.trim()) newErrors.bankAccountNumber = 'Account number is required';
 
     setErrors(newErrors);
     return { valid: Object.keys(newErrors).length === 0, newErrors };
