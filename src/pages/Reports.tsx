@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Icons } from '../components/Icons';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { PayRun, PayRunLineItem, CompanySettings, AuditLogEntry, Employee, IntegrationConfig } from '../core/types';
 import { generateFullRegisterCSV, generateS01CSV, generateS02CSV, generateNCBFile, generateBNSFile, generateGLCSV } from '../utils/exportHelpers';
 import { PayslipPrintBatch, PayslipView } from '../components/PayslipView';
@@ -46,6 +46,7 @@ export const Reports: React.FC<ReportsProps> = ({
   const [auditFilter, setAuditFilter] = useState('ALL');
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM format
   const [selectedS02Year, setSelectedS02Year] = useState<string>(new Date().getFullYear().toString());
+  const [statutoryChartType, setStatutoryChartType] = useState<'donut' | 'bar'>('donut');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'DRAFT' | 'APPROVED' | 'FINALIZED'>('ALL');
   const [isEmailing, setIsEmailing] = useState(false);
   const [archivedComplianceReports, setArchivedComplianceReports] = useState<ComplianceReportArchiveItem[]>([]);
@@ -811,29 +812,67 @@ export const Reports: React.FC<ReportsProps> = ({
       {activeTab === 'statutory' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
           <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-            <div className="flex justify-between items-center mb-4">
+            <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
               <h3 className="font-bold text-gray-900">YTD Statutory Deductions Breakdown</h3>
-              {displayHistory.length === 0 && <span className="text-xs text-red-500 bg-red-50 px-2 py-1 rounded">No data available</span>}
+              <div className="flex items-center gap-2">
+                {displayHistory.length === 0 && <span className="text-xs text-red-500 bg-red-50 px-2 py-1 rounded">No data available</span>}
+                <div className="flex rounded-lg border border-gray-200 p-0.5 bg-gray-50" role="group" aria-label="Statutory chart type">
+                  <button
+                    type="button"
+                    onClick={() => setStatutoryChartType('donut')}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                      statutoryChartType === 'donut' ? 'bg-white text-jam-black shadow-sm' : 'text-gray-500 hover:text-gray-800'
+                    }`}
+                    aria-pressed={statutoryChartType === 'donut'}
+                  >
+                    Breakdown
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStatutoryChartType('bar')}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                      statutoryChartType === 'bar' ? 'bg-white text-jam-black shadow-sm' : 'text-gray-500 hover:text-gray-800'
+                    }`}
+                    aria-pressed={statutoryChartType === 'bar'}
+                  >
+                    Bar chart
+                  </button>
+                </div>
+              </div>
             </div>
             <div className="h-64 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={statData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {statData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <RechartsTooltip formatter={(value: number) => `$${value.toLocaleString()}`} />
-                  <Legend />
-                </PieChart>
+                {statutoryChartType === 'donut' ? (
+                  <PieChart>
+                    <Pie
+                      data={statData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      {statData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip formatter={(value: number) => `$${value.toLocaleString()}`} />
+                    <Legend />
+                  </PieChart>
+                ) : (
+                  <BarChart data={statData.filter((entry) => entry.name !== 'No Data')} margin={{ top: 8, right: 12, left: 12, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="name" tickLine={false} axisLine={false} />
+                    <YAxis tickLine={false} axisLine={false} tickFormatter={(value) => `$${Number(value).toLocaleString()}`} width={78} />
+                    <RechartsTooltip formatter={(value: number) => `$${value.toLocaleString()}`} />
+                    <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                      {statData.filter((entry) => entry.name !== 'No Data').map((entry, index) => (
+                        <Cell key={`bar-cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                )}
               </ResponsiveContainer>
             </div>
           </div>
