@@ -247,8 +247,8 @@ const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({ currentUser, cu
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh] animate-scale-in">
                 <div className="bg-jam-black text-white p-6 flex justify-between items-center shrink-0">
                     <div>
-                        <h3 className="text-xl font-bold">{currentSubscription?.paymentMethodLast4 ? 'Update Payment Method' : 'Add Payment Method'}</h3>
-                        <p className="text-xs text-gray-400">Securely verify a card and bind it to your recurring subscription.</p>
+                        <h3 className="text-xl font-bold">Add payment method</h3>
+                        <p className="text-xs text-gray-400">Your first saved card becomes primary. Later cards are saved until you explicitly make one primary.</p>
                     </div>
                     <button onClick={onClose}><Icons.Close className="w-6 h-6 text-gray-400 hover:text-white" /></button>
                 </div>
@@ -640,15 +640,18 @@ const PaymentMethodsCard: React.FC<PaymentMethodsCardProps> = ({ currentUser, cu
 
     return (
         <div className="bg-white p-6 rounded-xl border border-gray-200">
-            <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold">Payment Methods</h3>
+            <div className="flex flex-wrap justify-between items-start gap-3 mb-4">
+                <div>
+                    <h3 className="text-lg font-bold">Payment methods</h3>
+                    <p className="text-sm text-gray-500">Your primary card is used for recurring billing. Choose a different saved card only when you want to change it.</p>
+                </div>
                 <button
                     onClick={() => setShowAddModal(true)}
                     disabled={methods.length >= MAX_SAVED_PAYMENT_METHODS}
                     title={methods.length >= MAX_SAVED_PAYMENT_METHODS ? `Maximum of ${MAX_SAVED_PAYMENT_METHODS} saved cards reached` : undefined}
                     className="bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed text-gray-800 text-sm font-semibold px-4 py-2 rounded-lg transition-colors border border-gray-300"
                 >
-                    + Add payment method
+                    {methods.length === 0 ? '+ Add payment method' : '+ Add another card'}
                 </button>
             </div>
             {isLoading ? (
@@ -656,7 +659,10 @@ const PaymentMethodsCard: React.FC<PaymentMethodsCardProps> = ({ currentUser, cu
                     <Icons.Refresh className="w-5 h-5 animate-spin text-jam-orange" />
                 </div>
             ) : methods.length === 0 ? (
-                <p className="text-gray-500 text-sm">No saved cards yet.</p>
+                <div className="flex items-center gap-3 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                    <Icons.Alert className="w-5 h-5 shrink-0 text-yellow-600" />
+                    <p className="text-sm text-yellow-800">No saved cards yet. The first card you add will become your primary billing card.</p>
+                </div>
             ) : (
                 <div className="space-y-2">
                     {methods.map((m) => (
@@ -665,7 +671,7 @@ const PaymentMethodsCard: React.FC<PaymentMethodsCardProps> = ({ currentUser, cu
                                 <Icons.CreditCard className="w-5 h-5 text-gray-500" />
                                 <div>
                                     <p className="text-sm font-semibold text-gray-900 capitalize">{m.cardBrand || 'Card'} •••• {m.cardLast4}</p>
-                                    {m.isPrimary && <p className="text-xs font-semibold text-jam-orange">Primary</p>}
+                                    {m.isPrimary && <p className="text-xs font-semibold text-jam-orange">Primary billing card</p>}
                                 </div>
                             </div>
                             <div className="flex items-center gap-3">
@@ -783,7 +789,6 @@ export const Settings: React.FC<SettingsProps> = ({
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [isCancelling, setIsCancelling] = useState(false);
     const [requestRefund, setRequestRefund] = useState(false);
-    const [isAddingPaymentMethod, setIsAddingPaymentMethod] = useState(false);
     const [showPlanSelectorModal, setShowPlanSelectorModal] = useState(false);
     const [appVersion, setAppVersion] = useState<string>('Loading...');
 
@@ -843,9 +848,6 @@ export const Settings: React.FC<SettingsProps> = ({
         return false;
     };
 
-    const storedCardLast4 = currentSubscription?.paymentMethodLast4 || currentSubscription?.metadata?.card_last4;
-    const storedCardBrand = currentSubscription?.paymentMethodBrand || currentSubscription?.metadata?.card_brand;
-    const hasStoredBillingMethod = !!storedCardLast4 || !!currentSubscription?.dimeCardToken || !!currentSubscription?.metadata?.dime_card_token;
     const BILLING_GRACE_DAYS = 7;
     const currentRetryCount = Number(currentSubscription?.metadata?.retry_count || 0);
     const failedAtRaw = currentSubscription?.metadata?.last_failed_date;
@@ -1385,27 +1387,6 @@ export const Settings: React.FC<SettingsProps> = ({
                     }}
                 />
             )}
-            {isAddingPaymentMethod && (
-                <PaymentMethodModal
-                    currentUser={currentUser}
-                    currentSubscription={currentSubscription}
-                    onClose={() => setIsAddingPaymentMethod(false)}
-                    onSuccess={async () => {
-                        setIsAddingPaymentMethod(false);
-
-                        if (currentUser?.companyId) {
-                            setIsLoadingBilling(true);
-                            try {
-                                await waitForBillingSync(currentUser.companyId, 10, 1500);
-                                await refreshBillingData(currentUser.companyId);
-                            } finally {
-                                setIsLoadingBilling(false);
-                            }
-                        }
-                    }}
-                />
-            )}
-
             {/* Cancel Subscription Confirmation Modal */}
             {showCancelModal && (() => {
                 const getDaysSinceSubscriptionStart = () => {
@@ -1679,67 +1660,6 @@ export const Settings: React.FC<SettingsProps> = ({
                         </div>
                     )}
                     
-                    {/* Payment Method / Vault Card */}
-                    <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                        <div className="flex justify-between items-start mb-4">
-                            <div>
-                                <h3 className="text-lg font-bold mb-1">Primary Payment Method</h3>
-                                <p className="text-sm text-gray-500">Used for recurring monthly billing</p>
-                            </div>
-                            <button
-                                onClick={() => {
-                                    if (!currentUser?.companyId) {
-                                        toast.error('Missing company information for billing.');
-                                        return;
-                                    }
-
-                                    if (!currentSubscription?.dimepaySubscriptionId) {
-                                        toast.info('No active recurring subscription found yet. Add your payment method now to complete monthly billing migration.');
-                                    }
-                                    setIsAddingPaymentMethod(true);
-                                }}
-                                className="bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm font-semibold px-4 py-2 rounded-lg transition-colors border border-gray-300"
-                            >
-                                {hasStoredBillingMethod ? "Update Method" : "Add Payment Method"}
-                            </button>
-                        </div>
-                        
-                        {hasStoredBillingMethod ? (
-                            <div className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg border border-gray-200 max-w-md">
-                                <div className="p-3 bg-white rounded shadow-sm border border-gray-100">
-                                    <Icons.Company className="w-6 h-6 text-gray-600" />
-                                </div>
-                                <div>
-                                    <p className="font-bold text-gray-800 text-lg tracking-wide uppercase">
-                                        {storedCardLast4
-                                            ? `•••• •••• •••• ${storedCardLast4}`
-                                            : 'Stored Billing Method'}
-                                    </p>
-                                    <p className={`text-xs font-semibold uppercase mt-1 ${currentSubscription?.status === 'active' ? 'text-green-600' : 'text-jam-orange'}`}>
-                                        {currentSubscription?.status === 'active' 
-                                            ? 'Active Recurring Subscription' 
-                                            : 'Billing Method On File'}
-                                    </p>
-                                    {storedCardBrand && (
-                                        <p className="text-xs text-gray-500 mt-1">{storedCardBrand}</p>
-                                    )}
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="space-y-2">
-                                <div className="flex items-center space-x-3 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-                                    <Icons.Alert className="w-5 h-5 text-yellow-600" />
-                                    <p className="text-sm text-yellow-800">No payment method on file. Your subscription may be interrupted.</p>
-                                </div>
-                                {!currentSubscription?.dimepaySubscriptionId && (
-                                    <p className="text-xs text-gray-500">
-                                        Legacy account detected: add a payment method to migrate this account into recurring monthly billing.
-                                    </p>
-                                )}
-                            </div>
-                        )}
-                    </div>
-
                     <PaymentMethodsCard currentUser={currentUser} currentSubscription={currentSubscription} />
 
                     <div className="bg-white p-6 rounded-xl border border-gray-200">

@@ -162,13 +162,6 @@ export const Layout: React.FC<LayoutProps> = ({
         </div>
       )}
 
-
-      {/* 0. Beta Banner */}
-      <div className="bg-blue-600 text-white px-4 py-1.5 text-xs font-semibold flex justify-center items-center gap-2 z-10">
-        <span>🚀</span>
-        <span>You&apos;re on the <strong>Payroll-Jam Beta</strong> — features are actively being developed. Thank you for testing!</span>
-      </div>
-
       {/* 1. Global System Banner (Super Admin) */}
       {systemBanner?.active && (
         <div className={`px-4 py-2 text-sm font-bold flex justify-center items-center shadow-sm z-10 text-center
