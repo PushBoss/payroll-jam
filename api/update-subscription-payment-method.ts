@@ -7,6 +7,7 @@ import {
 } from './_dimepay.js';
 import { appendDimePayLedgerEvent } from './_dimepayLedger.js';
 import { upsertCardOnFile, MAX_PAYMENT_METHODS } from './_paymentMethods.js';
+import { requireBillingAccess } from './_billingAuth.js';
 
 const compact = <T extends Record<string, any>>(value: T) => Object.fromEntries(
   Object.entries(value).filter(([, entry]) => entry !== undefined)
@@ -33,6 +34,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!company_id || !card_token) {
       return res.status(400).json({ error: 'company_id and card_token are required' });
     }
+    await requireBillingAccess(req, company_id);
 
     let resolvedSubscriptionId = subscription_id as string | undefined;
     let localSubscriptionId = local_subscription_id as string | undefined;

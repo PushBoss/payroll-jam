@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabaseAdmin } from './_supabaseAdmin.js';
 import { cancelDimePaySubscription, resolveDimePayEnvironment } from './_dimepay.js';
+import { requireBillingAccess } from './_billingAuth.js';
 
 /**
  * Cancel DimePay Subscription API Endpoint
@@ -22,6 +23,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!company_id) {
       return res.status(400).json({ error: 'Missing company_id' });
     }
+    await requireBillingAccess(req, company_id);
 
     const { data: subscriptionRecord, error: subscriptionError } = await supabaseAdmin
       .from('subscriptions')

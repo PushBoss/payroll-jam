@@ -3,6 +3,7 @@ import { supabaseAdmin } from './_supabaseAdmin.js';
 import { resolveDimePayEnvironment, createDimePayRecurringSubscription, buildCardReferenceId } from './_dimepay.js';
 import { appendDimePayLedgerEvent } from './_dimepayLedger.js';
 import { upsertCardOnFile } from './_paymentMethods.js';
+import { requireBillingAccess } from './_billingAuth.js';
 
 const compact = <T extends Record<string, any>>(value: T) => Object.fromEntries(
   Object.entries(value).filter(([, entry]) => entry !== undefined)
@@ -20,6 +21,7 @@ const upgradeWithExistingCard = async (req: VercelRequest, res: VercelResponse) 
     if (!company_id || !payment_method_id || !plan_name || amount === undefined) {
       return res.status(400).json({ error: 'company_id, payment_method_id, plan_name and amount are required' });
     }
+    await requireBillingAccess(req, company_id);
 
     const { data: paymentMethod, error: methodError } = await supabaseAdmin
       .from('payment_methods')
@@ -148,6 +150,7 @@ const upgradeWithBankTransfer = async (req: VercelRequest, res: VercelResponse) 
     if (!company_id || !plan_name || amount === undefined) {
       return res.status(400).json({ error: 'company_id, plan_name and amount are required' });
     }
+    await requireBillingAccess(req, company_id);
 
     // A card must already be on file - bank transfer pays this cycle, but the account
     // still needs a card for renewals per the "card always required" rule.

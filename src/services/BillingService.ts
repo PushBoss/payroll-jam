@@ -1,4 +1,4 @@
-import { supabase } from './supabaseClient';
+import { getAuthenticatedApiHeaders, supabase } from './supabaseClient';
 
 type CardUpdateContext = {
   companyId?: string;
@@ -74,7 +74,7 @@ export const BillingService = {
 
     const response = await fetch('/api/billing/dimepay/card-request', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await getAuthenticatedApiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         flow: subscription?.dimepaySubscriptionId ? 'subscription_update' : 'card_update',
         user_id: userId,
@@ -142,7 +142,7 @@ export const BillingService = {
   },
 
   listPaymentMethods: async (companyId: string) => {
-    const response = await fetch(`/api/payment-methods?company_id=${encodeURIComponent(companyId)}`);
+    const response = await fetch(`/api/payment-methods?company_id=${encodeURIComponent(companyId)}`, { headers: await getAuthenticatedApiHeaders() });
     const data = await response.json();
     if (!response.ok) {
       throw new Error(data?.error || 'Failed to load payment methods');
@@ -162,7 +162,7 @@ export const BillingService = {
   setPrimaryPaymentMethod: async (companyId: string, paymentMethodId: string) => {
     const response = await fetch('/api/payment-methods', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await getAuthenticatedApiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ action: 'set-primary', company_id: companyId, payment_method_id: paymentMethodId })
     });
     const data = await response.json();
@@ -175,7 +175,7 @@ export const BillingService = {
   removePaymentMethod: async (companyId: string, paymentMethodId: string) => {
     const response = await fetch('/api/payment-methods', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await getAuthenticatedApiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ action: 'remove', company_id: companyId, payment_method_id: paymentMethodId })
     });
     const data = await response.json();
@@ -188,7 +188,7 @@ export const BillingService = {
   upgradeWithExistingCard: async (params: { companyId: string; paymentMethodId: string; planName: string; planType?: string; amount: number; currency?: string; billingFrequency?: string }) => {
     const response = await fetch('/api/upgrade-subscription', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await getAuthenticatedApiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         payment_method: 'card',
         company_id: params.companyId,
@@ -210,7 +210,7 @@ export const BillingService = {
   initiateBankTransferUpgrade: async (params: { companyId: string; planName: string; planType?: string; amount: number; currency?: string }) => {
     const response = await fetch('/api/upgrade-subscription', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await getAuthenticatedApiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         payment_method: 'bank_transfer',
         company_id: params.companyId,

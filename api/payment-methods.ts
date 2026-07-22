@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabaseAdmin } from './_supabaseAdmin.js';
 import { resolveDimePayEnvironment, updateDimePaySubscriptionCard, buildCardReferenceId } from './_dimepay.js';
 import { appendDimePayLedgerEvent } from './_dimepayLedger.js';
+import { requireBillingAccess } from './_billingAuth.js';
 
 // Single Vercel function handling all payment-method vault operations (list/set-primary/
 // remove), dispatched by HTTP method + body.action - consolidated from three separate
@@ -12,6 +13,7 @@ const listPaymentMethods = async (req: VercelRequest, res: VercelResponse) => {
     if (!companyId) {
         return res.status(400).json({ error: 'company_id is required' });
     }
+    await requireBillingAccess(req, companyId);
 
     const { data, error } = await supabaseAdmin
         .from('payment_methods')
@@ -34,6 +36,7 @@ const setPrimaryPaymentMethod = async (req: VercelRequest, res: VercelResponse) 
         if (!company_id || !payment_method_id) {
             return res.status(400).json({ error: 'company_id and payment_method_id are required' });
         }
+        await requireBillingAccess(req, company_id);
 
         const { data: target, error: targetError } = await supabaseAdmin
             .from('payment_methods')
@@ -138,6 +141,7 @@ const removePaymentMethod = async (req: VercelRequest, res: VercelResponse) => {
         if (!company_id || !payment_method_id) {
             return res.status(400).json({ error: 'company_id and payment_method_id are required' });
         }
+        await requireBillingAccess(req, company_id);
 
         const { data: target, error: targetError } = await supabaseAdmin
             .from('payment_methods')

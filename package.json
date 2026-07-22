@@ -7,7 +7,7 @@
     "dev": "vite",
     "prebuild": "node scripts/check-node-version.js",
     "build": "tsc && vite build",
-    "build:force": "SKIP_NODE_CHECK=true npm run build",
+    "build:force": "node scripts/build-force.cjs",
     "preview": "vite preview",
     "test": "vitest run"
   },

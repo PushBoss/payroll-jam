@@ -129,3 +129,10 @@ export const testManualConnection = async (url: string, key: string) => {
     return { success: false, error: e.message || "Unknown connection error" };
   }
 };
+
+export const getAuthenticatedApiHeaders = async (headers: Record<string, string> = {}) => {
+  if (!supabase) throw new Error('Supabase client unavailable');
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error('Your session has expired. Please sign in again.');
+  return { ...headers, Authorization: `Bearer ${session.access_token}` };
+};

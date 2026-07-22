@@ -3073,12 +3073,13 @@ serve(async (req: Request) => {
 
                 await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'MANAGER', 'RESELLER', 'SUPER_ADMIN']);
                 const location = await getOrCreateAttendanceLocation(adminClient, companyId, locationId);
+                const resolvedLocationId = location.id;
 
                 const { data: activeBadges, error: activeBadgesError } = await adminClient
                     .from('attendance_badges')
                     .select('code_version')
                     .eq('company_id', companyId)
-                    .eq('location_id', locationId)
+                    .eq('location_id', resolvedLocationId)
                     .order('code_version', { ascending: false })
                     .limit(1);
 
@@ -3086,14 +3087,14 @@ serve(async (req: Request) => {
 
                 const codeVersion = Number(activeBadges?.[0]?.code_version || 0) + 1;
                 const passCode = generateAttendancePassCode();
-                const passCodeHash = await hashAttendancePassCode(companyId, locationId, passCode, codeVersion);
+                const passCodeHash = await hashAttendancePassCode(companyId, resolvedLocationId, passCode, codeVersion);
                 const expiresAt = new Date(Date.now() + (ATTENDANCE_BADGE_TTL_HOURS * 60 * 60 * 1000)).toISOString();
 
                 const { error: deactivateError } = await adminClient
                     .from('attendance_badges')
                     .update({ is_active: false, updated_at: new Date().toISOString() })
                     .eq('company_id', companyId)
-                    .eq('location_id', locationId)
+                    .eq('location_id', resolvedLocationId)
                     .eq('is_active', true);
 
                 if (deactivateError) throw deactivateError;
@@ -3102,7 +3103,7 @@ serve(async (req: Request) => {
                     .from('attendance_badges')
                     .insert({
                         company_id: companyId,
-                        location_id: locationId,
+                        location_id: resolvedLocationId,
                         pass_code_hash: passCodeHash,
                         code_version: codeVersion,
                         expires_at: expiresAt,
@@ -3118,7 +3119,7 @@ serve(async (req: Request) => {
                     success: true,
                     badge: {
                         id: badge?.id,
-                        locationId,
+                        locationId: resolvedLocationId,
                         locationName: location.name,
                         passCode,
                         expiresAt: badge?.expires_at || expiresAt,

@@ -268,15 +268,6 @@ const getDimePayStatus = (config: GlobalConfig) => {
     };
 };
 
-const MOCK_REVENUE_DATA = [
-    { name: 'Aug', revenue: 55000 },
-    { name: 'Sep', revenue: 62000 },
-    { name: 'Oct', revenue: 71000 },
-    { name: 'Nov', revenue: 80500 },
-    { name: 'Dec', revenue: 88000 },
-    { name: 'Jan', revenue: 90500 },
-];
-
 const ACQUISITION_COLORS = ['#F97316', '#111827', '#10B981', '#6366F1'];
 
 const formatGiftedUntil = (value?: string) => {
@@ -964,10 +955,10 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     totalPayments: filteredPayments.length
                 });
 
-                setRevenueData(chartData.length > 0 ? chartData : MOCK_REVENUE_DATA);
+                setRevenueData(chartData);
             } catch (error) {
                 console.error('Error loading billing data:', error);
-                setRevenueData(MOCK_REVENUE_DATA);
+                setRevenueData([]);
             } finally {
                 setIsLoadingBilling(false);
             }

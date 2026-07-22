@@ -1,4 +1,5 @@
 import { storage } from './storage';
+import { getAuthenticatedApiHeaders } from './supabaseClient';
 
 interface PaymentWidgetProps {
     mountId: string;
@@ -415,7 +416,7 @@ export const dimePayService = {
         const environment = params.environment || getBrowserDimePayEnvironment();
         const response = await fetch('/api/update-subscription-payment-method', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: await getAuthenticatedApiHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({
                 company_id: params.companyId,
                 local_subscription_id: params.localSubscriptionId,
