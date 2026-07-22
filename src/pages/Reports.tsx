@@ -840,7 +840,7 @@ export const Reports: React.FC<ReportsProps> = ({
                 </div>
               </div>
             </div>
-            <div className="h-64 w-full">
+            <div className="h-72 md:h-80 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 {statutoryChartType === 'donut' ? (
                   <PieChart>
