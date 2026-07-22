@@ -3009,6 +3009,63 @@ serve(async (req: Request) => {
                 });
             }
 
+            case 'get-compliance-reports': {
+                const { companyId } = payload || {};
+                if (!companyId) throw new Error('companyId required');
+                await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'MANAGER', 'RESELLER', 'SUPER_ADMIN']);
+
+                const { data: reports, error } = await adminClient
+                    .from('compliance_reports')
+                    .select('id, company_id, report_type, reporting_period, original_filename, record_count, created_at')
+                    .eq('company_id', companyId)
+                    .order('reporting_period', { ascending: false });
+                if (error) throw error;
+
+                return new Response(JSON.stringify({ success: true, reports: reports || [] }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'save-compliance-report': {
+                const { companyId, reportType, reportingPeriod, originalFilename, records } = payload || {};
+                if (!companyId) throw new Error('companyId required');
+                if (!['S01', 'S02'].includes(reportType)) throw new Error('A valid report type is required');
+                const validReportingPeriod = reportType === 'S01'
+                    ? /^\d{4}-(?:0[1-9]|1[0-2])(?:-01)?$/.test(String(reportingPeriod || ''))
+                    : /^\d{4}$/.test(String(reportingPeriod || ''));
+                if (!validReportingPeriod) {
+                    throw new Error('A valid reporting month or year is required');
+                }
+                if (typeof originalFilename !== 'string' || !originalFilename.trim()) throw new Error('Original filename required');
+                if (!Array.isArray(records) || records.length === 0 || records.length > 10000) {
+                    throw new Error('Report records must contain between 1 and 10,000 employee rows');
+                }
+                await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'RESELLER', 'SUPER_ADMIN']);
+
+                const period = reportType === 'S02'
+                    ? `${reportingPeriod.slice(0, 4)}-01-01`
+                    : reportingPeriod.length === 7 ? `${reportingPeriod}-01` : reportingPeriod;
+                const { data: report, error } = await adminClient
+                    .from('compliance_reports')
+                    .upsert({
+                        company_id: companyId,
+                        report_type: reportType,
+                        reporting_period: period,
+                        original_filename: originalFilename.trim(),
+                        records,
+                        record_count: records.length,
+                        imported_by: authUser?.id || null,
+                        updated_at: new Date().toISOString(),
+                    }, { onConflict: 'company_id,report_type,reporting_period' })
+                    .select('id, company_id, report_type, reporting_period, original_filename, record_count, created_at')
+                    .single();
+                if (error) throw error;
+
+                return new Response(JSON.stringify({ success: true, report }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
             case 'get-attendance-badge': {
                 const { companyId, locationId } = payload || {};
                 if (!companyId) throw new Error('companyId required');

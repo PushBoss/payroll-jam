@@ -1,5 +1,5 @@
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Icons } from '../components/Icons';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
 import { PayRun, PayRunLineItem, CompanySettings, AuditLogEntry, Employee, IntegrationConfig } from '../core/types';
@@ -11,6 +11,8 @@ import { toast } from 'sonner';
 import { emailService } from '../services/emailService';
 import { hasEmployeePortalAccess } from '../features/payroll/payrunWorkflow';
 import { createPayslipPdfAttachment } from '../utils/payslipPdf';
+import { ComplianceReportArchiveItem, ComplianceReportService } from '../services/ComplianceReportService';
+import { parseComplianceReport } from '../utils/complianceReportImport';
 
 interface ReportsProps {
   history?: PayRun[];
@@ -43,8 +45,12 @@ export const Reports: React.FC<ReportsProps> = ({
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [auditFilter, setAuditFilter] = useState('ALL');
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM format
+  const [selectedS02Year, setSelectedS02Year] = useState<string>(new Date().getFullYear().toString());
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'DRAFT' | 'APPROVED' | 'FINALIZED'>('ALL');
   const [isEmailing, setIsEmailing] = useState(false);
+  const [archivedComplianceReports, setArchivedComplianceReports] = useState<ComplianceReportArchiveItem[]>([]);
+  const [isImportingComplianceReport, setIsImportingComplianceReport] = useState(false);
+  const complianceReportInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const loadAuditLogs = async () => {
@@ -56,8 +62,43 @@ export const Reports: React.FC<ReportsProps> = ({
     }
   }, [activeTab, user?.companyId, user?.role, user?.id]);
 
+  const loadArchivedComplianceReports = async () => {
+    if (!user?.companyId) return;
+    try {
+      setArchivedComplianceReports(await ComplianceReportService.list(user.companyId));
+    } catch (error) {
+      console.error('Failed to load imported compliance reports:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'statutory') void loadArchivedComplianceReports();
+  }, [activeTab, user?.companyId]);
+
   // Use empty array fallback to prevent crashes if history undefined
   const displayHistory = history || [];
+
+  const availableReportMonths = useMemo(() => [...new Set(
+    displayHistory
+      .map((run) => run.periodStart.slice(0, 7))
+      .filter((period) => /^\d{4}-\d{2}$/.test(period)),
+  )].sort().reverse(), [displayHistory]);
+
+  const availableReportYears = useMemo(() => [...new Set(
+    availableReportMonths.map((period) => period.slice(0, 4)),
+  )].sort().reverse(), [availableReportMonths]);
+
+  useEffect(() => {
+    if (availableReportMonths.length > 0 && !availableReportMonths.includes(selectedMonth)) {
+      setSelectedMonth(availableReportMonths[0]);
+    }
+  }, [availableReportMonths, selectedMonth]);
+
+  useEffect(() => {
+    if (availableReportYears.length > 0 && !availableReportYears.includes(selectedS02Year)) {
+      setSelectedS02Year(availableReportYears[0]);
+    }
+  }, [availableReportYears, selectedS02Year]);
 
   // Group pay runs by status
   const payRunsByStatus = useMemo(() => {
@@ -164,19 +205,16 @@ export const Reports: React.FC<ReportsProps> = ({
         if (fullHistory) runsToUse = fullHistory;
       }
 
-      // Filter pay runs by selected month
-      const [year, month] = selectedMonth.split('-').map(Number);
-      const filteredRuns = runsToUse.filter(run => {
-        const runDate = new Date(run.periodStart);
-        return runDate.getFullYear() === year && (runDate.getMonth() + 1) === month;
-      });
+      // Periods may be stored as either YYYY-MM or a full ISO date. Compare
+      // their normalized year-month value to avoid browser timezone shifts.
+      const filteredRuns = runsToUse.filter((run) => run.periodStart.slice(0, 7) === selectedMonth);
 
       if (filteredRuns.length === 0) {
-        alert(`No payroll data found for ${new Date(year, month - 1).toLocaleString('default', { month: 'long', year: 'numeric' })}`);
+        alert(`No payroll data found for ${selectedMonth}.`);
         return;
       }
 
-      generateS01CSV(companyData, filteredRuns, employees);
+      await generateS01CSV(companyData, filteredRuns, employees);
     } else {
       alert("No data available to generate S01.");
     }
@@ -209,10 +247,38 @@ export const Reports: React.FC<ReportsProps> = ({
         if (fullHistory) runsToUse = fullHistory;
       }
 
-      const currentYear = new Date().getFullYear().toString();
-      generateS02CSV(companyData, runsToUse, employees, currentYear);
+      generateS02CSV(companyData, runsToUse, employees, selectedS02Year);
     } else {
       alert("No data available to generate S02.");
+    }
+  };
+
+  const handleComplianceReportImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !user?.companyId) return;
+
+    setIsImportingComplianceReport(true);
+    try {
+      const parsed = await parseComplianceReport(file);
+      const reportingPeriod = parsed.reportType === 'S01' ? selectedMonth : selectedS02Year;
+      if (!reportingPeriod) {
+        throw new Error(`Select the ${parsed.reportType === 'S01' ? 'S01 reporting month' : 'S02 reporting year'} before importing.`);
+      }
+      await ComplianceReportService.save({
+        companyId: user.companyId,
+        reportType: parsed.reportType,
+        reportingPeriod,
+        originalFilename: file.name,
+        records: parsed.records,
+      });
+      await loadArchivedComplianceReports();
+      toast.success(`${parsed.reportType} imported for ${reportingPeriod}.`);
+    } catch (error: any) {
+      console.error('Compliance report import failed:', error);
+      toast.error(error?.message || 'Could not import the compliance report.');
+    } finally {
+      event.target.value = '';
+      setIsImportingComplianceReport(false);
     }
   };
 
@@ -780,29 +846,74 @@ export const Reports: React.FC<ReportsProps> = ({
             </div>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs text-gray-300 mb-2 font-medium">Select Month for S01</label>
-                <input
-                  type="month"
+                <label className="block text-xs text-gray-300 mb-2 font-medium">S01 reporting period</label>
+                <select
                   value={selectedMonth}
                   onChange={(e) => setSelectedMonth(e.target.value)}
-                  max={new Date().toISOString().slice(0, 7)}
                   className="w-full px-3 py-2 bg-gray-800 text-white border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-jam-orange text-sm"
-                />
+                  disabled={availableReportMonths.length === 0}
+                >
+                  {availableReportMonths.length === 0 ? (
+                    <option value="">No payroll periods available</option>
+                  ) : availableReportMonths.map((period) => (
+                    <option key={period} value={period}>
+                      {new Date(`${period}-01T00:00:00`).toLocaleDateString('en-JM', { month: 'long', year: 'numeric' })}
+                    </option>
+                  ))}
+                </select>
               </div>
               <button
                 onClick={handleExportS01}
+                disabled={!selectedMonth || availableReportMonths.length === 0}
                 className="w-full py-3 bg-white text-jam-black font-bold rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center"
               >
                 <Icons.Download className="w-4 h-4 mr-2" />
-                Download S01
+                Download S01 Schedule A
               </button>
+              <div>
+                <label className="block text-xs text-gray-300 mb-2 font-medium">S02 reporting year</label>
+                <select
+                  value={selectedS02Year}
+                  onChange={(e) => setSelectedS02Year(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-800 text-white border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-jam-orange text-sm"
+                  disabled={availableReportYears.length === 0}
+                >
+                  {availableReportYears.length === 0 ? (
+                    <option value="">No payroll years available</option>
+                  ) : availableReportYears.map((year) => <option key={year} value={year}>{year}</option>)}
+                </select>
+              </div>
               <button
                 onClick={handleExportS02}
+                disabled={!selectedS02Year || availableReportYears.length === 0}
                 className="w-full py-3 bg-gray-800 text-white font-medium rounded-lg hover:bg-gray-700 transition-colors flex items-center justify-center"
               >
                 <Icons.Download className="w-4 h-4 mr-2" />
                 Download S02 (Annual)
               </button>
+              <input
+                ref={complianceReportInputRef}
+                type="file"
+                accept=".xlsx,.csv"
+                className="hidden"
+                onChange={handleComplianceReportImport}
+              />
+              <button
+                onClick={() => complianceReportInputRef.current?.click()}
+                disabled={isImportingComplianceReport || !user?.companyId}
+                className="w-full py-3 border border-gray-600 text-white font-medium rounded-lg hover:bg-gray-800 transition-colors flex items-center justify-center disabled:opacity-60"
+              >
+                <Icons.Upload className="w-4 h-4 mr-2" />
+                {isImportingComplianceReport ? 'Importing report…' : 'Import TAJ S01 / S02'}
+              </button>
+              {archivedComplianceReports.length > 0 && (
+                <div className="border-t border-gray-700 pt-3 text-xs text-gray-300 space-y-1">
+                  <p className="font-semibold text-white">Imported filings</p>
+                  {archivedComplianceReports.slice(0, 3).map((report) => (
+                    <p key={report.id}>{report.reportType} · {report.reportingPeriod} · {report.recordCount} employees</p>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

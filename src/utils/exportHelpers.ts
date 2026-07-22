@@ -219,79 +219,128 @@ export const generateFullRegisterCSV = (payRuns: PayRun[]) => {
     downloadFile(`Payroll_Register_Full.csv`, content, 'text/csv');
 };
 
-export const generateS01CSV = (company: CompanySettings, payRuns: PayRun[], employees: Employee[] = []) => {
+export const generateS01CSV = async (_company: CompanySettings, payRuns: PayRun[], employees: Employee[] = []) => {
     if (!payRuns || payRuns.length === 0) {
         toast.error("No finalized payroll data found.");
         return;
     }
 
-    // Aggregate across ALL pay runs for the period
-    let totalGross = 0;
-    let empNIS = 0;
-    let empNHT = 0;
-    let empEdTax = 0;
-    let empPAYE = 0;
-    let employerNIS = 0;
-    let employerNHT = 0;
-    let employerEdTax = 0;
-    let employerHEART = 0;
+    // TAJ accepts the employee-level Schedule A layout, not the legacy
+    // summary report that Payroll Jam previously generated. Keep the header
+    // order identical to the supplied S01 Schedule A workbook.
+    const headers = [
+        'Surname',
+        'Firstname',
+        'Middle Initials',
+        'Employee TRN ',
+        'Employee NIS',
+        'Gross Emoluments Received in Cash\n\nSalaries, Wages, Fees,\nBonuses, Overtime pay,\nCommissions, etc...',
+        'Gross Emoluments Received in Kind\n\n',
+        'Superannuation / Pension, Agreed Expenses, Employees Share Ownership Plan',
+        'Number of weekly NIS\nand NHT Contributions\nfor the month',
+        "NIS\n\n(Employee's Rate + Employer's Rate) x (Total Gross Emoluments)",
+        "NHT\n\n(Employee's Rate + Employer's Rate) x (Total Gross Emoluments)",
+        "Education Tax\n\n(Employee's Rate + Employer's Rate) x (Total Gross Emoluments after Deductions and NIS)",
+        'PAYE Income Tax / (Refunds)\n\n(Rate) x (Total Gross\nEmoluments after\nDeductions, NIS and\nNil-Rate (NR)).',
+    ];
 
-    payRuns.forEach(run => {
-        totalGross += run.totalGross;
-        run.lineItems.forEach(item => {
-            empNIS += item.nis;
-            empNHT += item.nht;
-            empEdTax += item.edTax;
-            empPAYE += item.paye;
+    type ScheduleRow = {
+        surname: string;
+        firstName: string;
+        middleInitials: string;
+        trn: string;
+        nisId: string;
+        cash: number;
+        inKind: number;
+        qualifyingDeductions: number;
+        contributionCount: number;
+        nis: number;
+        nht: number;
+        edTax: number;
+        paye: number;
+    };
+    const rows = new Map<string, ScheduleRow>();
 
-            // Use actual employer contributions stored on the line item;
-            // fall back to calculating from gross only when missing
-            if (item.employerContributions) {
-                employerNIS += item.employerContributions.employerNIS;
-                employerNHT += item.employerContributions.employerNHT;
-                employerEdTax += item.employerContributions.employerEdTax;
-                employerHEART += item.employerContributions.employerHEART;
-            } else {
-                // Look up employee type for accurate fallback calculation
-                const emp = employees.find(e => e.id === item.employeeId);
-                const fallback = calculateEmployerContributions(item.grossPay, emp?.employeeType);
-                employerNIS += fallback.employerNIS;
-                employerNHT += fallback.employerNHT;
-                employerEdTax += fallback.employerEdTax;
-                employerHEART += fallback.employerHEART;
-            }
+    payRuns.forEach((run) => {
+        run.lineItems.forEach((line) => {
+            const employee = employees.find((candidate) => candidate.id === line.employeeId);
+            const nameParts = (line.employeeName || '').trim().split(/\s+/).filter(Boolean);
+            const firstName = employee?.firstName || nameParts[0] || '';
+            const surname = employee?.lastName || nameParts.slice(1).join(' ') || '';
+            const key = line.employeeId || `${surname}|${firstName}|${line.trn || ''}`;
+            const current = rows.get(key) || {
+                surname,
+                firstName,
+                middleInitials: '',
+                trn: employee?.trn || line.trn || '',
+                nisId: employee?.nis || line.nisId || '',
+                cash: 0,
+                inKind: 0,
+                qualifyingDeductions: 0,
+                contributionCount: 0,
+                nis: 0,
+                nht: 0,
+                edTax: 0,
+                paye: 0,
+            };
+            const employer = line.employerContributions || calculateEmployerContributions(line.grossPay, employee?.employeeType);
+            const qualifyingDeductions = (line.deductionsBreakdown || [])
+                .filter((deduction) => /pension|superannuation|agreed expense|share ownership/i.test(deduction.name || ''))
+                .reduce((sum, deduction) => sum + Number(deduction.amount || 0), 0);
+
+            current.cash += Number(line.grossPay || 0) + Number(line.additions || 0);
+            current.qualifyingDeductions += qualifyingDeductions;
+            current.contributionCount += 1;
+            current.nis += Number(line.nis || 0) + Number(employer.employerNIS || 0);
+            current.nht += Number(line.nht || 0) + Number(employer.employerNHT || 0);
+            current.edTax += Number(line.edTax || 0) + Number(employer.employerEdTax || 0);
+            current.paye += Number(line.paye || 0);
+            rows.set(key, current);
         });
     });
 
-    const totalNIS = empNIS + employerNIS;
-    const totalNHT = empNHT + employerNHT;
-    const totalEdTax = empEdTax + employerEdTax;
-    
-    const grandTotal = totalNIS + totalNHT + totalEdTax + empPAYE + employerHEART;
+    const values = [...rows.values()].map((row) => [
+            row.surname,
+            row.firstName,
+            row.middleInitials,
+            row.trn,
+            row.nisId,
+            row.cash,
+            row.inKind,
+            row.qualifyingDeductions,
+            row.contributionCount,
+            row.nis,
+            row.nht,
+            row.edTax,
+            row.paye,
+        ]);
+    const { default: ExcelJS } = await import('exceljs');
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('S01ScheduleA', { views: [{ state: 'frozen', ySplit: 1 }] });
+    worksheet.columns = [12, 12, 12, 14, 14, 28, 28, 28, 22, 22, 22, 28, 28].map((width) => ({ width }));
+    const headerRow = worksheet.addRow(headers);
+    headerRow.height = 108;
+    headerRow.eachCell((cell) => {
+        cell.alignment = { wrapText: true, vertical: 'middle', horizontal: 'center' };
+        cell.font = { bold: true };
+        cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+    });
+    values.forEach((value) => worksheet.addRow(value));
+    for (let row = 2; row <= worksheet.rowCount; row += 1) {
+        for (const column of [6, 7, 8, 10, 11, 12, 13]) {
+            worksheet.getCell(row, column).numFmt = '#,##0.00';
+        }
+    }
+    worksheet.autoFilter = `A1:M${Math.max(worksheet.rowCount, 2)}`;
 
-    // Use the first run's periodStart for the header label
-    const periodLabel = payRuns[0].periodStart;
-
-    let content = `S01 MONTHLY REMITTANCE FORM\n`;
-    content += `Company Name,${company.name}\n`;
-    content += `TRN,${company.trn}\n`;
-    content += `Address,"${company.address.replace(/\n/g, ' ')}"\n`;
-    content += `Period,${periodLabel}\n\n`;
-    
-    content += `SECTION A: SUMMARY OF EMOLUMENTS\n`;
-    content += `Total Gross Emoluments,,$${totalGross.toFixed(2)}\n\n`;
-
-    content += `SECTION B: DEDUCTIONS AND CONTRIBUTIONS\n`;
-    content += `Category,Employee Portion,Employer Portion,Total Remittance\n`;
-    content += `National Insurance (NIS),$${empNIS.toFixed(2)},$${employerNIS.toFixed(2)},$${totalNIS.toFixed(2)}\n`;
-    content += `National Housing Trust (NHT),$${empNHT.toFixed(2)},$${employerNHT.toFixed(2)},$${totalNHT.toFixed(2)}\n`;
-    content += `Education Tax,$${empEdTax.toFixed(2)},$${employerEdTax.toFixed(2)},$${totalEdTax.toFixed(2)}\n`;
-    content += `HEART Contribution,-,$${employerHEART.toFixed(2)},$${employerHEART.toFixed(2)}\n`;
-    content += `Income Tax (PAYE),$${empPAYE.toFixed(2)},-,$${empPAYE.toFixed(2)}\n\n`;
-
-    content += `TOTAL PAYABLE,,,$${grandTotal.toFixed(2)}\n`;
-
-    downloadFile(`S01_Remittance_${periodLabel}.csv`, content, 'text/csv');
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `S01_Schedule_A_${payRuns[0].periodStart}.xlsx`;
+    link.click();
+    URL.revokeObjectURL(url);
 };
 
 export const generateS02CSV = (company: CompanySettings, payRuns: PayRun[], employees: Employee[] = [], year?: string) => {

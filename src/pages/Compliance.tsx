@@ -82,7 +82,7 @@ export const Compliance: React.FC<ComplianceProps> = ({ payRunHistory = [], comp
   }, [s01Period, payRunHistory]);
 
 
-  const handleGenerateS01 = () => {
+  const handleGenerateS01 = async () => {
       if (!companyData) {
           toast.error("Company data missing");
           return;
@@ -93,7 +93,7 @@ export const Compliance: React.FC<ComplianceProps> = ({ payRunHistory = [], comp
           return;
       }
       // Pass single run as array to helper
-      generateS01CSV(companyData, [run], employees);
+      await generateS01CSV(companyData, [run], employees);
       toast.success(`S01 for ${s01Period} generated`);
   };
 

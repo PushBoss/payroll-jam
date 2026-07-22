@@ -25,15 +25,23 @@ const getEnvVar = (key: string) => {
 // Access variables
 const supabaseUrl = getEnvVar('VITE_SUPABASE_URL');
 const supabaseAnonKey = getEnvVar('VITE_SUPABASE_ANON_KEY');
+const hasValidSupabaseUrl = (() => {
+  try {
+    const url = new URL(supabaseUrl);
+    return url.protocol === 'https:' || url.protocol === 'http:';
+  } catch {
+    return false;
+  }
+})();
 
 console.log('🔧 Supabase Config:', {
-  hasUrl: !!supabaseUrl,
+  hasUrl: hasValidSupabaseUrl,
   hasKey: !!supabaseAnonKey,
   url: supabaseUrl?.slice(0, 30) + '...'
 });
 
 // Only initialize if keys are present
-export const supabase = (supabaseUrl && supabaseAnonKey) 
+export const supabase = (hasValidSupabaseUrl && supabaseAnonKey)
   ? createClient(supabaseUrl, supabaseAnonKey) 
   : null;
 
