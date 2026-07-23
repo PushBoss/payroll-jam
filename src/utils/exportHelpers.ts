@@ -424,6 +424,72 @@ export const generateS02CSV = (company: CompanySettings, payRuns: PayRun[], empl
     downloadFile(`S02_Annual_Return_${effectiveYear}.csv`, content, 'text/csv');
 };
 
+// HEART Trust/NSTA is administered separately from Tax Administration Jamaica,
+// so unlike NIS/NHT/Ed Tax/PAYE it isn't part of the S01 monthly filing — it
+// needs its own remittance summary for the period.
+export const generateHeartRemittanceCSV = (company: CompanySettings, payRuns: PayRun[], employees: Employee[] = [], period: string) => {
+    const relevantRuns = payRuns.filter(run => run.periodStart === period);
+
+    if (relevantRuns.length === 0) {
+        toast.error(`No payroll data found for period ${period}.`);
+        return;
+    }
+
+    const empMap = new Map<string, {
+        id: string;
+        name: string;
+        gross: number;
+        employerHEART: number;
+    }>();
+
+    relevantRuns.forEach(run => {
+        run.lineItems.forEach(line => {
+            const existing = empMap.get(line.employeeId) || {
+                id: line.employeeId,
+                name: line.employeeName,
+                gross: 0,
+                employerHEART: 0
+            };
+
+            existing.gross += line.grossPay + line.additions;
+
+            // Use actual employer contributions; fall back to calculation
+            if (line.employerContributions) {
+                existing.employerHEART += line.employerContributions.employerHEART;
+            } else {
+                const emp = employees.find(e => e.id === line.employeeId);
+                const fallback = calculateEmployerContributions(line.grossPay, emp?.employeeType);
+                existing.employerHEART += fallback.employerHEART;
+            }
+
+            empMap.set(line.employeeId, existing);
+        });
+    });
+
+    const rows = [...empMap.values()];
+    const totalGross = rows.reduce((sum, row) => sum + row.gross, 0);
+    const totalHeart = rows.reduce((sum, row) => sum + row.employerHEART, 0);
+
+    let content = `HEART TRUST/NSTA MONTHLY REMITTANCE - ${period}\n`;
+    content += `Company: ${company.name},TRN: ${company.trn}\n`;
+    content += `Address,"${company.address.replace(/\n/g, ' ')}"\n`;
+    content += `HEART Rate,3%\n`;
+    content += `Total Employees,${rows.length}\n\n`;
+    content += `Employee Name,TRN,NIS Number,Gross Emoluments,HEART Contribution\n`;
+
+    rows.forEach(row => {
+        const emp = employees.find(e => e.id === row.id);
+        const trn = emp?.trn || 'N/A';
+        const nisNumber = emp?.nis || 'N/A';
+
+        content += `"${row.name}",${trn},${nisNumber},$${row.gross.toFixed(2)},$${row.employerHEART.toFixed(2)}\n`;
+    });
+
+    content += `\nTOTAL,,,$${totalGross.toFixed(2)},$${totalHeart.toFixed(2)}\n`;
+
+    downloadFile(`HEART_Remittance_${period}.csv`, content, 'text/csv');
+};
+
 export const generateP24CSV = (company: CompanySettings, payRuns: PayRun[], employee: Employee | undefined, user: User, year: string = '2025') => {
     const name = employee ? `${employee.firstName} ${employee.lastName}` : user.name;
     const empId = employee ? employee.id : user.id; 

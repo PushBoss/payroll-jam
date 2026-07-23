@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Icons } from '../components/Icons';
 import { PayRun, CompanySettings, Employee } from '../core/types';
-import { generateS01CSV, generateS02CSV } from '../utils/exportHelpers';
+import { generateS01CSV, generateS02CSV, generateHeartRemittanceCSV } from '../utils/exportHelpers';
 import { toast } from 'sonner';
 
 interface ComplianceProps {
@@ -106,6 +106,19 @@ export const Compliance: React.FC<ComplianceProps> = ({ payRunHistory = [], comp
       toast.success(`S02 Annual Return for ${s02Year} generated`);
   };
 
+  const handleGenerateHeart = () => {
+      if (!companyData) {
+          toast.error("Company data missing");
+          return;
+      }
+      if (!s01Period) {
+          toast.error("Please select a valid payroll period first.");
+          return;
+      }
+      generateHeartRemittanceCSV(companyData, payRunHistory, employees, s01Period);
+      toast.success(`HEART remittance for ${s01Period} generated`);
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex justify-between items-center">
@@ -177,8 +190,8 @@ export const Compliance: React.FC<ComplianceProps> = ({ payRunHistory = [], comp
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
           {/* Monthly S01 Card */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
@@ -267,12 +280,54 @@ export const Compliance: React.FC<ComplianceProps> = ({ payRunHistory = [], comp
                           </span>
                       </div>
 
-                      <button 
+                      <button
                         onClick={handleGenerateS02}
                         className="w-full bg-white border border-gray-300 text-gray-700 py-3 rounded-lg font-bold hover:bg-gray-50 flex items-center justify-center"
                       >
                           <Icons.Download className="w-4 h-4 mr-2" />
                           Download S02 CSV
+                      </button>
+                  </div>
+              </div>
+          </div>
+
+          {/* HEART Trust/NSTA Monthly Remittance Card */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+                  <div className="flex items-center">
+                      <div className="bg-jam-orange text-jam-black p-2 rounded mr-3">
+                          <span className="font-bold text-xs">HEART</span>
+                      </div>
+                      <h3 className="font-bold text-gray-900">HEART/NSTA Remittance</h3>
+                  </div>
+              </div>
+              <div className="p-6">
+                  <p className="text-sm text-gray-600 mb-6">
+                      Monthly HEART Trust/NSTA levy summary (3% of gross emoluments). Filed separately from the S01 — HEART/NSTA isn't part of the TAJ filing.
+                  </p>
+
+                  <div className="space-y-4">
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Select Pay Period</label>
+                          <select
+                            value={s01Period}
+                            onChange={(e) => setS01Period(e.target.value)}
+                            className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-jam-orange"
+                          >
+                              {availablePeriods.length === 0 && <option value="">No finalized payrolls found</option>}
+                              {availablePeriods.map(p => (
+                                  <option key={p} value={p}>{p}</option>
+                              ))}
+                          </select>
+                      </div>
+
+                      <button
+                        onClick={handleGenerateHeart}
+                        disabled={!s01Period}
+                        className="w-full bg-jam-orange text-jam-black py-3 rounded-lg font-bold hover:bg-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                      >
+                          <Icons.Download className="w-4 h-4 mr-2" />
+                          Download HEART CSV
                       </button>
                   </div>
               </div>
