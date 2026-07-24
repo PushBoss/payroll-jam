@@ -10,7 +10,7 @@ export const getPlanFeatures = (planName: string | undefined): string[] => {
     case 'Free':
       return ['Basic Payroll', 'Payslip PDF'];
     case 'Starter':
-      return ['Basic Payroll', 'Payslip PDF', 'S01/S02 Reports', 'ACH Bank Files', 'Email Support', 'Employee Portal'];
+      return ['Basic Payroll', 'Payslip PDF', 'S01/S02 Reports', 'ACH Bank Files', 'Email Support', 'Employee Portal', 'Compliance'];
     case 'Pro':
     case 'Professional':
       return ['Basic Payroll', 'Payslip PDF', 'S01/S02 Reports', 'ACH Bank Files', 'Email Support', 'GL Integration', 'Employee Portal', 'Advanced HR', 'AI Assistant', 'Compliance', 'Documents'];
