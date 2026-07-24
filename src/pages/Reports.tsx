@@ -1,5 +1,5 @@
 
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Icons } from '../components/Icons';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { PayRun, PayRunLineItem, CompanySettings, AuditLogEntry, Employee, IntegrationConfig } from '../core/types';
@@ -12,13 +12,14 @@ import { emailService } from '../services/emailService';
 import { hasEmployeePortalAccess } from '../features/payroll/payrunWorkflow';
 import { createPayslipPdfAttachment } from '../utils/payslipPdf';
 import { ComplianceReportArchiveItem, ComplianceReportService } from '../services/ComplianceReportService';
-import { parseComplianceReport } from '../utils/complianceReportImport';
+import { ComplianceImportWizard } from '../features/reports/ComplianceImportWizard';
 
 interface ReportsProps {
   history?: PayRun[];
   companyData?: CompanySettings;
   onUpdatePayRun?: (run: PayRun) => void | Promise<void> | Promise<boolean>;
   onDeletePayRun?: (runId: string) => void | Promise<void>;
+  onAddEmployee?: (employee: Employee) => boolean | Promise<boolean>;
   onNavigate?: (path: string, params?: { editRunId?: string }) => void;
   employees?: Employee[];
   integrationConfig?: IntegrationConfig;
@@ -29,7 +30,9 @@ interface ReportsProps {
 export const Reports: React.FC<ReportsProps> = ({
   history = [],
   companyData,
+  onUpdatePayRun,
   onDeletePayRun,
+  onAddEmployee,
   onNavigate,
   employees = [],
   integrationConfig,
@@ -50,8 +53,7 @@ export const Reports: React.FC<ReportsProps> = ({
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'DRAFT' | 'APPROVED' | 'FINALIZED'>('ALL');
   const [isEmailing, setIsEmailing] = useState(false);
   const [archivedComplianceReports, setArchivedComplianceReports] = useState<ComplianceReportArchiveItem[]>([]);
-  const [isImportingComplianceReport, setIsImportingComplianceReport] = useState(false);
-  const complianceReportInputRef = useRef<HTMLInputElement>(null);
+  const [isImportWizardOpen, setIsImportWizardOpen] = useState(false);
 
   useEffect(() => {
     const loadAuditLogs = async () => {
@@ -254,33 +256,14 @@ export const Reports: React.FC<ReportsProps> = ({
     }
   };
 
-  const handleComplianceReportImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !user?.companyId) return;
-
-    setIsImportingComplianceReport(true);
-    try {
-      const parsed = await parseComplianceReport(file);
-      const reportingPeriod = parsed.reportType === 'S01' ? selectedMonth : selectedS02Year;
-      if (!reportingPeriod) {
-        throw new Error(`Select the ${parsed.reportType === 'S01' ? 'S01 reporting month' : 'S02 reporting year'} before importing.`);
-      }
-      await ComplianceReportService.save({
-        companyId: user.companyId,
-        reportType: parsed.reportType,
-        reportingPeriod,
-        originalFilename: file.name,
-        records: parsed.records,
-      });
-      await loadArchivedComplianceReports();
-      toast.success(`${parsed.reportType} imported for ${reportingPeriod}.`);
-    } catch (error: any) {
-      console.error('Compliance report import failed:', error);
-      toast.error(error?.message || 'Could not import the compliance report.');
-    } finally {
-      event.target.value = '';
-      setIsImportingComplianceReport(false);
-    }
+  const handleImported = async (summary: { reportType: 'S01' | 'S02'; period: string; employeeCount: number }) => {
+    auditService.log(
+      user,
+      'IMPORT',
+      'PayRun',
+      `Imported ${summary.reportType} for ${summary.period} (${summary.employeeCount} employee(s), 1 finalized pay run)`,
+    );
+    await loadArchivedComplianceReports();
   };
 
   const handleEmailSinglePayslip = async (line: PayRunLineItem, run: PayRun) => {
@@ -930,20 +913,13 @@ export const Reports: React.FC<ReportsProps> = ({
                 <Icons.Download className="w-4 h-4 mr-2" />
                 Download S02 (Annual)
               </button>
-              <input
-                ref={complianceReportInputRef}
-                type="file"
-                accept=".xlsx,.csv"
-                className="hidden"
-                onChange={handleComplianceReportImport}
-              />
               <button
-                onClick={() => complianceReportInputRef.current?.click()}
-                disabled={isImportingComplianceReport || !user?.companyId}
+                onClick={() => setIsImportWizardOpen(true)}
+                disabled={!user?.companyId || !onAddEmployee}
                 className="w-full py-3 border border-gray-600 text-white font-medium rounded-lg hover:bg-gray-800 transition-colors flex items-center justify-center disabled:opacity-60"
               >
                 <Icons.Upload className="w-4 h-4 mr-2" />
-                {isImportingComplianceReport ? 'Importing report…' : 'Import TAJ S01 / S02'}
+                Import TAJ S01 / S02
               </button>
               {archivedComplianceReports.length > 0 && (
                 <div className="border-t border-gray-700 pt-3 text-xs text-gray-300 space-y-1">
@@ -977,6 +953,7 @@ export const Reports: React.FC<ReportsProps> = ({
               <option value="DELETE">Delete</option>
               <option value="APPROVE">Approve</option>
               <option value="EXPORT">Export</option>
+              <option value="IMPORT">Import</option>
             </select>
           </div>
           <div className="overflow-x-auto max-h-[600px]">
@@ -1026,6 +1003,17 @@ export const Reports: React.FC<ReportsProps> = ({
             </table>
           </div>
         </div>
+      )}
+
+      {onAddEmployee && onUpdatePayRun && (
+        <ComplianceImportWizard
+          isOpen={isImportWizardOpen}
+          onClose={() => setIsImportWizardOpen(false)}
+          existingEmployees={employees}
+          onAddEmployee={onAddEmployee}
+          onSavePayRun={onUpdatePayRun}
+          onImported={handleImported}
+        />
       )}
     </div>
   );

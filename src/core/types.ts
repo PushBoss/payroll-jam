@@ -659,7 +659,7 @@ export interface AuditLogEntry {
   timestamp: string; // ISO String
   actorId: string;
   actorName: string;
-  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'APPROVE' | 'REJECT' | 'LOGIN' | 'EXPORT' | 'SETTINGS' | 'VERIFY' | 'ARCHIVE';
+  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'APPROVE' | 'REJECT' | 'LOGIN' | 'EXPORT' | 'IMPORT' | 'SETTINGS' | 'VERIFY' | 'ARCHIVE';
   entity: string; // e.g. 'Employee', 'PayRun'
   description: string;
   ipAddress?: string; // Mocked

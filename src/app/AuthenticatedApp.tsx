@@ -186,6 +186,7 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
             companyData={appData.companyData!}
             onUpdatePayRun={appData.handleSavePayRun}
             onDeletePayRun={appData.handleDeletePayRun}
+            onAddEmployee={appData.handleAddEmployee}
             onNavigate={navigateWithEditRun}
             employees={appData.employees}
             integrationConfig={appData.integrationConfig}
