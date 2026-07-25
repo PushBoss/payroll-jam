@@ -76,6 +76,17 @@ After the change, verify:
 - `useSubscription`'s `activePlan` resolves to the real Enterprise entry (no silent fallback to `plans[0]` / Free).
 - Upgrade / downgrade UI and DimePay flows still resolve the correct plan and pricing.
 
+### 7. Signup & billing integrity — MUST NOT break (hard requirement)
+
+The subscription model requires paid accounts to attach a card at signup. A reseller signup **is** a paid signup ($3000 + $500/user), so the reseller change sits directly on the card-attach path. The following must hold:
+
+- **Pricing lookup must not miss.** Signup computes pricing via `plans.find(p => p.name === formData.plan)` ([src/pages/Signup.tsx:203,214](../../../src/pages/Signup.tsx)); the **billing/card step only fires when `pricing.total > 0`** ([src/pages/Signup.tsx:538](../../../src/pages/Signup.tsx)). If the reseller card's plan token stops resolving to a priced catalog entry, `pricing.total` becomes `0`, the billing step is **skipped, and no card is attached** — a silently broken paid signup. Therefore:
+  - Keep `"Reseller"` as the client-side card token so `getPricing()` resolves it to the reseller economics **for the signup card**, while `normalizePlanToDatabase` maps it to `Enterprise` **only at persistence** (§1/§2). The card's `pricing.total` stays correct → billing step fires → card attaches.
+  - Ensure a **paid Enterprise catalog entry** exists so the *post-signup* `useSubscription` lookup on the stored `Enterprise` plan also resolves (no fallback to Free). Both the `"Reseller"` card token and the stored `"Enterprise"` plan must resolve to the same reseller economics — **no code path may resolve a reseller to $0/Free**.
+- **Card-attach linkage preserved.** The DimePay flow (`pendingDirectDepositCardRef`, `dimePayService.updateSubscriptionPaymentMethod`, and the pre-generated `companyId` used so webhook subscription rows bind to the created company — [src/context/AuthContext.tsx](../../../src/context/AuthContext.tsx), [src/pages/Signup.tsx](../../../src/pages/Signup.tsx)) must be untouched. The company is created as `Enterprise`; the card must bind to that same `companyId`.
+- **Commission metadata** (`priceConfig.resellerCommission`, the `formData.plan === 'Reseller'` commission calc at [Signup.tsx:257-259](../../../src/pages/Signup.tsx)) is partner-payout metadata and must **not** reduce the customer checkout amount — preserve current behavior when the token is `"Reseller"`.
+- **Upgrades / downgrades must not strip the card or corrupt the subscription.** Changing a company's plan (including the new reseller downgrade, and normal Free↔paid transitions) must not detach an attached card, drop the DimePay subscription linkage, or leave `companies.status` / subscription rows inconsistent. The role downgrade (§4) changes **role only**, never the plan or subscription — verify these stay independent.
+
 ## Files to change (representative)
 
 - [src/services/planService.ts](../../../src/services/planService.ts) — add the Enterprise plan (reseller economics); retire/relabel the `"Reseller"` catalog entry per the card-vs-plan split.
@@ -92,12 +103,13 @@ After the change, verify:
 - `npm run build` (tsc + vite) — no type errors.
 - Unit-level: existing payroll/subscription tests pass; add coverage for the downgrade guard (RESELLER + Free + no clients → OWNER; RESELLER + Enterprise → unchanged; RESELLER + Free + has clients → unchanged).
 - Manual, against the real Supabase project (needs local `.env`):
-  1. Sign up via the partner card → company provisioned as **Enterprise** plan + **RESELLER** role; lands on reseller dashboard; phone saved to `app_users.phone` **and** `companies.phone`.
-  2. Sign up selecting RESELLER role directly (not the card) → same result.
-  3. Normal owner signup → OWNER + selected plan; phone persisted to `companies.phone`.
-  4. rosealia19 after migration → plan Enterprise, role RESELLER, unlimited employees, reseller billing intact.
-  5. A RESELLER account on Free with no reseller_clients → auto-downgrades to OWNER on next load; a RESELLER on Enterprise (andriw) stays RESELLER.
-  6. Confirm no account silently drops to Free limits/features.
+  1. Sign up via the partner card → **the billing/card step fires** (pricing.total > 0), the DimePay card attaches and binds to the created company's `companyId`; company provisioned as **Enterprise** plan + **RESELLER** role; lands on reseller dashboard; phone saved to `app_users.phone` **and** `companies.phone`.
+  2. Sign up selecting RESELLER role directly (not the card) → same result, card still attaches.
+  3. Normal owner **paid** signup (Starter/Pro) → billing/card step fires, card attaches, OWNER + selected plan; phone persisted to `companies.phone`. Free signup → no billing step (unchanged), account created.
+  4. rosealia19 after migration → plan Enterprise, role RESELLER, unlimited employees, reseller billing intact, existing card/subscription still linked.
+  5. A RESELLER account on Free with no reseller_clients → auto-downgrades to OWNER on next load (role only; plan/subscription untouched); a RESELLER on Enterprise (andriw) stays RESELLER.
+  6. Confirm **no account silently drops to Free limits/features or a $0 checkout** — neither at the signup card step nor post-signup in `useSubscription`.
+  7. Upgrade an existing account Free→paid and paid→Free → card/subscription linkage stays consistent; no card detached by the change.
 
 ## Risks
 
