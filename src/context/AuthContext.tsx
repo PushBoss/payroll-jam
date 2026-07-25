@@ -622,6 +622,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             name: userData.name,
             phone: userData.phone || null,
             signupFinalizeToken,
+            // Reseller-ness comes from the selected card OR an explicitly chosen
+            // RESELLER role. Pass the resolved role so the backend honors it
+            // rather than only re-deriving reseller status from the plan string.
+            signupRole: effectiveSignupRole,
             intent: shouldCreateCompany ? 'company_signup' : 'invitation_signup',
             verifyEmail: userData.skipEmailVerification,
             acceptPendingInvitations: shouldAutoAcceptInvitations,

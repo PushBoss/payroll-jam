@@ -52,5 +52,25 @@ export const INITIAL_PLANS: PricingPlan[] = [
     color: 'bg-gray-100',
     textColor: 'text-gray-900',
     isActive: true
+  },
+  {
+    // Enterprise is the *plan* that reseller accounts are provisioned onto.
+    // "Reseller" is the marketing/signup card token (see p4); on persistence it
+    // maps to this Enterprise plan (normalizePlanToDatabase). Carries the same
+    // reseller economics so billing is preserved. `limit: 'Unlimited'` (exact)
+    // is required so useSubscription's limit parser resolves it to unlimited
+    // rather than matching a seat digit. Excluded from the public pricing grid
+    // by name in Pricing.tsx, so it does not render as a duplicate card.
+    id: 'p5',
+    name: 'Enterprise',
+    priceConfig: { type: 'base', monthly: 0, annual: 0, baseFee: 3000, perUserFee: 500, resellerCommission: 20 },
+    description: 'Dedicated workspace for Accountants & Payroll Bureaus.',
+    limit: 'Unlimited',
+    features: ['White Label Branding', 'Multi-Client Portfolio', '20% Revenue Commission', 'Compliance Dashboard', 'Dedicated Partner Support'],
+    cta: 'Become a Partner',
+    highlight: false,
+    color: 'bg-gray-100',
+    textColor: 'text-gray-900',
+    isActive: true
   }
 ];

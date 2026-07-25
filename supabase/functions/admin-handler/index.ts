@@ -37,14 +37,21 @@ const normalizePlanToDatabase = (plan?: string | null): string => {
         professional: 'Professional',
         pro: 'Professional',
         enterprise: 'Enterprise',
-        reseller: 'Reseller'
+        // The "Reseller" signup card persists as the Enterprise plan; reseller-ness
+        // is carried by Role.RESELLER, not the plan string.
+        reseller: 'Enterprise'
     };
 
     return planMap[normalized] || 'Free';
 };
 
-const isResellerEquivalentPlan = (plan?: string | null): boolean =>
-    normalizePlanToFrontend(plan) === 'Reseller';
+// Enterprise IS the reseller plan tier. Legacy "Reseller" plan values stay
+// recognized until the data migration runs. Backend cross-company authorization
+// (assertCompanyAccess) remains gated on Role.RESELLER, never on this.
+const isResellerEquivalentPlan = (plan?: string | null): boolean => {
+    const normalized = normalizePlanToFrontend(plan);
+    return normalized === 'Reseller' || normalized === 'Enterprise';
+};
 
 const hasEmployeePortalAccess = (plan?: string | null): boolean => {
     const normalizedPlan = normalizePlanToFrontend(plan);
@@ -58,7 +65,9 @@ const getPlanMonthlyPricing = (plan?: string | null) => {
         case 'Pro':
             return { baseFee: 10000, perEmployeeFee: 500 };
         case 'Enterprise':
-            return { baseFee: 0, perEmployeeFee: 0 };
+            // Enterprise is the reseller plan tier — same economics as the
+            // legacy Reseller plan (base + per-employee; 20% commission applies).
+            return { baseFee: 3000, perEmployeeFee: 500 };
         case 'Reseller':
             return { baseFee: 3000, perEmployeeFee: 500 };
         default:
@@ -1214,6 +1223,7 @@ serve(async (req: Request) => {
                     name,
                     phone,
                     signupFinalizeToken,
+                    signupRole,
                     intent,
                     company,
                     verifyEmail = false,
@@ -1270,7 +1280,13 @@ serve(async (req: Request) => {
                         throw new Error('How did you hear about us is required for company signup');
                     }
 
-                    const derivedRole = deriveCompanySignupRole(plan);
+                    // Honor an explicitly requested RESELLER role (from the partner
+                    // card OR a direct role selection); otherwise derive from the
+                    // plan (Enterprise ⇒ RESELLER, else OWNER).
+                    const requestedRole = normalizeMemberRole(signupRole);
+                    const derivedRole = requestedRole === 'RESELLER'
+                        ? 'RESELLER'
+                        : deriveCompanySignupRole(plan);
                     const existingProfile = await getExistingProfile();
 
                     if (
@@ -1322,6 +1338,7 @@ serve(async (req: Request) => {
                             email: normalizedEmail,
                             trn: trn || '',
                             address: address || '',
+                            phone: normalizedPhone,
                             plan: plan || 'FREE',
                             billing_cycle: billingCycle || 'MONTHLY',
                             employee_limit: employeeLimit ?? 999999,
