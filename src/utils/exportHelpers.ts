@@ -242,6 +242,9 @@ export const generateS01CSV = async (_company: CompanySettings, payRuns: PayRun[
         "NHT\n\n(Employee's Rate + Employer's Rate) x (Total Gross Emoluments)",
         "Education Tax\n\n(Employee's Rate + Employer's Rate) x (Total Gross Emoluments after Deductions and NIS)",
         'PAYE Income Tax / (Refunds)\n\n(Rate) x (Total Gross\nEmoluments after\nDeductions, NIS and\nNil-Rate (NR)).',
+        // Appended after the official TAJ Schedule A columns (HEART is remitted to
+        // HEART Trust/NSTA separately, not to TAJ, so it is an extra reference column).
+        'HEART\n\n(3% of Total Gross Emoluments)',
     ];
 
     type ScheduleRow = {
@@ -258,6 +261,7 @@ export const generateS01CSV = async (_company: CompanySettings, payRuns: PayRun[
         nht: number;
         edTax: number;
         paye: number;
+        heart: number;
     };
     const rows = new Map<string, ScheduleRow>();
 
@@ -282,6 +286,7 @@ export const generateS01CSV = async (_company: CompanySettings, payRuns: PayRun[
                 nht: 0,
                 edTax: 0,
                 paye: 0,
+                heart: 0,
             };
             const employer = line.employerContributions || calculateEmployerContributions(line.grossPay, employee?.employeeType);
             const qualifyingDeductions = (line.deductionsBreakdown || [])
@@ -295,6 +300,7 @@ export const generateS01CSV = async (_company: CompanySettings, payRuns: PayRun[
             current.nht += Number(line.nht || 0) + Number(employer.employerNHT || 0);
             current.edTax += Number(line.edTax || 0) + Number(employer.employerEdTax || 0);
             current.paye += Number(line.paye || 0);
+            current.heart += Number(employer.employerHEART || 0);
             rows.set(key, current);
         });
     });
@@ -313,11 +319,12 @@ export const generateS01CSV = async (_company: CompanySettings, payRuns: PayRun[
             row.nht,
             row.edTax,
             row.paye,
+            row.heart,
         ]);
     const { default: ExcelJS } = await import('exceljs');
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('S01ScheduleA', { views: [{ state: 'frozen', ySplit: 1 }] });
-    worksheet.columns = [12, 12, 12, 14, 14, 28, 28, 28, 22, 22, 22, 28, 28].map((width) => ({ width }));
+    worksheet.columns = [12, 12, 12, 14, 14, 28, 28, 28, 22, 22, 22, 28, 28, 22].map((width) => ({ width }));
     const headerRow = worksheet.addRow(headers);
     headerRow.height = 108;
     headerRow.eachCell((cell) => {
@@ -327,11 +334,11 @@ export const generateS01CSV = async (_company: CompanySettings, payRuns: PayRun[
     });
     values.forEach((value) => worksheet.addRow(value));
     for (let row = 2; row <= worksheet.rowCount; row += 1) {
-        for (const column of [6, 7, 8, 10, 11, 12, 13]) {
+        for (const column of [6, 7, 8, 10, 11, 12, 13, 14]) {
             worksheet.getCell(row, column).numFmt = '#,##0.00';
         }
     }
-    worksheet.autoFilter = `A1:M${Math.max(worksheet.rowCount, 2)}`;
+    worksheet.autoFilter = `A1:N${Math.max(worksheet.rowCount, 2)}`;
 
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
