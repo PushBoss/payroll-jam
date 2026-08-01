@@ -1025,6 +1025,33 @@ const sortByClientActivity = <T extends { createdAt?: string | null; accountCrea
     });
 };
 
+// Parse an optional [startDate, endDate] activation-funnel window from a request
+// payload. Falls back to the trailing-12-months window (used across the funnel
+// endpoints) when either bound is absent or invalid, and guards inverted ranges
+// so a bad client range can never widen or invert the query.
+const resolveFunnelRange = (payload: any): { startISO: string; endISO: string } => {
+    const defaultStart = new Date();
+    defaultStart.setMonth(defaultStart.getMonth() - 11);
+    defaultStart.setDate(1);
+    defaultStart.setHours(0, 0, 0, 0);
+    const defaultEnd = new Date();
+
+    const parse = (value: unknown): Date | null => {
+        if (!value) return null;
+        const parsed = new Date(String(value));
+        return Number.isFinite(parsed.getTime()) ? parsed : null;
+    };
+
+    const start = parse(payload?.startDate) || defaultStart;
+    const end = parse(payload?.endDate) || defaultEnd;
+
+    if (start.getTime() > end.getTime()) {
+        return { startISO: defaultStart.toISOString(), endISO: defaultEnd.toISOString() };
+    }
+
+    return { startISO: start.toISOString(), endISO: end.toISOString() };
+};
+
 // Shared per-company enrichment used by get-all-companies and get-activation-funnel-tenants:
 // owner lookup, auth activity, active employee count, MRR. Takes raw `companies` rows
 // (id, name, email, plan, status, settings, created_at).
@@ -2406,14 +2433,11 @@ serve(async (req: Request) => {
                 const from = page * pageSize;
                 const to = from + pageSize - 1;
 
-                const since = new Date();
-                since.setMonth(since.getMonth() - 11);
-                since.setDate(1);
-                since.setHours(0, 0, 0, 0);
+                const { startISO, endISO } = resolveFunnelRange(payload);
 
                 const { data: classifications, error: classifyError } = await adminClient.rpc('get_activation_funnel_companies', {
-                    start_date: since.toISOString(),
-                    end_date: new Date().toISOString()
+                    start_date: startISO,
+                    end_date: endISO
                 });
 
                 if (classifyError) throw classifyError;
@@ -4212,9 +4236,13 @@ serve(async (req: Request) => {
 
                 if (companiesError) throw companiesError;
 
+                // The activation funnel respects an optional period filter from the
+                // Super Admin UI; the signup trend / goal / acquisition widgets below
+                // stay on their fixed trailing-12-months window.
+                const funnelRange = resolveFunnelRange(payload);
                 const { data: activationFunnel, error: activationFunnelError } = await adminClient.rpc('get_activation_funnel', {
-                    start_date: since.toISOString(),
-                    end_date: until.toISOString()
+                    start_date: funnelRange.startISO,
+                    end_date: funnelRange.endISO
                 });
 
                 if (activationFunnelError) throw activationFunnelError;

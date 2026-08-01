@@ -1,6 +1,6 @@
 declare const process: any;
 
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { Icons } from '../components/Icons';
 import { PricingPlan, ResellerClient, GlobalConfig, User, Role, AuditLogEntry, TaxConfig, BillingGift } from '../core/types';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell, ReferenceLine, BarChart, Bar } from 'recharts';
@@ -594,6 +594,57 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
     const [drillDownTenants, setDrillDownTenants] = useState<any[]>([]);
     const [isLoadingDrillDown, setIsLoadingDrillDown] = useState(false);
 
+    // Activation funnel period filter (Super Admin only). 'last12' preserves the
+    // backend default window; other types compute an explicit [start, end].
+    const [funnelPeriod, setFunnelPeriod] = useState<{
+        type: 'last12' | 'month' | 'quarter' | 'year' | 'custom';
+        month: string;   // YYYY-MM
+        year: string;    // YYYY
+        quarter: string; // '1'..'4'
+        customStart: string; // YYYY-MM-DD
+        customEnd: string;   // YYYY-MM-DD
+    }>(() => {
+        const now = new Date();
+        return {
+            type: 'last12',
+            month: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
+            year: String(now.getFullYear()),
+            quarter: String(Math.floor(now.getMonth() / 3) + 1),
+            customStart: '',
+            customEnd: '',
+        };
+    });
+
+    // Resolve the selected period to an ISO [startDate, endDate], or null to use
+    // the backend's default trailing-12-months window.
+    const funnelRange = useMemo<{ startDate: string; endDate: string } | null>(() => {
+        const iso = (d: Date) => d.toISOString();
+        const p = funnelPeriod;
+        if (p.type === 'month' && p.month) {
+            const [y, m] = p.month.split('-').map(Number);
+            if (y && m) return { startDate: iso(new Date(y, m - 1, 1)), endDate: iso(new Date(y, m, 0, 23, 59, 59, 999)) };
+        }
+        if (p.type === 'year' && p.year) {
+            const y = Number(p.year);
+            if (y) return { startDate: iso(new Date(y, 0, 1)), endDate: iso(new Date(y, 11, 31, 23, 59, 59, 999)) };
+        }
+        if (p.type === 'quarter' && p.year && p.quarter) {
+            const y = Number(p.year); const q = Number(p.quarter);
+            if (y && q) { const sm = (q - 1) * 3; return { startDate: iso(new Date(y, sm, 1)), endDate: iso(new Date(y, sm + 3, 0, 23, 59, 59, 999)) }; }
+        }
+        if (p.type === 'custom' && p.customStart && p.customEnd) {
+            const s = new Date(`${p.customStart}T00:00:00`); const e = new Date(`${p.customEnd}T23:59:59`);
+            if (Number.isFinite(s.getTime()) && Number.isFinite(e.getTime()) && s <= e) return { startDate: iso(s), endDate: iso(e) };
+        }
+        return null;
+    }, [funnelPeriod]);
+
+    const funnelRangeKey = funnelRange ? `${funnelRange.startDate}|${funnelRange.endDate}` : 'last12';
+    const funnelYearOptions = useMemo(
+        () => Array.from({ length: 5 }, (_, i) => String(new Date().getFullYear() - i)),
+        []
+    );
+
     const handleTenantHeaderSort = (key: TenantTableSortKey) => {
         setTenantTableSort((current) => {
             const nextDirection: SortDirection = current.key === key && current.direction === 'asc' ? 'desc' : 'asc';
@@ -1015,7 +1066,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
             setIsLoadingGrowthAnalytics(true);
             try {
                 const { data, error } = await supabase!.functions.invoke('admin-handler', {
-                    body: { action: 'get-growth-analytics', payload: {} }
+                    body: { action: 'get-growth-analytics', payload: funnelRange || {} }
                 });
                 if (error) throw error;
 
@@ -1038,7 +1089,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         };
 
         loadGrowthAnalytics();
-    }, [activeTab, paymentConfig.monthlySignupGoal]);
+    }, [activeTab, paymentConfig.monthlySignupGoal, funnelRangeKey]);
 
     useEffect(() => {
         if (!activationDrillDown) {
@@ -1052,7 +1103,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 const { data, error } = await supabase!.functions.invoke('admin-handler', {
                     body: {
                         action: 'get-activation-funnel-tenants',
-                        payload: { stage: activationDrillDown.stage, page: 0, pageSize: 100 }
+                        payload: { stage: activationDrillDown.stage, page: 0, pageSize: 100, ...(funnelRange || {}) }
                     }
                 });
                 if (error) throw error;
@@ -1067,7 +1118,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         };
 
         loadDrillDownTenants();
-    }, [activationDrillDown]);
+    }, [activationDrillDown, funnelRangeKey]);
 
     const handleCheckDb = async () => {
         setIsCheckingDb(true);
@@ -1842,12 +1893,97 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                 <p className="text-sm text-gray-500 uppercase font-bold">Activation Funnel</p>
                                 <h3 className="text-xl font-bold text-gray-900 mt-2">Signup to First Payroll</h3>
                                 <p className="text-xs text-gray-500 mt-1">
-                                    Cohort tracks companies signed up in the last 12 months through onboarding, roster setup, and finalized payroll.
+                                    Cohort tracks companies that signed up in the selected period through onboarding, roster setup, and finalized payroll.
                                 </p>
                             </div>
                             <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
                                 <Icons.Reports className="w-6 h-6" />
                             </div>
+                        </div>
+
+                        {/* Period filter (Super Admin) */}
+                        <div className="flex flex-wrap items-center gap-2 mb-5">
+                            <span className="text-[11px] font-bold text-gray-400 uppercase mr-1">Period</span>
+                            {([
+                                ['last12', 'Last 12 mo'],
+                                ['month', 'Month'],
+                                ['quarter', 'Quarter'],
+                                ['year', 'Year'],
+                                ['custom', 'Custom'],
+                            ] as const).map(([type, label]) => (
+                                <button
+                                    key={type}
+                                    type="button"
+                                    onClick={() => setFunnelPeriod(prev => ({ ...prev, type }))}
+                                    className={`px-3 py-1.5 text-xs font-medium rounded-md border transition-colors ${funnelPeriod.type === type ? 'bg-jam-black text-white border-jam-black' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+
+                            {funnelPeriod.type === 'month' && (
+                                <input
+                                    type="month"
+                                    value={funnelPeriod.month}
+                                    onChange={(e) => setFunnelPeriod(p => ({ ...p, month: e.target.value }))}
+                                    className="px-2 py-1.5 text-xs border border-gray-200 rounded-md focus:ring-2 focus:ring-jam-orange"
+                                />
+                            )}
+
+                            {funnelPeriod.type === 'year' && (
+                                <select
+                                    value={funnelPeriod.year}
+                                    onChange={(e) => setFunnelPeriod(p => ({ ...p, year: e.target.value }))}
+                                    className="px-2 py-1.5 text-xs border border-gray-200 rounded-md focus:ring-2 focus:ring-jam-orange"
+                                >
+                                    {funnelYearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+                                </select>
+                            )}
+
+                            {funnelPeriod.type === 'quarter' && (
+                                <>
+                                    <select
+                                        value={funnelPeriod.year}
+                                        onChange={(e) => setFunnelPeriod(p => ({ ...p, year: e.target.value }))}
+                                        className="px-2 py-1.5 text-xs border border-gray-200 rounded-md focus:ring-2 focus:ring-jam-orange"
+                                    >
+                                        {funnelYearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+                                    </select>
+                                    <select
+                                        value={funnelPeriod.quarter}
+                                        onChange={(e) => setFunnelPeriod(p => ({ ...p, quarter: e.target.value }))}
+                                        className="px-2 py-1.5 text-xs border border-gray-200 rounded-md focus:ring-2 focus:ring-jam-orange"
+                                    >
+                                        <option value="1">Q1 (Jan–Mar)</option>
+                                        <option value="2">Q2 (Apr–Jun)</option>
+                                        <option value="3">Q3 (Jul–Sep)</option>
+                                        <option value="4">Q4 (Oct–Dec)</option>
+                                    </select>
+                                </>
+                            )}
+
+                            {funnelPeriod.type === 'custom' && (
+                                <>
+                                    <input
+                                        type="date"
+                                        value={funnelPeriod.customStart}
+                                        onChange={(e) => setFunnelPeriod(p => ({ ...p, customStart: e.target.value }))}
+                                        className="px-2 py-1.5 text-xs border border-gray-200 rounded-md focus:ring-2 focus:ring-jam-orange"
+                                    />
+                                    <span className="text-xs text-gray-400">to</span>
+                                    <input
+                                        type="date"
+                                        value={funnelPeriod.customEnd}
+                                        onChange={(e) => setFunnelPeriod(p => ({ ...p, customEnd: e.target.value }))}
+                                        className="px-2 py-1.5 text-xs border border-gray-200 rounded-md focus:ring-2 focus:ring-jam-orange"
+                                    />
+                                    {funnelPeriod.type === 'custom' && (!funnelPeriod.customStart || !funnelPeriod.customEnd) && (
+                                        <span className="text-xs text-gray-400">pick both dates</span>
+                                    )}
+                                </>
+                            )}
+
+                            {isLoadingGrowthAnalytics && <span className="text-xs text-gray-400">Loading…</span>}
                         </div>
                         {growthAnalytics.activationFunnel.length === 0 ? (
                             <div className="h-64 flex items-center justify-center text-sm text-gray-400">No activation data yet</div>
