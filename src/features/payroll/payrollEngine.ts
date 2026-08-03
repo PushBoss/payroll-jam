@@ -3,7 +3,6 @@ import {
   Employee,
   LeaveRequest,
   LeaveType,
-  PayFrequency,
   EmployeeType,
   PayrollItemDetail,
   PayRun,
@@ -73,6 +72,7 @@ export const getEmployeeYTD = (
   let ytdNIS = 0;
   let ytdTaxPaid = 0;
   let ytdPension = 0;
+  let ytdPeriods = 0;
 
   payRunHistory.forEach(run => {
     if (run.periodStart.startsWith(year.toString()) && run.status === 'FINALIZED') {
@@ -90,6 +90,10 @@ export const getEmployeeYTD = (
         ytdNIS += toFiniteNumber(line.nis);
         ytdTaxPaid += toFiniteNumber(line.paye);
         ytdPension += toFiniteNumber(line.pension);
+        // Count each prior finalized period actually run/imported for this
+        // employee this year — this, not the calendar month, is what the
+        // cumulative-PAYE period number must be based on.
+        ytdPeriods += 1;
       }
     }
   });
@@ -98,6 +102,7 @@ export const getEmployeeYTD = (
     ytdGross,
     ytdNIS,
     ytdTaxPaid,
+    ytdPeriods,
     ytdStatutoryIncome: ytdGross - ytdNIS - ytdPension
   };
 };
@@ -114,25 +119,16 @@ const getPeriodBounds = (period: string, customPeriodStart?: string, customPerio
 };
 
 const calculatePeriodNumber = (
-  employee: Employee,
-  ytdStatutoryIncome: number,
-  month: number,
-  year: number,
-  periodStart: string
+  ytdPeriods: number,
 ) => {
-  let periodNumber = ytdStatutoryIncome === 0 ? 1 : month;
-
-  if (employee.payFrequency === PayFrequency.WEEKLY) {
-    periodNumber = Math.ceil(
-      (new Date(periodStart).getTime() - new Date(year, 0, 1).getTime()) /
-      (7 * 24 * 60 * 60 * 1000)
-    );
-    if (periodNumber === 0) periodNumber = 1;
-  } else if (employee.payFrequency === PayFrequency.FORTNIGHTLY) {
-    periodNumber = ytdStatutoryIncome === 0 ? 1 : month * 2;
-  }
-
-  return periodNumber;
+  // Cumulative PAYE pro-rates the annual tax-free threshold by the period
+  // number, so the period number MUST reflect how many pay periods have
+  // actually been run/imported for this employee this year — plus the current
+  // one. Using the calendar month instead over-applies the threshold whenever
+  // prior periods are missing (e.g. an employer who starts mid-year, or hasn't
+  // imported every prior S01), which silently zeroed PAYE. Frequency is handled
+  // separately via getPeriodsPerYear inside calculateCumulativePAYE.
+  return Math.max(1, Math.floor(toFiniteNumber(ytdPeriods)) + 1);
 };
 
 const calculateComputedAmounts = ({
@@ -165,13 +161,12 @@ const calculateComputedAmounts = ({
   const standardTaxes = calculateTaxes(currentGross, employee.payFrequency, taxOverrides);
   const isContractor = employee.employeeType === EmployeeType.CONTRACTOR;
   const ytdData = context.ytdSummaries?.[employee.id] || getEmployeeYTD(context.payRunHistory || [], employee.id, period.year);
-  const periodNumber = calculatePeriodNumber(
-    employee,
-    ytdData.ytdStatutoryIncome,
-    period.month,
-    period.year,
-    period.periodStart
-  );
+  // Period number must reflect periods actually run/imported this year. The RPC
+  // YTD summary doesn't carry a period count, so fall back to deriving it from
+  // finalized pay-run history in that case.
+  const ytdPeriods = ytdData.ytdPeriods
+    ?? getEmployeeYTD(context.payRunHistory || [], employee.id, period.year).ytdPeriods;
+  const periodNumber = calculatePeriodNumber(ytdPeriods);
 
   const cumulativePAYE = calculateCumulativePAYE(
     currentGross,

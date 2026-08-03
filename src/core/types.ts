@@ -332,6 +332,7 @@ export interface PayrollYtdSummary {
   ytdTaxPaid: number;
   ytdPension: number;
   ytdStatutoryIncome: number;
+  ytdPeriods?: number; // count of prior finalized periods this year (for cumulative-PAYE period number)
 }
 
 export interface BillingGift {
