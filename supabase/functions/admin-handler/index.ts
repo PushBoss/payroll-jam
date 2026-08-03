@@ -3550,13 +3550,17 @@ serve(async (req: Request) => {
 
                 if (error) throw error;
 
-                // Invite links are only valid while onboarding is outstanding. Once an
-                // employee is active (or archived/terminated), the token is stale — don't
-                // let a leaked/forwarded link keep resolving to full employee PII forever.
+                // A portal invite is valid for any non-archived employee: brand-new
+                // invitees are PENDING_ONBOARDING, but an existing ACTIVE employee can
+                // also be sent a portal login (handleSendLoginInvite keeps them ACTIVE).
+                // The real protection against a leaked/forwarded link is that the token
+                // is cleared once the invite is consumed (complete-employee-invite sets
+                // onboarding_token = null), so a used token resolves to nothing. Here we
+                // only refuse archived/terminated employees.
                 const lookupStatus = data ? normalizeEmployeeStatus(data.status) : null;
-                const isLookupPending = lookupStatus === 'PENDING_ONBOARDING' || lookupStatus === 'PENDING_VERIFICATION';
+                const isLookupBlocked = lookupStatus === 'ARCHIVED' || lookupStatus === 'TERMINATED';
 
-                if (!data || !isLookupPending) {
+                if (!data || isLookupBlocked) {
                     return new Response(JSON.stringify({ employee: null }), {
                         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                     });
@@ -3586,8 +3590,11 @@ serve(async (req: Request) => {
                 if (employeeError) throw employeeError;
                 if (!employee) throw new Error('Invite link is invalid or has expired.');
 
+                // Allow ACTIVE employees too (an existing employee sent a portal login
+                // stays ACTIVE); a consumed invite is protected by the token being
+                // cleared on completion, not by status. Only refuse archived/terminated.
                 const employeeStatus = normalizeEmployeeStatus(employee.status);
-                if (employeeStatus !== 'PENDING_ONBOARDING' && employeeStatus !== 'PENDING_VERIFICATION') {
+                if (employeeStatus === 'ARCHIVED' || employeeStatus === 'TERMINATED') {
                     throw new Error('This invite link has already been used or is no longer active.');
                 }
 
