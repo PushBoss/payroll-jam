@@ -131,7 +131,7 @@ const calculatePeriodNumber = (
   return Math.max(1, Math.floor(toFiniteNumber(ytdPeriods)) + 1);
 };
 
-const calculateComputedAmounts = ({
+export const calculateComputedAmounts = ({
   employee,
   grossPay,
   additionsBreakdown,
