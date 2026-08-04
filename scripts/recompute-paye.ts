@@ -74,16 +74,17 @@ async function main() {
 
   const { data: employeeRows, error: empError } = await supabase
     .from('employees')
-    .select('id, employee_type, pay_frequency, pension_contribution_rate')
+    .select('id, employee_type, pay_data, pension_contribution_rate')
     .eq('company_id', companyId);
   if (empError) throw empError;
 
   const employeeById = new Map<string, Employee>();
   for (const row of employeeRows || []) {
+    const payData = row.pay_data && typeof row.pay_data === 'object' ? row.pay_data : {};
     employeeById.set(row.id, {
       id: row.id,
       employeeType: (row.employee_type || undefined) as EmployeeType | undefined,
-      payFrequency: (row.pay_frequency || 'MONTHLY') as PayFrequency,
+      payFrequency: (payData.payFrequency || 'MONTHLY') as PayFrequency,
       pensionContributionRate: row.pension_contribution_rate || 0,
     } as Employee);
   }
