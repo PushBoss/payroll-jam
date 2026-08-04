@@ -8,12 +8,13 @@ import {
 import { appendDimePayLedgerEvent } from './_dimepayLedger.js';
 import { upsertCardOnFile, MAX_PAYMENT_METHODS } from './_paymentMethods.js';
 import { requireBillingAccess } from './_billingAuth.js';
+import { withCrashLogging } from './_crashLogger.js';
 
 const compact = <T extends Record<string, any>>(value: T) => Object.fromEntries(
   Object.entries(value).filter(([, entry]) => entry !== undefined)
 ) as Partial<T>;
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -232,3 +233,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: error.message || 'Failed to update subscription payment method' });
   }
 }
+
+export default withCrashLogging(handler, { endpoint: '/api/update-subscription-payment-method', critical: true });

@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getDimePayCredentials, normalizeDimePayExternalUrl, resolveDimePayEnvironment } from './_dimepay.js';
 import { signDimePayJwt } from './_dimepayJwt.js';
+import { withCrashLogging } from './_crashLogger.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': process.env.NODE_ENV === 'production'
@@ -10,7 +11,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type'
 };
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', corsHeaders['Access-Control-Allow-Origin']);
     res.setHeader('Access-Control-Allow-Methods', corsHeaders['Access-Control-Allow-Methods']);
@@ -54,3 +55,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: error.message || 'Failed to sign payment data' });
   }
 }
+
+export default withCrashLogging(handler, { endpoint: '/api/sign-payment', critical: true });

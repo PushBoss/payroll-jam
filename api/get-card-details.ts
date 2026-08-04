@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { withCrashLogging } from './_crashLogger.js';
 
 type DimePayEnvironment = 'sandbox' | 'production';
 
@@ -95,7 +96,7 @@ const normalizeCardDetails = (data: any) => {
   };
 };
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -132,3 +133,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: error.message || 'Failed to get card details' });
   }
 }
+
+export default withCrashLogging(handler, { endpoint: '/api/get-card-details', critical: false });

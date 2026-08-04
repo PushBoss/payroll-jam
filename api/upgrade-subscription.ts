@@ -4,6 +4,7 @@ import { resolveDimePayEnvironment, createDimePayRecurringSubscription, buildCar
 import { appendDimePayLedgerEvent } from './_dimepayLedger.js';
 import { upsertCardOnFile } from './_paymentMethods.js';
 import { requireBillingAccess } from './_billingAuth.js';
+import { withCrashLogging } from './_crashLogger.js';
 
 const compact = <T extends Record<string, any>>(value: T) => Object.fromEntries(
   Object.entries(value).filter(([, entry]) => entry !== undefined)
@@ -216,7 +217,7 @@ const upgradeWithBankTransfer = async (req: VercelRequest, res: VercelResponse) 
   }
 };
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -225,3 +226,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (paymentMethod === 'bank_transfer') return upgradeWithBankTransfer(req, res);
   return upgradeWithExistingCard(req, res);
 }
+
+export default withCrashLogging(handler, { endpoint: '/api/upgrade-subscription', critical: true });

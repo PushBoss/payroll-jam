@@ -44,6 +44,7 @@ export const APP_ROUTES = [
   'sa-releases',
   'sa-broadcasts',
   'sa-logs',
+  'sa-crash-logs',
   'sa-settings',
   'reseller-dashboard'
 ] as const;
@@ -94,6 +95,7 @@ export const ROUTE_PATHS: Record<AppRoute, string> = {
   'sa-releases': '/admin/releases',
   'sa-broadcasts': '/admin/broadcasts',
   'sa-logs': '/admin/logs',
+  'sa-crash-logs': '/admin/crash-logs',
   'sa-settings': '/admin/settings',
   'reseller-dashboard': '/partner'
 };
@@ -134,6 +136,7 @@ export const SUPER_ADMIN_ROUTES: AppRoute[] = [
   'sa-releases',
   'sa-broadcasts',
   'sa-logs',
+  'sa-crash-logs',
   'sa-settings'
 ];
 

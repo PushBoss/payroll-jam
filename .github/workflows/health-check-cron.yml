@@ -1,0 +1,21 @@
+name: Health check cron
+
+# Calls /api/cron/health-check every 15 minutes. Vercel's Hobby plan only
+# supports daily-minimum native cron jobs, so this repo's crons (including the
+# pre-existing dimepay-billing and subscription-expiry-check ones) are
+# triggered externally. This workflow is that trigger for the new health
+# check. See docs/superpowers/specs/2026-08-04-crash-detection-and-alerting-design.md
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call health-check cron endpoint
+        run: |
+          curl -sf -X POST "https://www.payrolljam.com/api/cron/health-check" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

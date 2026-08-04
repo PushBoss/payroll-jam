@@ -357,6 +357,7 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
       case 'sa-releases':
       case 'sa-broadcasts':
       case 'sa-logs':
+      case 'sa-crash-logs':
       case 'sa-settings':
         return (
           <SuperAdminPage

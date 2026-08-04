@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabaseAdmin as supabase } from '../_supabaseAdmin.js';
+import { withCrashLogging } from '../_crashLogger.js';
 
 const WARNING_WINDOW_DAYS = 3;
 
@@ -42,7 +43,7 @@ const getCompanyAdminEmail = async (companyId: string) => {
   return { companyName: company?.name || 'your company', email: company?.email as string | undefined };
 };
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST' && req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -169,3 +170,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ success: false, error: error.message });
   }
 }
+
+export default withCrashLogging(handler, { endpoint: '/api/cron/subscription-expiry-check', critical: true });

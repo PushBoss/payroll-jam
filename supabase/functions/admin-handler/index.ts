@@ -1163,16 +1163,114 @@ const assertSuperAdmin = async (adminClient: any, authUser: any) => {
     return callerProfile;
 };
 
+// Crash detection: see docs/superpowers/specs/2026-08-04-crash-detection-and-alerting-design.md
+// Mirrors api/_crashLogger.ts on the Vercel side, but this runtime is Deno, not
+// Node, so it can't share that module directly.
+const redactCrashContext = (value: any): any => {
+    if (Array.isArray(value)) return value.map(redactCrashContext);
+    if (!value || typeof value !== 'object') return value;
+
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => {
+        const lowerKey = key.toLowerCase();
+        if (lowerKey.includes('token') || lowerKey.includes('secret') || lowerKey.includes('signature') || lowerKey.includes('password')) {
+            return [key, typeof entry === 'string' ? `${entry.slice(0, 8)}...redacted` : 'redacted'];
+        }
+        return [key, redactCrashContext(entry)];
+    }));
+};
+
+const BILLING_CRITICAL_ACTIONS = new Set([
+    'approve-payment', 'toggle-test-company', 'get-payroll-ytd-summary'
+]);
+
+const isCrashCritical = (actionName: string | undefined) => {
+    if (!actionName) return true; // couldn't even parse the request -- treat as critical
+    return actionName.includes('subscription') || actionName.includes('payment') || actionName.includes('billing') || BILLING_CRITICAL_ACTIONS.has(actionName);
+};
+
+const sendCrashAlertEmail = async (endpoint: string, message: string) => {
+    const to = Deno.env.get('CRASH_ALERT_EMAIL');
+    const brevoApiKey = Deno.env.get('BREVO_API_KEY');
+    if (!to || !brevoApiKey) {
+        console.warn('Skipping crash alert email: CRASH_ALERT_EMAIL or BREVO_API_KEY not configured.');
+        return false;
+    }
+
+    try {
+        const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+            method: 'POST',
+            headers: { 'api-key': brevoApiKey, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                sender: { name: Deno.env.get('SMTP_FROM_NAME') || 'Payroll-Jam', email: Deno.env.get('SMTP_FROM_EMAIL') || '9dea0e001@smtp-brevo.com' },
+                to: [{ email: to }],
+                subject: `[Payroll-Jam] Critical failure: ${endpoint}`,
+                htmlContent: `<p><strong>Source:</strong> admin-handler (supabase-edge)</p><p><strong>Action:</strong> ${endpoint}</p><p><strong>Error:</strong> ${message}</p><p>Check SuperAdmin &rarr; Crash Logs for details.</p>`
+            })
+        });
+        return response.ok;
+    } catch (emailError) {
+        console.error('Failed to send crash alert email:', emailError);
+        return false;
+    }
+};
+
+const logCrashToDb = async (client: any, actionName: string | undefined, error: any, context?: Record<string, unknown>) => {
+    if (!client) return; // adminClient itself never got created -- Vercel-side health check covers this failure mode instead.
+
+    try {
+        const endpoint = actionName || 'unknown';
+        const errorMessage = error?.message || String(error);
+        const severity = isCrashCritical(actionName) ? 'critical' : 'error';
+
+        const since = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+        const { data: existing } = await client
+            .from('system_crash_logs')
+            .select('id')
+            .eq('endpoint', endpoint)
+            .eq('error_message', errorMessage)
+            .eq('severity', 'critical')
+            .gte('created_at', since)
+            .limit(1)
+            .maybeSingle();
+
+        let emailSent = false;
+        if (severity === 'critical' && !existing) {
+            emailSent = await sendCrashAlertEmail(endpoint, errorMessage);
+        }
+
+        await client.from('system_crash_logs').insert({
+            source: 'supabase-edge',
+            endpoint,
+            severity,
+            error_message: errorMessage,
+            error_stack: error?.stack || null,
+            context: context ? redactCrashContext(context) : null,
+            email_sent: emailSent
+        });
+    } catch (loggingError) {
+        console.error('Failed to persist crash log:', loggingError);
+    }
+};
+
 serve(async (req: Request) => {
     // 1. CORS Preflight
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders })
     }
 
+    // Hoisted above the try block (rather than declared with the destructure
+    // inside it) so the outer catch -- used for crash logging below -- can
+    // still identify which action was being handled and reuse the same
+    // admin client, even if the failure happened partway through setup.
+    let action: string | undefined;
+    let adminClient: ReturnType<typeof createClient> | null = null;
+
     try {
         const rawBody = await req.text();
         if (!rawBody) throw new Error("Request body is empty");
-        const { action, payload } = JSON.parse(rawBody);
+        const parsedBody = JSON.parse(rawBody);
+        action = parsedBody.action;
+        const payload = parsedBody.payload;
 
         const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
         const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
@@ -1186,7 +1284,7 @@ serve(async (req: Request) => {
         }
 
         // Create the admin client to bypass RLS
-        const adminClient = createClient(supabaseUrl, supabaseServiceKey, {
+        adminClient = createClient(supabaseUrl, supabaseServiceKey, {
             auth: {
                 autoRefreshToken: false,
                 persistSession: false,
@@ -4744,12 +4842,38 @@ serve(async (req: Request) => {
                 });
             }
 
+            case 'get-crash-logs': {
+                await assertSuperAdmin(adminClient, authUser);
+
+                const severityFilter = typeof payload?.severity === 'string' ? payload.severity : undefined;
+                const sourceFilter = typeof payload?.source === 'string' ? payload.source : undefined;
+                const page = Number(payload?.page) || 0;
+                const pageSize = Math.min(Number(payload?.pageSize) || 50, 200);
+
+                let query = adminClient
+                    .from('system_crash_logs')
+                    .select('id, created_at, source, endpoint, severity, error_message, email_sent', { count: 'exact' })
+                    .order('created_at', { ascending: false })
+                    .range(page * pageSize, page * pageSize + pageSize - 1);
+
+                if (severityFilter) query = query.eq('severity', severityFilter);
+                if (sourceFilter) query = query.eq('source', sourceFilter);
+
+                const { data: logs, error, count } = await query;
+                if (error) throw error;
+
+                return new Response(JSON.stringify({ success: true, logs: logs || [], total: count || 0 }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
             default:
                 throw new Error(`Unknown action: ${action}`);
         }
 
     } catch (error: any) {
         console.error('Admin Handler Error:', error.message);
+        await logCrashToDb(adminClient, action, error);
         return new Response(JSON.stringify({ error: error.message }), {
             status: 400,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }

@@ -473,7 +473,7 @@ const getMonthKey = (date: Date) => `${date.getFullYear()}-${String(date.getMont
 const getMonthEnd = (year: number, monthIndex: number) => new Date(year, monthIndex + 1, 0, 23, 59, 59, 999);
 
 export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, onImpersonate, initialTab }) => {
-    const [activeTab, setActiveTab] = useState<'overview' | 'tenants' | 'users' | 'plans' | 'logs' | 'settings' | 'health' | 'billing' | 'pending-payments' | 'paying-clients' | 'releases' | 'broadcasts'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'tenants' | 'users' | 'plans' | 'logs' | 'crash-logs' | 'settings' | 'health' | 'billing' | 'pending-payments' | 'paying-clients' | 'releases' | 'broadcasts'>('overview');
     const hasLoadedGlobalConfigRef = useRef(false);
 
     // Payment Settings State
@@ -516,6 +516,13 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
 
     // Logs State
     const [logs, setLogs] = useState<AuditLogEntry[]>([]);
+
+    // Crash Logs State
+    const [crashLogs, setCrashLogs] = useState<{ id: string; created_at: string; source: string; endpoint: string; severity: string; error_message: string; email_sent: boolean }[]>([]);
+    const [crashLogsTotal, setCrashLogsTotal] = useState(0);
+    const [isLoadingCrashLogs, setIsLoadingCrashLogs] = useState(false);
+    const [crashLogSeverityFilter, setCrashLogSeverityFilter] = useState<'ALL' | 'critical' | 'error'>('ALL');
+    const [crashLogSourceFilter, setCrashLogSourceFilter] = useState<'ALL' | 'vercel-api' | 'supabase-edge'>('ALL');
 
     // Releases State
     const [vercelDeployments, setVercelDeployments] = useState<any[]>([]);
@@ -784,6 +791,36 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
         };
         loadLogs();
     }, [activeTab]);
+
+    useEffect(() => {
+        const loadCrashLogs = async () => {
+            if (activeTab !== 'crash-logs') return;
+            setIsLoadingCrashLogs(true);
+            try {
+                const { data, error } = await supabase!.functions.invoke('admin-handler', {
+                    body: {
+                        action: 'get-crash-logs',
+                        payload: {
+                            severity: crashLogSeverityFilter === 'ALL' ? undefined : crashLogSeverityFilter,
+                            source: crashLogSourceFilter === 'ALL' ? undefined : crashLogSourceFilter,
+                            pageSize: 100
+                        }
+                    }
+                });
+                if (!error && data?.logs) {
+                    setCrashLogs(data.logs);
+                    setCrashLogsTotal(data.total || 0);
+                } else {
+                    console.error('Error loading crash logs:', error);
+                }
+            } catch (e) {
+                console.error('Error loading crash logs:', e);
+            } finally {
+                setIsLoadingCrashLogs(false);
+            }
+        };
+        loadCrashLogs();
+    }, [activeTab, crashLogSeverityFilter, crashLogSourceFilter]);
 
     // Load pending payments when tab is active
     useEffect(() => {
@@ -2387,6 +2424,74 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                     </tbody>
                 </table>
             </div>
+        </div>
+    );
+
+    const renderCrashLogs = () => (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-fade-in">
+            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                    <h3 className="font-bold text-gray-900">Crash Logs</h3>
+                    <p className="text-xs text-gray-500 mt-1">Failures from both the Vercel API and the admin-handler edge function. Critical failures also email support@payrolljam.com.</p>
+                </div>
+                <div className="flex gap-2">
+                    <select
+                        value={crashLogSeverityFilter}
+                        onChange={(e) => setCrashLogSeverityFilter(e.target.value as any)}
+                        className="text-xs border border-gray-300 rounded-lg px-3 py-2"
+                    >
+                        <option value="ALL">All severities</option>
+                        <option value="critical">Critical</option>
+                        <option value="error">Error</option>
+                    </select>
+                    <select
+                        value={crashLogSourceFilter}
+                        onChange={(e) => setCrashLogSourceFilter(e.target.value as any)}
+                        className="text-xs border border-gray-300 rounded-lg px-3 py-2"
+                    >
+                        <option value="ALL">All sources</option>
+                        <option value="vercel-api">Vercel API</option>
+                        <option value="supabase-edge">Supabase Edge</option>
+                    </select>
+                </div>
+            </div>
+            <div className="max-h-[600px] overflow-y-auto">
+                <table className="w-full text-left border-collapse">
+                    <thead className="bg-white border-b border-gray-200 sticky top-0 z-10">
+                        <tr>
+                            <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Time</th>
+                            <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Source</th>
+                            <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Endpoint</th>
+                            <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Severity</th>
+                            <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Error</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                        {isLoadingCrashLogs && (
+                            <tr><td colSpan={5} className="p-8 text-center text-gray-500">Loading&hellip;</td></tr>
+                        )}
+                        {!isLoadingCrashLogs && crashLogs.map((log) => (
+                            <tr key={log.id} className="hover:bg-gray-50">
+                                <td className="px-6 py-3 text-xs text-gray-500 font-mono whitespace-nowrap">{new Date(log.created_at).toLocaleString()}</td>
+                                <td className="px-6 py-3 text-xs text-gray-600">{log.source}</td>
+                                <td className="px-6 py-3 text-xs font-mono text-gray-700">{log.endpoint}</td>
+                                <td className="px-6 py-3">
+                                    <span className={`text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${log.severity === 'critical' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
+                                        {log.severity}
+                                    </span>
+                                </td>
+                                <td className="px-6 py-3 text-sm text-gray-600 max-w-md truncate" title={log.error_message}>{log.error_message}</td>
+                            </tr>
+                        ))}
+                        {!isLoadingCrashLogs && crashLogs.length === 0 && (
+                            <tr><td colSpan={5} className="p-8 text-center text-gray-500">No crashes logged. 🎉</td></tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+            {crashLogsTotal > crashLogs.length && (
+                <div className="px-6 py-3 text-xs text-gray-500 border-t border-gray-100">Showing {crashLogs.length} of {crashLogsTotal}.</div>
+            )}
         </div>
     );
 
@@ -4326,6 +4431,7 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                 {activeTab === 'releases' && renderReleases()}
                 {activeTab === 'broadcasts' && renderBroadcasts()}
                 {activeTab === 'logs' && renderLogs()}
+                {activeTab === 'crash-logs' && renderCrashLogs()}
                 {activeTab === 'settings' && renderSettings()}
                 {activeTab === 'health' && renderHealth()}
                 {activeTab === 'billing' && renderBilling()}

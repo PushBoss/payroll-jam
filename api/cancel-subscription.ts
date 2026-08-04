@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabaseAdmin } from './_supabaseAdmin.js';
 import { cancelDimePaySubscription, resolveDimePayEnvironment } from './_dimepay.js';
 import { requireBillingAccess } from './_billingAuth.js';
+import { withCrashLogging } from './_crashLogger.js';
 
 /**
  * Cancel DimePay Subscription API Endpoint
@@ -11,7 +12,7 @@ import { requireBillingAccess } from './_billingAuth.js';
  * POST /api/cancel-subscription
  * Body: { subscription_id: string, company_id: string }
  */
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+async function handler(req: VercelRequest, res: VercelResponse) {
   // Only accept POST requests
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -125,3 +126,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 }
+
+export default withCrashLogging(handler, { endpoint: '/api/cancel-subscription', critical: true });

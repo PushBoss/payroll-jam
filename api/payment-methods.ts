@@ -3,6 +3,7 @@ import { supabaseAdmin } from './_supabaseAdmin.js';
 import { resolveDimePayEnvironment, updateDimePaySubscriptionCard, buildCardReferenceId } from './_dimepay.js';
 import { appendDimePayLedgerEvent } from './_dimepayLedger.js';
 import { requireBillingAccess } from './_billingAuth.js';
+import { withCrashLogging } from './_crashLogger.js';
 
 // Single Vercel function handling all payment-method vault operations (list/set-primary/
 // remove), dispatched by HTTP method + body.action - consolidated from three separate
@@ -197,7 +198,7 @@ const removePaymentMethod = async (req: VercelRequest, res: VercelResponse) => {
     }
 };
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'GET') {
         return listPaymentMethods(req, res);
     }
@@ -211,3 +212,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(405).json({ error: 'Method not allowed' });
 }
+
+export default withCrashLogging(handler, { endpoint: '/api/payment-methods', critical: true });

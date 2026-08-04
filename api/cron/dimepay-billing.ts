@@ -1,10 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabaseAdmin as supabase } from '../_supabaseAdmin.js';
 import { createDimePayRecurringSubscription, resolveDimePayEnvironment } from '../_dimepay.js';
+import { withCrashLogging } from '../_crashLogger.js';
 
 const monthFromNow = () => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST' && req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -121,3 +122,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ success: false, error: error.message || 'Cron failed' });
   }
 }
+
+export default withCrashLogging(handler, { endpoint: '/api/cron/dimepay-billing', critical: true });

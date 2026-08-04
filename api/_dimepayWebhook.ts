@@ -14,6 +14,7 @@ import {
 } from './_dimepayJwt.js';
 import { appendDimePayLedgerEvent } from './_dimepayLedger.js';
 import { upsertCardOnFile } from './_paymentMethods.js';
+import { redact } from './_redact.js';
 
 const monthFromNow = () => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -81,19 +82,6 @@ const verifyAndExtractEvent = (req: VercelRequest) => {
   }
 
   throw new Error('Missing or invalid DimePay webhook signature');
-};
-
-const redact = (value: any): any => {
-  if (Array.isArray(value)) return value.map(redact);
-  if (!value || typeof value !== 'object') return value;
-
-  return Object.fromEntries(Object.entries(value).map(([key, entry]) => {
-    const lowerKey = key.toLowerCase();
-    if (lowerKey.includes('token') || lowerKey.includes('secret') || lowerKey.includes('signature')) {
-      return [key, typeof entry === 'string' ? `${entry.slice(0, 8)}...redacted` : 'redacted'];
-    }
-    return [key, redact(entry)];
-  }));
 };
 
 const logWebhookEvent = async (event: any, verified: boolean, verification: string) => {
