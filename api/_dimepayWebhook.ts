@@ -140,6 +140,63 @@ const updateCompanyBillingState = async (
     .eq('id', companyId);
 };
 
+// The minimum a confirmed charge must meet before we trust a client-supplied plan name enough
+// to grant it. Uses the flat/base monthly price as a floor rather than replicating the full
+// per-employee pricing engine here - good enough to catch tampered metadata (e.g. claiming
+// "Enterprise" against a trivial charge) without duplicating client-side pricing logic.
+const getPlanPriceFloor = async (planName: string | undefined): Promise<number | null> => {
+  if (!planName) return null;
+  const { data } = await supabase
+    .from('global_config')
+    .select('config')
+    .eq('id', 'platform')
+    .maybeSingle();
+
+  const plans = (data?.config as any)?.pricingPlans as Array<{ name: string; priceConfig: any }> | undefined;
+  const plan = plans?.find((p) => p.name === planName);
+  if (!plan) return null;
+  if (plan.priceConfig?.type === 'free') return 0;
+  return plan.priceConfig?.monthly ?? plan.priceConfig?.baseFee ?? 0;
+};
+
+// Grants plan access only once a confirmed DimePay charge (verified amount, signed webhook
+// payload) meets the plan's floor price. This is the server-side source of truth for
+// companies.plan - it must never be set by the browser off a client-side SDK callback alone.
+const grantPlanIfChargeConfirmed = async (
+  companyId: string,
+  planName: string | undefined,
+  chargedAmount: number | undefined,
+  context: { endpoint: string; eventType?: string }
+) => {
+  if (!planName) return;
+
+  const floor = await getPlanPriceFloor(planName);
+  if (floor === null) {
+    console.warn(`⚠️ Unknown plan "${planName}" in webhook metadata - not granting.`);
+    return;
+  }
+
+  const amount = Number(chargedAmount) || 0;
+  if (amount < floor) {
+    console.error(`❌ Charged amount ${amount} is below the floor price ${floor} for plan "${planName}" - refusing to grant.`);
+    try {
+      const { logCrash } = await import('./_crashLogger.js');
+      await logCrash({
+        source: 'vercel-api',
+        endpoint: context.endpoint,
+        severity: 'critical',
+        error: new Error(`DimePay webhook (${context.eventType || 'unknown'}) reported plan "${planName}" but charged amount ${amount} is below the ${floor} floor price for company ${companyId} - plan NOT granted.`),
+        context: { companyId, planName, amount, floor }
+      });
+    } catch (logError) {
+      console.error('Failed to log crash for plan/amount mismatch:', logError);
+    }
+    return;
+  }
+
+  await supabase.from('companies').update({ plan: planName }).eq('id', companyId);
+};
+
 const findSubscription = async (data: any) => {
   const dimeSubscriptionId = data.subscription_id || data.dime_subscription_id || data.dimepay_subscription_id;
   if (dimeSubscriptionId) {
@@ -273,6 +330,10 @@ const applySubscriptionCreated = async (data: any) => {
   }
 
   await updateCompanyBillingState(companyId, 'ACTIVE', 'card');
+  await grantPlanIfChargeConfirmed(companyId, data.metadata?.plan_name, data.amount, {
+    endpoint: '/api/dimepay-webhook',
+    eventType: 'subscription.created'
+  });
 };
 
 const applyPaymentSucceeded = async (data: any) => {
@@ -327,6 +388,10 @@ const applyPaymentSucceeded = async (data: any) => {
   })).eq('id', subscription.id);
 
   await updateCompanyBillingState(subscription.company_id, 'ACTIVE', 'card');
+  await grantPlanIfChargeConfirmed(subscription.company_id, subscription.plan_name, data.amount || subscription.amount, {
+    endpoint: '/api/dimepay-webhook',
+    eventType: 'invoice.payment_succeeded'
+  });
 };
 
 const applyPaymentFailed = async (data: any) => {

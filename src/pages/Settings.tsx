@@ -105,6 +105,12 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ plan, currentUser, onClos
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [paymentSuccess, setPaymentSuccess] = useState(false);
+    // DimePay's widget onSuccess is a client-side SDK callback and must never grant plan
+    // access by itself - it only means the browser was told a charge went through. Actual
+    // access is granted server-side once the signed DimePay webhook confirms the charge
+    // (see api/_dimepayWebhook.ts grantPlanIfChargeConfirmed). These states track that wait.
+    const [confirming, setConfirming] = useState(false);
+    const [confirmTimedOut, setConfirmTimedOut] = useState(false);
     const isMountedRef = useRef(true);
     const onSuccessRef = useRef(onSuccess);
 
@@ -150,10 +156,9 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ plan, currentUser, onClos
                 },
                 onSuccess: (data) => {
                     if (isMountedRef.current) {
-                        console.log('DimePay Upgrade Success:', data);
+                        console.log('DimePay Upgrade Success (awaiting server confirmation):', data);
                         console.log('📦 Subscription updated:', data?.subscription_id || data?.data?.subscription_id || data?.data?.subscription?.subscription_id);
-                        setPaymentSuccess(true);
-                        setTimeout(() => { if (isMountedRef.current) onSuccessRef.current(data); }, 2000);
+                        setConfirming(true);
                     }
                 },
                 onError: (msg) => {
@@ -187,9 +192,57 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ plan, currentUser, onClos
         };
     }, [plan, isPaid, currentUser, price, paymentSuccess]);
 
+    // Poll for the server-confirmed plan (set by the DimePay webhook, not the widget callback
+    // above) before treating the upgrade as real. Only once companies.plan actually matches do
+    // we show success and let the caller run its post-upgrade side effects.
+    useEffect(() => {
+        if (!confirming || !currentUser?.companyId) return;
+
+        let cancelled = false;
+        const companyId = currentUser.companyId;
+
+        (async () => {
+            for (let attempt = 0; attempt < 20; attempt++) {
+                if (cancelled || !isMountedRef.current) return;
+                const company = await CompanyService.getCompany(companyId);
+                if (company?.plan === plan.name) {
+                    if (cancelled || !isMountedRef.current) return;
+                    setPaymentSuccess(true);
+                    setTimeout(() => { if (isMountedRef.current) onSuccessRef.current(); }, 1500);
+                    return;
+                }
+                await new Promise((resolve) => setTimeout(resolve, 1500));
+            }
+            if (!cancelled && isMountedRef.current) setConfirmTimedOut(true);
+        })();
+
+        return () => { cancelled = true; };
+    }, [confirming, currentUser?.companyId, plan.name]);
+
     const handleFreeDowngrade = () => { setPaymentSuccess(true); setTimeout(onSuccess, 1500); };
 
     if (paymentSuccess) return <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"><div className="bg-white rounded-xl p-8 text-center animate-fade-in"><h3 className="text-2xl font-bold mb-2 text-green-600">Success!</h3><p className="text-gray-600">Plan updated to {plan.name}.</p></div></div>;
+
+    if (confirmTimedOut) return (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-xl p-8 text-center animate-fade-in max-w-sm">
+                <Icons.Alert className="w-10 h-10 text-jam-orange mb-3 mx-auto" />
+                <h3 className="text-lg font-bold mb-2">Still confirming your payment</h3>
+                <p className="text-sm text-gray-600 mb-4">Your payment is being processed. You'll be upgraded to {plan.name} automatically once it clears. Refresh this page in a minute if this persists.</p>
+                <button onClick={onClose} className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-sm">Close</button>
+            </div>
+        </div>
+    );
+
+    if (confirming) return (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-xl p-8 text-center animate-fade-in">
+                <Icons.Refresh className="w-8 h-8 animate-spin text-jam-orange mb-3 mx-auto" />
+                <h3 className="text-lg font-bold mb-1">Confirming your payment&hellip;</h3>
+                <p className="text-sm text-gray-500">This usually takes a few seconds.</p>
+            </div>
+        </div>
+    );
 
     return (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">

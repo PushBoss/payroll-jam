@@ -7,6 +7,7 @@ import { getPlanPriceDetails } from '../utils/pricing';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { storage } from '../services/storage';
 import { dimePayService } from '../services/dimePayService';
+import { CompanyService } from '../services/CompanyService';
 import { BankTransferInstructions } from '../components/billing/BankTransferInstructions';
 import { CardTokenizeCard } from '../components/billing/CardTokenizeCard';
 import { acceptMultipleInvitations, AccountMember } from '../features/employees/inviteService';
@@ -67,6 +68,12 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [paymentMethod, setPaymentMethod] = useState<'card' | 'direct-deposit' | 'reseller-billing'>('card');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    // DimePay's widget onSuccess is a client-side SDK callback and must never grant plan
+    // access by itself. The company is always created on Free for card payments; actual
+    // access is granted server-side once the signed DimePay webhook confirms the charge
+    // (see api/_dimepayWebhook.ts grantPlanIfChargeConfirmed). These states track that wait.
+    const [isConfirmingPayment, setIsConfirmingPayment] = useState(false);
+    const [paymentConfirmTimedOut, setPaymentConfirmTimedOut] = useState(false);
     const [showMobileSummary, setShowMobileSummary] = useState(false);
     const [pendingInvitations, setPendingInvitations] = useState<(AccountMember & { company_name?: string; inviter_name?: string; company_plan?: string })[]>([]);
     const [newUserId, setNewUserId] = useState<string | null>(null);
@@ -552,6 +559,11 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
             const role = isTeamInvitation ? Role.MANAGER : (formData.plan === 'Reseller' ? Role.RESELLER : Role.OWNER);
             const isPaidPlan = !isTeamInvitation && formData.plan !== 'Free' && pricing.total > 0;
             const requiresApproval = isPaidPlan && (paymentMethod === 'direct-deposit' || paymentMethod === 'reseller-billing');
+            // Card charges go through DimePay's client-side widget - its onSuccess callback only
+            // means the browser was told a charge went through, not that DimePay actually
+            // confirmed one. The company is created on Free and only flips to the paid plan once
+            // the signed DimePay webhook confirms the charge server-side (see handleSubmit below).
+            const isPaidByCard = isPaidPlan && !requiresApproval;
 
             // Get the selected plan to extract employee limit
             const selectedPlan = plans.find(p => p.name === formData.plan);
@@ -573,7 +585,7 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                 city: formData.city.trim() || undefined,
                 parish: formData.parish,
                 acquisitionSource: isTeamInvitation ? undefined : formData.acquisitionSource as AcquisitionSource,
-                plan: isTeamInvitation ? 'Free' : formData.plan,
+                plan: (isTeamInvitation || isPaidByCard) ? 'Free' : formData.plan,
                 billingCycle: formData.billingCycle,
                 employeeLimit: employeeLimit,
                 paymentMethod: paymentMethod,
@@ -623,6 +635,26 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                 return; // Don't proceed to email verification yet
             }
 
+            // Card charges are confirmed by the DimePay webhook, not the widget's client-side
+            // callback - wait for companies.plan to actually flip before treating the paid
+            // signup as complete. The account already exists on Free at this point, so it's
+            // safe to keep waiting here without blocking email verification below.
+            let cardPaymentConfirmed = true;
+            if (isPaidByCard) {
+                setIsConfirmingPayment(true);
+                cardPaymentConfirmed = false;
+                for (let attempt = 0; attempt < 20; attempt++) {
+                    const company = await CompanyService.getCompany(companyId);
+                    if (company?.plan === formData.plan) {
+                        cardPaymentConfirmed = true;
+                        break;
+                    }
+                    await new Promise((resolve) => setTimeout(resolve, 1500));
+                }
+                setIsConfirmingPayment(false);
+                if (!cardPaymentConfirmed) setPaymentConfirmTimedOut(true);
+            }
+
             // All signups redirect to verify email page
             if (requiresApproval) {
                 console.log('📝 Direct deposit - redirecting to verify email page');
@@ -636,9 +668,15 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                     pricingTotal: pricing.total,
                     paymentMethod: paymentMethod
                 });
-                toast.success('🎉 Account created and payment successful!', {
-                    duration: 5000,
-                });
+                if (isPaidByCard && !cardPaymentConfirmed) {
+                    toast.success('🎉 Account created! We\'re still confirming your payment - your plan will update automatically once it clears.', {
+                        duration: 6000,
+                    });
+                } else {
+                    toast.success('🎉 Account created and payment successful!', {
+                        duration: 5000,
+                    });
+                }
             } else {
                 console.log('✅ Free signup - redirecting to verify email page');
                 console.log('🔍 Free plan details:', {
@@ -1121,6 +1159,20 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                                     >
                                                         Retry Connection
                                                     </button>
+                                                </div>
+                                            )}
+                                            {/* Confirming overlay - shown after the widget reports success while we wait for
+                                                the server-side (webhook) confirmation that actually grants the plan. */}
+                                            {isConfirmingPayment && (
+                                                <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10 p-6 text-center rounded-lg">
+                                                    <Icons.Refresh className="w-8 h-8 animate-spin text-jam-orange mb-2" />
+                                                    <span className="text-sm text-gray-500">Confirming your payment&hellip;</span>
+                                                </div>
+                                            )}
+                                            {paymentConfirmTimedOut && !isConfirmingPayment && (
+                                                <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10 p-6 text-center rounded-lg">
+                                                    <Icons.Alert className="w-8 h-8 text-jam-orange mb-2" />
+                                                    <p className="text-sm text-gray-600">Still confirming your payment. Your account is created and your plan will update automatically once it clears.</p>
                                                 </div>
                                             )}
                                         </div>
