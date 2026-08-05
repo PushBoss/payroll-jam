@@ -282,26 +282,26 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
           <h2 className="text-3xl font-bold text-gray-900">Time & Attendance</h2>
           <p className="text-gray-500 mt-1">Review employee hours and overtime for the current pay cycle.</p>
         </div>
-        <div className="mt-4 md:mt-0 flex space-x-3">
+        <div className="mt-4 flex w-full flex-wrap gap-2 md:mt-0 md:w-auto md:justify-end">
           <button
             onClick={() => setQrModalOpen(true)}
-            className="bg-jam-black text-white px-4 py-2 rounded-lg hover:bg-gray-800 flex items-center"
+            className="flex flex-1 items-center justify-center whitespace-nowrap rounded-lg bg-jam-black px-4 py-2 text-white hover:bg-gray-800 sm:flex-none"
           >
             <Icons.Clock className="w-4 h-4 mr-2" /> Generate Clock-in QR
           </button>
           <button
             onClick={() => setLogTimeModalOpen(true)}
-            className="bg-jam-orange text-jam-black px-4 py-2 rounded-lg hover:bg-yellow-500 flex items-center font-semibold"
+            className="flex flex-1 items-center justify-center whitespace-nowrap rounded-lg bg-jam-orange px-4 py-2 font-semibold text-jam-black hover:bg-yellow-500 sm:flex-none"
           >
             <Icons.Plus className="w-4 h-4 mr-2" /> Log Time
           </button>
           <button
             onClick={() => setImportWizardOpen(true)}
-            className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 flex items-center"
+            className="flex flex-1 items-center justify-center whitespace-nowrap rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-50 sm:flex-none"
           >
             <Icons.Upload className="w-4 h-4 mr-2" /> Import Timesheets
           </button>
-          <button className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 flex items-center">
+          <button className="flex flex-1 items-center justify-center whitespace-nowrap rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-50 sm:flex-none">
             <Icons.Download className="w-4 h-4 mr-2" /> Export Report
           </button>
         </div>
