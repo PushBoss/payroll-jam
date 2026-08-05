@@ -116,24 +116,6 @@ const mapTimesheetRow = (row: Record<string, any>): WeeklyTimesheet => ({
   clockInAt: row.clock_in_at || row.clockInAt || undefined,
 });
 
-const toTimesheetPayload = (timesheet: WeeklyTimesheet, companyId: string) => ({
-  id: timesheet.id,
-  company_id: companyId,
-  employee_id: timesheet.employeeId,
-  employee_name: timesheet.employeeName,
-  week_start_date: timesheet.weekStartDate,
-  week_end_date: timesheet.weekEndDate,
-  status: timesheet.status,
-  total_regular_hours: timesheet.totalRegularHours,
-  total_overtime_hours: timesheet.totalOvertimeHours,
-  entries: timesheet.entries,
-  source: timesheet.source || 'MANUAL',
-  location_id: timesheet.locationId || null,
-  location_name: timesheet.locationName || null,
-  clock_in_at: timesheet.clockInAt || null,
-  submitted_at: timesheet.status === 'SUBMITTED' ? new Date().toISOString() : null,
-});
-
 export const PayrollService = {
   getPayRuns: async (companyId: string, options: GetPayRunsOptions = {}): Promise<PayRun[]> => {
     if (!supabase) return [];
@@ -245,22 +227,28 @@ export const PayrollService = {
   },
 
   saveTimesheet: async (timesheet: WeeklyTimesheet, companyId: string): Promise<WeeklyTimesheet> => {
-    const client = requireSupabase();
     // Keep persistence resilient to legacy records stored in browser storage
     // before the primary key was standardized as a UUID.
     const normalizedTimesheet = isValidUUID(timesheet.id)
       ? timesheet
       : { ...timesheet, id: generateUUID() };
-    const payload = toTimesheetPayload(normalizedTimesheet, companyId);
+    // Timesheet writes must also work while a Super Admin or reseller is
+    // impersonating a client company. Those sessions do not inherit the
+    // client's browser RLS context, so perform the authorized write through
+    // the same server-side access path used for employee updates.
+    const result = await invokeAdminHandler<{ success?: boolean; timesheet?: Record<string, any> }>({
+      action: 'save-timesheet-for-company',
+      payload: {
+        companyId,
+        timesheet: normalizedTimesheet,
+      },
+    });
 
-    const { data, error } = await client
-      .from('timesheets')
-      .upsert(payload)
-      .select('*')
-      .single();
+    if (!result?.timesheet) {
+      throw new Error('Timesheet could not be saved.');
+    }
 
-    if (error) throw error;
-    return mapTimesheetRow(data || payload);
+    return mapTimesheetRow(result.timesheet);
   },
 
   getAttendanceBadge: async (companyId: string, locationId: string): Promise<AttendanceBadge> => {

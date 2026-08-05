@@ -4069,6 +4069,87 @@ serve(async (req: Request) => {
                 });
             }
 
+            case 'save-timesheet-for-company': {
+                const { companyId, timesheet } = payload || {};
+                if (!companyId) throw new Error('companyId required');
+                if (!timesheet || typeof timesheet !== 'object') throw new Error('timesheet payload required');
+
+                const callerProfile = await assertCompanyAccess(
+                    adminClient,
+                    authUser,
+                    companyId,
+                    ['OWNER', 'ADMIN', 'MANAGER', 'RESELLER', 'SUPER_ADMIN', 'EMPLOYEE']
+                );
+                const incoming = timesheet as Record<string, any>;
+                const employeeId = String(incoming.employeeId || '');
+                const weekStartDate = String(incoming.weekStartDate || '');
+                const weekEndDate = String(incoming.weekEndDate || '');
+                const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+                if (!uuidPattern.test(employeeId)) throw new Error('A valid employee is required.');
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStartDate) || !/^\d{4}-\d{2}-\d{2}$/.test(weekEndDate)) {
+                    throw new Error('A valid work week is required.');
+                }
+
+                const { data: employee, error: employeeError } = await adminClient
+                    .from('employees')
+                    .select('id, auth_user_id')
+                    .eq('id', employeeId)
+                    .eq('company_id', companyId)
+                    .maybeSingle();
+                if (employeeError) throw employeeError;
+                if (!employee) throw new Error('Employee does not belong to this company.');
+
+                // Preserve the employee self-service boundary that browser RLS
+                // enforces, while permitting administrators to manage the team.
+                if (normalizeRole(callerProfile.role) === 'EMPLOYEE' && employee.auth_user_id !== authUser.id) {
+                    throw new Error('Unauthorized');
+                }
+
+                const status = ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED'].includes(incoming.status)
+                    ? incoming.status
+                    : 'DRAFT';
+                const source = incoming.source === 'AUTO_QR' ? 'AUTO_QR' : 'MANUAL';
+                const asFiniteNumber = (value: unknown) => {
+                    const parsed = Number(value);
+                    return Number.isFinite(parsed) ? parsed : 0;
+                };
+                const timesheetId = uuidPattern.test(String(incoming.id || ''))
+                    ? String(incoming.id)
+                    : crypto.randomUUID();
+                const timesheetPayload = {
+                    id: timesheetId,
+                    company_id: companyId,
+                    employee_id: employeeId,
+                    employee_name: String(incoming.employeeName || ''),
+                    week_start_date: weekStartDate,
+                    week_end_date: weekEndDate,
+                    status,
+                    total_regular_hours: asFiniteNumber(incoming.totalRegularHours),
+                    total_overtime_hours: asFiniteNumber(incoming.totalOvertimeHours),
+                    entries: Array.isArray(incoming.entries) ? incoming.entries : [],
+                    source,
+                    location_id: uuidPattern.test(String(incoming.locationId || '')) ? incoming.locationId : null,
+                    location_name: incoming.locationName || null,
+                    clock_in_at: incoming.clockInAt || null,
+                    submitted_at: status === 'SUBMITTED' ? new Date().toISOString() : null,
+                };
+
+                const { data: savedTimesheet, error: saveTimesheetError } = await adminClient
+                    .from('timesheets')
+                    .upsert(timesheetPayload)
+                    .select('*')
+                    .single();
+                if (saveTimesheetError) throw saveTimesheetError;
+
+                return new Response(JSON.stringify({
+                    success: true,
+                    timesheet: mapTimesheetRowToApp(savedTimesheet || timesheetPayload),
+                }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
             case 'get-platform-stats': {
                 if (!authUser) throw new Error('Unauthorized');
                 const { data: profile } = await adminClient.from('app_users').select('role').eq('id', authUser.id).maybeSingle();
