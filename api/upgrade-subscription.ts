@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabaseAdmin } from './_supabaseAdmin.js';
-import { resolveDimePayEnvironment, createDimePayRecurringSubscription } from './_dimepay.js';
+import { buildAbsoluteUrl, resolveDimePayEnvironment, createDimePayRecurringSubscription } from './_dimepay.js';
 import { requireBillingAccess } from './_billingAuth.js';
 import { withCrashLogging } from './_crashLogger.js';
 
@@ -119,6 +119,7 @@ const upgradeWithExistingCard = async (req: VercelRequest, res: VercelResponse) 
       customerId: subscription?.dime_customer_id || subscription?.dimepay_customer_id,
       cardToken: paymentMethod.dime_card_token,
       billingFrequency: billing_frequency || 'monthly',
+      webhookUrl: buildAbsoluteUrl(req, '/api/dimepay-webhook'),
       metadata: { source: 'upgrade_existing_card', payment_method_id, billing_intent_id: intent.id }
     });
 

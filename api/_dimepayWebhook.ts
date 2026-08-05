@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { supabaseAdmin as supabase } from './_supabaseAdmin.js';
 import {
   createDimePayRecurringSubscription,
+  buildAbsoluteUrl,
   parseCardReferenceId,
   resolveDimePayEnvironment,
   updateDimePaySubscriptionCard
@@ -568,6 +569,7 @@ const applyCardRequestSucceeded = async (data: any, req: VercelRequest) => {
       customerId,
       cardToken,
       billingFrequency: existing?.billing_frequency || 'monthly',
+      webhookUrl: buildAbsoluteUrl(req, '/api/dimepay-webhook'),
       metadata: {
         source: 'card_request_signup',
         billing_intent_id: intentId

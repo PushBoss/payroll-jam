@@ -261,6 +261,7 @@ export const createDimePayRecurringSubscription = async (params: {
   cardToken: string;
   billingFrequency?: string;
   billingCycles?: number;
+  webhookUrl?: string;
   metadata?: Record<string, any>;
 }) => {
   const overridePath = params.environment === 'production'
@@ -286,6 +287,11 @@ export const createDimePayRecurringSubscription = async (params: {
     frequency: params.billingFrequency || 'monthly',
     billing_cycles: params.billingCycles || 9999,
     description: `${params.planName} recurring subscription`,
+    // Supply the callback on every recurring request. Dashboard-level webhook
+    // configuration remains a fallback, but a server-created subscription must
+    // never depend on it to activate a paid plan.
+    webhookUrl: params.webhookUrl,
+    webhook_url: params.webhookUrl,
     metadata: {
       ...(params.metadata || {}),
       company_id: params.companyId,

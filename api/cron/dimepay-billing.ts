@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabaseAdmin as supabase } from '../_supabaseAdmin.js';
-import { createDimePayRecurringSubscription, resolveDimePayEnvironment } from '../_dimepay.js';
+import { buildAbsoluteUrl, createDimePayRecurringSubscription, resolveDimePayEnvironment } from '../_dimepay.js';
 import { withCrashLogging } from '../_crashLogger.js';
 
 const monthFromNow = () => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -50,6 +50,7 @@ async function handler(req: VercelRequest, res: VercelResponse) {
         customerId: subscription.dime_customer_id || subscription.dimepay_customer_id,
         cardToken,
         billingFrequency: subscription.billing_frequency || 'monthly',
+        webhookUrl: buildAbsoluteUrl(req, '/api/dimepay-webhook'),
         metadata: {
           source: 'legacy_access_until_cron',
           local_subscription_id: subscription.id
