@@ -1,4 +1,4 @@
-import { PayRun, CompanySettings, IntegrationConfig, Employee, User } from '../core/types';
+import { PayRun, PayRunLineItem, CompanySettings, IntegrationConfig, Employee, User } from '../core/types';
 import { normalizeBankCode } from '../features/payroll/payrunWorkflow';
 import { calculateEmployerContributions } from '../features/payroll/jamaica2026Fiscal';
 import { toast } from 'sonner';
@@ -25,6 +25,32 @@ export const downloadFile = (filename: string, content: string, type: string) =>
 
 const cleanAccountNumber = (acc: string): string => {
     return acc.replace(/[^0-9]/g, ''); // Remove dashes/spaces
+};
+
+/**
+ * Finds the statutory identity that applied when a payroll line was finalized.
+ *
+ * Payroll lines retain TRN/NIS snapshots so statutory exports remain correct if
+ * an employee is later edited, archived, or imported under a new database ID.
+ * Older runs did not always contain snapshots, so only then do we fall back to
+ * an unambiguous current employee ID or custom employee-number match.
+ */
+export const resolveStatutoryIdentity = (line: PayRunLineItem, employees: Employee[] = []) => {
+    const directMatch = employees.find((employee) => employee.id === line.employeeId);
+    const legacyIdentifiers = [line.employeeCustomId, line.employeeId].filter(
+        (identifier): identifier is string => Boolean(identifier?.trim())
+    );
+    const legacyMatches = employees.filter((employee) =>
+        Boolean(employee.employeeId) && legacyIdentifiers.includes(employee.employeeId!)
+    );
+    const legacyMatch = legacyMatches.length === 1 ? legacyMatches[0] : undefined;
+    const employee = directMatch || legacyMatch;
+
+    return {
+        employee,
+        trn: line.trn?.trim() || employee?.trn?.trim() || '',
+        nisId: line.nisId?.trim() || employee?.nis?.trim() || '',
+    };
 };
 
 /**
@@ -267,7 +293,8 @@ export const generateS01CSV = async (_company: CompanySettings, payRuns: PayRun[
 
     payRuns.forEach((run) => {
         run.lineItems.forEach((line) => {
-            const employee = employees.find((candidate) => candidate.id === line.employeeId);
+            const identity = resolveStatutoryIdentity(line, employees);
+            const employee = identity.employee;
             const nameParts = (line.employeeName || '').trim().split(/\s+/).filter(Boolean);
             const firstName = employee?.firstName || nameParts[0] || '';
             const surname = employee?.lastName || nameParts.slice(1).join(' ') || '';
@@ -276,8 +303,8 @@ export const generateS01CSV = async (_company: CompanySettings, payRuns: PayRun[
                 surname,
                 firstName,
                 middleInitials: '',
-                trn: employee?.trn || line.trn || '',
-                nisId: employee?.nis || line.nisId || '',
+                trn: identity.trn,
+                nisId: identity.nisId,
                 cash: 0,
                 inKind: 0,
                 qualifyingDeductions: 0,
@@ -288,6 +315,10 @@ export const generateS01CSV = async (_company: CompanySettings, payRuns: PayRun[
                 paye: 0,
                 heart: 0,
             };
+            // A legacy employee can have identifiers present in a later payroll
+            // line, so do not leave the aggregate blank because of the first run.
+            if (!current.trn && identity.trn) current.trn = identity.trn;
+            if (!current.nisId && identity.nisId) current.nisId = identity.nisId;
             const employer = line.employerContributions || calculateEmployerContributions(line.grossPay, employee?.employeeType);
             const qualifyingDeductions = (line.deductionsBreakdown || [])
                 .filter((deduction) => /pension|superannuation|agreed expense|share ownership/i.test(deduction.name || ''))
@@ -362,6 +393,8 @@ export const generateS02CSV = (company: CompanySettings, payRuns: PayRun[], empl
     const empMap = new Map<string, {
         id: string;
         name: string;
+        trn: string;
+        nisId: string;
         gross: number;
         nis: number;
         nht: number;
@@ -375,9 +408,12 @@ export const generateS02CSV = (company: CompanySettings, payRuns: PayRun[], empl
 
     relevantRuns.forEach(run => {
         run.lineItems.forEach(line => {
+            const identity = resolveStatutoryIdentity(line, employees);
             const existing = empMap.get(line.employeeId) || {
                 id: line.employeeId,
                 name: line.employeeName,
+                trn: identity.trn,
+                nisId: identity.nisId,
                 gross: 0,
                 nis: 0,
                 nht: 0,
@@ -388,6 +424,9 @@ export const generateS02CSV = (company: CompanySettings, payRuns: PayRun[], empl
                 employerEdTax: 0,
                 employerHEART: 0
             };
+
+            if (!existing.trn && identity.trn) existing.trn = identity.trn;
+            if (!existing.nisId && identity.nisId) existing.nisId = identity.nisId;
 
             existing.gross += line.grossPay + line.additions;
             existing.nis += line.nis;
@@ -402,8 +441,7 @@ export const generateS02CSV = (company: CompanySettings, payRuns: PayRun[], empl
                 existing.employerEdTax += line.employerContributions.employerEdTax;
                 existing.employerHEART += line.employerContributions.employerHEART;
             } else {
-                const emp = employees.find(e => e.id === line.employeeId);
-                const fallback = calculateEmployerContributions(line.grossPay, emp?.employeeType);
+                const fallback = calculateEmployerContributions(line.grossPay, identity.employee?.employeeType);
                 existing.employerNIS += fallback.employerNIS;
                 existing.employerNHT += fallback.employerNHT;
                 existing.employerEdTax += fallback.employerEdTax;
@@ -420,12 +458,7 @@ export const generateS02CSV = (company: CompanySettings, payRuns: PayRun[], empl
     content += `Employee Name,TRN,NIS Number,Total Gross,Employee NIS,Employer NIS,Employee NHT,Employer NHT,Employee EdTax,Employer EdTax,PAYE,HEART\n`;
 
     empMap.forEach(stats => {
-        // Look up real TRN and NIS from the employees array
-        const emp = employees.find(e => e.id === stats.id);
-        const trn = emp?.trn || 'N/A';
-        const nisNumber = emp?.nis || 'N/A';
-
-        content += `"${stats.name}",${trn},${nisNumber},$${stats.gross.toFixed(2)},$${stats.nis.toFixed(2)},$${stats.employerNIS.toFixed(2)},$${stats.nht.toFixed(2)},$${stats.employerNHT.toFixed(2)},$${stats.edTax.toFixed(2)},$${stats.employerEdTax.toFixed(2)},$${stats.paye.toFixed(2)},$${stats.employerHEART.toFixed(2)}\n`;
+        content += `"${stats.name}",${stats.trn || 'N/A'},${stats.nisId || 'N/A'},$${stats.gross.toFixed(2)},$${stats.nis.toFixed(2)},$${stats.employerNIS.toFixed(2)},$${stats.nht.toFixed(2)},$${stats.employerNHT.toFixed(2)},$${stats.edTax.toFixed(2)},$${stats.employerEdTax.toFixed(2)},$${stats.paye.toFixed(2)},$${stats.employerHEART.toFixed(2)}\n`;
     });
 
     downloadFile(`S02_Annual_Return_${effectiveYear}.csv`, content, 'text/csv');

@@ -196,7 +196,7 @@ export const AuthenticatedApp: React.FC<AuthenticatedAppProps> = ({
         );
       case 'compliance':
         if (!hasFeatureAccess(appData.companyData || undefined, 'Compliance')) return null;
-        return <CompliancePage payRunHistory={appData.payRunHistory} companyData={appData.companyData!} />;
+        return <CompliancePage payRunHistory={appData.payRunHistory} companyData={appData.companyData!} employees={appData.employees} />;
       case 'ai-assistant':
         if (!hasFeatureAccess(appData.companyData || undefined, 'AI Assistant')) return null;
         return <AiAssistantPage />;
