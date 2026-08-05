@@ -87,7 +87,10 @@ async function handler(req: VercelRequest, res: VercelResponse) {
           refund_status: isRefundRequested ? 'pending' : undefined
         }
       })
-      .eq('id', currentSubscription?.id || subscriptionRecord.id);
+      // subscriptionRecord is already the company's latest verified local record;
+      // using it as the write target avoids a loose DimePay reference selecting a
+      // record outside this cancellation flow.
+      .eq('id', subscriptionRecord.id);
 
     if (updateError) {
       console.error('❌ Error updating subscription in database:', updateError);
