@@ -64,7 +64,7 @@ async function handler(req: VercelRequest, res: VercelResponse) {
 
     const { data: currentSubscription } = await supabaseAdmin
       .from('subscriptions')
-      .select('next_billing_date, metadata')
+      .select('id, next_billing_date, metadata')
       .or(`dime_subscription_id.eq.${resolvedSubscriptionId},dimepay_subscription_id.eq.${resolvedSubscriptionId}`)
       .eq('company_id', company_id)
       .maybeSingle();

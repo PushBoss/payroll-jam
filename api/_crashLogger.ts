@@ -97,8 +97,10 @@ export const logCrash = async (params: {
   }
 };
 
+type VercelHandlerResult = void | VercelResponse | Promise<void | VercelResponse>;
+
 export const withCrashLogging = (
-  handler: (req: VercelRequest, res: VercelResponse) => Promise<void> | void,
+  handler: (req: VercelRequest, res: VercelResponse) => VercelHandlerResult,
   options: { endpoint: string; critical: boolean }
 ) => {
   return async (req: VercelRequest, res: VercelResponse) => {
