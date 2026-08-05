@@ -4,6 +4,10 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/api/billing/dimepay/card-return",
+      "destination": "/api/billing/dimepay/card-request?_card_return=1"
+    },
+    {
       "source": "/((?!api/|assets/|src/|node_modules/|@vite/|@react-refresh|@id/|@fs/|__vite_ping|manifest.json|robots.txt|sitemap.xml|sw.js).*)",
       "destination": "/index.html"
     }
