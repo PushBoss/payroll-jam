@@ -10,6 +10,7 @@ import { getNextPayDateInfo } from '../utils/payrollSchedule';
 import { toast } from 'sonner';
 import { AttendanceClockPayload, AttendanceClockResult } from '../services/PayrollService';
 import { hasEmployeePortalAccess } from '../features/payroll/payrunWorkflow';
+import { generateUUID, isValidUUID } from '../utils/uuid';
 
 interface PortalProps {
     user: User;
@@ -181,7 +182,7 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
             .sort((a, b) => new Date(b.weekStartDate).getTime() - new Date(a.weekStartDate).getTime());
     }, [employeeId, employeeName, timesheets, user.name]);
     const currentWeek = employeeTimesheets.find((timesheet) => timesheet.weekStartDate === currentWeekBounds.weekStartDate) || {
-        id: `TS-PORTAL-${employeeId}-${currentWeekBounds.weekStartDate}`,
+        id: generateUUID(),
         employeeId,
         employeeName,
         companyId: companyData?.id,
@@ -376,7 +377,11 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
         const entries = [...(existingTimesheet?.entries || []), newEntry];
         const totals = summarizeEntries(entries);
         const timesheet: WeeklyTimesheet = {
-            id: existingTimesheet?.id || `TS-EMP-MANUAL-${employeeId}-${weekStartDate}`,
+            // `timesheets.id` is a UUID in Supabase. Do not preserve invalid
+            // legacy IDs that may have been cached before that schema was enforced.
+            id: existingTimesheet?.id && isValidUUID(existingTimesheet.id)
+                ? existingTimesheet.id
+                : generateUUID(),
             employeeId,
             employeeName,
             companyId: companyData?.id || existingTimesheet?.companyId,

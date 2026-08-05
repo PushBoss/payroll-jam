@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient';
 import { CustomDeduction, PayRun, PayrollYtdSummary, WeeklyTimesheet, DbPayRunRow, toPayFrequency } from '../core/types';
+import { generateUUID, isValidUUID } from '../utils/uuid';
 
 const isYearMonth = (value: string) => /^\d{4}-\d{2}$/.test(value);
 const isDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
@@ -245,7 +246,12 @@ export const PayrollService = {
 
   saveTimesheet: async (timesheet: WeeklyTimesheet, companyId: string): Promise<WeeklyTimesheet> => {
     const client = requireSupabase();
-    const payload = toTimesheetPayload(timesheet, companyId);
+    // Keep persistence resilient to legacy records stored in browser storage
+    // before the primary key was standardized as a UUID.
+    const normalizedTimesheet = isValidUUID(timesheet.id)
+      ? timesheet
+      : { ...timesheet, id: generateUUID() };
+    const payload = toTimesheetPayload(normalizedTimesheet, companyId);
 
     const { data, error } = await client
       .from('timesheets')

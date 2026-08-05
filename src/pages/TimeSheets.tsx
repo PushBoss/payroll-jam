@@ -14,6 +14,7 @@ import {
 import { AttendanceBadge, PayrollService } from '../services/PayrollService';
 import { TimesheetImportWizard } from '../features/timesheets/TimesheetImportWizard';
 import { downloadFile } from '../utils/exportHelpers';
+import { generateUUID, isValidUUID } from '../utils/uuid';
 
 interface TimeSheetsProps {
   timesheets?: WeeklyTimesheet[];
@@ -279,7 +280,11 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
     const employeeName = `${employee.firstName} ${employee.lastName}`.trim();
 
     const timesheet: WeeklyTimesheet = {
-      id: existingTimesheet?.id || `TS-MANUAL-${employee.id}-${weekStartDate}`,
+      // `timesheets.id` is a UUID in Supabase. Legacy local entries may have
+      // descriptive IDs, so only reuse an existing ID when it is valid.
+      id: existingTimesheet?.id && isValidUUID(existingTimesheet.id)
+        ? existingTimesheet.id
+        : generateUUID(),
       employeeId: employee.id,
       employeeName,
       companyId: companyData?.id || existingTimesheet?.companyId,
@@ -299,7 +304,7 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
     try {
       const saved = await onUpdate(timesheet);
       if (saved === false) {
-        toast.error('Time entry was not saved. Please correct the issue and try again.');
+        // The persistence layer has already displayed the specific failure.
         return;
       }
       setCurrentWeekStart(weekStartDate);

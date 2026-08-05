@@ -664,17 +664,21 @@ const upsertAttendanceTimesheet = async (
 ) => {
     const clockInDate = new Date(args.clockInAt);
     const { weekStartDate, weekEndDate } = getWeekBounds(clockInDate);
-    const timesheetId = `TS-ATT-${args.employeeId}-${weekStartDate}`;
     const entryId = `ENTRY-SHIFT-${args.shiftId}`;
 
     const { data: existing, error: existingError } = await adminClient
         .from('timesheets')
         .select('*')
-        .eq('id', timesheetId)
         .eq('company_id', args.companyId)
+        .eq('employee_id', args.employeeId)
+        .eq('week_start_date', weekStartDate)
+        .limit(1)
         .maybeSingle();
 
     if (existingError) throw existingError;
+    // The primary key is a UUID; look up the weekly record by its business
+    // fields, then reuse its UUID or generate one for a new attendance record.
+    const timesheetId = existing?.id || crypto.randomUUID();
 
     const clockOutDate = args.clockOutAt ? new Date(args.clockOutAt) : null;
     const totalHours = clockOutDate

@@ -1,4 +1,5 @@
 import { BranchLocation, CompanySettings, Employee, User, WeeklyTimesheet } from '../core/types';
+import { generateUUID } from './uuid';
 
 export interface ClockInPayload {
   company_id: string;
@@ -150,7 +151,7 @@ export const createAutoQrTimesheet = (
   const employeeName = employee ? `${employee.firstName} ${employee.lastName}` : user.name;
 
   return {
-    id: `TS-QR-${now.getTime()}`,
+    id: generateUUID(),
     employeeId: employee?.id || user.id,
     employeeName,
     companyId,
