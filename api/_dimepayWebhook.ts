@@ -22,6 +22,24 @@ const compact = <T extends Record<string, any>>(value: T) => Object.fromEntries(
   Object.entries(value).filter(([, entry]) => entry !== undefined)
 ) as Partial<T>;
 
+// The product historically exposed the Enterprise tier as "Reseller" in a
+// few surfaces. Keep the database value canonical so webhook projections and
+// Settings never offer a customer their current tier as a paid upgrade.
+const canonicalBillingPlanName = (value?: string | null) => {
+  switch (String(value || '').trim().toLowerCase()) {
+    case 'reseller':
+    case 'enterprise': return 'Enterprise';
+    case 'professional':
+    case 'pro': return 'Pro';
+    case 'starter': return 'Starter';
+    case 'free': return 'Free';
+    default: return String(value || '').trim();
+  }
+};
+
+const sameBillingPlan = (left?: string | null, right?: string | null) =>
+  canonicalBillingPlanName(left).toLowerCase() === canonicalBillingPlanName(right).toLowerCase();
+
 const getWebhookSecrets = () => [
   process.env.DIMEPAY_SECRET_KEY,
   process.env.DIMEPAY_SECRET_KEY_PROD,
@@ -153,7 +171,7 @@ const getPlanPriceFloor = async (planName: string | undefined): Promise<number |
     .maybeSingle();
 
   const plans = (data?.config as any)?.pricingPlans as Array<{ name: string; priceConfig: any }> | undefined;
-  const plan = plans?.find((p) => p.name === planName);
+  const plan = plans?.find((p) => sameBillingPlan(p.name, planName));
   if (!plan) return null;
   if (plan.priceConfig?.type === 'free') return 0;
   return plan.priceConfig?.monthly ?? plan.priceConfig?.baseFee ?? 0;
@@ -194,7 +212,11 @@ const grantPlanIfChargeConfirmed = async (
     return;
   }
 
-  await supabase.from('companies').update({ plan: planName }).eq('id', companyId);
+  const { error } = await supabase
+    .from('companies')
+    .update({ plan: canonicalBillingPlanName(planName) })
+    .eq('id', companyId);
+  if (error) throw error;
 };
 
 const findSubscription = async (data: any) => {
@@ -250,13 +272,14 @@ const applySubscriptionCreated = async (data: any) => {
   const companyId = data.metadata?.company_id || data.company_id;
   if (!companyId) throw new Error('Missing company_id in DimePay subscription event');
 
+  const billingIntentId = data.metadata?.billing_intent_id;
   const subscriptionId = data.subscription_id || data.dime_subscription_id || data.dimepay_subscription_id;
   const accessUntil = data.access_until || data.next_billing_date || monthFromNow();
   const existing = await findSubscription(data);
 
   // The embedded payment widget charges + binds this card immediately at DimePay -
   // our local primary designation must match what was actually charged.
-  const chargedCardToken = data.card_token;
+  const chargedCardToken = data.card_token || data.token || data.payment_method_token;
   if (chargedCardToken) {
     await upsertCardOnFile({
       companyId,
@@ -272,7 +295,7 @@ const applySubscriptionCreated = async (data: any) => {
     ...(existing?.metadata || {}),
     ...(data.metadata || {}),
     order_id: data.order_id,
-    dime_card_token: data.card_token || existing?.dime_card_token || existing?.metadata?.dime_card_token,
+    dime_card_token: chargedCardToken || existing?.dime_card_token || existing?.metadata?.dime_card_token,
     card_request_token: data.card_request_token,
     card_last4: data.card_last4 || data.last_four_digits,
     card_brand: data.card_brand || data.card_scheme,
@@ -285,8 +308,8 @@ const applySubscriptionCreated = async (data: any) => {
     dimepay_subscription_id: subscriptionId,
     dime_customer_id: data.customer_id || data.dime_customer_id,
     dimepay_customer_id: data.customer_id || data.dime_customer_id,
-    dime_card_token: data.card_token || existing?.dime_card_token || existing?.metadata?.dime_card_token,
-    plan_name: data.metadata?.plan_name || existing?.plan_name || 'Unknown Plan',
+    dime_card_token: chargedCardToken || existing?.dime_card_token || existing?.metadata?.dime_card_token,
+    plan_name: canonicalBillingPlanName(data.metadata?.plan_name || existing?.plan_name || 'Unknown Plan'),
     plan_type: data.metadata?.plan_type || existing?.plan_type || 'subscription',
     status: 'active',
     billing_frequency: (data.recurring_frequency || data.frequency || existing?.billing_frequency || 'monthly').toLowerCase(),
@@ -334,6 +357,20 @@ const applySubscriptionCreated = async (data: any) => {
     endpoint: '/api/dimepay-webhook',
     eventType: 'subscription.created'
   });
+
+  if (billingIntentId) {
+    await supabase
+      .from('dimepay_billing_intents')
+      .update({
+        status: 'succeeded',
+        dime_subscription_id: subscriptionId || null,
+        dime_customer_id: data.customer_id || data.dime_customer_id || null,
+        dime_card_token: chargedCardToken || null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', billingIntentId)
+      .eq('company_id', companyId);
+  }
 };
 
 const applyPaymentSucceeded = async (data: any) => {
@@ -366,6 +403,17 @@ const applyPaymentSucceeded = async (data: any) => {
   }
 
   const nextBillingDate = data.access_until || data.next_billing_date || monthFromNow();
+  const chargedCardToken = data.card_token || data.token || data.payment_method_token || subscription.dime_card_token;
+  if (chargedCardToken) {
+    await upsertCardOnFile({
+      companyId: subscription.company_id,
+      dimeCardToken: chargedCardToken,
+      cardRequestToken: data.card_request_token || data.request_token,
+      cardLast4: data.card_last4 || data.last_four_digits || subscription.card_last_four,
+      cardBrand: data.card_brand || data.card_scheme || subscription.card_brand,
+      forcePrimary: true
+    });
+  }
   await supabase.from('subscriptions').update(compact({
     next_billing_date: nextBillingDate,
     access_until: nextBillingDate,
@@ -374,10 +422,10 @@ const applyPaymentSucceeded = async (data: any) => {
     payment_method_brand: data.card_brand || subscription.payment_method_brand,
     card_last_four: data.card_last4 || subscription.card_last_four,
     card_brand: data.card_brand || subscription.card_brand,
-    dime_card_token: data.card_token || subscription.dime_card_token,
+    dime_card_token: chargedCardToken,
     metadata: {
       ...(subscription.metadata || {}),
-      dime_card_token: data.card_token || subscription.dime_card_token || subscription.metadata?.dime_card_token,
+      dime_card_token: chargedCardToken || subscription.metadata?.dime_card_token,
       card_last4: data.card_last4 || subscription.metadata?.card_last4,
       card_brand: data.card_brand || subscription.metadata?.card_brand,
       last_payment_date: new Date().toISOString(),

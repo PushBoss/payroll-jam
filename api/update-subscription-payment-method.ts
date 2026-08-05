@@ -129,39 +129,24 @@ async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (!subscription?.id) {
-      const now = new Date().toISOString();
-      const nextBillingDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-      const subscriptionAmount = latestIntent?.amount ?? 0;
-      const { data: inserted, error: insertError } = await supabaseAdmin
-        .from('subscriptions')
-        .insert(compact({
-          company_id,
-          plan_name: latestIntent?.plan_name || 'Subscription',
-          billing_cycle: 'MONTHLY',
-          base_price: subscriptionAmount,
-          plan_type: latestIntent?.plan_type || 'subscription',
-          status: 'active',
-          billing_frequency: 'monthly',
-          amount: subscriptionAmount,
-          currency: latestIntent?.currency || 'JMD',
-          start_date: now,
-          current_period_start: now,
-          current_period_end: nextBillingDate,
-          access_until: nextBillingDate,
-          next_billing_date: nextBillingDate,
-          auto_renew: true,
-          metadata: {}
-        }))
-        .select('id, dime_subscription_id, dimepay_subscription_id, metadata, plan_name, plan_type, status, billing_frequency, amount, currency, access_until, next_billing_date')
-        .single();
+      // A verified card alone does not establish paid access. It is stored in
+      // payment_methods above; a signed DimePay charge webhook creates the
+      // subscription and changes the plan.
+      const { data: company } = await supabaseAdmin
+        .from('companies')
+        .select('settings')
+        .eq('id', company_id)
+        .maybeSingle();
+      await supabaseAdmin
+        .from('companies')
+        .update({ settings: { ...(company?.settings || {}), paymentMethod: 'card' } })
+        .eq('id', company_id);
+      return res.status(200).json({
+        success: true,
+        paymentMethod: upsertResult.method,
+        message: 'Card saved to your payment methods.'
+      });
 
-      if (insertError) {
-        console.error('❌ Error creating legacy subscription for card metadata:', insertError);
-        return res.status(500).json({ error: 'Failed to create local subscription metadata' });
-      }
-
-      subscription = inserted;
-      localSubscriptionId = inserted.id;
     }
 
     const metadata = {

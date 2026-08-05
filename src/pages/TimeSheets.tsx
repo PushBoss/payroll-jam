@@ -45,6 +45,7 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
   const [attendanceBadge, setAttendanceBadge] = useState<AttendanceBadge | null>(null);
   const [attendanceBadgeLoading, setAttendanceBadgeLoading] = useState(false);
   const [attendanceBadgeError, setAttendanceBadgeError] = useState('');
+  const [viewingTimesheet, setViewingTimesheet] = useState<WeeklyTimesheet | null>(null);
   const [manualEntry, setManualEntry] = useState({
     employeeId: '',
     date: toDateInputValue(new Date()),
@@ -366,6 +367,89 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
           companyId={companyData?.id}
           onSaveTimesheet={onUpdate}
         />
+      )}
+
+      {viewingTimesheet && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between border-b border-gray-100 bg-gray-50 p-5">
+              <div>
+                <h3 className="font-bold text-gray-900">Timesheet details</h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  {viewingTimesheet.employeeName} · {viewingTimesheet.weekStartDate} to {viewingTimesheet.weekEndDate}
+                </p>
+              </div>
+              <button
+                onClick={() => setViewingTimesheet(null)}
+                className="text-gray-400 hover:text-gray-700"
+                aria-label="Close timesheet details"
+              >
+                <Icons.Close className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="max-h-[calc(90vh-160px)] space-y-5 overflow-y-auto p-5">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="rounded-lg bg-gray-50 p-3">
+                  <p className="text-xs font-semibold uppercase text-gray-500">Status</p>
+                  <p className="mt-1 text-sm font-bold text-gray-900">{viewingTimesheet.status}</p>
+                </div>
+                <div className="rounded-lg bg-gray-50 p-3">
+                  <p className="text-xs font-semibold uppercase text-gray-500">Regular</p>
+                  <p className="mt-1 text-sm font-bold text-gray-900">{viewingTimesheet.totalRegularHours} hrs</p>
+                </div>
+                <div className="rounded-lg bg-gray-50 p-3">
+                  <p className="text-xs font-semibold uppercase text-gray-500">Overtime</p>
+                  <p className="mt-1 text-sm font-bold text-gray-900">{viewingTimesheet.totalOvertimeHours} hrs</p>
+                </div>
+                <div className="rounded-lg bg-gray-50 p-3">
+                  <p className="text-xs font-semibold uppercase text-gray-500">Source</p>
+                  <p className="mt-1 text-sm font-bold text-gray-900">{viewingTimesheet.source || 'MANUAL'}</p>
+                </div>
+              </div>
+
+              {viewingTimesheet.locationName && (
+                <p className="text-sm text-gray-600">Location: <span className="font-medium text-gray-900">{viewingTimesheet.locationName}</span></p>
+              )}
+
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-gray-50 text-xs font-semibold uppercase text-gray-500">
+                    <tr>
+                      <th className="px-4 py-3">Date</th>
+                      <th className="px-4 py-3">Clock in</th>
+                      <th className="px-4 py-3">Clock out</th>
+                      <th className="px-4 py-3 text-right">Break</th>
+                      <th className="px-4 py-3 text-right">Hours</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {viewingTimesheet.entries.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-6 text-center text-gray-500">No individual time entries were recorded.</td>
+                      </tr>
+                    ) : viewingTimesheet.entries.map((entry) => (
+                      <tr key={entry.id}>
+                        <td className="px-4 py-3 text-gray-800">{entry.date}</td>
+                        <td className="px-4 py-3 text-gray-700">{entry.startTime || '—'}</td>
+                        <td className="px-4 py-3 text-gray-700">{entry.endTime || '—'}</td>
+                        <td className="px-4 py-3 text-right text-gray-700">{entry.breakDuration || 0} min</td>
+                        <td className="px-4 py-3 text-right font-semibold text-gray-900">{entry.totalHours}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="flex justify-end border-t border-gray-100 bg-gray-50 p-4">
+              <button
+                onClick={() => setViewingTimesheet(null)}
+                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {logTimeModalOpen && (
@@ -721,7 +805,12 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
                          </button>
                       </div>
                     ) : (
-                      <button className="text-sm text-gray-400 hover:text-jam-black font-medium">View</button>
+                      <button
+                        onClick={() => setViewingTimesheet(ts)}
+                        className="text-sm font-medium text-gray-500 hover:text-jam-black"
+                      >
+                        View
+                      </button>
                     )}
                   </td>
                 </tr>

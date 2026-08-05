@@ -61,6 +61,47 @@ const DEFAULT_NEW_LOCATION = {
     geofenceRadiusMeters: '100',
 };
 
+// Enterprise is the persisted name for the reseller tier. Treating the two
+// labels as separate plans can lead to an account paying to "upgrade" to the
+// exact tier it already has.
+const normalizeBillingPlan = (plan?: string | null) => {
+    const normalized = String(plan || '').trim().toLowerCase();
+    if (normalized === 'professional') return 'pro';
+    if (normalized === 'reseller' || normalized === 'enterprise') return 'enterprise';
+    return normalized;
+};
+
+const isSameBillingPlan = (left?: string | null, right?: string | null) =>
+    normalizeBillingPlan(left) === normalizeBillingPlan(right);
+
+// "Reseller" is the legacy/display name for the Enterprise tier. Persist one
+// value so a successful billing operation cannot make the same tier look like
+// a fresh upgrade in the UI.
+const canonicalBillingPlanName = (plan?: string | null) => {
+    switch (normalizeBillingPlan(plan)) {
+        case 'enterprise': return 'Enterprise';
+        case 'pro': return 'Pro';
+        case 'starter': return 'Starter';
+        case 'free': return 'Free';
+        default: return String(plan || '').trim();
+    }
+};
+
+const billingPlanRank = (plan?: string | null) => ({
+    free: 0,
+    starter: 1,
+    pro: 2,
+    enterprise: 3,
+} as Record<string, number>)[normalizeBillingPlan(plan)];
+
+// Keep custom plans backwards-compatible, while preventing known paid tiers
+// from being presented as an "upgrade" to a lower tier.
+const canUpgradeBillingPlan = (candidate?: string | null, current?: string | null) => {
+    const candidateRank = billingPlanRank(candidate);
+    const currentRank = billingPlanRank(current);
+    return candidateRank === undefined || currentRank === undefined || candidateRank > currentRank;
+};
+
 const buildJamaicaLocationQuery = (location: typeof DEFAULT_NEW_LOCATION) => (
     [location.address, location.parish, 'Jamaica']
         .map((part) => part.trim())
@@ -209,7 +250,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({ plan, currentUser, onClos
             for (let attempt = 0; attempt < 20; attempt++) {
                 if (cancelled || !isMountedRef.current) return;
                 const company = await CompanyService.getCompany(companyId);
-                if (company?.plan === plan.name) {
+                if (isSameBillingPlan(company?.plan, plan.name)) {
                     if (cancelled || !isMountedRef.current) return;
                     setPaymentSuccess(true);
                     setTimeout(() => { if (isMountedRef.current) onSuccessRef.current(); }, 1500);
@@ -345,11 +386,8 @@ interface PlanSelectorModalProps {
 
 const PlanSelectorModal: React.FC<PlanSelectorModalProps> = ({ plans, currentPlan, onClose, onSelectPlan }) => {
     const availablePlans = plans.filter(p => {
-        if (p.name === currentPlan) return false;
-        if (p.name === 'Reseller' && currentPlan === 'Enterprise') return false;
-        if (p.name === 'Enterprise' && currentPlan === 'Reseller') return false;
-        if (p.name === 'Pro' && currentPlan === 'Professional') return false;
-        if (p.name === 'Professional' && currentPlan === 'Pro') return false;
+        if (isSameBillingPlan(p.name, currentPlan)) return false;
+        if (!canUpgradeBillingPlan(p.name, currentPlan)) return false;
         if (p.priceConfig.type === 'free') return false;
         return p.isActive;
     });
@@ -404,7 +442,6 @@ interface PaymentMethodChoiceModalProps {
     plan: PricingPlan;
     currentUser: User | null;
     onClose: () => void;
-    onAddNewCard: () => void;
     onSuccess: () => Promise<void> | void;
 }
 
@@ -418,7 +455,7 @@ const bankTransferDefaults = {
     instructions: 'After making the deposit, your account will be activated within 24 hours. You will receive a confirmation email once payment is verified.'
 };
 
-const PaymentMethodChoiceModal: React.FC<PaymentMethodChoiceModalProps> = ({ plan, currentUser, onClose, onAddNewCard, onSuccess }) => {
+const PaymentMethodChoiceModal: React.FC<PaymentMethodChoiceModalProps> = ({ plan, currentUser, onClose, onSuccess }) => {
     const { amount: price } = getPlanPriceDetails(plan, 'monthly');
     const paymentConfig = storage.getGlobalConfig();
     const bankTransfer = { ...bankTransferDefaults, ...(paymentConfig?.bankTransfer || {}) };
@@ -430,29 +467,41 @@ const PaymentMethodChoiceModal: React.FC<PaymentMethodChoiceModalProps> = ({ pla
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [showCardStepForTransfer, setShowCardStepForTransfer] = useState(false);
+    const [showCardStepForUpgrade, setShowCardStepForUpgrade] = useState(false);
     const [cardJustAdded, setCardJustAdded] = useState(false);
+
+    const loadPaymentMethods = async () => {
+        if (!currentUser?.companyId) {
+            setIsLoadingMethods(false);
+            return [];
+        }
+        setIsLoadingMethods(true);
+        try {
+            const list = await BillingService.listPaymentMethods(currentUser.companyId);
+            setMethods(list);
+            const primary = list.find((m: any) => m.isPrimary);
+            setSelectedMethodId(primary?.id || list[0]?.id || null);
+            return list;
+        } catch (err) {
+            console.error('Failed to load payment methods:', err);
+            return [];
+        } finally {
+            setIsLoadingMethods(false);
+        }
+    };
 
     useEffect(() => {
         let cancelled = false;
         const load = async () => {
-            if (!currentUser?.companyId) {
-                setIsLoadingMethods(false);
-                return;
-            }
-            try {
-                const list = await BillingService.listPaymentMethods(currentUser.companyId);
-                if (cancelled) return;
-                setMethods(list);
-                const primary = list.find((m: any) => m.isPrimary);
-                setSelectedMethodId(primary?.id || list[0]?.id || null);
-            } catch (err) {
-                console.error('Failed to load payment methods:', err);
-            } finally {
-                if (!cancelled) setIsLoadingMethods(false);
-            }
+            const list = await loadPaymentMethods();
+            if (cancelled) return;
+            const primary = list.find((m: any) => m.isPrimary);
+            setSelectedMethodId(primary?.id || list[0]?.id || null);
         };
         void load();
         return () => { cancelled = true; };
+        // loadPaymentMethods intentionally derives its input from the company id.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentUser?.companyId]);
 
     const handlePayWithExistingCard = async () => {
@@ -538,6 +587,31 @@ const PaymentMethodChoiceModal: React.FC<PaymentMethodChoiceModalProps> = ({ pla
                     {mode === 'card' && (
                         isLoadingMethods ? (
                             <div className="py-8 flex justify-center"><Icons.Refresh className="w-6 h-6 animate-spin text-jam-orange" /></div>
+                        ) : showCardStepForUpgrade ? (
+                            <div>
+                                <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg text-xs text-gray-700">
+                                    Add and verify your card securely. Your first saved card becomes your primary billing card; after it is saved, select it to complete this upgrade.
+                                </div>
+                                <CardTokenizeCard
+                                    mountId="dimepay-upgrade-card"
+                                    successToast="Card saved. Choose it to complete the upgrade."
+                                    initiate={() => BillingService.initiateCardUpdate(currentUser!.id, { companyId: currentUser!.companyId })}
+                                    onVerified={async (result) => {
+                                        await dimePayService.updateSubscriptionPaymentMethod({
+                                            companyId: currentUser!.companyId!,
+                                            cardToken: result.cardToken,
+                                            cardRequestToken: result.cardRequestToken,
+                                            cardLast4: result.cardLast4,
+                                            cardBrand: result.cardBrand,
+                                            cardExpiry: result.cardExpiry
+                                        });
+                                    }}
+                                    onSuccess={async () => {
+                                        await loadPaymentMethods();
+                                        setShowCardStepForUpgrade(false);
+                                    }}
+                                />
+                            </div>
                         ) : methods.length > 0 ? (
                             <div className="space-y-3">
                                 <div className="space-y-2">
@@ -566,7 +640,7 @@ const PaymentMethodChoiceModal: React.FC<PaymentMethodChoiceModalProps> = ({ pla
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={onAddNewCard}
+                                    onClick={() => setShowCardStepForUpgrade(true)}
                                     disabled={isSubmitting}
                                     className="w-full py-2 text-sm text-jam-orange font-semibold hover:underline"
                                 >
@@ -578,7 +652,7 @@ const PaymentMethodChoiceModal: React.FC<PaymentMethodChoiceModalProps> = ({ pla
                                 <p className="text-sm text-gray-600 mb-4">No saved cards yet.</p>
                                 <button
                                     type="button"
-                                    onClick={onAddNewCard}
+                                    onClick={() => setShowCardStepForUpgrade(true)}
                                     className="w-full py-3 bg-jam-black text-white font-bold rounded-lg hover:bg-gray-800 transition-colors"
                                 >
                                     Add a card to pay ${price.toLocaleString()}
@@ -1194,6 +1268,14 @@ export const Settings: React.FC<SettingsProps> = ({
     const handleUpgradeClick = (planName: string) => {
         const targetPlan = plans.find(p => p.name === planName);
         if (!targetPlan) return;
+        if (isSameBillingPlan(targetPlan.name, companyData?.plan)) {
+            toast.info(`You are already on the ${companyData?.plan || targetPlan.name} plan.`);
+            return;
+        }
+        if (!canUpgradeBillingPlan(targetPlan.name, companyData?.plan)) {
+            toast.info(`Your ${companyData?.plan || 'current'} plan already includes this tier.`);
+            return;
+        }
         const { amount: price } = getPlanPriceDetails(targetPlan, 'monthly');
         // Free-plan switches (or a plan with no charge) skip payment-method selection entirely.
         if (price <= 0) {
@@ -1209,8 +1291,9 @@ export const Settings: React.FC<SettingsProps> = ({
         // Persist the company plan before changing the user's role. A failed plan
         // write must not turn the account into a reseller while its tenant remains
         // on the previous tier.
-        await handleCompanyUpdate({ ...companyData, plan: targetPlan.name as any, subscriptionStatus: 'ACTIVE' });
-        auditService.log(currentUser, 'UPDATE', 'Billing', `Upgraded plan to ${targetPlan.name}`);
+        const canonicalPlan = canonicalBillingPlanName(targetPlan.name);
+        await handleCompanyUpdate({ ...companyData, plan: canonicalPlan as any, subscriptionStatus: 'ACTIVE' });
+        auditService.log(currentUser, 'UPDATE', 'Billing', `Upgraded plan to ${canonicalPlan}`);
 
         // Update user role only when upgrading to Reseller plan.
         if (targetPlan.name === 'Reseller' && currentUser) {
@@ -1298,10 +1381,11 @@ export const Settings: React.FC<SettingsProps> = ({
 
     const handlePaymentMethodChoiceSuccess = async () => {
         if (paymentMethodChoiceTarget) {
-            const targetPlan = paymentMethodChoiceTarget;
             setPaymentMethodChoiceTarget(null);
-            toast.success('Upgrade payment received!');
-            await finalizeUpgrade(targetPlan);
+            toast.success('Payment submitted. Your plan will update automatically after DimePay confirms the charge.');
+            if (currentUser?.companyId) {
+                await refreshBillingData(currentUser.companyId);
+            }
         }
     };
 
@@ -1495,11 +1579,6 @@ export const Settings: React.FC<SettingsProps> = ({
                     plan={paymentMethodChoiceTarget}
                     currentUser={currentUser}
                     onClose={() => setPaymentMethodChoiceTarget(null)}
-                    onAddNewCard={() => {
-                        const target = paymentMethodChoiceTarget;
-                        setPaymentMethodChoiceTarget(null);
-                        setUpgradeTarget(target);
-                    }}
                     onSuccess={handlePaymentMethodChoiceSuccess}
                 />
             )}
@@ -1700,11 +1779,8 @@ export const Settings: React.FC<SettingsProps> = ({
                                         const currentPlan = companyData?.plan || 'Free';
                                         const availablePlans = plans.filter(p => {
                                             // Don't show current plan (handle potential name variations)
-                                            if (p.name === currentPlan) return false;
-                                            if (p.name === 'Reseller' && currentPlan === 'Enterprise') return false;
-                                            if (p.name === 'Enterprise' && currentPlan === 'Reseller') return false;
-                                            if (p.name === 'Pro' && currentPlan === 'Professional') return false;
-                                            if (p.name === 'Professional' && currentPlan === 'Pro') return false;
+                                            if (isSameBillingPlan(p.name, currentPlan)) return false;
+                                            if (!canUpgradeBillingPlan(p.name, currentPlan)) return false;
                                             // Don't show Free plan (no one upgrades to Free)
                                             if (p.priceConfig.type === 'free') return false;
                                             // Show all other paid plans (Starter, Pro, Reseller, etc.)
@@ -1748,7 +1824,8 @@ export const Settings: React.FC<SettingsProps> = ({
                                     // Show all active plans except current plan and Free plan
                                     const filtered = plans.filter(p => {
                                         // Don't show current plan
-                                        if (p.name === currentPlan) return false;
+                                        if (isSameBillingPlan(p.name, currentPlan)) return false;
+                                        if (!canUpgradeBillingPlan(p.name, currentPlan)) return false;
                                         // Don't show Free plan (no one upgrades to Free)
                                         if (p.priceConfig.type === 'free') return false;
                                         // Show all other active paid plans
