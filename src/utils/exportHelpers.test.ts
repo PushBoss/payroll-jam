@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { Employee, PayFrequency, PayRunLineItem, Role } from '../core/types';
-import { resolveStatutoryIdentity } from './exportHelpers';
+import { CompanySettings, Employee, PayFrequency, PayRunLineItem, Role } from '../core/types';
+import { generateHeartRemittanceCSV, generateS02CSV, resolveStatutoryIdentity } from './exportHelpers';
 
 const employee: Employee = {
   id: 'db-employee-id',
@@ -57,5 +57,17 @@ describe('resolveStatutoryIdentity', () => {
       trn: '',
       nisId: '',
     });
+  });
+});
+
+describe('statutory export result', () => {
+  const company = {} as CompanySettings;
+
+  it('reports failure when there is no S02 data, so the UI cannot show success', () => {
+    expect(generateS02CSV(company, [], [], '2026')).toBe(false);
+  });
+
+  it('reports failure when there is no HEART data, so the UI cannot show success', () => {
+    expect(generateHeartRemittanceCSV(company, [], [], '2026-04')).toBe(false);
   });
 });

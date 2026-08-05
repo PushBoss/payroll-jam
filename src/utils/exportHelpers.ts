@@ -248,7 +248,7 @@ export const generateFullRegisterCSV = (payRuns: PayRun[]) => {
 export const generateS01CSV = async (_company: CompanySettings, payRuns: PayRun[], employees: Employee[] = []) => {
     if (!payRuns || payRuns.length === 0) {
         toast.error("No finalized payroll data found.");
-        return;
+        return false;
     }
 
     // TAJ accepts the employee-level Schedule A layout, not the legacy
@@ -379,6 +379,7 @@ export const generateS01CSV = async (_company: CompanySettings, payRuns: PayRun[
     link.download = `S01_Schedule_A_${payRuns[0].periodStart}.xlsx`;
     link.click();
     URL.revokeObjectURL(url);
+    return true;
 };
 
 export const generateS02CSV = (company: CompanySettings, payRuns: PayRun[], employees: Employee[] = [], year?: string) => {
@@ -387,7 +388,7 @@ export const generateS02CSV = (company: CompanySettings, payRuns: PayRun[], empl
     
     if (relevantRuns.length === 0) {
         toast.error(`No payroll data found for year ${effectiveYear}.`);
-        return;
+        return false;
     }
 
     const empMap = new Map<string, {
@@ -462,6 +463,7 @@ export const generateS02CSV = (company: CompanySettings, payRuns: PayRun[], empl
     });
 
     downloadFile(`S02_Annual_Return_${effectiveYear}.csv`, content, 'text/csv');
+    return true;
 };
 
 // HEART Trust/NSTA is administered separately from Tax Administration Jamaica,
@@ -472,24 +474,32 @@ export const generateHeartRemittanceCSV = (company: CompanySettings, payRuns: Pa
 
     if (relevantRuns.length === 0) {
         toast.error(`No payroll data found for period ${period}.`);
-        return;
+        return false;
     }
 
     const empMap = new Map<string, {
         id: string;
         name: string;
+        trn: string;
+        nisId: string;
         gross: number;
         employerHEART: number;
     }>();
 
     relevantRuns.forEach(run => {
         run.lineItems.forEach(line => {
+            const identity = resolveStatutoryIdentity(line, employees);
             const existing = empMap.get(line.employeeId) || {
                 id: line.employeeId,
                 name: line.employeeName,
+                trn: identity.trn,
+                nisId: identity.nisId,
                 gross: 0,
                 employerHEART: 0
             };
+
+            if (!existing.trn && identity.trn) existing.trn = identity.trn;
+            if (!existing.nisId && identity.nisId) existing.nisId = identity.nisId;
 
             existing.gross += line.grossPay + line.additions;
 
@@ -497,8 +507,7 @@ export const generateHeartRemittanceCSV = (company: CompanySettings, payRuns: Pa
             if (line.employerContributions) {
                 existing.employerHEART += line.employerContributions.employerHEART;
             } else {
-                const emp = employees.find(e => e.id === line.employeeId);
-                const fallback = calculateEmployerContributions(line.grossPay, emp?.employeeType);
+                const fallback = calculateEmployerContributions(line.grossPay, identity.employee?.employeeType);
                 existing.employerHEART += fallback.employerHEART;
             }
 
@@ -518,16 +527,13 @@ export const generateHeartRemittanceCSV = (company: CompanySettings, payRuns: Pa
     content += `Employee Name,TRN,NIS Number,Gross Emoluments,HEART Contribution\n`;
 
     rows.forEach(row => {
-        const emp = employees.find(e => e.id === row.id);
-        const trn = emp?.trn || 'N/A';
-        const nisNumber = emp?.nis || 'N/A';
-
-        content += `"${row.name}",${trn},${nisNumber},$${row.gross.toFixed(2)},$${row.employerHEART.toFixed(2)}\n`;
+        content += `"${row.name}",${row.trn || 'N/A'},${row.nisId || 'N/A'},$${row.gross.toFixed(2)},$${row.employerHEART.toFixed(2)}\n`;
     });
 
     content += `\nTOTAL,,,$${totalGross.toFixed(2)},$${totalHeart.toFixed(2)}\n`;
 
     downloadFile(`HEART_Remittance_${period}.csv`, content, 'text/csv');
+    return true;
 };
 
 export const generateP24CSV = (company: CompanySettings, payRuns: PayRun[], employee: Employee | undefined, user: User, year: string = '2025') => {

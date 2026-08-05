@@ -93,8 +93,9 @@ export const Compliance: React.FC<ComplianceProps> = ({ payRunHistory = [], comp
           return;
       }
       // Pass single run as array to helper
-      await generateS01CSV(companyData, [run], employees);
-      toast.success(`S01 for ${s01Period} generated`);
+      if (await generateS01CSV(companyData, [run], employees)) {
+          toast.success(`S01 for ${s01Period} generated`);
+      }
   };
 
   const handleGenerateS02 = () => {
@@ -102,8 +103,9 @@ export const Compliance: React.FC<ComplianceProps> = ({ payRunHistory = [], comp
           toast.error("Company data missing");
           return;
       }
-      generateS02CSV(companyData, payRunHistory, employees, s02Year);
-      toast.success(`S02 Annual Return for ${s02Year} generated`);
+      if (generateS02CSV(companyData, payRunHistory, employees, s02Year)) {
+          toast.success(`S02 Annual Return for ${s02Year} generated`);
+      }
   };
 
   const handleGenerateHeart = () => {
@@ -115,8 +117,9 @@ export const Compliance: React.FC<ComplianceProps> = ({ payRunHistory = [], comp
           toast.error("Please select a valid payroll period first.");
           return;
       }
-      generateHeartRemittanceCSV(companyData, payRunHistory, employees, s01Period);
-      toast.success(`HEART remittance for ${s01Period} generated`);
+      if (generateHeartRemittanceCSV(companyData, payRunHistory, employees, s01Period)) {
+          toast.success(`HEART remittance for ${s01Period} generated`);
+      }
   };
 
   return (
