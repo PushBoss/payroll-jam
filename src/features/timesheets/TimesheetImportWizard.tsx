@@ -22,9 +22,11 @@ interface MappingField {
 
 const EMPLOYEE_FIELD: MappingField = {
   key: 'employeeIdentifier',
-  label: 'Employee (name, email, or employee ID)',
-  aliases: ['employee', 'name', 'employee name', 'email', 'employee id', 'emp id', 'staff', 'worker', 'staff name'],
+  label: 'Employee TRN (recommended) or email, employee ID, or name',
+  aliases: ['employee trn', 'employee tax registration number', 'taxpayer id', 'tax payer id', 'trn', 'employee', 'name', 'employee name', 'email', 'employee id', 'emp id', 'staff', 'worker', 'staff name'],
 };
+
+const normalizeTrn = (value: string) => value.replace(/\D/g, '');
 
 const DAILY_SHAPE_FIELDS: MappingField[] = [
   { key: 'date', label: 'Date', aliases: ['date', 'work date', 'day'] },
@@ -200,6 +202,17 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
       return;
     }
 
+    const employeeByTrn = new Map<string, Employee>();
+    const duplicateTrns = new Set<string>();
+    employees.forEach((employee) => {
+      const trn = normalizeTrn(employee.trn || '');
+      if (trn.length !== 9) return;
+      if (employeeByTrn.has(trn)) {
+        duplicateTrns.add(trn);
+        return;
+      }
+      employeeByTrn.set(trn, employee);
+    });
     const employeeByEmail = new Map(employees.map((e) => [e.email.toLowerCase(), e]));
     const employeeByEmpId = new Map(
       employees.filter((e) => e.employeeId).map((e) => [e.employeeId!.trim().toLowerCase(), e])
@@ -209,6 +222,8 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
     const resolveEmployee = (raw: string) => {
       const value = raw.trim().toLowerCase();
       if (!value) return undefined;
+      const trn = normalizeTrn(raw);
+      if (trn.length === 9 && !duplicateTrns.has(trn)) return employeeByTrn.get(trn);
       return employeeByEmail.get(value) || employeeByEmpId.get(value) || employeeByName.get(value);
     };
 

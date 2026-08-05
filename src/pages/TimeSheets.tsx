@@ -13,6 +13,7 @@ import {
 } from '../utils/attendance';
 import { AttendanceBadge, PayrollService } from '../services/PayrollService';
 import { TimesheetImportWizard } from '../features/timesheets/TimesheetImportWizard';
+import { downloadFile } from '../utils/exportHelpers';
 
 interface TimeSheetsProps {
   timesheets?: WeeklyTimesheet[];
@@ -22,6 +23,8 @@ interface TimeSheetsProps {
 }
 
 const toDateInputValue = (date: Date) => date.toISOString().split('T')[0];
+
+const toCsvCell = (value: string | number) => `"${String(value ?? '').replace(/"/g, '""')}"`;
 
 export const TimeSheets: React.FC<TimeSheetsProps> = ({ 
   timesheets = [], 
@@ -102,6 +105,45 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
   const submittedOrApprovedCount = weekSheets.filter(t => t.status === 'SUBMITTED' || t.status === 'APPROVED').length;
   const submissionRate = weekSheets.length > 0 ? Math.round((submittedOrApprovedCount / weekSheets.length) * 100) : 0;
   const selectedLocation = locations.find((location) => location.id === selectedLocationId) || locations[0];
+
+  const handleExportTimesheets = () => {
+    if (filteredSheets.length === 0) {
+      toast.error('There are no timesheets in the current view to export.');
+      return;
+    }
+
+    // This is deliberately a weekly-summary layout so exported data can be
+    // imported again without relying on display names or database IDs.
+    const headers = [
+      'Employee TRN',
+      'Employee Name',
+      'Week Start Date',
+      'Week End Date',
+      'Regular Hours',
+      'Overtime Hours',
+      'Total Hours',
+      'Status',
+      'Source',
+    ];
+    const rows = filteredSheets.map((timesheet) => {
+      const employee = employees.find((item) => item.id === timesheet.employeeId);
+      const totalHours = Number(timesheet.totalRegularHours || 0) + Number(timesheet.totalOvertimeHours || 0);
+      return [
+        employee?.trn || '',
+        timesheet.employeeName || `${employee?.firstName || ''} ${employee?.lastName || ''}`.trim(),
+        timesheet.weekStartDate,
+        timesheet.weekEndDate,
+        Number(timesheet.totalRegularHours || 0),
+        Number(timesheet.totalOvertimeHours || 0),
+        totalHours,
+        timesheet.status,
+        timesheet.source || 'MANUAL',
+      ].map(toCsvCell).join(',');
+    });
+
+    downloadFile(`Timesheet_Report_${currentWeekStart}.csv`, `${headers.map(toCsvCell).join(',')}\n${rows.join('\n')}\n`, 'text/csv');
+    toast.success(`Exported ${filteredSheets.length} timesheet${filteredSheets.length === 1 ? '' : 's'}.`);
+  };
 
   useEffect(() => {
     if (!selectedLocationId && locations[0]?.id) {
@@ -301,7 +343,10 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
           >
             <Icons.Upload className="w-4 h-4 mr-2" /> Import Timesheets
           </button>
-          <button className="flex flex-1 items-center justify-center whitespace-nowrap rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-50 sm:flex-none">
+          <button
+            onClick={handleExportTimesheets}
+            className="flex flex-1 items-center justify-center whitespace-nowrap rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-50 sm:flex-none"
+          >
             <Icons.Download className="w-4 h-4 mr-2" /> Export Report
           </button>
         </div>
