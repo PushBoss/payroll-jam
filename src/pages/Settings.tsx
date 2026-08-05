@@ -71,6 +71,10 @@ const buildJamaicaLocationQuery = (location: typeof DEFAULT_NEW_LOCATION) => (
 const getGoogleMapsUrl = (latitude: number, longitude: number) =>
     `https://www.google.com/maps?q=${latitude},${longitude}`;
 
+const COMPANY_LOGO_BUCKET = 'company-logos';
+const MAX_COMPANY_LOGO_SIZE_BYTES = 2 * 1024 * 1024;
+const COMPANY_LOGO_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+
 
 interface SettingsProps {
     companyData?: CompanySettings;
@@ -820,6 +824,8 @@ export const Settings: React.FC<SettingsProps> = ({
     const [isSendingInvite, setIsSendingInvite] = useState(false);
     const [memberRefreshTrigger, setMemberRefreshTrigger] = useState(0);
     const [isSavingCompany, setIsSavingCompany] = useState(false);
+    const [isUploadingCompanyLogo, setIsUploadingCompanyLogo] = useState(false);
+    const companyLogoInputRef = useRef<HTMLInputElement>(null);
 
     // Organization Management State
     const [newDept, setNewDept] = useState('');
@@ -973,6 +979,74 @@ export const Settings: React.FC<SettingsProps> = ({
 
     const handleCompanyUpdate = async (newData: CompanySettings) => {
         await onUpdateCompany(newData);
+    };
+
+    const handleCompanyLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const companyId = currentUser?.companyId || companyData?.id;
+        if (!companyId || !supabase) {
+            toast.error('Unable to upload logo: company storage is not available.');
+            event.target.value = '';
+            return;
+        }
+
+        if (!COMPANY_LOGO_MIME_TYPES.has(file.type)) {
+            toast.error('Upload a PNG, JPG, or WebP logo.');
+            event.target.value = '';
+            return;
+        }
+
+        if (file.size > MAX_COMPANY_LOGO_SIZE_BYTES) {
+            toast.error('Company logo must be 2 MB or smaller.');
+            event.target.value = '';
+            return;
+        }
+
+        setIsUploadingCompanyLogo(true);
+        try {
+            // A fixed per-company path prevents old logos from accumulating in storage.
+            const path = `${companyId}/logo`;
+            const { error: uploadError } = await supabase.storage
+                .from(COMPANY_LOGO_BUCKET)
+                .upload(path, file, {
+                    upsert: true,
+                    cacheControl: '3600',
+                    contentType: file.type,
+                });
+
+            if (uploadError) throw uploadError;
+
+            const { data } = supabase.storage.from(COMPANY_LOGO_BUCKET).getPublicUrl(path);
+            // The cache-busting version ensures a replacement logo appears immediately.
+            await handleCompanyUpdate({ ...companyData, logoUrl: `${data.publicUrl}?v=${Date.now()}` });
+            toast.success('Company logo uploaded.');
+        } catch (error: any) {
+            console.error('Company logo upload failed:', error);
+            toast.error(error?.message || 'Unable to upload company logo.');
+        } finally {
+            setIsUploadingCompanyLogo(false);
+            event.target.value = '';
+        }
+    };
+
+    const handleRemoveCompanyLogo = async () => {
+        const companyId = currentUser?.companyId || companyData?.id;
+        setIsUploadingCompanyLogo(true);
+        try {
+            await handleCompanyUpdate({ ...companyData, logoUrl: '' });
+            if (companyId && supabase) {
+                const { error } = await supabase.storage.from(COMPANY_LOGO_BUCKET).remove([`${companyId}/logo`]);
+                if (error) console.warn('Company logo file could not be removed:', error);
+            }
+            toast.success('Company logo removed.');
+        } catch (error: any) {
+            console.error('Company logo removal failed:', error);
+            toast.error(error?.message || 'Unable to remove company logo.');
+        } finally {
+            setIsUploadingCompanyLogo(false);
+        }
     };
 
     const handleUseCurrentLocation = () => {
@@ -1800,15 +1874,47 @@ export const Settings: React.FC<SettingsProps> = ({
                                 <input type="text" value={companyData.phone} onChange={e => handleCompanyUpdate({ ...companyData, phone: e.target.value })} className="w-full border rounded p-2" />
                             </div>
                             <div className="space-y-2">
-                                <label className="block text-xs font-bold text-gray-500 uppercase">Company Logo URL</label>
+                                <label className="block text-xs font-bold text-gray-500 uppercase">Company Logo</label>
                                 <input
-                                    type="url"
-                                    value={companyData.logoUrl || ''}
-                                    onChange={e => handleCompanyUpdate({ ...companyData, logoUrl: e.target.value })}
-                                    placeholder="https://example.com/logo.png"
-                                    className="w-full border rounded p-2"
+                                    ref={companyLogoInputRef}
+                                    type="file"
+                                    accept="image/png,image/jpeg,image/webp"
+                                    onChange={handleCompanyLogoUpload}
+                                    className="hidden"
                                 />
-                                <p className="text-xs text-gray-500">Used on generated employee job letters and contracts unless a template has its own logo URL.</p>
+                                <div className="flex flex-wrap items-center gap-3">
+                                    {companyData.logoUrl ? (
+                                        <img
+                                            src={companyData.logoUrl}
+                                            alt={`${companyData.name} logo`}
+                                            className="h-14 w-14 rounded border border-gray-200 object-contain bg-white p-1"
+                                        />
+                                    ) : (
+                                        <div className="h-14 w-14 rounded border border-dashed border-gray-300 bg-gray-50 flex items-center justify-center text-xs text-gray-400">
+                                            No logo
+                                        </div>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={() => companyLogoInputRef.current?.click()}
+                                        disabled={isUploadingCompanyLogo}
+                                        className="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        {isUploadingCompanyLogo ? <Icons.Refresh className="mr-2 h-4 w-4 animate-spin" /> : <Icons.Upload className="mr-2 h-4 w-4" />}
+                                        {companyData.logoUrl ? 'Replace logo' : 'Upload logo'}
+                                    </button>
+                                    {companyData.logoUrl && (
+                                        <button
+                                            type="button"
+                                            onClick={handleRemoveCompanyLogo}
+                                            disabled={isUploadingCompanyLogo}
+                                            className="inline-flex items-center rounded-lg px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                        >
+                                            Remove
+                                        </button>
+                                    )}
+                                </div>
+                                <p className="text-xs text-gray-500">PNG, JPG, or WebP up to 2 MB. Used on generated employee job letters and contracts unless a template has its own logo.</p>
                             </div>
                         </div>
                         <div className="space-y-4">
