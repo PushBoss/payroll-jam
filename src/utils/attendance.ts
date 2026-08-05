@@ -95,6 +95,50 @@ const getWeekBounds = (date: Date) => {
   };
 };
 
+// String-date variant of getWeekBounds above (which takes a Date) - shared by manual time
+// entry (TimeSheets.tsx) and timesheet import (TimesheetImportWizard.tsx) so both compute the
+// same Monday-Sunday week for a given date string.
+export const getWeekBoundsFromDateString = (dateValue: string) => {
+  const date = new Date(`${dateValue}T00:00:00`);
+  const dayOfWeek = date.getDay();
+  const monday = new Date(date);
+  monday.setDate(date.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+
+  return {
+    weekStartDate: monday.toISOString().split('T')[0],
+    weekEndDate: sunday.toISOString().split('T')[0],
+  };
+};
+
+const getTimeMinutes = (value: string) => {
+  const [hours, minutes] = value.split(':').map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return NaN;
+  return (hours * 60) + minutes;
+};
+
+export const calculateEntryHours = (startTime: string, endTime: string, breakDuration: number) => {
+  const startMinutes = getTimeMinutes(startTime);
+  let endMinutes = getTimeMinutes(endTime);
+  if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes)) return 0;
+  if (endMinutes < startMinutes) endMinutes += 24 * 60;
+  const workedMinutes = Math.max(0, endMinutes - startMinutes - breakDuration);
+  return Number((workedMinutes / 60).toFixed(2));
+};
+
+export const summarizeTimeEntries = (entries: WeeklyTimesheet['entries']) => entries.reduce(
+  (summary, entry) => {
+    const regularHours = Math.min(entry.totalHours, 8);
+    const overtimeHours = Math.max(0, entry.totalHours - regularHours);
+    return {
+      regular: Number((summary.regular + regularHours).toFixed(2)),
+      overtime: Number((summary.overtime + overtimeHours).toFixed(2)),
+    };
+  },
+  { regular: 0, overtime: 0 }
+);
+
 export const createAutoQrTimesheet = (
   user: User,
   employee: Employee | undefined,

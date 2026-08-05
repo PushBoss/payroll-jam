@@ -4,8 +4,15 @@ import { toast } from 'sonner';
 import { Icons } from '../components/Icons';
 import { CompanySettings, Employee, WeeklyTimesheet } from '../core/types';
 import { buildAppUrl } from '../app/routes';
-import { encodeClockInPayload, getCompanyLocations } from '../utils/attendance';
+import {
+  calculateEntryHours,
+  encodeClockInPayload,
+  getCompanyLocations,
+  getWeekBoundsFromDateString as getWeekBounds,
+  summarizeTimeEntries as summarizeEntries,
+} from '../utils/attendance';
 import { AttendanceBadge, PayrollService } from '../services/PayrollService';
+import { TimesheetImportWizard } from '../features/timesheets/TimesheetImportWizard';
 
 interface TimeSheetsProps {
   timesheets?: WeeklyTimesheet[];
@@ -15,47 +22,6 @@ interface TimeSheetsProps {
 }
 
 const toDateInputValue = (date: Date) => date.toISOString().split('T')[0];
-
-const getWeekBounds = (dateValue: string) => {
-  const date = new Date(`${dateValue}T00:00:00`);
-  const dayOfWeek = date.getDay();
-  const monday = new Date(date);
-  monday.setDate(date.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-
-  return {
-    weekStartDate: toDateInputValue(monday),
-    weekEndDate: toDateInputValue(sunday),
-  };
-};
-
-const getTimeMinutes = (value: string) => {
-  const [hours, minutes] = value.split(':').map(Number);
-  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return NaN;
-  return (hours * 60) + minutes;
-};
-
-const calculateEntryHours = (startTime: string, endTime: string, breakDuration: number) => {
-  const startMinutes = getTimeMinutes(startTime);
-  let endMinutes = getTimeMinutes(endTime);
-  if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes)) return 0;
-  if (endMinutes < startMinutes) endMinutes += 24 * 60;
-  const workedMinutes = Math.max(0, endMinutes - startMinutes - breakDuration);
-  return Number((workedMinutes / 60).toFixed(2));
-};
-
-const summarizeEntries = (entries: WeeklyTimesheet['entries']) => entries.reduce(
-  (summary, entry) => {
-    const regularHours = Math.min(entry.totalHours, 8);
-    const overtimeHours = Math.max(0, entry.totalHours - regularHours);
-    return {
-      regular: Number((summary.regular + regularHours).toFixed(2)),
-      overtime: Number((summary.overtime + overtimeHours).toFixed(2)),
-    };
-  },
-  { regular: 0, overtime: 0 }
-);
 
 export const TimeSheets: React.FC<TimeSheetsProps> = ({ 
   timesheets = [], 
@@ -67,6 +33,7 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
   const locations = getCompanyLocations(companyData);
   const [qrModalOpen, setQrModalOpen] = useState(false);
   const [logTimeModalOpen, setLogTimeModalOpen] = useState(false);
+  const [importWizardOpen, setImportWizardOpen] = useState(false);
   const [isSavingTimeEntry, setIsSavingTimeEntry] = useState(false);
   const [kioskMode, setKioskMode] = useState(false);
   const [selectedLocationId, setSelectedLocationId] = useState(locations[0]?.id || '');
@@ -328,11 +295,28 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
           >
             <Icons.Plus className="w-4 h-4 mr-2" /> Log Time
           </button>
+          <button
+            onClick={() => setImportWizardOpen(true)}
+            className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 flex items-center"
+          >
+            <Icons.Upload className="w-4 h-4 mr-2" /> Import Timesheets
+          </button>
           <button className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 flex items-center">
             <Icons.Download className="w-4 h-4 mr-2" /> Export Report
           </button>
         </div>
       </div>
+
+      {importWizardOpen && (
+        <TimesheetImportWizard
+          isOpen={importWizardOpen}
+          onClose={() => setImportWizardOpen(false)}
+          employees={activeEmployees}
+          existingTimesheets={timesheets}
+          companyId={companyData?.id}
+          onSaveTimesheet={onUpdate}
+        />
+      )}
 
       {logTimeModalOpen && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4">
