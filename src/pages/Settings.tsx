@@ -6,7 +6,7 @@ import { GLMapping, IntegrationConfig, CompanySettings, TaxConfig, User, Role, D
 import { getPlanPriceDetails } from '../utils/pricing';
 import { storage } from '../services/storage';
 import { auditService } from '../core/auditService';
-import { checkDbConnection } from '../services/supabaseClient';
+import { checkDbConnection, getAuthenticatedApiHeaders } from '../services/supabaseClient';
 import { BillingService } from '../services/BillingService';
 import { supabase } from '../services/supabaseClient';
 import { CompanyService } from '../services/CompanyService';
@@ -1520,7 +1520,10 @@ export const Settings: React.FC<SettingsProps> = ({
         try {
             const response = await fetch('/api/cancel-subscription', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                // Cancellation changes both the remote subscription and local
+                // access, so it must carry the session used by the server-side
+                // billing authorization guard.
+                headers: await getAuthenticatedApiHeaders({ 'Content-Type': 'application/json' }),
                 body: JSON.stringify({
                     subscription_id: currentSubscription?.dimepaySubscriptionId || 'legacy',
                     company_id: currentUser.companyId,

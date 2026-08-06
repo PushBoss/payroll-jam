@@ -123,10 +123,11 @@ async function handler(req: VercelRequest, res: VercelResponse) {
 
   } catch (error: any) {
     console.error('❌ Error cancelling subscription:', error);
-    return res.status(500).json({
-      error: 'Failed to cancel subscription',
-      message: error.message
-    });
+    const message = error instanceof Error ? error.message : String(error || '');
+    if (message === 'Unauthorized') {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    return res.status(500).json({ error: 'Failed to cancel subscription', message });
   }
 }
 
