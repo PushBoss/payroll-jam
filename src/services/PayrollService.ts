@@ -230,7 +230,9 @@ export const PayrollService = {
     });
 
     if (typeof window !== 'undefined' && window.location.hostname === 'staging.payrolljam.com') {
-      console.info('[Timesheets] Authorized read diagnostic:', result.stagingDiagnostic);
+      console.info(
+        `[Timesheets] Authorized read: host=${result.stagingDiagnostic?.databaseHost || 'unknown'} rows=${result.stagingDiagnostic?.rowCount ?? 'unknown'}`
+      );
     }
 
     return (result.timesheets || []).map(mapTimesheetRow).filter((timesheet) => timesheet.id);
