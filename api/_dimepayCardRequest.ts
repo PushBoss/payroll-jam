@@ -97,6 +97,10 @@ export default async function cardRequestHandler(req: VercelRequest, res: Vercel
     const intentId = randomUUID();
     const idempotencyKey = `${billingFlow}:${resolvedCompanyId}:${resolvedLocalSubscriptionId || 'none'}:${intentId}`;
     const dimePayEnvironment = resolveDimePayEnvironment(environment, req);
+    // Sandbox card tokenization needs an authorization target so DimePay can
+    // exercise its microcharge verification path. Keep this out of production:
+    // real cards continue through DimePay's normal hosted verification flow.
+    const sandboxVerificationAmount = dimePayEnvironment === 'sandbox' ? 1 : undefined;
     const credentials = getDimePayCredentials(dimePayEnvironment);
     const webhookUrl = buildAbsoluteUrl(req, '/api/dimepay-webhook');
     const resolvedRedirectUrl = normalizeDimePayExternalUrl(req, redirect_url || redirectUrl, '/dashboard/billing');
@@ -121,7 +125,12 @@ export default async function cardRequestHandler(req: VercelRequest, res: Vercel
       currency: resolvedCurrency,
       status: 'pending',
       idempotency_key: idempotencyKey,
-      metadata: metadata || {}
+      metadata: {
+        ...(metadata || {}),
+        ...(sandboxVerificationAmount !== undefined
+          ? { verification_amount: sandboxVerificationAmount, verification_currency: resolvedCurrency }
+          : {})
+      }
     };
 
     const { error: intentError } = await supabaseAdmin
@@ -137,6 +146,7 @@ export default async function cardRequestHandler(req: VercelRequest, res: Vercel
       '/card-request',
       {
         id: referenceId,
+        ...(sandboxVerificationAmount !== undefined ? { amount: sandboxVerificationAmount } : {}),
         webhookUrl,
         webhook_url: webhookUrl,
         redirectUrl: resolvedRedirectUrl,
