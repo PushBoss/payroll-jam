@@ -221,10 +221,17 @@ export const PayrollService = {
     // by owners, resellers, and Super Admin impersonation, so use the same
     // authorized server path as writes. This also prevents a failed read from
     // being silently presented as an empty timesheet list after sign-in.
-    const result = await invokeAdminHandler<{ timesheets?: Record<string, any>[] }>({
+    const result = await invokeAdminHandler<{
+      timesheets?: Record<string, any>[];
+      stagingDiagnostic?: { databaseHost?: string; rowCount?: number };
+    }>({
       action: 'get-timesheets-for-company',
       payload: { companyId },
     });
+
+    if (typeof window !== 'undefined' && window.location.hostname === 'staging.payrolljam.com') {
+      console.info('[Timesheets] Authorized read diagnostic:', result.stagingDiagnostic);
+    }
 
     return (result.timesheets || []).map(mapTimesheetRow).filter((timesheet) => timesheet.id);
   },

@@ -4213,6 +4213,13 @@ serve(async (req: Request) => {
                 return new Response(JSON.stringify({
                     success: true,
                     timesheets: (timesheets || []).map(mapTimesheetRowToApp),
+                    // Temporary staging-only telemetry for the timesheet
+                    // persistence investigation. It contains no user data or
+                    // credentials and is ignored by production clients.
+                    stagingDiagnostic: {
+                        databaseHost: new URL(supabaseUrl).host,
+                        rowCount: (timesheets || []).length,
+                    },
                 }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });
