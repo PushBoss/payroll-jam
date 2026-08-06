@@ -52,6 +52,10 @@ WITH paid_companies AS (
 INSERT INTO public.subscriptions (
   company_id,
   plan_name,
+  -- The deployed legacy table still requires its original price columns.
+  -- A historical amount is unknown for an orphaned record, so preserve the
+  -- existing table invariant with zero rather than fabricating a charge.
+  base_price,
   plan_type,
   status,
   billing_frequency,
@@ -66,6 +70,7 @@ INSERT INTO public.subscriptions (
 SELECT
   pc.company_id,
   pc.plan_name,
+  0,
   pc.plan_type,
   pc.subscription_status,
   pc.billing_frequency,
