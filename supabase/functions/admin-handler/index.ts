@@ -413,8 +413,21 @@ const decodeClockInPayload = (encodedPayload?: string | null) => {
     }
 };
 
+const getJamaicaDateString = (date: Date) => {
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Jamaica',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).formatToParts(date);
+    const lookup = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    return `${lookup.year}-${lookup.month}-${lookup.day}`;
+};
+
 const getWeekBounds = (date: Date) => {
-    const monday = new Date(date);
+    // Attendance dates belong to the Jamaican payroll calendar, not the
+    // browser's or edge runtime's UTC day.
+    const monday = new Date(`${getJamaicaDateString(date)}T12:00:00.000Z`);
     const dayOfWeek = monday.getUTCDay();
     monday.setUTCDate(monday.getUTCDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
     const sunday = new Date(monday);
@@ -4213,13 +4226,6 @@ serve(async (req: Request) => {
                 return new Response(JSON.stringify({
                     success: true,
                     timesheets: (timesheets || []).map(mapTimesheetRowToApp),
-                    // Temporary staging-only telemetry for the timesheet
-                    // persistence investigation. It contains no user data or
-                    // credentials and is ignored by production clients.
-                    stagingDiagnostic: {
-                        databaseHost: new URL(supabaseUrl).host,
-                        rowCount: (timesheets || []).length,
-                    },
                 }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });

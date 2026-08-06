@@ -10,6 +10,7 @@ import {
   getCompanyLocations,
   getWeekBoundsFromDateString as getWeekBounds,
   summarizeTimeEntries as summarizeEntries,
+  toLocalDateString,
 } from '../utils/attendance';
 import { AttendanceBadge, PayrollService } from '../services/PayrollService';
 import { TimesheetImportWizard } from '../features/timesheets/TimesheetImportWizard';
@@ -23,7 +24,8 @@ interface TimeSheetsProps {
   companyData?: CompanySettings;
 }
 
-const toDateInputValue = (date: Date) => date.toISOString().split('T')[0];
+const toDateInputValue = (date: Date) => toLocalDateString(date);
+const dateAtLocalNoon = (dateValue: string) => new Date(`${dateValue}T12:00:00`);
 
 const toCsvCell = (value: string | number) => `"${String(value ?? '').replace(/"/g, '""')}"`;
 
@@ -55,19 +57,8 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
     status: 'APPROVED' as WeeklyTimesheet['status'],
   });
   const [currentWeekStart, setCurrentWeekStart] = useState<string>(() => {
-    // Get Monday of current week
-    const today = new Date();
-    const dayOfWeek = today.getDay();
-    const monday = new Date(today);
-    monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-    return monday.toISOString().split('T')[0];
+    return getWeekBounds(toLocalDateString(new Date())).weekStartDate;
   });
-
-  useEffect(() => {
-    if (window.location.hostname !== 'staging.payrolljam.com') return;
-    const matchingWeeks = timesheets.filter((timesheet) => timesheet.weekStartDate === currentWeekStart).length;
-    console.info(`[Timesheets] Rendered props: total=${timesheets.length} selectedWeek=${currentWeekStart} matchingWeek=${matchingWeeks}`);
-  }, [currentWeekStart, timesheets]);
 
   const handleApprove = (ts: WeeklyTimesheet) => {
     if (onUpdate) {
@@ -90,22 +81,19 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
   });
 
   const navigateWeek = (direction: 'prev' | 'next') => {
-    const date = new Date(currentWeekStart);
+    const date = dateAtLocalNoon(currentWeekStart);
     date.setDate(date.getDate() + (direction === 'next' ? 7 : -7));
-    setCurrentWeekStart(date.toISOString().split('T')[0]);
+    setCurrentWeekStart(toLocalDateString(date));
   };
 
   const goToToday = () => {
-    const today = new Date();
-    const dayOfWeek = today.getDay();
-    const monday = new Date(today);
-    monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-    setCurrentWeekStart(monday.toISOString().split('T')[0]);
+    setCurrentWeekStart(getWeekBounds(toLocalDateString(new Date())).weekStartDate);
   };
 
-  const weekEnd = new Date(currentWeekStart);
+  const weekStart = dateAtLocalNoon(currentWeekStart);
+  const weekEnd = new Date(weekStart);
   weekEnd.setDate(weekEnd.getDate() + 6);
-  const weekDisplay = `${new Date(currentWeekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+  const weekDisplay = `${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
   const activeEmployees = employees.filter((employee) => employee.status !== 'ARCHIVED' && employee.status !== 'TERMINATED');
 
   const pendingCount = weekSheets.filter(t => t.status === 'SUBMITTED' || t.status === 'DRAFT').length;

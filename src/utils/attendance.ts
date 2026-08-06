@@ -83,16 +83,26 @@ export const calculateHaversineDistanceMeters = (
   return earthRadiusMeters * c;
 };
 
+export const toLocalDateString = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const dateAtLocalNoon = (dateValue: string) => new Date(`${dateValue}T12:00:00`);
+
 const getWeekBounds = (date: Date) => {
   const monday = new Date(date);
+  monday.setHours(12, 0, 0, 0);
   const dayOfWeek = monday.getDay();
   monday.setDate(monday.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
 
   return {
-    weekStartDate: monday.toISOString().split('T')[0],
-    weekEndDate: sunday.toISOString().split('T')[0],
+    weekStartDate: toLocalDateString(monday),
+    weekEndDate: toLocalDateString(sunday),
   };
 };
 
@@ -100,17 +110,7 @@ const getWeekBounds = (date: Date) => {
 // entry (TimeSheets.tsx) and timesheet import (TimesheetImportWizard.tsx) so both compute the
 // same Monday-Sunday week for a given date string.
 export const getWeekBoundsFromDateString = (dateValue: string) => {
-  const date = new Date(`${dateValue}T00:00:00`);
-  const dayOfWeek = date.getDay();
-  const monday = new Date(date);
-  monday.setDate(date.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-
-  return {
-    weekStartDate: monday.toISOString().split('T')[0],
-    weekEndDate: sunday.toISOString().split('T')[0],
-  };
+  return getWeekBounds(dateAtLocalNoon(dateValue));
 };
 
 const getTimeMinutes = (value: string) => {
@@ -166,7 +166,7 @@ export const createAutoQrTimesheet = (
     totalOvertimeHours: 0,
     entries: [{
       id: `ENTRY-QR-${now.getTime()}`,
-      date: now.toISOString().split('T')[0],
+      date: toLocalDateString(now),
       startTime: now.toTimeString().slice(0, 5),
       endTime: '',
       breakDuration: 0,

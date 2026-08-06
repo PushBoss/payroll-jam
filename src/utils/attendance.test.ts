@@ -3,7 +3,9 @@ import {
   decodeClockInPayload,
   encodeClockInPayload,
   getCompanyLocations,
+  getWeekBoundsFromDateString,
   normalizeAttendancePassCode,
+  toLocalDateString,
 } from './attendance';
 import { CompanySettings } from '../core/types';
 
@@ -53,5 +55,15 @@ describe('attendance helpers', () => {
     const locations = getCompanyLocations({ ...company, locations: undefined });
     expect(locations).toHaveLength(1);
     expect(locations[0].name).toBe('Main Branch');
+  });
+
+  it('uses calendar dates for weekly boundaries instead of UTC-shifted timestamps', () => {
+    const lateLocalMonday = new Date(2026, 7, 3, 22, 0, 0);
+
+    expect(toLocalDateString(lateLocalMonday)).toBe('2026-08-03');
+    expect(getWeekBoundsFromDateString(toLocalDateString(lateLocalMonday))).toEqual({
+      weekStartDate: '2026-08-03',
+      weekEndDate: '2026-08-09',
+    });
   });
 });
