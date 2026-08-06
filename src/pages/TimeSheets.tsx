@@ -63,6 +63,12 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
     return monday.toISOString().split('T')[0];
   });
 
+  useEffect(() => {
+    if (window.location.hostname !== 'staging.payrolljam.com') return;
+    const matchingWeeks = timesheets.filter((timesheet) => timesheet.weekStartDate === currentWeekStart).length;
+    console.info(`[Timesheets] Rendered props: total=${timesheets.length} selectedWeek=${currentWeekStart} matchingWeek=${matchingWeeks}`);
+  }, [currentWeekStart, timesheets]);
+
   const handleApprove = (ts: WeeklyTimesheet) => {
     if (onUpdate) {
       onUpdate({ ...ts, status: 'APPROVED' });
