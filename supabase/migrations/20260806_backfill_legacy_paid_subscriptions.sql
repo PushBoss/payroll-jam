@@ -7,6 +7,36 @@
 -- be populated from a signed DimePay webhook or a confirmed manual payment.
 -- `auto_renew` stays false until that reconciliation happens.
 
+-- The original subscription schema also contains pricing-period columns that
+-- predate the DimePay lifecycle model. Current webhook projections write
+-- `amount`, `billing_frequency`, `access_until`, and `next_billing_date`
+-- instead. Keep the legacy price available with a safe default, but make the
+-- unused period fields optional so a valid DimePay subscription is never
+-- rejected merely for omitting obsolete data.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'subscriptions' AND column_name = 'base_price'
+  ) THEN
+    EXECUTE 'ALTER TABLE public.subscriptions ALTER COLUMN base_price SET DEFAULT 0';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'subscriptions' AND column_name = 'current_period_start'
+  ) THEN
+    EXECUTE 'ALTER TABLE public.subscriptions ALTER COLUMN current_period_start DROP NOT NULL';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'subscriptions' AND column_name = 'current_period_end'
+  ) THEN
+    EXECUTE 'ALTER TABLE public.subscriptions ALTER COLUMN current_period_end DROP NOT NULL';
+  END IF;
+END $$;
+
 WITH paid_companies AS (
   SELECT
     c.id AS company_id,
