@@ -9,6 +9,7 @@ import {
   postSignedDimePayRequest,
   resolveDimePayEnvironment
 } from './_dimepay.js';
+import { redact } from './_redact.js';
 
 type BillingFlow = 'signup' | 'card_update' | 'subscription_update';
 
@@ -171,6 +172,13 @@ export default async function cardRequestHandler(req: VercelRequest, res: Vercel
     const normalized = normalizeCardRequestResponse(data);
 
     if (!response.ok) {
+      // Do not expose the gateway body to the browser, but retain a redacted
+      // server-side record for diagnosing sandbox card-verification failures.
+      console.error('DimePay card request was rejected', {
+        status: response.status,
+        environment: dimePayEnvironment,
+        response: redact(data)
+      });
       await supabaseAdmin
         .from('dimepay_billing_intents')
         .update({
