@@ -229,13 +229,15 @@ export const PayrollService = {
       payload: { companyId },
     });
 
+    const mappedTimesheets = (result.timesheets || []).map(mapTimesheetRow).filter((timesheet) => timesheet.id);
+
     if (typeof window !== 'undefined' && window.location.hostname === 'staging.payrolljam.com') {
       console.info(
-        `[Timesheets] Authorized read: host=${result.stagingDiagnostic?.databaseHost || 'unknown'} rows=${result.stagingDiagnostic?.rowCount ?? 'unknown'}`
+        `[Timesheets] Authorized read: host=${result.stagingDiagnostic?.databaseHost || 'unknown'} handlerRows=${result.stagingDiagnostic?.rowCount ?? 'unknown'} mappedRows=${mappedTimesheets.length}`
       );
     }
 
-    return (result.timesheets || []).map(mapTimesheetRow).filter((timesheet) => timesheet.id);
+    return mappedTimesheets;
   },
 
   saveTimesheet: async (timesheet: WeeklyTimesheet, companyId: string): Promise<WeeklyTimesheet> => {
