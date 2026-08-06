@@ -1288,12 +1288,32 @@ export const Settings: React.FC<SettingsProps> = ({
     const finalizeUpgrade = async (targetPlan: PricingPlan) => {
         if (!currentUser?.companyId) return;
 
-        // Persist the company plan before changing the user's role. A failed plan
-        // write must not turn the account into a reseller while its tenant remains
-        // on the previous tier.
         const canonicalPlan = canonicalBillingPlanName(targetPlan.name);
-        await handleCompanyUpdate({ ...companyData, plan: canonicalPlan as any, subscriptionStatus: 'ACTIVE' });
-        auditService.log(currentUser, 'UPDATE', 'Billing', `Upgraded plan to ${canonicalPlan}`);
+        const { amount: targetPrice } = getPlanPriceDetails(targetPlan, 'monthly');
+
+        if (targetPrice > 0) {
+            // A browser callback is never authority to grant a paid plan. The
+            // webhook must have already projected both the company plan and its
+            // subscription before we apply related UI effects (such as reseller
+            // role access). This prevents paid-plan rows with no cancellable
+            // DimePay subscription from being created by this legacy path.
+            const [confirmedCompany, confirmedSubscription] = await Promise.all([
+                CompanyService.getCompany(currentUser.companyId),
+                BillingService.getSubscription(currentUser.companyId)
+            ]);
+            if (!isSameBillingPlan(confirmedCompany?.plan, canonicalPlan) ||
+                !confirmedSubscription ||
+                !isSameBillingPlan(confirmedSubscription.planName, canonicalPlan)) {
+                toast.error('Payment confirmation is still pending. Your plan has not been changed.');
+                return;
+            }
+        } else {
+            // Free-plan changes have no gateway charge or DimePay subscription
+            // to confirm, so this remains a local entitlement change.
+            await handleCompanyUpdate({ ...companyData, plan: canonicalPlan as any, subscriptionStatus: 'ACTIVE' });
+        }
+
+        auditService.log(currentUser, 'UPDATE', 'Billing', `Confirmed plan change to ${canonicalPlan}`);
 
         // Update user role only when upgrading to Reseller plan.
         if (targetPlan.name === 'Reseller' && currentUser) {
