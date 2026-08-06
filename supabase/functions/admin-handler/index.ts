@@ -4150,6 +4150,74 @@ serve(async (req: Request) => {
                 });
             }
 
+            case 'get-timesheets-for-company': {
+                const { companyId } = payload || {};
+                if (!companyId) throw new Error('companyId required');
+
+                const callerProfile = await assertCompanyAccess(
+                    adminClient,
+                    authUser,
+                    companyId,
+                    ['OWNER', 'ADMIN', 'MANAGER', 'RESELLER', 'SUPER_ADMIN', 'EMPLOYEE']
+                );
+
+                let query = adminClient
+                    .from('timesheets')
+                    .select('*')
+                    .eq('company_id', companyId)
+                    .order('week_start_date', { ascending: false });
+
+                // Employees may read only the sheets that belong to their own
+                // employee record. Owners, company administrators, managers,
+                // resellers with a client relationship, and Super Admins keep
+                // their existing company-level access.
+                if (normalizeRole(callerProfile.role) === 'EMPLOYEE') {
+                    const callerEmail = String(authUser?.email || callerProfile.email || '').trim().toLowerCase();
+                    let employee: any = null;
+
+                    const { data: employeeByAuthId, error: employeeByAuthIdError } = await adminClient
+                        .from('employees')
+                        .select('id')
+                        .eq('company_id', companyId)
+                        .eq('auth_user_id', authUser.id)
+                        .maybeSingle();
+                    if (employeeByAuthIdError) throw employeeByAuthIdError;
+                    employee = employeeByAuthId;
+
+                    // Some legacy employee portals predate auth_user_id. The
+                    // verified account email is the safe compatibility match
+                    // until those records are linked during onboarding.
+                    if (!employee && callerEmail) {
+                        const { data: employeeByEmail, error: employeeByEmailError } = await adminClient
+                            .from('employees')
+                            .select('id')
+                            .eq('company_id', companyId)
+                            .ilike('email', callerEmail)
+                            .maybeSingle();
+                        if (employeeByEmailError) throw employeeByEmailError;
+                        employee = employeeByEmail;
+                    }
+
+                    if (!employee) {
+                        return new Response(JSON.stringify({ success: true, timesheets: [] }), {
+                            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                        });
+                    }
+
+                    query = query.eq('employee_id', employee.id);
+                }
+
+                const { data: timesheets, error: timesheetsError } = await query;
+                if (timesheetsError) throw timesheetsError;
+
+                return new Response(JSON.stringify({
+                    success: true,
+                    timesheets: (timesheets || []).map(mapTimesheetRowToApp),
+                }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
             case 'get-platform-stats': {
                 if (!authUser) throw new Error('Unauthorized');
                 const { data: profile } = await adminClient.from('app_users').select('role').eq('id', authUser.id).maybeSingle();

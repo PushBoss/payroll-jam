@@ -104,6 +104,46 @@ describe('payroll write hardening', () => {
     });
   });
 
+  it('fetches timesheets through admin-handler so authorized company reads survive a fresh session', async () => {
+    invoke.mockResolvedValueOnce({
+      data: {
+        success: true,
+        timesheets: [
+          {
+            id: '20ad399a-013e-4af8-9149-b1bb5fe65f0d',
+            employeeId: 'emp-1',
+            employeeName: 'Jane Doe',
+            weekStartDate: '2026-08-03',
+            weekEndDate: '2026-08-09',
+            status: 'DRAFT',
+            totalRegularHours: 7,
+            totalOvertimeHours: 0,
+            entries: [],
+            source: 'MANUAL',
+          },
+        ],
+      },
+      error: null,
+    });
+
+    const timesheets = await PayrollService.getTimesheets(companyId);
+
+    expect(timesheets).toEqual([
+      expect.objectContaining({
+        id: '20ad399a-013e-4af8-9149-b1bb5fe65f0d',
+        employeeId: 'emp-1',
+        weekStartDate: '2026-08-03',
+        totalRegularHours: 7,
+      }),
+    ]);
+    expect(invoke).toHaveBeenCalledWith('admin-handler', {
+      body: {
+        action: 'get-timesheets-for-company',
+        payload: { companyId },
+      },
+    });
+  });
+
   it('bulk updates employee deductions through admin-handler', async () => {
     const updates = [
       {

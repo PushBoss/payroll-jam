@@ -216,14 +216,17 @@ export const PayrollService = {
   },
 
   getTimesheets: async (companyId: string): Promise<WeeklyTimesheet[]> => {
-    if (!supabase) return [];
-    const { data, error } = await supabase
-      .from('timesheets')
-      .select('*')
-      .eq('company_id', companyId)
-      .order('week_start_date', { ascending: false });
-    if (error) return [];
-    return (data || []).map(mapTimesheetRow).filter((timesheet) => timesheet.id);
+    // Direct browser reads are subject to the timesheets RLS policy. That
+    // policy is intentionally stricter than the company-context access used
+    // by owners, resellers, and Super Admin impersonation, so use the same
+    // authorized server path as writes. This also prevents a failed read from
+    // being silently presented as an empty timesheet list after sign-in.
+    const result = await invokeAdminHandler<{ timesheets?: Record<string, any>[] }>({
+      action: 'get-timesheets-for-company',
+      payload: { companyId },
+    });
+
+    return (result.timesheets || []).map(mapTimesheetRow).filter((timesheet) => timesheet.id);
   },
 
   saveTimesheet: async (timesheet: WeeklyTimesheet, companyId: string): Promise<WeeklyTimesheet> => {
