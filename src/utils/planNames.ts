@@ -24,21 +24,15 @@ export const normalizePlanToDatabase = (plan?: string | null): string => {
     professional: 'Professional',
     pro: 'Professional',
     enterprise: 'Enterprise',
-    // The "Reseller" signup card is a role signal, not a stored plan: it
-    // persists as the Enterprise plan (which carries the reseller economics).
-    // Reseller-ness is tracked by Role.RESELLER, not the plan string.
-    reseller: 'Enterprise'
+    reseller: 'Reseller'
   };
 
   return planMap[normalized] || 'Free';
 };
 
-// Enterprise IS the reseller plan tier (every Enterprise account is a partner).
-// Legacy "Reseller" plan values remain recognized until the data migration runs.
-// NOTE: this is a plan→features signal only (unlimited seats, reseller billing);
-// backend authorization for cross-company client access remains gated on
-// Role.RESELLER, never on the plan.
+// Reseller is distinct from Enterprise. This is only a feature signal;
+// cross-company authorization remains gated on Role.RESELLER.
 export const isResellerEquivalentPlan = (plan?: string | null): boolean => {
   const normalized = normalizePlanToFrontend(plan);
-  return normalized === 'Reseller' || normalized === 'Enterprise';
+  return normalized === 'Reseller';
 };

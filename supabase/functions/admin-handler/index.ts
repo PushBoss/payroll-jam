@@ -37,20 +37,17 @@ const normalizePlanToDatabase = (plan?: string | null): string => {
         professional: 'Professional',
         pro: 'Professional',
         enterprise: 'Enterprise',
-        // The "Reseller" signup card persists as the Enterprise plan; reseller-ness
-        // is carried by Role.RESELLER, not the plan string.
-        reseller: 'Enterprise'
+        reseller: 'Reseller'
     };
 
     return planMap[normalized] || 'Free';
 };
 
-// Enterprise IS the reseller plan tier. Legacy "Reseller" plan values stay
-// recognized until the data migration runs. Backend cross-company authorization
-// (assertCompanyAccess) remains gated on Role.RESELLER, never on this.
+// Reseller is a distinct plan. Backend cross-company authorization
+// (assertCompanyAccess) remains gated on Role.RESELLER, never on this label.
 const isResellerEquivalentPlan = (plan?: string | null): boolean => {
     const normalized = normalizePlanToFrontend(plan);
-    return normalized === 'Reseller' || normalized === 'Enterprise';
+    return normalized === 'Reseller';
 };
 
 const hasEmployeePortalAccess = (plan?: string | null): boolean => {
@@ -1127,8 +1124,7 @@ const assertSignupAuthUser = async (
     adminClient: any,
     userId: string,
     email: string,
-    signupFinalizeToken?: string | null,
-    callerAuthUser?: any
+    signupFinalizeToken?: string | null
 ) => {
     const normalizedEmail = normalizeSignupEmail(email);
     if (!userId) throw new Error('userId is required');
@@ -1143,12 +1139,13 @@ const assertSignupAuthUser = async (
         throw new Error('Signup profile email mismatch');
     }
 
-    const isAuthenticatedSelfRecovery = callerAuthUser?.id === userId
-        && normalizeSignupEmail(callerAuthUser?.email) === normalizedEmail;
     const expectedToken = authUserResult.user.user_metadata?.signup_finalize_token;
     const hasValidFinalizeToken = Boolean(signupFinalizeToken && expectedToken === signupFinalizeToken);
 
-    if (!hasValidFinalizeToken && !isAuthenticatedSelfRecovery) {
+    // Authentication alone is not authorization to convert an existing account
+    // into a new company signup or to delete it during rollback. The token is
+    // written only when this specific signup creates its auth user.
+    if (!hasValidFinalizeToken) {
         throw new Error('Invalid signup finalization token');
     }
 
@@ -1375,7 +1372,7 @@ serve(async (req: Request) => {
                     inviteToken,
                 } = payload || {};
 
-                const { normalizedEmail } = await assertSignupAuthUser(adminClient, userId, email, signupFinalizeToken, authUser);
+                const { normalizedEmail } = await assertSignupAuthUser(adminClient, userId, email, signupFinalizeToken);
                 const normalizedName = String(name || '').trim() || normalizedEmail.split('@')[0];
                 const normalizedPhone = phone ? String(phone).trim() : null;
                 const signupIntent = intent === 'company_signup' || company?.companyId ? 'company_signup' : 'invitation_signup';
@@ -1698,7 +1695,7 @@ serve(async (req: Request) => {
 
             case 'cleanup-failed-signup': {
                 const { userId, email, signupFinalizeToken, companyId } = payload || {};
-                const { normalizedEmail } = await assertSignupAuthUser(adminClient, userId, email, signupFinalizeToken, authUser);
+                const { normalizedEmail } = await assertSignupAuthUser(adminClient, userId, email, signupFinalizeToken);
                 const expectedCompanyId = String(companyId || '').trim();
 
                 if (expectedCompanyId) {
@@ -4595,6 +4592,7 @@ serve(async (req: Request) => {
                     { data: owners, error: ownersError },
                     { data: activeEmployees, error: employeesError },
                     { data: subscriptions, error: subscriptionsError },
+                    { data: paymentMethods, error: paymentMethodsError },
                     { data: payments, error: paymentsError },
                     { data: ledgerEvents }
                 ] = await Promise.all([
@@ -4615,6 +4613,11 @@ serve(async (req: Request) => {
                         .select('id, company_id, plan_name, status, amount, currency, billing_frequency, dime_subscription_id, dimepay_subscription_id, dime_card_token, card_last_four, card_brand, payment_method_last4, payment_method_brand, access_until, next_billing_date, updated_at, created_at')
                         .order('created_at', { ascending: false }),
                     adminClient
+                        .from('payment_methods')
+                        .select('company_id, card_last4, card_brand, is_primary, created_at')
+                        .order('is_primary', { ascending: false })
+                        .order('created_at', { ascending: false }),
+                    adminClient
                         .from('payment_history')
                         .select('id, company_id, amount, currency, status, transaction_id, invoice_number, payment_date, created_at')
                         .order('payment_date', { ascending: false }),
@@ -4629,6 +4632,7 @@ serve(async (req: Request) => {
                 if (ownersError) throw ownersError;
                 if (employeesError) throw employeesError;
                 if (subscriptionsError) throw subscriptionsError;
+                if (paymentMethodsError) throw paymentMethodsError;
                 if (paymentsError) throw paymentsError;
 
                 const employeeCounts = (activeEmployees || []).reduce((acc: Record<string, number>, employee: any) => {
@@ -4653,6 +4657,11 @@ serve(async (req: Request) => {
                     return acc;
                 }, {});
 
+                const paymentMethodByCompany = (paymentMethods || []).reduce((acc: Record<string, any>, method: any) => {
+                    if (method.company_id && !acc[method.company_id]) acc[method.company_id] = method;
+                    return acc;
+                }, {});
+
                 const ledgerByCompany = (ledgerEvents || []).reduce((acc: Record<string, any>, event: any) => {
                     if (event.company_id && !acc[event.company_id]) acc[event.company_id] = event;
                     return acc;
@@ -4663,6 +4672,7 @@ serve(async (req: Request) => {
                     .map(async (company: any) => {
                         const employeeCount = employeeCounts[company.id] || 0;
                         const subscription = subscriptionByCompany[company.id];
+                        const paymentMethod = paymentMethodByCompany[company.id];
                         const owner = ownersByCompany[company.id];
                         const ownerAuthUserId = owner?.auth_user_id || owner?.id;
                         const authActivity = await getAuthActivityForUser(adminClient, ownerAuthUserId);
@@ -4672,7 +4682,8 @@ serve(async (req: Request) => {
                         const hasCard = Boolean(
                             subscription?.dime_card_token ||
                             subscription?.card_last_four ||
-                            subscription?.payment_method_last4
+                            subscription?.payment_method_last4 ||
+                            paymentMethod?.card_last4
                         );
                         const subscriptionStatus = String(subscription?.status || '').toLowerCase();
                         const companyStatus = String(company.status || 'ACTIVE').toUpperCase();
@@ -4705,7 +4716,7 @@ serve(async (req: Request) => {
                             arr: mrr * 12,
                             currency: subscription?.currency || 'JMD',
                             paymentMethod: hasCard
-                                ? `${subscription?.card_brand || subscription?.payment_method_brand || 'Card'} ${subscription?.card_last_four || subscription?.payment_method_last4 || ''}`.trim()
+                                ? `${subscription?.card_brand || subscription?.payment_method_brand || paymentMethod?.card_brand || 'Card'} ${subscription?.card_last_four || subscription?.payment_method_last4 || paymentMethod?.card_last4 || ''}`.trim()
                                 : 'No card on file',
                             dimeSubscriptionId: subscription?.dime_subscription_id || subscription?.dimepay_subscription_id || null,
                             accessUntil,

@@ -6,7 +6,7 @@ import { withCrashLogging } from './_crashLogger.js';
 
 const canonicalBillingPlanName = (value?: string | null) => {
   switch (String(value || '').trim().toLowerCase()) {
-    case 'reseller':
+    case 'reseller': return 'Reseller';
     case 'enterprise': return 'Enterprise';
     case 'professional':
     case 'pro': return 'Pro';
@@ -24,6 +24,7 @@ const billingPlanRank = (value?: string | null) => ({
   starter: 1,
   pro: 2,
   enterprise: 3,
+  reseller: 4,
 } as Record<string, number>)[canonicalBillingPlanName(value).toLowerCase()];
 
 const canUpgradeBillingPlan = (candidate?: string | null, current?: string | null) => {
@@ -133,11 +134,12 @@ const upgradeWithExistingCard = async (req: VercelRequest, res: VercelResponse) 
 
     const remoteData = remoteCreate.data?.data || remoteCreate.data || {};
     const remoteSubscriptionId = remoteData.subscription_id || remoteData.dime_subscription_id || remoteData.id;
+    const remoteCustomerId = remoteData.customer_id || remoteData.dime_customer_id || null;
     await supabaseAdmin
       .from('dimepay_billing_intents')
       .update({
         dime_subscription_id: remoteSubscriptionId || null,
-        dime_customer_id: remoteData.customer_id || remoteData.dime_customer_id || null,
+        dime_customer_id: remoteCustomerId,
         updated_at: new Date().toISOString(),
         metadata: {
           source: 'upgrade_existing_card',
@@ -148,9 +150,56 @@ const upgradeWithExistingCard = async (req: VercelRequest, res: VercelResponse) 
       })
       .eq('id', intent.id);
 
-    // A successful API response only says DimePay accepted the request. Do not
-    // write a subscription, payment history, primary-card change or company
-    // plan here. Those are projected exclusively by the signed DimePay webhook.
+    // A successful API response is not a payment confirmation. Keep a pending
+    // projection so support can see the accepted DimePay schedule and selected
+    // card while the signed webhook remains the *only* authority that activates
+    // access, changes the company plan, or creates payment history.
+    if (remoteSubscriptionId) {
+      const pendingSubscription = {
+        company_id,
+        dime_subscription_id: remoteSubscriptionId,
+        dimepay_subscription_id: remoteSubscriptionId,
+        dime_customer_id: remoteCustomerId,
+        dimepay_customer_id: remoteCustomerId,
+        dime_card_token: paymentMethod.dime_card_token,
+        plan_name: canonicalPlanName,
+        plan_type: plan_type || canonicalPlanName.toLowerCase(),
+        status: 'pending',
+        billing_frequency: String(billing_frequency || 'monthly').toLowerCase(),
+        base_price: Number(amount),
+        amount: Number(amount),
+        currency: currency || 'JMD',
+        start_date: now,
+        next_billing_date: remoteData.access_until || remoteData.next_billing_date || null,
+        access_until: null,
+        auto_renew: false,
+        payment_method_last4: paymentMethod.card_last4 || null,
+        payment_method_brand: paymentMethod.card_brand || null,
+        card_last_four: paymentMethod.card_last4 || null,
+        card_brand: paymentMethod.card_brand || null,
+        metadata: {
+          source: 'upgrade_pending_gateway_confirmation',
+          billing_intent_id: intent.id,
+          payment_method_id,
+          requested_at: now
+        },
+        created_at: now,
+        updated_at: now
+      };
+
+      const { data: existingPending } = await supabaseAdmin
+        .from('subscriptions')
+        .select('id')
+        .or(`dime_subscription_id.eq.${remoteSubscriptionId},dimepay_subscription_id.eq.${remoteSubscriptionId}`)
+        .maybeSingle();
+      const { error: pendingSubscriptionError } = existingPending?.id
+        ? await supabaseAdmin.from('subscriptions').update(pendingSubscription).eq('id', existingPending.id)
+        : await supabaseAdmin.from('subscriptions').insert(pendingSubscription);
+      if (pendingSubscriptionError) {
+        console.error('Unable to record pending DimePay subscription:', pendingSubscriptionError);
+      }
+    }
+
     return res.status(202).json({
       success: true,
       confirmationPending: true,

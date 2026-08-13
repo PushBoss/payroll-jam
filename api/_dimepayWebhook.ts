@@ -23,12 +23,10 @@ const compact = <T extends Record<string, any>>(value: T) => Object.fromEntries(
   Object.entries(value).filter(([, entry]) => entry !== undefined)
 ) as Partial<T>;
 
-// The product historically exposed the Enterprise tier as "Reseller" in a
-// few surfaces. Keep the database value canonical so webhook projections and
-// Settings never offer a customer their current tier as a paid upgrade.
+// Keep plan labels canonical across webhook projections and Settings.
 const canonicalBillingPlanName = (value?: string | null) => {
   switch (String(value || '').trim().toLowerCase()) {
-    case 'reseller':
+    case 'reseller': return 'Reseller';
     case 'enterprise': return 'Enterprise';
     case 'professional':
     case 'pro': return 'Pro';

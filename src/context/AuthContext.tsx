@@ -49,16 +49,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const SIGN_OUT_TIMEOUT_MS = 3000;
 const AUTH_USER_LOOKUP_TIMEOUT_MS = 8000;
 
-const isAlreadyRegisteredError = (error: unknown) => {
-  const err = error as { message?: string; code?: string };
-  const message = String(err?.message || '').toLowerCase();
-  const code = String(err?.code || '').toLowerCase();
-  return code === 'user_already_exists'
-    || code === 'email_exists'
-    || message.includes('already registered')
-    || message.includes('already exists');
-};
-
 const withAuthTimeout = <T,>(promise: Promise<T>): Promise<T> =>
   Promise.race([
     promise,
@@ -516,23 +506,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (!authError && authData?.user && Array.isArray(authData.user.identities) && authData.user.identities.length === 0) {
           authData = { user: null, session: null };
           authError = { message: 'User already registered', code: 'user_already_exists' } as any;
-        }
-      }
-
-      if (authError) {
-        if (shouldCreateCompany && isAlreadyRegisteredError(authError)) {
-          console.warn('⚠️ Auth user already exists; attempting company signup recovery with password sign-in.');
-          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-            email: userData.email,
-            password: userData.password,
-          });
-
-          if (!signInError && signInData.user) {
-            authData = signInData;
-            authError = null;
-          } else {
-            console.error('❌ Existing account recovery sign-in failed:', signInError);
-          }
         }
       }
 
