@@ -24,15 +24,17 @@ export const normalizePlanToDatabase = (plan?: string | null): string => {
     professional: 'Professional',
     pro: 'Professional',
     enterprise: 'Enterprise',
-    reseller: 'Reseller'
+    // Reseller is the Enterprise-tier subscription role. Store the canonical
+    // subscription plan while role-based access remains Role.RESELLER.
+    reseller: 'Enterprise'
   };
 
   return planMap[normalized] || 'Free';
 };
 
-// Reseller is distinct from Enterprise. This is only a feature signal;
+// Enterprise is the reseller subscription tier. This is only a feature signal;
 // cross-company authorization remains gated on Role.RESELLER.
 export const isResellerEquivalentPlan = (plan?: string | null): boolean => {
   const normalized = normalizePlanToFrontend(plan);
-  return normalized === 'Reseller';
+  return normalized === 'Reseller' || normalized === 'Enterprise';
 };

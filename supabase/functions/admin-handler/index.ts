@@ -37,17 +37,18 @@ const normalizePlanToDatabase = (plan?: string | null): string => {
         professional: 'Professional',
         pro: 'Professional',
         enterprise: 'Enterprise',
-        reseller: 'Reseller'
+        // Reseller is a role signal; the subscription tier is Enterprise.
+        reseller: 'Enterprise'
     };
 
     return planMap[normalized] || 'Free';
 };
 
-// Reseller is a distinct plan. Backend cross-company authorization
-// (assertCompanyAccess) remains gated on Role.RESELLER, never on this label.
+// Enterprise is the reseller subscription tier. Backend cross-company
+// authorization (assertCompanyAccess) remains gated on Role.RESELLER.
 const isResellerEquivalentPlan = (plan?: string | null): boolean => {
     const normalized = normalizePlanToFrontend(plan);
-    return normalized === 'Reseller';
+    return normalized === 'Reseller' || normalized === 'Enterprise';
 };
 
 const hasEmployeePortalAccess = (plan?: string | null): boolean => {

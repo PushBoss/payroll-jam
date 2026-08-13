@@ -2,15 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { isResellerEquivalentPlan, normalizePlanToDatabase, normalizePlanToFrontend } from './planNames';
 
 describe('planNames', () => {
-  it('keeps Enterprise and Reseller as separate plans', () => {
+  it('normalizes the Reseller subscription role to the Enterprise plan tier', () => {
     expect(normalizePlanToFrontend('Enterprise')).toBe('Enterprise');
     expect(normalizePlanToFrontend('enterprise')).toBe('Enterprise');
     expect(normalizePlanToFrontend('Reseller')).toBe('Reseller');
 
     expect(normalizePlanToDatabase('Enterprise')).toBe('Enterprise');
-    expect(normalizePlanToDatabase('Reseller')).toBe('Reseller');
+    expect(normalizePlanToDatabase('Reseller')).toBe('Enterprise');
 
-    expect(isResellerEquivalentPlan('Enterprise')).toBe(false);
+    expect(isResellerEquivalentPlan('Enterprise')).toBe(true);
     expect(isResellerEquivalentPlan('Reseller')).toBe(true);
   });
 

@@ -23,10 +23,10 @@ const compact = <T extends Record<string, any>>(value: T) => Object.fromEntries(
   Object.entries(value).filter(([, entry]) => entry !== undefined)
 ) as Partial<T>;
 
-// Keep plan labels canonical across webhook projections and Settings.
+// Enterprise is the canonical subscription tier for reseller accounts.
 const canonicalBillingPlanName = (value?: string | null) => {
   switch (String(value || '').trim().toLowerCase()) {
-    case 'reseller': return 'Reseller';
+    case 'reseller':
     case 'enterprise': return 'Enterprise';
     case 'professional':
     case 'pro': return 'Pro';

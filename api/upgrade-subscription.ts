@@ -6,7 +6,7 @@ import { withCrashLogging } from './_crashLogger.js';
 
 const canonicalBillingPlanName = (value?: string | null) => {
   switch (String(value || '').trim().toLowerCase()) {
-    case 'reseller': return 'Reseller';
+    case 'reseller':
     case 'enterprise': return 'Enterprise';
     case 'professional':
     case 'pro': return 'Pro';
@@ -24,7 +24,6 @@ const billingPlanRank = (value?: string | null) => ({
   starter: 1,
   pro: 2,
   enterprise: 3,
-  reseller: 4,
 } as Record<string, number>)[canonicalBillingPlanName(value).toLowerCase()];
 
 const canUpgradeBillingPlan = (candidate?: string | null, current?: string | null) => {
