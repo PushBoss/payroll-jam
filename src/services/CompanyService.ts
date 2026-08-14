@@ -32,34 +32,46 @@ export const CompanyService = {
       .eq('id', companyId)
       .maybeSingle();
 
-    if (error || !data) return null;
+    // Employees are intentionally not granted broad browser access to the
+    // companies table. Their portal still needs a company's plan to evaluate
+    // entitlement, so use the narrowly scoped Edge Function fallback rather
+    // than treating a blocked RLS query as a Free plan.
+    let companyData = data;
+    if (error || !companyData) {
+      const { data: portalData, error: portalError } = await supabase.functions.invoke('admin-handler', {
+        body: { action: 'get-employee-portal-company', payload: { companyId } }
+      });
 
-    const settings = data.settings || {};
+      if (portalError || !portalData?.company) return null;
+      companyData = portalData.company;
+    }
+
+    const settings = companyData.settings || {};
     const billingGift = toBillingGift(settings.billingGift);
     return {
-      id: data.id,
-      name: data.name,
-      trn: data.trn,
-      address: data.address,
+      id: companyData.id,
+      name: companyData.name,
+      trn: companyData.trn,
+      address: companyData.address,
       phone: settings.phone || '',
       bankName: settings.bankName || 'NCB',
       accountNumber: settings.accountNumber || '',
       branchCode: settings.branchCode || '',
       logoUrl: settings.logoUrl || '',
-      billingCycle: data.billing_cycle === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY',
-      employeeLimit: data.employee_limit && data.employee_limit < 999999 ? `${data.employee_limit} Employees` : 'Unlimited',
-      plan: toPlanLabel(normalizePlanToFrontend(data.plan)),
+      billingCycle: companyData.billing_cycle === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY',
+      employeeLimit: companyData.employee_limit && companyData.employee_limit < 999999 ? `${companyData.employee_limit} Employees` : 'Unlimited',
+      plan: toPlanLabel(normalizePlanToFrontend(companyData.plan)),
       subscriptionStatus: getEffectiveSubscriptionStatus({
-        subscriptionStatus: data.status || 'ACTIVE',
+        subscriptionStatus: companyData.status || 'ACTIVE',
         billingGift,
       }),
       paymentMethod: settings.paymentMethod,
-      resellerId: data.reseller_id,
+      resellerId: companyData.reseller_id,
       policies: settings.policies,
       reseller_defaults: settings.reseller_defaults,
       taxConfig: settings.taxConfig,
-      departments: settings.departments || data.departments || [],
-      designations: settings.designations || data.designations || [],
+      departments: settings.departments || companyData.departments || [],
+      designations: settings.designations || companyData.designations || [],
       locations: settings.locations || [],
       billingGift,
     };

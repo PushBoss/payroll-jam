@@ -3128,6 +3128,42 @@ serve(async (req: Request) => {
                 });
             }
 
+            case 'get-employee-portal-company': {
+                const { companyId } = payload || {};
+                if (!companyId) throw new Error('companyId required');
+
+                // Employee portal users need their employer's entitlement data,
+                // but must never receive banking or billing settings. This is an
+                // explicit server-side alternative to relying on a permissive
+                // browser RLS policy for the whole companies table.
+                await assertCompanyAccess(adminClient, authUser, companyId, ['EMPLOYEE']);
+
+                const { data: company, error: companyError } = await adminClient
+                    .from('companies')
+                    .select('id, name, email, trn, address, plan, billing_cycle, employee_limit, status, reseller_id, settings')
+                    .eq('id', companyId)
+                    .maybeSingle();
+                if (companyError) throw companyError;
+                if (!company) throw new Error('Company not found');
+
+                const settings = company.settings || {};
+                return new Response(JSON.stringify({
+                    company: {
+                        ...company,
+                        settings: {
+                            phone: settings.phone || '',
+                            logoUrl: settings.logoUrl || '',
+                            payFrequency: settings.payFrequency,
+                            defaultPayDate: settings.defaultPayDate,
+                            policies: settings.policies,
+                            locations: settings.locations || [],
+                        }
+                    }
+                }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
             case 'save-pay-run': {
                 const { companyId, payRun } = payload || {};
                 if (!companyId) throw new Error('companyId required');

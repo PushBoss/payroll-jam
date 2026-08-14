@@ -48,6 +48,7 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
   const [attendanceBadgeLoading, setAttendanceBadgeLoading] = useState(false);
   const [attendanceBadgeError, setAttendanceBadgeError] = useState('');
   const [viewingTimesheet, setViewingTimesheet] = useState<WeeklyTimesheet | null>(null);
+  const [editingTimesheet, setEditingTimesheet] = useState<WeeklyTimesheet | null>(null);
   const [manualEntry, setManualEntry] = useState({
     employeeId: '',
     date: toDateInputValue(new Date()),
@@ -69,6 +70,73 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
   const handleReject = (ts: WeeklyTimesheet) => {
     if (onUpdate) {
        onUpdate({ ...ts, status: 'REJECTED' });
+    }
+  };
+
+  const handleEditDraft = (timesheet: WeeklyTimesheet) => {
+    setEditingTimesheet({
+      ...timesheet,
+      entries: timesheet.entries.map((entry) => ({ ...entry })),
+    });
+  };
+
+  const updateDraftEntry = (
+    entryId: string,
+    field: 'date' | 'startTime' | 'endTime' | 'breakDuration',
+    value: string | number,
+  ) => {
+    setEditingTimesheet((timesheet) => timesheet && {
+      ...timesheet,
+      entries: timesheet.entries.map((entry) => (
+        entry.id === entryId ? { ...entry, [field]: value } : entry
+      )),
+    });
+  };
+
+  const handleSaveDraftEdits = async () => {
+    if (!editingTimesheet || !onUpdate) return;
+
+    if (editingTimesheet.entries.length === 0) {
+      toast.error('Add at least one time entry before saving this draft.');
+      return;
+    }
+
+    const entries = editingTimesheet.entries.map((entry) => {
+      const breakDuration = Number(entry.breakDuration) || 0;
+      const totalHours = calculateEntryHours(entry.startTime, entry.endTime, breakDuration);
+      return {
+        ...entry,
+        breakDuration,
+        totalHours,
+        isOvertime: totalHours > 8,
+      };
+    });
+
+    const invalidEntry = entries.find((entry) => {
+      const entryWeek = getWeekBounds(entry.date);
+      return !entry.date || entry.totalHours <= 0 || entryWeek.weekStartDate !== editingTimesheet.weekStartDate;
+    });
+    if (invalidEntry) {
+      toast.error('Each entry must have valid times and fall within this timesheet week.');
+      return;
+    }
+
+    const totals = summarizeEntries(entries);
+    setIsSavingTimeEntry(true);
+    try {
+      const saved = await onUpdate({
+        ...editingTimesheet,
+        entries,
+        totalRegularHours: totals.regular,
+        totalOvertimeHours: totals.overtime,
+        status: 'DRAFT',
+      });
+      if (saved === false) return;
+
+      setEditingTimesheet(null);
+      toast.success('Draft timesheet updated.');
+    } finally {
+      setIsSavingTimeEntry(false);
     }
   };
 
@@ -446,6 +514,81 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
         </div>
       )}
 
+      {editingTimesheet && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[90vh] w-full max-w-4xl overflow-hidden rounded-xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between border-b border-gray-100 bg-gray-50 p-5">
+              <div>
+                <h3 className="font-bold text-gray-900">Edit draft timesheet</h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  {editingTimesheet.employeeName} · {editingTimesheet.weekStartDate} to {editingTimesheet.weekEndDate}
+                </p>
+              </div>
+              <button
+                onClick={() => setEditingTimesheet(null)}
+                disabled={isSavingTimeEntry}
+                className="text-gray-400 hover:text-gray-700 disabled:cursor-not-allowed"
+                aria-label="Close draft timesheet editor"
+              >
+                <Icons.Close className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="max-h-[calc(90vh-160px)] space-y-4 overflow-y-auto p-5">
+              <p className="text-sm text-gray-600">Editing is limited to drafts. Submitted and approved timesheets remain locked for audit integrity.</p>
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <table className="w-full min-w-[720px] text-left text-sm">
+                  <thead className="bg-gray-50 text-xs font-semibold uppercase text-gray-500">
+                    <tr>
+                      <th className="px-3 py-3">Date</th>
+                      <th className="px-3 py-3">Start</th>
+                      <th className="px-3 py-3">End</th>
+                      <th className="px-3 py-3">Break (min)</th>
+                      <th className="px-3 py-3 text-right">Hours</th>
+                      <th className="px-3 py-3"><span className="sr-only">Remove entry</span></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {editingTimesheet.entries.map((entry) => (
+                      <tr key={entry.id}>
+                        <td className="p-2"><input type="date" value={entry.date} onChange={(event) => updateDraftEntry(entry.id, 'date', event.target.value)} className="w-full rounded border border-gray-300 p-2" /></td>
+                        <td className="p-2"><input type="time" value={entry.startTime} onChange={(event) => updateDraftEntry(entry.id, 'startTime', event.target.value)} className="w-full rounded border border-gray-300 p-2" /></td>
+                        <td className="p-2"><input type="time" value={entry.endTime} onChange={(event) => updateDraftEntry(entry.id, 'endTime', event.target.value)} className="w-full rounded border border-gray-300 p-2" /></td>
+                        <td className="p-2"><input type="number" min="0" step="5" value={entry.breakDuration} onChange={(event) => updateDraftEntry(entry.id, 'breakDuration', Number(event.target.value))} className="w-full rounded border border-gray-300 p-2" /></td>
+                        <td className="p-2 text-right font-semibold text-gray-900">{calculateEntryHours(entry.startTime, entry.endTime, Number(entry.breakDuration) || 0)}</td>
+                        <td className="p-2 text-right"><button type="button" onClick={() => setEditingTimesheet((timesheet) => timesheet && ({ ...timesheet, entries: timesheet.entries.filter((item) => item.id !== entry.id) }))} className="rounded p-2 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Remove entry"><Icons.Trash className="h-4 w-4" /></button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingTimesheet((timesheet) => timesheet && ({
+                  ...timesheet,
+                  entries: [...timesheet.entries, {
+                    id: `ENTRY-MANUAL-${Date.now()}`,
+                    date: timesheet.weekStartDate,
+                    startTime: '09:00',
+                    endTime: '17:00',
+                    breakDuration: 60,
+                    totalHours: 7,
+                    isOvertime: false,
+                    source: 'MANUAL',
+                  }],
+                }))}
+                className="text-sm font-medium text-jam-orange hover:text-yellow-600"
+              >
+                + Add time entry
+              </button>
+            </div>
+            <div className="flex justify-end gap-3 border-t border-gray-100 bg-gray-50 p-4">
+              <button onClick={() => setEditingTimesheet(null)} disabled={isSavingTimeEntry} className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed">Cancel</button>
+              <button onClick={handleSaveDraftEdits} disabled={isSavingTimeEntry} className="rounded-lg bg-jam-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60">{isSavingTimeEntry ? 'Saving...' : 'Save draft changes'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {logTimeModalOpen && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-xl overflow-hidden rounded-xl bg-white shadow-2xl">
@@ -783,6 +926,15 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
                   <td className="px-6 py-4 text-right">
                     {(ts.status === 'SUBMITTED' || ts.status === 'DRAFT') ? (
                       <div className="flex justify-end space-x-2">
+                         {ts.status === 'DRAFT' && (
+                           <button
+                             onClick={() => handleEditDraft(ts)}
+                             className="p-1.5 bg-blue-100 text-blue-600 rounded hover:bg-blue-200 transition-colors"
+                             title="Edit draft"
+                           >
+                             <Icons.FileEdit className="w-4 h-4" />
+                           </button>
+                         )}
                          <button 
                            onClick={() => handleApprove(ts)}
                            className="p-1.5 bg-green-100 text-green-600 rounded hover:bg-green-200 transition-colors"
