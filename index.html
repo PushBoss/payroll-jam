@@ -5,6 +5,30 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Payroll-Jam | Jamaican Payroll SaaS</title>
+
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-RL57P2GHGJ"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-RL57P2GHGJ');
+    </script>
+
+    <!-- Meta Pixel Code -->
+    <script>
+      !function(f,b,e,v,n,t,s)
+      {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+      n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+      if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+      n.queue=[];t=b.createElement(e);t.async=!0;
+      t.src=v;s=b.getElementsByTagName(e)[0];
+      s.parentNode.insertBefore(t,s)}(window, document,'script',
+      'https://connect.facebook.net/en_US/fbevents.js');
+      fbq('init', '1059115303325705');
+      fbq('track', 'PageView');
+    </script>
+    <!-- End Meta Pixel Code -->
     
     <!-- SEO Meta Tags -->
     <meta name="description" content="Payroll-Jam is Jamaica's leading cloud-based payroll software. Automate salary calculations, tax compliance (TRN, NIS), and employee management with ease." />
@@ -281,6 +305,11 @@
 <link rel="stylesheet" href="/src/index.css">
 </head>
   <body>
+    <noscript>
+      <img height="1" width="1" style="display:none"
+        src="https://www.facebook.com/tr?id=1059115303325705&amp;ev=PageView&amp;noscript=1"
+        alt="" />
+    </noscript>
     <div id="root"></div>
     <script type="module" src="/src/index.tsx"></script>
   </body>
