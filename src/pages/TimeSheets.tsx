@@ -49,6 +49,13 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
   const [attendanceBadgeError, setAttendanceBadgeError] = useState('');
   const [viewingTimesheet, setViewingTimesheet] = useState<WeeklyTimesheet | null>(null);
   const [editingTimesheet, setEditingTimesheet] = useState<WeeklyTimesheet | null>(null);
+  const [dateFilterOpen, setDateFilterOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState('');
+  const [selectedEndDate, setSelectedEndDate] = useState('');
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
+  const [draftDate, setDraftDate] = useState('');
+  const [draftEndDate, setDraftEndDate] = useState('');
+  const [draftEmployeeId, setDraftEmployeeId] = useState('');
   const [manualEntry, setManualEntry] = useState({
     employeeId: '',
     date: toDateInputValue(new Date()),
@@ -140,9 +147,20 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
     }
   };
 
-  const weekSheets = timesheets.filter(ts => ts.weekStartDate === currentWeekStart);
+  const hasDateFilter = Boolean(selectedDate);
+  const dateFilteredSheets = timesheets.filter((timesheet) => {
+    if (!hasDateFilter) return timesheet.weekStartDate === currentWeekStart;
 
-  const filteredSheets = weekSheets.filter(ts => {
+    // A single date returns the weekly sheet that contains that date. A range
+    // returns every timesheet that overlaps the selected dates.
+    const rangeEnd = selectedEndDate || selectedDate;
+    return timesheet.weekStartDate <= rangeEnd && timesheet.weekEndDate >= selectedDate;
+  });
+  const periodSheets = dateFilteredSheets.filter((timesheet) => (
+    !selectedEmployeeId || timesheet.employeeId === selectedEmployeeId
+  ));
+
+  const filteredSheets = periodSheets.filter(ts => {
     if (filter === 'ALL') return true;
     if (filter === 'PENDING') return ts.status === 'SUBMITTED' || ts.status === 'DRAFT';
     return ts.status === filter;
@@ -156,6 +174,40 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
 
   const goToToday = () => {
     setCurrentWeekStart(getWeekBounds(toLocalDateString(new Date())).weekStartDate);
+    setSelectedDate('');
+    setSelectedEndDate('');
+  };
+
+  const openDateFilter = () => {
+    setDraftDate(selectedDate);
+    setDraftEndDate(selectedEndDate);
+    setDraftEmployeeId(selectedEmployeeId);
+    setDateFilterOpen(true);
+  };
+
+  const applyDateFilter = () => {
+    if (draftEndDate && !draftDate) {
+      toast.error('Choose a start date before choosing an end date.');
+      return;
+    }
+    if (draftDate && draftEndDate && draftEndDate < draftDate) {
+      toast.error('The end date cannot be before the start date.');
+      return;
+    }
+    setSelectedDate(draftDate);
+    setSelectedEndDate(draftEndDate);
+    setSelectedEmployeeId(draftEmployeeId);
+    setDateFilterOpen(false);
+  };
+
+  const clearDateFilter = () => {
+    setDraftDate('');
+    setDraftEndDate('');
+    setDraftEmployeeId('');
+    setSelectedDate('');
+    setSelectedEndDate('');
+    setSelectedEmployeeId('');
+    setDateFilterOpen(false);
   };
 
   const weekStart = dateAtLocalNoon(currentWeekStart);
@@ -164,10 +216,10 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
   const weekDisplay = `${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
   const activeEmployees = employees.filter((employee) => employee.status !== 'ARCHIVED' && employee.status !== 'TERMINATED');
 
-  const pendingCount = weekSheets.filter(t => t.status === 'SUBMITTED' || t.status === 'DRAFT').length;
+  const pendingCount = periodSheets.filter(t => t.status === 'SUBMITTED' || t.status === 'DRAFT').length;
   const totalOvertime = filteredSheets.reduce((acc, t) => acc + t.totalOvertimeHours, 0);
-  const submittedOrApprovedCount = weekSheets.filter(t => t.status === 'SUBMITTED' || t.status === 'APPROVED').length;
-  const submissionRate = weekSheets.length > 0 ? Math.round((submittedOrApprovedCount / weekSheets.length) * 100) : 0;
+  const submittedOrApprovedCount = periodSheets.filter(t => t.status === 'SUBMITTED' || t.status === 'APPROVED').length;
+  const submissionRate = periodSheets.length > 0 ? Math.round((submittedOrApprovedCount / periodSheets.length) * 100) : 0;
   const selectedLocation = locations.find((location) => location.id === selectedLocationId) || locations[0];
 
   const handleExportTimesheets = () => {
@@ -177,9 +229,13 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
     }
 
     // This is deliberately a weekly-summary layout so exported data can be
-    // imported again without relying on display names or database IDs.
+    // imported again. The importer resolves employee identity in this order:
+    // TRN, email, employee ID, then name; include all four to make a round-trip
+    // safe even for older employee records that do not yet have a TRN.
     const headers = [
       'Employee TRN',
+      'Employee Email',
+      'Employee ID',
       'Employee Name',
       'Week Start Date',
       'Week End Date',
@@ -194,6 +250,8 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
       const totalHours = Number(timesheet.totalRegularHours || 0) + Number(timesheet.totalOvertimeHours || 0);
       return [
         employee?.trn || '',
+        employee?.email || '',
+        employee?.employeeId || '',
         timesheet.employeeName || `${employee?.firstName || ''} ${employee?.lastName || ''}`.trim(),
         timesheet.weekStartDate,
         timesheet.weekEndDate,
@@ -207,6 +265,24 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
 
     downloadFile(`Timesheet_Report_${currentWeekStart}.csv`, `${headers.map(toCsvCell).join(',')}\n${rows.join('\n')}\n`, 'text/csv');
     toast.success(`Exported ${filteredSheets.length} timesheet${filteredSheets.length === 1 ? '' : 's'}.`);
+  };
+
+  const handleDownloadImportTemplate = () => {
+    const headers = [
+      'Employee TRN',
+      'Employee Email',
+      'Employee ID',
+      'Employee Name',
+      'Week Start Date',
+      'Regular Hours',
+      'Overtime Hours',
+    ];
+    downloadFile(
+      'Payroll-Jam_Timesheet_Import_Template.csv',
+      `${headers.map(toCsvCell).join(',')}\n`,
+      'text/csv',
+    );
+    toast.success('Timesheet import template downloaded.');
   };
 
   useEffect(() => {
@@ -412,6 +488,12 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
             <Icons.Upload className="w-4 h-4 mr-2" /> Import Timesheets
           </button>
           <button
+            onClick={handleDownloadImportTemplate}
+            className="flex flex-1 items-center justify-center whitespace-nowrap rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-50 sm:flex-none"
+          >
+            <Icons.Download className="w-4 h-4 mr-2" /> Import Template
+          </button>
+          <button
             onClick={handleExportTimesheets}
             className="flex flex-1 items-center justify-center whitespace-nowrap rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-50 sm:flex-none"
           >
@@ -429,6 +511,86 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
           companyId={companyData?.id}
           onSaveTimesheet={onUpdate}
         />
+      )}
+
+      {dateFilterOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Filter timesheets</h3>
+                <p className="mt-1 text-sm text-gray-500">Select one date, a date range, and optionally an employee.</p>
+              </div>
+              <button
+                onClick={() => setDateFilterOpen(false)}
+                className="text-gray-400 hover:text-gray-700"
+                aria-label="Close date filter"
+              >
+                <Icons.Close className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              <label className="block text-sm font-medium text-gray-700">
+                Date
+                <input
+                  type="date"
+                  value={draftDate}
+                  onChange={(event) => setDraftDate(event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-jam-orange focus:outline-none focus:ring-2 focus:ring-orange-100"
+                />
+              </label>
+              <label className="block text-sm font-medium text-gray-700">
+                End date <span className="font-normal text-gray-400">(optional)</span>
+                <input
+                  type="date"
+                  value={draftEndDate}
+                  min={draftDate || undefined}
+                  onChange={(event) => setDraftEndDate(event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-jam-orange focus:outline-none focus:ring-2 focus:ring-orange-100"
+                />
+              </label>
+              <label className="block text-sm font-medium text-gray-700">
+                Employee <span className="font-normal text-gray-400">(optional)</span>
+                <select
+                  value={draftEmployeeId}
+                  onChange={(event) => setDraftEmployeeId(event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-jam-orange focus:outline-none focus:ring-2 focus:ring-orange-100"
+                >
+                  <option value="">All employees</option>
+                  {activeEmployees.map((employee) => (
+                    <option key={employee.id} value={employee.id}>
+                      {employee.firstName} {employee.lastName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="mt-6 flex items-center justify-between gap-3">
+              <button
+                onClick={clearDateFilter}
+                className="rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100"
+              >
+                Clear filters
+              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setDateFilterOpen(false)}
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={applyDateFilter}
+                  className="rounded-lg bg-jam-orange px-4 py-2 text-sm font-semibold text-jam-black hover:bg-yellow-500"
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {viewingTimesheet && (
@@ -860,6 +1022,14 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
                 className="ml-2 px-2 py-1 text-xs bg-jam-orange text-jam-black rounded hover:bg-yellow-500 font-medium"
               >
                 Today
+              </button>
+              <button
+                onClick={openDateFilter}
+                className={`ml-1 rounded p-1 transition-colors ${hasDateFilter || selectedEmployeeId ? 'bg-jam-black text-white' : 'hover:bg-white text-gray-600'}`}
+                title="Filter by date or employee"
+                aria-label="Filter by date or employee"
+              >
+                <Icons.Calendar className="h-4 w-4" />
               </button>
             </div>
           </div>

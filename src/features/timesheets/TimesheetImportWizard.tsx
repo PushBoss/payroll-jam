@@ -233,9 +233,22 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
 
     rawRows.forEach((row, index) => {
       const identifierValue = (row[mappings.employeeIdentifier] || '').trim();
-      const employee = resolveEmployee(identifierValue);
+      // Payroll-Jam exports the primary TRN plus email, employee ID and name.
+      // A legacy employee may not have a TRN yet, so do not discard a valid
+      // export merely because its first identifier column is blank. External
+      // files continue to use the manually selected identifier column.
+      const fallbackIdentifiers = [
+        identifierValue,
+        row['Employee Email'] || '',
+        row['Employee ID'] || '',
+        row['Employee Name'] || '',
+      ];
+      const employee = fallbackIdentifiers
+        .map((identifier) => resolveEmployee(String(identifier)))
+        .find((match): match is Employee => Boolean(match));
       if (!employee) {
-        newUnmatched.push({ originalIndex: index, message: identifierValue ? `"${identifierValue}" did not match any employee.` : 'No employee identifier in this row.' });
+        const attemptedIdentifier = fallbackIdentifiers.find((identifier) => String(identifier).trim());
+        newUnmatched.push({ originalIndex: index, message: attemptedIdentifier ? `"${attemptedIdentifier}" did not match any employee.` : 'No employee identifier in this row.' });
         return;
       }
 

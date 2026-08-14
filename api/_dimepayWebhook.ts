@@ -682,12 +682,29 @@ export default async function dimePayWebhookHandler(req: VercelRequest, res: Ver
         break;
       case 'subscription.canceled':
       case 'subscription.cancelled':
+        // A cancellation at period end must retain access until the already-paid
+        // period ends. Gateway callbacks commonly omit that distinction, so use
+        // the local cancellation record when it exists rather than shortening
+        // access to the webhook delivery time.
+        {
+          const remoteSubscriptionId = event.data.subscription_id || event.data.dime_subscription_id || event.data.dimepay_subscription_id;
+          const { data: cancelledSubscription } = await supabase
+            .from('subscriptions')
+            .select('id, next_billing_date, access_until, metadata')
+            .or(`dime_subscription_id.eq.${remoteSubscriptionId},dimepay_subscription_id.eq.${remoteSubscriptionId}`)
+            .maybeSingle();
+          const cancelAtPeriodEnd = Boolean(cancelledSubscription?.metadata?.cancel_at_period_end);
+          const endDate = cancelAtPeriodEnd
+            ? (cancelledSubscription?.access_until || cancelledSubscription?.next_billing_date || new Date().toISOString())
+            : new Date().toISOString();
         await supabase.from('subscriptions').update({
           status: 'cancelled',
-          end_date: new Date().toISOString(),
+          end_date: endDate,
           auto_renew: false,
+          metadata: { ...(cancelledSubscription?.metadata || {}), cancelled_at: new Date().toISOString(), cancel_at_period_end: cancelAtPeriodEnd },
           updated_at: new Date().toISOString()
-        }).or(`dime_subscription_id.eq.${event.data.subscription_id},dimepay_subscription_id.eq.${event.data.subscription_id}`);
+        }).or(`dime_subscription_id.eq.${remoteSubscriptionId},dimepay_subscription_id.eq.${remoteSubscriptionId}`);
+        }
         break;
       case 'subscription.paused':
         await supabase.from('subscriptions').update({
