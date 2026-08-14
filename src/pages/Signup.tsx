@@ -1069,6 +1069,16 @@ export const Signup: React.FC<SignupProps> = ({ onLoginClick, onVerifyEmailClick
                                                 isTeamInvitation ? 'Create My Account' : (formData.plan === 'Free' || pricing.total === 0 ? 'Create Free Account' : 'Continue to Payment')
                                             )}
                                         </button>
+                                        <p className="mt-4 text-center text-sm text-gray-600">
+                                            Already have an account?{' '}
+                                            <button
+                                                type="button"
+                                                onClick={onLoginClick}
+                                                className="font-medium text-jam-orange hover:text-yellow-600 focus:outline-none focus:underline"
+                                            >
+                                                Log in
+                                            </button>
+                                        </p>
                                     </div>
                                 </>
                             ) : (
