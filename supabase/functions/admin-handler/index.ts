@@ -1089,6 +1089,18 @@ const enrichCompanies = async (adminClient: any, companies: any[]) => {
             .eq('company_id', c.id)
             .eq('status', 'ACTIVE');
 
+        // The billing panel and manual-payment action need the actual local
+        // subscription window, rather than an inferred plan date or a support
+        // access override. The most recently created subscription is the same
+        // record used by the billing flows elsewhere in this handler.
+        const { data: subscription } = await adminClient
+            .from('subscriptions')
+            .select('status, billing_frequency, start_date, access_until, next_billing_date, created_at')
+            .eq('company_id', c.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
         const activeEmployeeCount = empCount || 0;
         const mrr = calculatePlanMRR(c.plan, activeEmployeeCount);
 
@@ -1100,6 +1112,11 @@ const enrichCompanies = async (adminClient: any, companies: any[]) => {
             contactName: ownerData?.name || c.settings?.contactName || 'N/A',
             plan: normalizePlanToFrontend(c.plan),
             status: c.status || 'ACTIVE',
+            subscriptionStatus: subscription?.status || null,
+            billingFrequency: subscription?.billing_frequency || null,
+            subscriptionPeriodStart: subscription?.start_date || subscription?.created_at || null,
+            subscriptionPeriodEnd: subscription?.access_until || subscription?.next_billing_date || null,
+            nextBillingDate: subscription?.next_billing_date || subscription?.access_until || null,
             billingGift,
             hasActiveBillingGift: isBillingGiftActive(billingGift),
             isTestCompany: Boolean(c.settings?.isTestCompany),
@@ -4647,7 +4664,7 @@ serve(async (req: Request) => {
                         .eq('status', 'ACTIVE'),
                     adminClient
                         .from('subscriptions')
-                        .select('id, company_id, plan_name, status, amount, currency, billing_frequency, dime_subscription_id, dimepay_subscription_id, dime_card_token, card_last_four, card_brand, payment_method_last4, payment_method_brand, access_until, next_billing_date, updated_at, created_at')
+                        .select('id, company_id, plan_name, status, amount, currency, billing_frequency, start_date, dime_subscription_id, dimepay_subscription_id, dime_card_token, card_last_four, card_brand, payment_method_last4, payment_method_brand, access_until, next_billing_date, updated_at, created_at')
                         .order('created_at', { ascending: false }),
                     adminClient
                         .from('payment_methods')
@@ -4756,6 +4773,10 @@ serve(async (req: Request) => {
                                 ? `${subscription?.card_brand || subscription?.payment_method_brand || paymentMethod?.card_brand || 'Card'} ${subscription?.card_last_four || subscription?.payment_method_last4 || paymentMethod?.card_last4 || ''}`.trim()
                                 : 'No card on file',
                             dimeSubscriptionId: subscription?.dime_subscription_id || subscription?.dimepay_subscription_id || null,
+                            billingFrequency: subscription?.billing_frequency || null,
+                            subscriptionPeriodStart: subscription?.start_date || subscription?.created_at || null,
+                            subscriptionPeriodEnd: subscription?.access_until || subscription?.next_billing_date || null,
+                            nextBillingDate: subscription?.next_billing_date || subscription?.access_until || null,
                             accessUntil,
                             lastPaymentDate: latestPayment?.payment_date || null,
                             lastPaymentAmount: latestPayment?.amount || null,

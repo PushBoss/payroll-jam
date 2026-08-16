@@ -373,6 +373,10 @@ export interface ResellerClient {
   plan: 'Free' | 'Starter' | 'Pro' | 'Enterprise' | 'Reseller';
   status: 'ACTIVE' | 'PENDING' | 'SUSPENDED';
   subscriptionStatus?: 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'PENDING_PAYMENT';
+  billingFrequency?: string | null;
+  subscriptionPeriodStart?: string | null;
+  subscriptionPeriodEnd?: string | null;
+  nextBillingDate?: string | null;
   billingGift?: BillingGift;
   hasActiveBillingGift?: boolean;
   mrr: number;

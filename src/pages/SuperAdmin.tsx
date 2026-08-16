@@ -51,6 +51,10 @@ interface PayingClient {
     currency?: string;
     paymentMethod: string;
     dimeSubscriptionId?: string | null;
+    billingFrequency?: string | null;
+    subscriptionPeriodStart?: string | null;
+    subscriptionPeriodEnd?: string | null;
+    nextBillingDate?: string | null;
     accessUntil?: string | null;
     lastPaymentDate?: string | null;
     lastPaymentAmount?: number | null;
@@ -4547,6 +4551,21 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                                     : 'None'}
                                             </span>
                                         </div>
+                                        <div className="flex justify-between gap-4">
+                                            <span className="text-gray-500">Subscription period</span>
+                                            <span className="text-right font-medium text-gray-900">
+                                                {selectedPayingClient.subscriptionPeriodStart && selectedPayingClient.subscriptionPeriodEnd
+                                                    ? `${formatActivityDate(selectedPayingClient.subscriptionPeriodStart, 'N/A')} – ${formatActivityDate(selectedPayingClient.subscriptionPeriodEnd, 'N/A')}`
+                                                    : 'Not available'}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between gap-4">
+                                            <span className="text-gray-500">Next billing date</span>
+                                            <span className="font-medium text-gray-900">
+                                                {formatActivityDate(selectedPayingClient.nextBillingDate, 'Not scheduled')}
+                                                {selectedPayingClient.billingFrequency ? ` (${selectedPayingClient.billingFrequency})` : ''}
+                                            </span>
+                                        </div>
                                         <div>
                                             <p className="text-gray-500">Internal note</p>
                                             <p className="mt-1 rounded-lg bg-gray-50 p-3 text-gray-800">
@@ -4682,6 +4701,21 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                                                 {selectedTenant.billingGift?.giftedUntil
                                                     ? `${getManualPaymentAccessLabel(selectedTenant.billingGift)} through ${formatGiftedUntil(selectedTenant.billingGift.giftedUntil)}`
                                                     : 'None'}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between gap-4">
+                                            <span className="text-gray-500">Subscription period</span>
+                                            <span className="text-right font-medium text-gray-900">
+                                                {selectedTenant.subscriptionPeriodStart && selectedTenant.subscriptionPeriodEnd
+                                                    ? `${formatActivityDate(selectedTenant.subscriptionPeriodStart, 'N/A')} – ${formatActivityDate(selectedTenant.subscriptionPeriodEnd, 'N/A')}`
+                                                    : 'Not available'}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between gap-4">
+                                            <span className="text-gray-500">Next billing date</span>
+                                            <span className="font-medium text-gray-900">
+                                                {formatActivityDate(selectedTenant.nextBillingDate, 'Not scheduled')}
+                                                {selectedTenant.billingFrequency ? ` (${selectedTenant.billingFrequency})` : ''}
                                             </span>
                                         </div>
                                         <div>
@@ -4988,6 +5022,23 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                         <form onSubmit={handleGiftMonths} className="space-y-5 p-6">
                             <div className="rounded-lg border border-amber-100 bg-amber-50 p-4 text-sm text-amber-900">
                                 This applies a temporary active billing window, records the reason, and can move the tenant to the selected tier.
+                            </div>
+                            <div className="grid grid-cols-1 gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm sm:grid-cols-2">
+                                <div>
+                                    <p className="text-xs font-bold uppercase text-gray-500">Current subscription period</p>
+                                    <p className="mt-1 font-medium text-gray-900">
+                                        {giftingTenant.subscriptionPeriodStart && giftingTenant.subscriptionPeriodEnd
+                                            ? `${formatActivityDate(giftingTenant.subscriptionPeriodStart, 'N/A')} – ${formatActivityDate(giftingTenant.subscriptionPeriodEnd, 'N/A')}`
+                                            : 'Not available'}
+                                    </p>
+                                </div>
+                                <div>
+                                    <p className="text-xs font-bold uppercase text-gray-500">Next billing date</p>
+                                    <p className="mt-1 font-medium text-gray-900">
+                                        {formatActivityDate(giftingTenant.nextBillingDate, 'Not scheduled')}
+                                        {giftingTenant.billingFrequency ? ` (${giftingTenant.billingFrequency})` : ''}
+                                    </p>
+                                </div>
                             </div>
                             <div>
                                 <label className="mb-1 block text-xs font-bold uppercase text-gray-500">Support Action</label>
