@@ -2776,7 +2776,7 @@ serve(async (req: Request) => {
 
                 const { data: company, error: companyError } = await adminClient
                     .from('companies')
-                    .select('id, name, email, settings')
+                    .select('id, name, email, plan, billing_cycle, settings')
                     .eq('id', companyId)
                     .maybeSingle();
 
@@ -2838,6 +2838,57 @@ serve(async (req: Request) => {
 
                 if (updateError) throw updateError;
 
+                // A manually approved payment is a real entitlement period. When
+                // the company does not yet have a DimePay schedule, persist that
+                // window locally so reminders and the overdue policy have a
+                // concrete due date. Never overwrite a gateway-owned schedule.
+                const { data: existingSubscription } = await adminClient
+                    .from('subscriptions')
+                    .select('id, dime_subscription_id, dimepay_subscription_id, access_until, next_billing_date, metadata')
+                    .eq('company_id', companyId)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                const hasGatewaySchedule = Boolean(existingSubscription?.dime_subscription_id || existingSubscription?.dimepay_subscription_id);
+                const effectivePlan = requestedPlan || normalizePlanToFrontend(company.plan);
+                const billingFrequency = String(company.billing_cycle || 'MONTHLY').toLowerCase() === 'annual' ? 'annual' : 'monthly';
+                const subscriptionPeriodStart = extensionBase.toISOString();
+
+                if (!hasGatewaySchedule && effectivePlan !== 'Free') {
+                    const manualSubscriptionPayload = {
+                        company_id: companyId,
+                        plan_name: effectivePlan,
+                        plan_type: String(effectivePlan).toLowerCase(),
+                        status: 'active',
+                        billing_frequency: billingFrequency,
+                        access_until: giftedUntil,
+                        next_billing_date: giftedUntil,
+                        auto_renew: false,
+                        metadata: {
+                            ...(existingSubscription?.metadata || {}),
+                            billing_date_source: 'manual_payment',
+                            manual_payment_period_start: subscriptionPeriodStart,
+                            manual_payment_period_end: giftedUntil,
+                        },
+                        updated_at: now.toISOString(),
+                    };
+                    if (existingSubscription?.id) {
+                        await adminClient.from('subscriptions').update({
+                            ...manualSubscriptionPayload,
+                            start_date: subscriptionPeriodStart,
+                        }).eq('id', existingSubscription.id);
+                    } else {
+                        await adminClient.from('subscriptions').insert({
+                            ...manualSubscriptionPayload,
+                            base_price: 0,
+                            amount: 0,
+                            currency: 'JMD',
+                            start_date: subscriptionPeriodStart,
+                            created_at: now.toISOString(),
+                        });
+                    }
+                }
+
                 let emailNotification: { sent: boolean; error?: string } = { sent: false, error: 'No recipient email found' };
                 if (recipientEmail) {
                     try {
@@ -2868,6 +2919,10 @@ serve(async (req: Request) => {
                         plan: requestedPlan ? normalizePlanToFrontend(requestedPlan) : undefined,
                         billingGift,
                         hasActiveBillingGift: true,
+                        subscriptionPeriodStart: hasGatewaySchedule ? undefined : subscriptionPeriodStart,
+                        subscriptionPeriodEnd: hasGatewaySchedule ? undefined : giftedUntil,
+                        nextBillingDate: hasGatewaySchedule ? undefined : giftedUntil,
+                        billingFrequency: hasGatewaySchedule ? undefined : billingFrequency,
                     },
                 }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -4879,6 +4934,14 @@ serve(async (req: Request) => {
                 const { companyId } = payload;
                 if (!companyId) throw new Error('Company ID is required for approval');
 
+                const { data: companyBeforeApproval, error: companyBeforeApprovalError } = await adminClient
+                    .from('companies')
+                    .select('id, plan, billing_cycle')
+                    .eq('id', companyId)
+                    .maybeSingle();
+                if (companyBeforeApprovalError) throw companyBeforeApprovalError;
+                if (!companyBeforeApproval) throw new Error('Company not found');
+
                 const { data, error } = await adminClient
                     .from('companies')
                     .update({ status: 'ACTIVE' })
@@ -4948,6 +5011,63 @@ serve(async (req: Request) => {
                         .from('companies')
                         .update({ plan: pendingIntent.plan_name })
                         .eq('id', companyId);
+                } else {
+                    // Initial bank-transfer/reseller approval. It must establish
+                    // a local paid-through window even before the customer adds a
+                    // verified card and DimePay subscription schedule.
+                    const approvedPlan = normalizePlanToFrontend(companyBeforeApproval.plan);
+                    if (approvedPlan !== 'Free') {
+                        const now = new Date();
+                        const nowIso = now.toISOString();
+                        const billingFrequency = String(companyBeforeApproval.billing_cycle || 'MONTHLY').toLowerCase() === 'annual'
+                            ? 'annual'
+                            : 'monthly';
+                        const nextBillingDate = billingFrequency === 'annual'
+                            ? new Date(now.setFullYear(now.getFullYear() + 1)).toISOString()
+                            : addMonths(now, 1).toISOString();
+                        const { data: existingSubscription } = await adminClient
+                            .from('subscriptions')
+                            .select('id, dime_subscription_id, dimepay_subscription_id, next_billing_date, access_until, metadata')
+                            .eq('company_id', companyId)
+                            .order('created_at', { ascending: false })
+                            .limit(1)
+                            .maybeSingle();
+                        const hasGatewaySchedule = Boolean(existingSubscription?.dime_subscription_id || existingSubscription?.dimepay_subscription_id);
+
+                        if (!hasGatewaySchedule && (!existingSubscription?.next_billing_date || !existingSubscription?.access_until)) {
+                            const approvalPayload = {
+                                company_id: companyId,
+                                plan_name: approvedPlan,
+                                plan_type: String(approvedPlan).toLowerCase(),
+                                status: 'active',
+                                billing_frequency: billingFrequency,
+                                access_until: existingSubscription?.access_until || nextBillingDate,
+                                next_billing_date: existingSubscription?.next_billing_date || nextBillingDate,
+                                auto_renew: false,
+                                metadata: {
+                                    ...(existingSubscription?.metadata || {}),
+                                    billing_date_source: 'manual_payment_approval',
+                                    card_required_by: existingSubscription?.next_billing_date || nextBillingDate,
+                                },
+                                updated_at: nowIso,
+                            };
+                            if (existingSubscription?.id) {
+                                await adminClient.from('subscriptions').update({
+                                    ...approvalPayload,
+                                    start_date: nowIso,
+                                }).eq('id', existingSubscription.id);
+                            } else {
+                                await adminClient.from('subscriptions').insert({
+                                    ...approvalPayload,
+                                    base_price: 0,
+                                    amount: 0,
+                                    currency: 'JMD',
+                                    start_date: nowIso,
+                                    created_at: nowIso,
+                                });
+                            }
+                        }
+                    }
                 }
 
                 return new Response(JSON.stringify({ success: true, company: data }), {

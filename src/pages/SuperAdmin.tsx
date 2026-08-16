@@ -1328,6 +1328,10 @@ export const SuperAdmin: React.FC<SuperAdminProps> = ({ plans, onUpdatePlans, on
                         plan: manualPaymentPlan,
                         billingGift: updatedCompany?.billingGift ?? tenant.billingGift,
                         hasActiveBillingGift: updatedCompany?.hasActiveBillingGift ?? true,
+                        subscriptionPeriodStart: updatedCompany?.subscriptionPeriodStart ?? tenant.subscriptionPeriodStart,
+                        subscriptionPeriodEnd: updatedCompany?.subscriptionPeriodEnd ?? tenant.subscriptionPeriodEnd,
+                        nextBillingDate: updatedCompany?.nextBillingDate ?? tenant.nextBillingDate,
+                        billingFrequency: updatedCompany?.billingFrequency ?? tenant.billingFrequency,
                     }
                     : tenant
             )));
