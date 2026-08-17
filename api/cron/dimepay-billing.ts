@@ -145,13 +145,29 @@ async function handler(req: VercelRequest, res: VercelResponse) {
           if (sent) results.reminders += 1;
         }
         if (dueAt < now) {
+          const overdueBeyondGrace = dueAt <= graceCutoff;
           await supabase.from('subscriptions').update({
-            status: 'past_due',
-            metadata: { ...metadata, access_expired_at: metadata.access_expired_at || nowIso, gateway_reconciliation_required: true },
+            status: overdueBeyondGrace ? 'expired' : 'past_due',
+            metadata: {
+              ...metadata,
+              // Use the actual end of the paid period, not the cron execution
+              // time. Otherwise an account already overdue for weeks would
+              // receive a brand-new grace period whenever the job first runs.
+              access_expired_at: metadata.access_expired_at || dueAt.toISOString(),
+              gateway_reconciliation_required: true,
+              ...(overdueBeyondGrace ? {
+                downgraded_for_nonpayment_at: nowIso,
+                downgrade_reason: 'payment_overdue',
+                grace_period_days: gracePeriodDays
+              } : {})
+            },
             updated_at: nowIso
           }).eq('id', subscription.id);
-          await supabase.from('companies').update({ status: 'PAST_DUE' }).eq('id', subscription.company_id);
+          await supabase.from('companies').update(
+            overdueBeyondGrace ? { plan: 'Free', status: 'ACTIVE' } : { status: 'PAST_DUE' }
+          ).eq('id', subscription.company_id);
           results.markedPastDue += 1;
+          if (overdueBeyondGrace) results.downgradedToFree += 1;
         }
         continue;
       }
