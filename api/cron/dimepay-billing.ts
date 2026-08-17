@@ -35,10 +35,14 @@ const sendEmail = async (to: string, subject: string, html: string) => {
 const getCompanyContact = async (companyId: string) => {
   const { data } = await supabase
     .from('companies')
-    .select('name, email')
+    .select('name, email, settings')
     .eq('id', companyId)
     .maybeSingle();
-  return { name: data?.name || 'Payroll-Jam customer', email: data?.email as string | undefined };
+  return {
+    name: data?.name || 'Payroll-Jam customer',
+    email: data?.email as string | undefined,
+    isTestCompany: Boolean(data?.settings?.isTestCompany)
+  };
 };
 
 const sendOnce = async (subscription: any, key: string, subject: string, html: string) => {
@@ -109,6 +113,11 @@ async function handler(req: VercelRequest, res: VercelResponse) {
       const metadata = subscription.metadata || {};
       const dueAt = validDate(subscription.access_until || subscription.next_billing_date);
       const hasGatewaySubscription = Boolean(subscription.dime_subscription_id || subscription.dimepay_subscription_id);
+      const companyContact = await getCompanyContact(subscription.company_id);
+
+      // Explicit test accounts are excluded from production billing and plan
+      // enforcement. The flag is set by Super Admin, never inferred from a name.
+      if (companyContact.isTestCompany) continue;
 
       if (subscription.status === 'cancelled') {
         const cancellationEnd = validDate(subscription.end_date) || dueAt;
@@ -135,12 +144,11 @@ async function handler(req: VercelRequest, res: VercelResponse) {
       // never manufacture a schedule here because that could cause an unexpected charge.
       if (subscription.status === 'active' && dueAt && !hasGatewaySubscription) {
         if (dueAt <= warningCutoff && dueAt >= now && !metadata.expiry_warning_sent_at) {
-          const contact = await getCompanyContact(subscription.company_id);
           const sent = await sendOnce(
             subscription,
             'expiry_warning_sent_at',
             `Your Payroll-Jam ${subscription.plan_name} plan expires soon`,
-            `<p>Hi ${contact.name},</p><p>Your plan expires on <strong>${dueAt.toLocaleDateString()}</strong>. Add a verified primary card in Settings &rarr; Billing to keep your subscription active.</p>`
+            `<p>Hi ${companyContact.name},</p><p>Your plan expires on <strong>${dueAt.toLocaleDateString()}</strong>. Add a verified primary card in Settings &rarr; Billing to keep your subscription active.</p>`
           );
           if (sent) results.reminders += 1;
         }
@@ -193,12 +201,11 @@ async function handler(req: VercelRequest, res: VercelResponse) {
       if (!failureDate) continue;
 
       if (!metadata.payment_reminder_sent_at) {
-        const contact = await getCompanyContact(subscription.company_id);
         const sent = await sendOnce(
           subscription,
           'payment_reminder_sent_at',
           `Action needed: your Payroll-Jam payment is overdue`,
-          `<p>Hi ${contact.name},</p><p>We could not confirm payment for your <strong>${subscription.plan_name}</strong> plan. Add or update your primary card in Settings &rarr; Billing to keep payroll access active.</p>`
+          `<p>Hi ${companyContact.name},</p><p>We could not confirm payment for your <strong>${subscription.plan_name}</strong> plan. Add or update your primary card in Settings &rarr; Billing to keep payroll access active.</p>`
         );
         if (sent) results.reminders += 1;
       }
