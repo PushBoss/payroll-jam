@@ -363,6 +363,64 @@ const assertCompanyAccess = async (
     throw new Error('Unauthorized: No relationship with this company');
 };
 
+// Employee accounts created before invitations were standardized can have an
+// employee row but a missing/stale app_users.company_id.  The employee portal
+// only needs non-sensitive company entitlement data, so it may verify the
+// caller through either an accepted membership or their matching employee
+// record.  Keep this deliberately separate from assertCompanyAccess: it must
+// never broaden access to payroll, billing, or company-management actions.
+const assertEmployeePortalCompanyAccess = async (
+    adminClient: any,
+    authUser: any,
+    companyId: string,
+) => {
+    const callerProfile = await getCallerProfile(adminClient, authUser);
+    const callerRole = normalizeRole(callerProfile.role);
+    if (callerRole === 'SUPER_ADMIN') return callerProfile;
+
+    if (callerProfile.company_id === companyId && callerRole === 'EMPLOYEE') {
+        return callerProfile;
+    }
+
+    const email = String(authUser?.email || callerProfile.email || '').trim().toLowerCase();
+    if (!email) throw new Error('Unauthorized');
+
+    const [{ data: membershipByUser, error: membershipByUserError }, { data: membershipByEmail, error: membershipByEmailError }, { data: employee, error: employeeError }] = await Promise.all([
+        adminClient
+            .from('account_members')
+            .select('account_id, role')
+            .eq('account_id', companyId)
+            .eq('user_id', authUser.id)
+            .eq('status', 'accepted')
+            .maybeSingle(),
+        adminClient
+            .from('account_members')
+            .select('account_id, role')
+            .eq('account_id', companyId)
+            .ilike('email', email)
+            .eq('status', 'accepted')
+            .maybeSingle(),
+        adminClient
+            .from('employees')
+            .select('id')
+            .eq('company_id', companyId)
+            .ilike('email', email)
+            .limit(1)
+            .maybeSingle(),
+    ]);
+
+    if (membershipByUserError) throw membershipByUserError;
+    if (membershipByEmailError) throw membershipByEmailError;
+    if (employeeError) throw employeeError;
+
+    const membership = membershipByUser || membershipByEmail;
+    if (normalizeMemberRole(membership?.role) === 'EMPLOYEE' || employee) {
+        return callerProfile;
+    }
+
+    throw new Error('Unauthorized: No employee relationship with this company');
+};
+
 const ATTENDANCE_SIGNING_CONTEXT = 'payroll-jam-qr-attendance';
 const ATTENDANCE_CODE_CONTEXT = 'payroll-jam-attendance-code';
 const ATTENDANCE_BADGE_TTL_HOURS = 24 * 7;
@@ -1779,6 +1837,59 @@ serve(async (req: Request) => {
                     .maybeSingle();
 
                 if (existingById) {
+                    // Repair legacy employee profiles which were created without
+                    // company_id. Without that link the client cannot even ask
+                    // for the employer's entitlement and defaults to the Free
+                    // portal gate. Never alter an already-associated account or
+                    // a super-admin profile.
+                    if (!existingById.company_id && normalizeRole(existingById.role) !== 'SUPER_ADMIN') {
+                        const [{ data: employeeMembership, error: employeeMembershipError }, { data: employeeRecord, error: employeeRecordError }] = await Promise.all([
+                            adminClient
+                                .from('account_members')
+                                .select('account_id, role')
+                                .eq('user_id', authUser.id)
+                                .eq('status', 'accepted')
+                                .eq('role', 'EMPLOYEE')
+                                .order('accepted_at', { ascending: false })
+                                .limit(1)
+                                .maybeSingle(),
+                            normalizeRole(existingById.role) === 'EMPLOYEE'
+                                ? adminClient
+                                    .from('employees')
+                                    .select('company_id')
+                                    .ilike('email', email)
+                                    .limit(2)
+                                : Promise.resolve({ data: [], error: null }),
+                        ]);
+
+                        if (employeeMembershipError) throw employeeMembershipError;
+                        if (employeeRecordError) throw employeeRecordError;
+
+                        const employeeCompanyIds = [...new Set((employeeRecord || [])
+                            .map((employee: any) => employee.company_id)
+                            .filter(Boolean))];
+                        const repairedCompanyId = employeeMembership?.account_id
+                            || (employeeCompanyIds.length === 1 ? employeeCompanyIds[0] : null);
+
+                        if (repairedCompanyId) {
+                            const { data: repairedProfile, error: repairError } = await adminClient
+                                .from('app_users')
+                                .update({
+                                    company_id: repairedCompanyId,
+                                    role: 'EMPLOYEE',
+                                    auth_user_id: authUser.id,
+                                })
+                                .eq('id', existingById.id)
+                                .select('*')
+                                .maybeSingle();
+                            if (repairError) throw repairError;
+
+                            return new Response(JSON.stringify({ user: repairedProfile || existingById, created: false, repaired: true }), {
+                                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                            });
+                        }
+                    }
+
                     return new Response(JSON.stringify({ user: existingById, created: false }), {
                         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                     });
@@ -3208,7 +3319,7 @@ serve(async (req: Request) => {
                 // but must never receive banking or billing settings. This is an
                 // explicit server-side alternative to relying on a permissive
                 // browser RLS policy for the whole companies table.
-                await assertCompanyAccess(adminClient, authUser, companyId, ['EMPLOYEE']);
+                await assertEmployeePortalCompanyAccess(adminClient, authUser, companyId);
 
                 const { data: company, error: companyError } = await adminClient
                     .from('companies')
