@@ -170,11 +170,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           let appUser: User | null = null;
           try {
             appUser = await withAuthTimeout(EmployeeService.getUserByEmail(sessionEmail));
-            // Legacy employee profiles can exist without company_id. Ask the
-            // server to repair only that safe employee association before app
-            // bootstrap; otherwise the portal has no company to load and shows
-            // its Free-plan access gate.
-            if (appUser && !appUser.companyId) {
+            // Reconcile employee profiles before app bootstrap. Legacy records
+            // can have a missing or stale company_id, either of which makes a
+            // paid employer's employee resolve the portal as Free.
+            if (appUser && (appUser.role === Role.EMPLOYEE || !appUser.companyId)) {
               const repaired = await ensureSelfProfile(sessionEmail);
               if (repaired) appUser = repaired;
             }
@@ -278,7 +277,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           let appUser: User | null = null;
           try {
             appUser = await withAuthTimeout(EmployeeService.getUserByEmail(sessionEmail));
-            if (appUser && !appUser.companyId) {
+            if (appUser && (appUser.role === Role.EMPLOYEE || !appUser.companyId)) {
               const repaired = await ensureSelfProfile(sessionEmail);
               if (repaired) appUser = repaired;
             }

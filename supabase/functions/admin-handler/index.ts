@@ -1837,46 +1837,78 @@ serve(async (req: Request) => {
                     .maybeSingle();
 
                 if (existingById) {
-                    // Repair legacy employee profiles which were created without
-                    // company_id. Without that link the client cannot even ask
-                    // for the employer's entitlement and defaults to the Free
-                    // portal gate. Never alter an already-associated account or
-                    // a super-admin profile.
-                    if (!existingById.company_id && normalizeRole(existingById.role) !== 'SUPER_ADMIN') {
-                        const [{ data: employeeMembership, error: employeeMembershipError }, { data: employeeRecord, error: employeeRecordError }] = await Promise.all([
+                    // Legacy employee profiles can point at a missing or stale
+                    // company. That made a valid employee of a paid employer
+                    // load another company's Free entitlement. Reconcile only
+                    // EMPLOYEE profiles, and only where an authenticated link
+                    // resolves to one unambiguous employer. This does not grant
+                    // any access outside the employee's actual company.
+                    if (normalizeRole(existingById.role) === 'EMPLOYEE') {
+                        const [
+                            { data: employeeByAuthId, error: employeeByAuthIdError },
+                            { data: employeeByEmail, error: employeeByEmailError },
+                            { data: membershipsByUser, error: membershipsByUserError },
+                            { data: membershipsByEmail, error: membershipsByEmailError },
+                        ] = await Promise.all([
+                            adminClient
+                                .from('employees')
+                                .select('company_id')
+                                .eq('auth_user_id', authUser.id)
+                                .limit(2),
+                            adminClient
+                                .from('employees')
+                                .select('company_id')
+                                .ilike('email', email)
+                                .limit(2),
                             adminClient
                                 .from('account_members')
                                 .select('account_id, role')
                                 .eq('user_id', authUser.id)
                                 .eq('status', 'accepted')
-                                .eq('role', 'EMPLOYEE')
-                                .order('accepted_at', { ascending: false })
-                                .limit(1)
-                                .maybeSingle(),
-                            normalizeRole(existingById.role) === 'EMPLOYEE'
-                                ? adminClient
-                                    .from('employees')
-                                    .select('company_id')
-                                    .ilike('email', email)
-                                    .limit(2)
-                                : Promise.resolve({ data: [], error: null }),
+                                .limit(2),
+                            adminClient
+                                .from('account_members')
+                                .select('account_id, role')
+                                .ilike('email', email)
+                                .eq('status', 'accepted')
+                                .limit(2),
                         ]);
 
-                        if (employeeMembershipError) throw employeeMembershipError;
-                        if (employeeRecordError) throw employeeRecordError;
+                        if (employeeByAuthIdError) throw employeeByAuthIdError;
+                        if (employeeByEmailError) throw employeeByEmailError;
+                        if (membershipsByUserError) throw membershipsByUserError;
+                        if (membershipsByEmailError) throw membershipsByEmailError;
 
-                        const employeeCompanyIds = [...new Set((employeeRecord || [])
-                            .map((employee: any) => employee.company_id)
-                            .filter(Boolean))];
-                        const repairedCompanyId = employeeMembership?.account_id
-                            || (employeeCompanyIds.length === 1 ? employeeCompanyIds[0] : null);
+                        const uniqueCompanyIds = (rows: any[], field: string) => [...new Set(
+                            (rows || []).map((row: any) => row[field]).filter(Boolean)
+                        )];
+                        const authLinkedCompanyIds = uniqueCompanyIds(employeeByAuthId || [], 'company_id');
+                        const emailLinkedCompanyIds = uniqueCompanyIds(employeeByEmail || [], 'company_id');
+                        const membershipCompanyIds = uniqueCompanyIds(
+                            [...(membershipsByUser || []), ...(membershipsByEmail || [])]
+                                .filter((membership: any) => normalizeMemberRole(membership.role) === 'EMPLOYEE'),
+                            'account_id'
+                        );
 
-                        if (repairedCompanyId) {
+                        // auth_user_id is the strongest identity proof. Email is
+                        // only a compatibility fallback for pre-onboarding rows.
+                        const resolvedCompanyId = authLinkedCompanyIds.length === 1
+                            ? authLinkedCompanyIds[0]
+                            : authLinkedCompanyIds.length > 1
+                                ? null
+                                : emailLinkedCompanyIds.length === 1
+                                    ? emailLinkedCompanyIds[0]
+                                    : emailLinkedCompanyIds.length > 1
+                                        ? null
+                                        : membershipCompanyIds.length === 1
+                                            ? membershipCompanyIds[0]
+                                            : null;
+
+                        if (resolvedCompanyId && resolvedCompanyId !== existingById.company_id) {
                             const { data: repairedProfile, error: repairError } = await adminClient
                                 .from('app_users')
                                 .update({
-                                    company_id: repairedCompanyId,
-                                    role: 'EMPLOYEE',
+                                    company_id: resolvedCompanyId,
                                     auth_user_id: authUser.id,
                                 })
                                 .eq('id', existingById.id)
