@@ -378,8 +378,12 @@ const assertEmployeePortalCompanyAccess = async (
     const callerRole = normalizeRole(callerProfile.role);
     if (callerRole === 'SUPER_ADMIN') return callerProfile;
 
-    if (callerProfile.company_id === companyId && callerRole === 'EMPLOYEE') {
-        return callerProfile;
+    // Employee Portal entitlement is always evaluated against the active
+    // company selected through select-employee-company. Membership proves the
+    // selection is allowed; it is not by itself permission to read another
+    // employer's portal data in the same session.
+    if (callerRole === 'EMPLOYEE' && callerProfile.company_id !== companyId) {
+        throw new Error('Unauthorized: select this company before opening its Employee Portal');
     }
 
     const email = String(authUser?.email || callerProfile.email || '').trim().toLowerCase();
@@ -419,6 +423,44 @@ const assertEmployeePortalCompanyAccess = async (
     }
 
     throw new Error('Unauthorized: No employee relationship with this company');
+};
+
+// A person may be employed by more than one company. Employee Portal data must
+// therefore be scoped to an explicitly selected accepted employee membership,
+// never to whichever legacy company_id happened to be on their profile.
+const getAcceptedEmployeeMemberships = async (adminClient: any, authUser: any, email: string) => {
+    const [{ data: byUser, error: byUserError }, { data: byEmail, error: byEmailError }] = await Promise.all([
+        adminClient
+            .from('account_members')
+            .select('account_id, role, accepted_at, companies:account_id (id, name, plan)')
+            .eq('user_id', authUser.id)
+            .eq('status', 'accepted'),
+        adminClient
+            .from('account_members')
+            .select('account_id, role, accepted_at, companies:account_id (id, name, plan)')
+            .ilike('email', email)
+            .eq('status', 'accepted'),
+    ]);
+
+    if (byUserError) throw byUserError;
+    if (byEmailError) throw byEmailError;
+
+    const memberships = new Map<string, any>();
+    [...(byUser || []), ...(byEmail || [])].forEach((membership: any) => {
+        if (normalizeMemberRole(membership.role) !== 'EMPLOYEE' || !membership.account_id) return;
+        const company = Array.isArray(membership.companies) ? membership.companies[0] : membership.companies;
+        if (!company?.id) return;
+        memberships.set(company.id, {
+            companyId: company.id,
+            companyName: company.name || 'Company',
+            plan: normalizePlanToFrontend(company.plan),
+            acceptedAt: membership.accepted_at || null,
+        });
+    });
+
+    return [...memberships.values()].sort((a, b) =>
+        String(a.companyName).localeCompare(String(b.companyName))
+    );
 };
 
 const ATTENDANCE_SIGNING_CONTEXT = 'payroll-jam-qr-attendance';
@@ -3375,6 +3417,52 @@ serve(async (req: Request) => {
                         }
                     }
                 }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'get-employee-company-memberships': {
+                if (!authUser) throw new Error('Unauthorized');
+                const callerProfile = await getCallerProfile(adminClient, authUser);
+                if (normalizeRole(callerProfile.role) !== 'EMPLOYEE') {
+                    throw new Error('Employee Portal membership lookup is only available to employee accounts');
+                }
+
+                const email = String(authUser.email || callerProfile.email || '').trim().toLowerCase();
+                const memberships = await getAcceptedEmployeeMemberships(adminClient, authUser, email);
+                return new Response(JSON.stringify({
+                    memberships,
+                    activeCompanyId: memberships.length === 1 ? memberships[0].companyId : null,
+                    selectionRequired: memberships.length > 1,
+                }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            case 'select-employee-company': {
+                if (!authUser) throw new Error('Unauthorized');
+                const { companyId } = payload || {};
+                if (!companyId) throw new Error('companyId required');
+
+                const callerProfile = await getCallerProfile(adminClient, authUser);
+                if (normalizeRole(callerProfile.role) !== 'EMPLOYEE') {
+                    throw new Error('Only employee accounts can select an Employee Portal company');
+                }
+
+                const email = String(authUser.email || callerProfile.email || '').trim().toLowerCase();
+                const memberships = await getAcceptedEmployeeMemberships(adminClient, authUser, email);
+                const selected = memberships.find((membership) => membership.companyId === companyId);
+                if (!selected) throw new Error('Unauthorized: no accepted employee membership for this company');
+
+                const { data: updatedProfile, error: updateError } = await adminClient
+                    .from('app_users')
+                    .update({ company_id: selected.companyId, auth_user_id: authUser.id })
+                    .eq('id', callerProfile.id)
+                    .select('*')
+                    .maybeSingle();
+                if (updateError) throw updateError;
+
+                return new Response(JSON.stringify({ success: true, company: selected, user: updatedProfile }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });
             }

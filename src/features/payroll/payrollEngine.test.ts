@@ -241,6 +241,107 @@ describe('payrollEngine', () => {
     expect(lineItem.pieceCount).toBe(12);
   });
 
+  it('calculates timesheet-paid employees from approved hours only', () => {
+    const timesheetEmployee: Employee = {
+      ...defaultEmployee,
+      id: 'timesheet-1',
+      grossSalary: 0,
+      payType: PayType.TIMESHEET,
+      payFrequency: PayFrequency.WEEKLY,
+      hourlyRate: 1000,
+    };
+
+    const lineItem = calculatePayRunLineItem({
+      employee: timesheetEmployee,
+      period: '2026-01',
+      context: {
+        timesheets: [
+          {
+            id: 'approved-time',
+            employeeId: timesheetEmployee.id,
+            employeeName: 'Jane Doe',
+            weekStartDate: '2026-01-19',
+            weekEndDate: '2026-01-25',
+            status: 'APPROVED',
+            totalRegularHours: 40,
+            totalOvertimeHours: 5,
+            entries: [],
+          },
+          {
+            id: 'unapproved-time',
+            employeeId: timesheetEmployee.id,
+            employeeName: 'Jane Doe',
+            weekStartDate: '2026-01-19',
+            weekEndDate: '2026-01-25',
+            status: 'SUBMITTED',
+            totalRegularHours: 20,
+            totalOvertimeHours: 0,
+            entries: [],
+          },
+        ],
+        leaveRequests: [],
+        payRunHistory: [],
+        companyData: defaultCompanyData,
+      },
+    });
+
+    expect(lineItem.grossPay).toBe(40000);
+    expect(lineItem.additionsBreakdown).toContainEqual(expect.objectContaining({
+      name: 'Overtime',
+      amount: 7500,
+    }));
+    expect(lineItem.netPay).toBeLessThan(47500);
+  });
+
+  it('uses the company overtime policy for timesheet-paid employees', () => {
+    const timesheetEmployee: Employee = {
+      ...defaultEmployee,
+      id: 'timesheet-overtime-policy',
+      grossSalary: 0,
+      payType: PayType.TIMESHEET,
+      payFrequency: PayFrequency.WEEKLY,
+      hourlyRate: 1000,
+    };
+    const timesheet: WeeklyTimesheet = {
+      id: 'policy-time',
+      employeeId: timesheetEmployee.id,
+      employeeName: 'Jane Doe',
+      weekStartDate: '2026-01-19',
+      weekEndDate: '2026-01-25',
+      status: 'APPROVED',
+      totalRegularHours: 40,
+      totalOvertimeHours: 5,
+      entries: [],
+    };
+    const baseContext = {
+      timesheets: [timesheet],
+      leaveRequests: [],
+      payRunHistory: [],
+    };
+
+    const doubleTime = calculatePayRunLineItem({
+      employee: timesheetEmployee,
+      period: '2026-01',
+      context: {
+        ...baseContext,
+        companyData: { ...defaultCompanyData, timesheetOvertime: { enabled: true, multiplier: 2 } },
+      },
+    });
+    expect(doubleTime.grossPay).toBe(40000);
+    expect(doubleTime.additionsBreakdown).toContainEqual(expect.objectContaining({ name: 'Overtime', amount: 10000 }));
+
+    const noOvertimePremium = calculatePayRunLineItem({
+      employee: timesheetEmployee,
+      period: '2026-01',
+      context: {
+        ...baseContext,
+        companyData: { ...defaultCompanyData, timesheetOvertime: { enabled: false, multiplier: 2 } },
+      },
+    });
+    expect(noOvertimePremium.grossPay).toBe(45000);
+    expect(noOvertimePremium.additionsBreakdown).not.toContainEqual(expect.objectContaining({ name: 'Overtime' }));
+  });
+
   it('can initialize a piece-rate-only pay run', () => {
     const pieceRateEmployee: Employee = {
       ...defaultEmployee,

@@ -37,9 +37,22 @@ export const Layout: React.FC<LayoutProps> = ({
   supportWidget,
   onContactSupport
 }) => {
-  const { user, logout, stopImpersonation } = useAuth();
+  const { user, logout, stopImpersonation, employeeCompanyMemberships, selectEmployeeCompany } = useAuth();
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSwitchingEmployeeCompany, setIsSwitchingEmployeeCompany] = useState(false);
+
+  const handleEmployeeCompanySwitch = async (companyId: string) => {
+    if (companyId === user?.companyId) return;
+    setIsSwitchingEmployeeCompany(true);
+    try {
+      await selectEmployeeCompany(companyId);
+    } catch (error) {
+      console.error('Employee company switch failed:', error);
+    } finally {
+      setIsSwitchingEmployeeCompany(false);
+    }
+  };
 
   // Filter admin nav items based on feature access
   const adminNavItems = useMemo(() => {
@@ -255,6 +268,21 @@ export const Layout: React.FC<LayoutProps> = ({
             ))}
           </nav>
           <div className="p-4 border-t border-gray-800 flex-shrink-0">
+            {variant === 'portal' && employeeCompanyMemberships.length > 1 && (
+              <div className="mb-3">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Company</label>
+                <select
+                  value={user?.companyId || ''}
+                  disabled={isSwitchingEmployeeCompany}
+                  onChange={(event) => void handleEmployeeCompanySwitch(event.target.value)}
+                  className="w-full rounded bg-gray-800 px-2 py-2 text-sm text-white outline-none ring-jam-orange focus:ring-1 disabled:opacity-60"
+                >
+                  {employeeCompanyMemberships.map((membership) => (
+                    <option key={membership.companyId} value={membership.companyId}>{membership.companyName}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div
               onClick={() => onNavigate('profile')}
               className="flex items-center mb-4 cursor-pointer hover:bg-gray-700 rounded-lg p-2 -mx-2 transition-colors"
@@ -297,6 +325,21 @@ export const Layout: React.FC<LayoutProps> = ({
           {isMobileMenuOpen && (
             <div className="md:hidden absolute top-16 left-0 w-full bg-jam-black z-50 border-t border-gray-800 max-h-[calc(100vh-4rem)] overflow-y-auto no-print">
               <nav className="p-4 space-y-2 pb-20">
+                {variant === 'portal' && employeeCompanyMemberships.length > 1 && (
+                  <div className="mb-4 rounded border border-gray-700 p-3">
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Company</label>
+                    <select
+                      value={user?.companyId || ''}
+                      disabled={isSwitchingEmployeeCompany}
+                      onChange={(event) => void handleEmployeeCompanySwitch(event.target.value)}
+                      className="w-full rounded bg-gray-800 px-2 py-2 text-sm text-white outline-none ring-jam-orange focus:ring-1 disabled:opacity-60"
+                    >
+                      {employeeCompanyMemberships.map((membership) => (
+                        <option key={membership.companyId} value={membership.companyId}>{membership.companyName}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 {navItems.map((item) => (
                   <button
                     key={item.id}

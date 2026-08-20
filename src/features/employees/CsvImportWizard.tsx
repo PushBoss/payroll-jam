@@ -283,6 +283,8 @@ export const CsvImportWizard: React.FC<CsvImportWizardProps> = ({
         const typeLower = data.payType.toLowerCase().replace(/[\s-_]/g, '');
         if (['piecerate', 'piece', 'unitrate'].includes(typeLower)) {
           data.payType = PayType.PIECE_RATE;
+        } else if (['timesheet', 'timebased', 'time'].includes(typeLower)) {
+          data.payType = PayType.TIMESHEET;
         } else if (['hourly'].includes(typeLower)) {
           data.payType = PayType.HOURLY;
         } else if (['commission'].includes(typeLower)) {

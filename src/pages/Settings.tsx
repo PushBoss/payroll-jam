@@ -2027,6 +2027,53 @@ export const Settings: React.FC<SettingsProps> = ({
                                     <option value="Weekly">Weekly</option>
                                 </select>
                             </div>
+                            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div>
+                                        <label htmlFor="timesheet-overtime-enabled" className="text-sm font-semibold text-gray-800">Overtime pay</label>
+                                        <p className="mt-1 text-xs text-gray-500">Apply a higher rate to approved overtime hours in time-based payroll.</p>
+                                    </div>
+                                    <input
+                                        id="timesheet-overtime-enabled"
+                                        type="checkbox"
+                                        checked={companyData.timesheetOvertime?.enabled ?? true}
+                                        onChange={(event) => handleCompanyUpdate({
+                                            ...companyData,
+                                            timesheetOvertime: {
+                                                enabled: event.target.checked,
+                                                multiplier: companyData.timesheetOvertime?.multiplier ?? 1.5,
+                                            },
+                                        })}
+                                        className="mt-1 h-4 w-4 rounded border-gray-300 text-jam-orange focus:ring-jam-orange"
+                                    />
+                                </div>
+                                {(companyData.timesheetOvertime?.enabled ?? true) ? (
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase">Overtime multiplier</label>
+                                        <div className="mt-1 flex items-center gap-2">
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                max="5"
+                                                step="0.05"
+                                                value={companyData.timesheetOvertime?.multiplier ?? 1.5}
+                                                onChange={(event) => handleCompanyUpdate({
+                                                    ...companyData,
+                                                    timesheetOvertime: {
+                                                        enabled: true,
+                                                        multiplier: Number(event.target.value),
+                                                    },
+                                                })}
+                                                className="w-28 rounded border border-gray-300 p-2"
+                                            />
+                                            <span className="text-sm text-gray-600">× hourly rate</span>
+                                        </div>
+                                        <p className="mt-1 text-xs text-gray-500">Default: 1.5×. This applies to new pay-run calculations; it does not rewrite finalized payroll.</p>
+                                    </div>
+                                ) : (
+                                    <p className="text-xs text-gray-500">Overtime hours remain visible on timesheets but are paid at the employee’s normal hourly rate.</p>
+                                )}
+                            </div>
                             <div className="space-y-2">
                                 <label className="block text-xs font-bold text-gray-500 uppercase">Company Bank</label>
                                 <select value={companyData.bankName} onChange={e => handleCompanyUpdate({ ...companyData, bankName: e.target.value })} className="w-full border rounded p-2"><option value="NCB">NCB</option><option value="BNS">BNS</option></select>

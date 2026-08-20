@@ -22,6 +22,7 @@ export enum EmployeeType {
 export enum PayType {
   SALARIED = 'SALARIED',
   HOURLY = 'HOURLY',
+  TIMESHEET = 'TIMESHEET',
   COMMISSION = 'COMMISSION',
   PIECE_RATE = 'PIECE_RATE'
 }
@@ -484,6 +485,14 @@ export interface CompanySettings {
   logoUrl?: string;
   payFrequency?: string;
   defaultPayDate?: string;
+  /**
+   * Company-wide default for time-based payroll. The policy is optional so
+   * existing companies retain the historic 1.5x overtime behaviour.
+   */
+  timesheetOvertime?: {
+    enabled: boolean;
+    multiplier: number;
+  };
   subscriptionStatus?: 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'PENDING_PAYMENT';
   plan?: string;
   billingCycle?: 'MONTHLY' | 'ANNUAL';

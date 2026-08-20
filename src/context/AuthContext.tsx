@@ -11,6 +11,13 @@ import { toast } from 'sonner';
 import { AppRoute, getPathForRoute } from '../app/routes';
 import { generateUUID } from '../utils/uuid';
 
+export interface EmployeeCompanyMembership {
+  companyId: string;
+  companyName: string;
+  plan: string;
+  acceptedAt?: string | null;
+}
+
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
@@ -43,11 +50,16 @@ interface AuthContextType {
   updateUser: (updates: Partial<User>) => void;
   impersonate: (client: ResellerClient) => void;
   stopImpersonation: () => Promise<void>;
+  employeeCompanyMemberships: EmployeeCompanyMembership[];
+  employeeCompanySelectionRequired: boolean;
+  employeeCompanyContextLoading: boolean;
+  selectEmployeeCompany: (companyId: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const SIGN_OUT_TIMEOUT_MS = 3000;
 const AUTH_USER_LOOKUP_TIMEOUT_MS = 8000;
+const employeeCompanyStorageKey = (userId: string) => `payrolljam.activeEmployeeCompany.${userId}`;
 
 const withAuthTimeout = <T,>(promise: Promise<T>): Promise<T> =>
   Promise.race([
@@ -88,6 +100,74 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [user, setUser] = useState<User | null>(() => storage.getUser());
   const [isLoading, setIsLoading] = useState(() => !Boolean(storage.getUser()));
   const [isRevalidating, setIsRevalidating] = useState(() => Boolean(storage.getUser()));
+  const [employeeCompanyMemberships, setEmployeeCompanyMemberships] = useState<EmployeeCompanyMembership[]>([]);
+  const [employeeCompanySelectionRequired, setEmployeeCompanySelectionRequired] = useState(false);
+  const [employeeCompanyContextLoading, setEmployeeCompanyContextLoading] = useState(
+    () => storage.getUser()?.role === Role.EMPLOYEE
+  );
+
+  const resolveEmployeeCompanyContext = async (appUser: User): Promise<User> => {
+    if (!supabase || appUser.role !== Role.EMPLOYEE || appUser.originalRole) {
+      setEmployeeCompanyContextLoading(false);
+      return appUser;
+    }
+
+    try {
+      setEmployeeCompanyContextLoading(true);
+      const { data, error } = await supabase.functions.invoke('admin-handler', {
+        body: { action: 'get-employee-company-memberships', payload: {} }
+      });
+      if (error) throw error;
+
+      const memberships = Array.isArray(data?.memberships) ? data.memberships as EmployeeCompanyMembership[] : [];
+      setEmployeeCompanyMemberships(memberships);
+      const storedCompanyId = typeof window === 'undefined'
+        ? null
+        : window.localStorage.getItem(employeeCompanyStorageKey(appUser.id));
+      const selectedCompanyId = memberships.length === 1
+        ? memberships[0].companyId
+        : memberships.some((membership) => membership.companyId === storedCompanyId)
+          ? storedCompanyId
+          : null;
+
+      setEmployeeCompanySelectionRequired(memberships.length > 1 && !selectedCompanyId);
+      if (!selectedCompanyId) return appUser;
+
+      if (appUser.companyId !== selectedCompanyId) {
+        const { error: selectionError } = await supabase.functions.invoke('admin-handler', {
+          body: { action: 'select-employee-company', payload: { companyId: selectedCompanyId } }
+        });
+        if (selectionError) throw selectionError;
+      }
+
+      if (typeof window !== 'undefined') window.localStorage.setItem(employeeCompanyStorageKey(appUser.id), selectedCompanyId);
+      return { ...appUser, companyId: selectedCompanyId };
+    } catch (error) {
+      console.warn('Employee company membership resolution failed:', error);
+      setEmployeeCompanySelectionRequired(true);
+      return appUser;
+    } finally {
+      setEmployeeCompanyContextLoading(false);
+    }
+  };
+
+  const selectEmployeeCompany = useCallback(async (companyId: string) => {
+    if (!supabase || !user || user.role !== Role.EMPLOYEE) throw new Error('Employee company switching is unavailable');
+    if (!employeeCompanyMemberships.some((membership) => membership.companyId === companyId)) {
+      throw new Error('You do not have an accepted employee membership for this company');
+    }
+
+    const { error } = await supabase.functions.invoke('admin-handler', {
+      body: { action: 'select-employee-company', payload: { companyId } }
+    });
+    if (error) throw error;
+
+    const nextUser = { ...user, companyId };
+    setUser(nextUser);
+    storage.saveUser(nextUser);
+    window.localStorage.setItem(employeeCompanyStorageKey(user.id), companyId);
+    setEmployeeCompanySelectionRequired(false);
+  }, [employeeCompanyMemberships, user]);
 
   const ensureSelfProfile = async (sessionEmail: string) => {
     if (!supabase) return null;
@@ -177,6 +257,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               const repaired = await ensureSelfProfile(sessionEmail);
               if (repaired) appUser = repaired;
             }
+            if (appUser) appUser = await resolveEmployeeCompanyContext(appUser);
           } catch (error) {
             if (isUserLookupTimeoutError(error)) {
               console.warn('Profile lookup timed out during auth initialization; using cached session if available.');
@@ -216,8 +297,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             console.warn('User authenticated but no profile found; attempting recovery');
             const recovered = await ensureSelfProfile(sessionEmail);
             if (recovered && isMounted) {
-              setUser(recovered);
-              storage.saveUser(recovered);
+              const resolvedRecovered = await resolveEmployeeCompanyContext(recovered);
+              setUser(resolvedRecovered);
+              storage.saveUser(resolvedRecovered);
             } else if (isMounted) {
               // Recovery failed - sign out
               try {
@@ -281,6 +363,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               const repaired = await ensureSelfProfile(sessionEmail);
               if (repaired) appUser = repaired;
             }
+            if (appUser) appUser = await resolveEmployeeCompanyContext(appUser);
           } catch (error) {
             if (isUserLookupTimeoutError(error)) {
               console.warn('Profile lookup timed out during auth event; keeping cached session while startup continues.');
@@ -325,8 +408,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             try {
               const recovered = await ensureSelfProfile(sessionEmail);
               if (recovered && isMounted) {
-                setUser(recovered);
-                storage.saveUser(recovered);
+                const resolvedRecovered = await resolveEmployeeCompanyContext(recovered);
+                setUser(resolvedRecovered);
+                storage.saveUser(resolvedRecovered);
               }
             } catch (error) {
               console.warn('Profile recovery failed during auth event:', error);
@@ -383,7 +467,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       console.log('✅ Auth login successful, fetching user profile...');
 
-      const appUser = await EmployeeService.getUserByEmail(data.user.email!);
+      let appUser = await EmployeeService.getUserByEmail(data.user.email!);
 
       if (!appUser) {
         const recovered = await ensureSelfProfile(data.user.email!);
@@ -391,10 +475,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           throw new Error('User profile not found in database');
         }
         console.log('✅ User profile recovered:', recovered.email);
-        setUser(recovered);
-        storage.saveUser(recovered);
+        const resolvedRecovered = await resolveEmployeeCompanyContext(recovered);
+        setUser(resolvedRecovered);
+        storage.saveUser(resolvedRecovered);
         return;
       }
+
+      appUser = await resolveEmployeeCompanyContext(appUser);
 
       console.log('✅ User profile loaded:', appUser.email);
       setUser(appUser);
@@ -667,6 +754,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const logout = async () => {
     setUser(null);
+    setEmployeeCompanyMemberships([]);
+    setEmployeeCompanySelectionRequired(false);
+    setEmployeeCompanyContextLoading(false);
     clearLocalAuthState();
 
     try {
@@ -743,7 +833,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, isRevalidating, login, signup, logout, updateUser, impersonate, stopImpersonation }}>
+    <AuthContext.Provider value={{
+      user,
+      isLoading,
+      isRevalidating,
+      login,
+      signup,
+      logout,
+      updateUser,
+      impersonate,
+      stopImpersonation,
+      employeeCompanyMemberships,
+      employeeCompanySelectionRequired,
+      employeeCompanyContextLoading,
+      selectEmployeeCompany,
+    }}>
       {children}
     </AuthContext.Provider>
   );

@@ -40,6 +40,17 @@ const getEmployeeTaxOverrides = (companyData: CompanySettings | undefined, emplo
   return buildPayrollOverrides(resolveCompanyTaxConfig(companyData), employee?.pensionContributionRate || 0);
 };
 
+const getTimesheetOvertimePolicy = (companyData: CompanySettings | undefined) => {
+  const enabled = companyData?.timesheetOvertime?.enabled ?? true;
+  const configuredMultiplier = toFiniteNumber(companyData?.timesheetOvertime?.multiplier, 1.5);
+
+  return {
+    enabled,
+    // A multiplier below normal hourly pay is not a valid overtime policy.
+    multiplier: configuredMultiplier >= 1 ? configuredMultiplier : 1.5,
+  };
+};
+
 const isCustomDeductionActive = (deduction: { periodType?: string; remainingTerm?: number; currentBalance?: number; targetBalance?: number }) => {
   if (deduction.periodType === 'FIXED_TERM') {
     return deduction.remainingTerm === undefined || toFiniteNumber(deduction.remainingTerm) > 0;
@@ -295,7 +306,9 @@ export const calculatePayRunLineItem = ({
     });
   }
 
-  if (employee.payType === PayType.HOURLY) {
+  // Timesheet-paid employees are distinct from legacy Hourly employees in the
+  // profile/UI, but both derive gross pay from approved recorded hours.
+  if (employee.payType === PayType.HOURLY || employee.payType === PayType.TIMESHEET) {
     const employeeTimesheets = context.timesheets.filter(timesheet =>
       timesheet.employeeId === employee.id &&
       timesheet.status === 'APPROVED' &&
@@ -311,13 +324,14 @@ export const calculatePayRunLineItem = ({
         (sum, timesheet) => sum + toFiniteNumber(timesheet.totalOvertimeHours),
         0
       );
-      grossPay = totalRegularHours * hourlyRate;
+      const overtimePolicy = getTimesheetOvertimePolicy(context.companyData);
+      grossPay = (totalRegularHours + (overtimePolicy.enabled ? 0 : totalOvertimeHours)) * hourlyRate;
 
-      if (totalOvertimeHours > 0) {
+      if (overtimePolicy.enabled && totalOvertimeHours > 0) {
         additionsBreakdown.push({
           id: 'ot-sys',
           name: 'Overtime',
-          amount: totalOvertimeHours * (hourlyRate * 1.5),
+          amount: totalOvertimeHours * (hourlyRate * overtimePolicy.multiplier),
           isTaxable: true
         });
       }

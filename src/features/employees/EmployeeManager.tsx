@@ -105,7 +105,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
         [field]: value
       };
 
-      if (field === 'payType' && value !== PayType.HOURLY) {
+      if (field === 'payType' && value !== PayType.HOURLY && value !== PayType.TIMESHEET) {
         next.hourlyRate = undefined;
       }
 
@@ -160,8 +160,8 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
     } else if (formData.nis && formData.nis !== 'PENDING' && !isValidNIS(formData.nis)) {
       newErrors.nis = 'Invalid NIS format';
     }
-    if (formData.grossSalary <= 0) newErrors.grossSalary = 'Gross salary/rate must be greater than 0';
-    if (formData.payType === PayType.HOURLY && (!formData.hourlyRate || formData.hourlyRate <= 0)) {
+    if (formData.payType !== PayType.TIMESHEET && formData.grossSalary <= 0) newErrors.grossSalary = 'Gross salary/rate must be greater than 0';
+    if ((formData.payType === PayType.HOURLY || formData.payType === PayType.TIMESHEET) && (!formData.hourlyRate || formData.hourlyRate <= 0)) {
       newErrors.hourlyRate = 'Hourly rate must be greater than 0';
     }
     if (formData.payType === PayType.PIECE_RATE && (!formData.pieceRateAmount || formData.pieceRateAmount <= 0)) {
@@ -262,7 +262,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
 
         const employeeToSave: Employee = {
           ...formData,
-          hourlyRate: formData.payType === PayType.HOURLY ? formData.hourlyRate : undefined,
+          hourlyRate: formData.payType === PayType.HOURLY || formData.payType === PayType.TIMESHEET ? formData.hourlyRate : undefined,
           pieceRateAmount: formData.payType === PayType.PIECE_RATE ? formData.pieceRateAmount : undefined,
           customDeductions: [...(formData.customDeductions || []), pendingDeduction]
         };
@@ -276,7 +276,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
       console.log('✅ Form validation passed, calling onSave');
       onSave({
         ...formData,
-        hourlyRate: formData.payType === PayType.HOURLY ? formData.hourlyRate : undefined,
+        hourlyRate: formData.payType === PayType.HOURLY || formData.payType === PayType.TIMESHEET ? formData.hourlyRate : undefined,
         pieceRateAmount: formData.payType === PayType.PIECE_RATE ? formData.pieceRateAmount : undefined
       });
     } else {
@@ -644,6 +644,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                   >
                     <option value={PayType.SALARIED}>Salaried</option>
                     <option value={PayType.HOURLY}>Hourly</option>
+                    <option value={PayType.TIMESHEET}>Timesheet</option>
                     <option value={PayType.COMMISSION}>Commission</option>
                     <option value={PayType.PIECE_RATE}>Piece-Rate</option>
                   </select>
@@ -664,7 +665,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                   </select>
                 </div>
 
-                <div>
+                {formData.payType !== PayType.TIMESHEET && <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
                     {formData.payType === PayType.PIECE_RATE || formData.payType === PayType.HOURLY ? 'Estimated Period Gross *' : 'Gross Salary/Rate *'}
                   </label>
@@ -685,12 +686,12 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                   {errors.grossSalary && (
                     <p className="text-red-600 text-xs mt-1">{errors.grossSalary}</p>
                   )}
-                </div>
+                </div>}
 
-                {formData.payType === PayType.HOURLY && (
+                {(formData.payType === PayType.HOURLY || formData.payType === PayType.TIMESHEET) && (
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Hourly Rate
+                      {formData.payType === PayType.TIMESHEET ? 'Timesheet Hourly Rate *' : 'Hourly Rate'}
                     </label>
                     <div className="flex items-center">
                       <span className="text-gray-600 mr-2">$</span>
@@ -706,6 +707,9 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({
                     </div>
                     {errors.hourlyRate && (
                       <p className="text-red-600 text-xs mt-1">{errors.hourlyRate}</p>
+                    )}
+                    {formData.payType === PayType.TIMESHEET && (
+                      <p className="mt-1 text-xs text-gray-500">Pay is calculated from approved timesheet hours during the pay run.</p>
                     )}
                   </div>
                 )}
