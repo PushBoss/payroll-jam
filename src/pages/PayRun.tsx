@@ -40,6 +40,45 @@ interface PayRunProps {
     onNavigate?: (path: string) => void; // For navigation after save
 }
 
+interface PayRunDialogState {
+    title: string;
+    message: string;
+    details?: string[];
+    confirmLabel?: string;
+    onConfirm?: () => void;
+}
+
+const PayRunDialog: React.FC<{ dialog: PayRunDialogState | null; onClose: () => void }> = ({ dialog, onClose }) => {
+    if (!dialog) return null;
+    const isConfirmation = Boolean(dialog.onConfirm);
+
+    return (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-jam-black/55 p-4 backdrop-blur-sm">
+            <div role="alertdialog" aria-modal="true" aria-labelledby="payrun-dialog-title" className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl animate-scale-in">
+                <div className="flex items-start gap-3 border-b border-gray-100 p-6">
+                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg font-extrabold ${isConfirmation ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{isConfirmation ? '?' : '!'}</div>
+                    <div>
+                        <h3 id="payrun-dialog-title" className="text-lg font-bold text-gray-900">{dialog.title}</h3>
+                        <p className="mt-1 text-sm leading-6 text-gray-600">{dialog.message}</p>
+                    </div>
+                </div>
+                {dialog.details && dialog.details.length > 0 && (
+                    <div className="mx-6 mt-5 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                        <p className="text-xs font-bold uppercase tracking-wide text-amber-800">Needs attention</p>
+                        <ul className="mt-2 max-h-36 list-disc space-y-1 overflow-y-auto pl-4 text-xs text-amber-900">
+                            {dialog.details.map((detail) => <li key={detail}>{detail}</li>)}
+                        </ul>
+                    </div>
+                )}
+                <div className="mt-6 flex flex-col-reverse gap-2 border-t border-gray-100 bg-gray-50 p-4 sm:flex-row sm:justify-end">
+                    {isConfirmation && <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-gray-50">Keep editing</button>}
+                    <button type="button" onClick={() => { if (dialog.onConfirm) dialog.onConfirm(); onClose(); }} className={`rounded-lg px-4 py-2.5 text-sm font-bold ${isConfirmation ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-jam-black text-white hover:bg-gray-800'}`}>{dialog.confirmLabel || 'Got it'}</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 export const PayRun: React.FC<PayRunProps> = ({
     employees,
@@ -75,6 +114,8 @@ export const PayRun: React.FC<PayRunProps> = ({
     const [printingPayslipRun, setPrintingPayslipRun] = useState<PayRunType | null>(null);
     const [isPayRunConfirmed, setIsPayRunConfirmed] = useState(false);
     const [ytdSummaries, setYtdSummaries] = useState<Record<string, PayrollYtdSummary>>({});
+    const [payRunDialog, setPayRunDialog] = useState<PayRunDialogState | null>(null);
+    const showPayRunDialog = (title: string, message: string, details?: string[]) => setPayRunDialog({ title, message, details });
 
     useEffect(() => {
         const targetCompanyId = currentUser?.companyId || companyData.id;
@@ -260,7 +301,7 @@ export const PayRun: React.FC<PayRunProps> = ({
                     return { employeeId: employee.id, employeeName: `${employee.firstName} ${employee.lastName}`, employeeCustomId: employee.employeeId, grossPay: candidate.grossPay, additions: calculated.additions, deductions: calculated.deductions, nis: calculated.nis, nht: calculated.nht, edTax: calculated.edTax, paye: calculated.paye, pension: calculated.pension, totalDeductions: calculated.totalDeductions, netPay: calculated.netPay, employerContributions: calculated.employerContributions, additionsBreakdown: calculated.additionsBreakdown, deductionsBreakdown: calculated.deductionsBreakdown, bankName: employee.bankDetails?.bankName, accountNumber: employee.bankDetails?.accountNumber, trn: employee.trn, nisId: employee.nis, jobTitle: employee.jobTitle };
                 }).filter((item): item is NonNullable<typeof item> => Boolean(item));
                 if (!candidateItems.length) {
-                    toast.error('No eligible Timesheet employees have approved time in this period.');
+                    showPayRunDialog('No approved time found', 'There are no employees with approved timesheet records in this payroll period.', ['Choose another payroll date range, or approve the employees\' Logged time records before creating this pay run.']);
                     return;
                 }
                 loadDraftItems(candidateItems);
@@ -277,10 +318,10 @@ export const PayRun: React.FC<PayRunProps> = ({
                 auditService.log(currentUser, 'CREATE', 'PayRun', `Initialized draft payroll for ${payPeriod}${dateInfo}`);
                 toast.success("Payroll calculated from system data (Cumulative YTD Applied)");
             } else {
-                toast.error("No eligible employees found for this selection.");
+                showPayRunDialog('No eligible employees found', 'No active employees match the selected payroll cycle and period.', ['Check the selected payroll period and employee employment status, then try again.']);
             }
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : 'Unable to prepare this pay run.');
+            showPayRunDialog('Unable to prepare this pay run', error instanceof Error ? error.message : 'Please try again. If the problem continues, contact support.');
         } finally {
             setIsCalculating(false);
         }
@@ -320,7 +361,7 @@ export const PayRun: React.FC<PayRunProps> = ({
 
     const handleSaveDraft = async () => {
         if (draftItems.length === 0) {
-            toast.error("No employees in pay run. Add employees first.");
+            showPayRunDialog('Add an employee first', 'This draft has no employees yet.', ['Use Add Employee, then save the draft again.']);
             return false;
         }
 
@@ -334,7 +375,7 @@ export const PayRun: React.FC<PayRunProps> = ({
         }
 
         if (!saved) {
-            toast.error('Could not save draft pay run to database.');
+            showPayRunDialog('Draft was not saved', 'We could not save this pay run to the database.', ['Check your connection and try again. No changes were finalized.']);
             return false;
         }
 
@@ -347,19 +388,19 @@ export const PayRun: React.FC<PayRunProps> = ({
 
     const handleContinueToFinalize = async () => {
         if (draftItems.length === 0) {
-            toast.error("No employees in pay run. Add employees first.");
+            showPayRunDialog('Add an employee first', 'This draft has no employees yet.', ['Use Add Employee before continuing to final review.']);
             return;
         }
 
         if (incompleteEmployees.length > 0) {
             const names = incompleteEmployees.map(e => `${e!.firstName} ${e!.lastName}`).join(', ');
-            toast.error(`Cannot proceed. The following employees have missing or PENDING data: ${names}`);
+            showPayRunDialog('Complete employee data before continuing', 'Some employees have required information marked missing or pending.', names.split(', '));
             return;
         }
 
         if (pieceRateItemsMissingPieces.length > 0) {
             const names = pieceRateItemsMissingPieces.map(item => item.employeeName).join(', ');
-            toast.error(`Enter pieces completed before continuing for: ${names}`);
+            showPayRunDialog('Enter completed pieces before continuing', 'Piece-rate employees need a completed-piece count to calculate pay.', names.split(', '));
             return;
         }
 
@@ -372,7 +413,7 @@ export const PayRun: React.FC<PayRunProps> = ({
             setIsSavingDraft(false);
         }
         if (!saved) {
-            toast.error('Could not save draft pay run to database.');
+            showPayRunDialog('Draft was not saved', 'We could not save this pay run to the database.', ['Check your connection and try again. No changes were finalized.']);
             return;
         }
 
@@ -390,13 +431,13 @@ export const PayRun: React.FC<PayRunProps> = ({
     const handleConfirmFinalize = async () => {
         if (incompleteEmployees.length > 0) {
             const names = incompleteEmployees.map(e => `${e!.firstName} ${e!.lastName}`).join(', ');
-            toast.error(`Finalization blocked. Please complete data for: ${names}`);
+            showPayRunDialog('Finalization is blocked', 'Complete the required employee information before finalizing payroll.', names.split(', '));
             return;
         }
 
         if (pieceRateItemsMissingPieces.length > 0) {
             const names = pieceRateItemsMissingPieces.map(item => item.employeeName).join(', ');
-            toast.error(`Finalization blocked. Enter pieces completed for: ${names}`);
+            showPayRunDialog('Finalization is blocked', 'Enter the completed-piece count for each piece-rate employee before finalizing.', names.split(', '));
             return;
         }
 
@@ -418,7 +459,7 @@ export const PayRun: React.FC<PayRunProps> = ({
 
         const saved = await onSave(newRun);
         if (!saved) {
-            toast.error('Could not finalize pay run because the database save failed.');
+            showPayRunDialog('Pay run was not finalized', 'We could not save the finalized pay run.', ['Check your connection and try again. No payroll records were finalized.']);
             return;
         }
 
@@ -621,6 +662,7 @@ export const PayRun: React.FC<PayRunProps> = ({
                     setPayrollMode={setPayrollMode}
                     handleInitializeSystem={handleInitializeSystem}
                 />
+                <PayRunDialog dialog={payRunDialog} onClose={() => setPayRunDialog(null)} />
             </>
         );
     }
@@ -629,6 +671,7 @@ export const PayRun: React.FC<PayRunProps> = ({
         return (
             <div className="space-y-6 animate-fade-in relative">
                 <PayRunProgressBar currentStep="DRAFT" />
+                <PayRunDialog dialog={payRunDialog} onClose={() => setPayRunDialog(null)} />
                 {/* Wizard Stepper */}
                 {/* Ad Hoc Modal */}
                 {adHocModal.isOpen && (
@@ -748,16 +791,17 @@ export const PayRun: React.FC<PayRunProps> = ({
                         <button onClick={() => setAddEmployeeModalOpen(true)} className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 shadow-sm flex items-center text-sm font-medium">
                             <Icons.Plus className="w-4 h-4 mr-2" /> Add Employee
                         </button>
-                        <button onClick={() => {
-                            if (window.confirm('Are you sure you want to cancel? Any unsaved changes will be lost.')) {
+                        <button onClick={() => setPayRunDialog({
+                            title: 'Discard this draft?',
+                            message: 'Any unsaved payroll changes will be lost.',
+                            confirmLabel: 'Discard draft',
+                            onConfirm: () => {
                                 setStep('SETUP');
                                 clearDraft();
                                 setEditingRun(null);
-                                if (onNavigate) {
-                                    onNavigate('reports');
-                                }
+                                onNavigate?.('reports');
                             }
-                        }} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm font-medium">
+                        })} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm font-medium">
                             Cancel
                         </button>
                         <button onClick={handleSaveDraft} disabled={isSavingDraft || isFinalizing} className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 shadow-sm flex items-center text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed">
@@ -827,6 +871,7 @@ export const PayRun: React.FC<PayRunProps> = ({
     return (
         <div className="relative">
             <PayRunProgressBar currentStep="FINALIZE" />
+            <PayRunDialog dialog={payRunDialog} onClose={() => setPayRunDialog(null)} />
 
             {/* Payslip View Modal */}
             {viewingPayslip && (
