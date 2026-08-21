@@ -26,6 +26,7 @@ import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { generateUUID } from '../utils/uuid';
 import { createPayslipPdfAttachment } from '../utils/payslipPdf';
+import { calculateComputedAmounts } from '../features/payroll/payrollEngine';
 
 interface PayRunProps {
     employees: Employee[];
@@ -55,6 +56,8 @@ export const PayRun: React.FC<PayRunProps> = ({
     const [step, setStep] = useState<'SETUP' | 'DRAFT' | 'FINALIZE'>('SETUP');
     const [payCycle, setPayCycle] = useState<PayRunCycleFilter>('ALL');
     const [payPeriod, setPayPeriod] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+    const [payrollMode, setPayrollMode] = useState<'REGULAR' | 'TIMESHEET'>('REGULAR');
+    const [timesheetRecordIds, setTimesheetRecordIds] = useState<string[]>([]);
     const [editingRun, setEditingRun] = useState<PayRunType | null>(null);
     const [hasLoadedEdit, setHasLoadedEdit] = useState(false);
 
@@ -180,6 +183,8 @@ export const PayRun: React.FC<PayRunProps> = ({
             const runToEdit = payRunHistory.find(r => r.id === editRunId);
             if (runToEdit && (runToEdit.status === 'DRAFT' || runToEdit.status === 'APPROVED')) {
                 setEditingRun(runToEdit);
+                setPayrollMode(runToEdit.payrollMode === 'TIMESHEET' ? 'TIMESHEET' : 'REGULAR');
+                setTimesheetRecordIds(runToEdit.timeRecordIds || []);
                 // Convert periodStart to YYYY-MM format if it's in YYYY-MM-DD format
                 let period = runToEdit.periodStart;
                 if (period.match(/^\d{4}-\d{2}-\d{2}$/)) {
@@ -238,9 +243,32 @@ export const PayRun: React.FC<PayRunProps> = ({
         });
     }, [draftItems, employees]);
 
-    const handleInitializeSystem = () => {
+    const handleInitializeSystem = async () => {
         setIsCalculating(true);
-        setTimeout(() => {
+        try {
+            if (payrollMode === 'TIMESHEET') {
+                if (!companyData.id) throw new Error('Company ID is required for Timesheet-Based Payroll.');
+                const periodStart = periodStartDate || `${payPeriod}-01`;
+                const periodEnd = periodEndDate || `${payPeriod}-${new Date(Number(payPeriod.slice(0, 4)), Number(payPeriod.slice(5, 7)), 0).getDate()}`;
+                const candidates = await PayrollService.getTimesheetPayrollCandidates(companyData.id, periodStart, periodEnd);
+                const context = { timesheets, leaveRequests, payRunHistory, ytdSummaries, companyData };
+                const period = { year: Number(payPeriod.slice(0, 4)), month: Number(payPeriod.slice(5, 7)), periodStart, periodEnd };
+                const candidateItems = candidates.map((candidate) => {
+                    const employee = employees.find((item) => item.id === candidate.employeeId);
+                    if (!employee || employee.status !== 'ACTIVE' || (employee.payType !== PayType.TIMESHEET && employee.payType !== PayType.HOURLY)) return null;
+                    const calculated = calculateComputedAmounts({ employee, grossPay: candidate.grossPay, additionsBreakdown: [], deductionsBreakdown: [], period, context });
+                    return { employeeId: employee.id, employeeName: `${employee.firstName} ${employee.lastName}`, employeeCustomId: employee.employeeId, grossPay: candidate.grossPay, additions: calculated.additions, deductions: calculated.deductions, nis: calculated.nis, nht: calculated.nht, edTax: calculated.edTax, paye: calculated.paye, pension: calculated.pension, totalDeductions: calculated.totalDeductions, netPay: calculated.netPay, employerContributions: calculated.employerContributions, additionsBreakdown: calculated.additionsBreakdown, deductionsBreakdown: calculated.deductionsBreakdown, bankName: employee.bankDetails?.bankName, accountNumber: employee.bankDetails?.accountNumber, trn: employee.trn, nisId: employee.nis, jobTitle: employee.jobTitle };
+                }).filter((item): item is NonNullable<typeof item> => Boolean(item));
+                if (!candidateItems.length) {
+                    toast.error('No eligible Timesheet employees have approved time in this period.');
+                    return;
+                }
+                loadDraftItems(candidateItems);
+                setTimesheetRecordIds(candidates.filter((candidate) => candidateItems.some((item) => item.employeeId === candidate.employeeId)).flatMap((candidate) => candidate.timeRecordIds));
+                setStep('DRAFT');
+                toast.success(`Loaded ${candidateItems.length} employees from approved time records.`);
+                return;
+            }
             // Pass custom dates if available
             const hasData = initializeRun(payCycle, payPeriod, periodStartDate || undefined, periodEndDate || undefined);
             if (hasData) {
@@ -251,8 +279,11 @@ export const PayRun: React.FC<PayRunProps> = ({
             } else {
                 toast.error("No eligible employees found for this selection.");
             }
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Unable to prepare this pay run.');
+        } finally {
             setIsCalculating(false);
-        }, 800);
+        }
     };
 
     const resolveDraftRunId = (status: PayRunType['status']) => {
@@ -284,6 +315,7 @@ export const PayRun: React.FC<PayRunProps> = ({
         totalGross: totals.gross,
         totalNet: totals.net,
         lineItems: draftItems
+        , payrollMode, timeRecordIds: payrollMode === 'TIMESHEET' ? timesheetRecordIds : []
     });
 
     const handleSaveDraft = async () => {
@@ -381,6 +413,7 @@ export const PayRun: React.FC<PayRunProps> = ({
             totalGross: totals.gross,
             totalNet: totals.net,
             lineItems: draftItems
+            , payrollMode, timeRecordIds: payrollMode === 'TIMESHEET' ? timesheetRecordIds : []
         });
 
         const saved = await onSave(newRun);
@@ -584,6 +617,8 @@ export const PayRun: React.FC<PayRunProps> = ({
                     setPeriodEndDate={setPeriodEndDate}
                     isSuspended={isSuspended}
                     isCalculating={isCalculating}
+                    payrollMode={payrollMode}
+                    setPayrollMode={setPayrollMode}
                     handleInitializeSystem={handleInitializeSystem}
                 />
             </>

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { toast } from 'sonner';
 import { Icons } from '../components/Icons';
-import { CompanySettings, Employee, WeeklyTimesheet } from '../core/types';
+import { CompanySettings, Employee, TimeRecord, TimeRecordRevision, WeeklyTimesheet } from '../core/types';
 import { buildAppUrl } from '../app/routes';
 import {
   calculateEntryHours,
@@ -67,6 +67,73 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
   const [currentWeekStart, setCurrentWeekStart] = useState<string>(() => {
     return getWeekBounds(toLocalDateString(new Date())).weekStartDate;
   });
+  const [authoritativeRecords, setAuthoritativeRecords] = useState<TimeRecord[]>([]);
+  const [authoritativeLoading, setAuthoritativeLoading] = useState(false);
+  const [auditRecord, setAuditRecord] = useState<TimeRecord | null>(null);
+  const [auditRevisions, setAuditRevisions] = useState<TimeRecordRevision[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+
+  const handleAuthoritativeReview = async (record: TimeRecord, decision: 'APPROVE' | 'REJECT') => {
+    if (!companyData?.id) return;
+    const reason = decision === 'REJECT' ? window.prompt('Enter the rejection reason') || '' : undefined;
+    if (decision === 'REJECT' && !(reason || '').trim()) return;
+    try {
+      const saved = await PayrollService.reviewTimeRecord(companyData.id, record.id, decision, reason);
+      setAuthoritativeRecords((items) => items.map((item) => item.id === saved.id ? { ...item, ...saved } : item));
+      toast.success(decision === 'APPROVE' ? 'Daily time record approved.' : 'Daily time record rejected.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to review the time record.');
+    }
+  };
+
+  const handleViewAudit = async (record: TimeRecord) => {
+    if (!companyData?.id) return;
+    setAuditRecord(record);
+    setAuditLoading(true);
+    try {
+      setAuditRevisions(await PayrollService.getTimeRecordAudit(companyData.id, record.id));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to load the time record audit history.');
+      setAuditRevisions([]);
+    } finally {
+      setAuditLoading(false);
+    }
+  };
+
+  const handleCreateAdjustment = async (record: TimeRecord) => {
+    if (!companyData?.id) return;
+    const date = window.prompt('Adjustment work date (must be in a later payroll period, YYYY-MM-DD)');
+    const hours = Number(window.prompt('Adjustment hours (positive number)') || 0);
+    const direction = window.confirm('Click OK for an added payment, or Cancel for a deduction.') ? 1 : -1;
+    const reason = window.prompt('Reason for this payroll adjustment') || '';
+    if (!date || !hours || !reason.trim()) return;
+    try {
+      const adjustment = await PayrollService.createTimesheetAdjustment(companyData.id, record.id, date, Math.round(hours * 60), direction as -1 | 1, reason);
+      setAuthoritativeRecords((records) => [adjustment, ...records]);
+      toast.success('Adjustment created as Logged and requires approval.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to create the adjustment.');
+    }
+  };
+
+  useEffect(() => {
+    if (!companyData?.id) return;
+    let cancelled = false;
+    setAuthoritativeLoading(true);
+    PayrollService.getTimeRecords(companyData.id, {
+      employeeId: selectedEmployeeId || undefined,
+      startDate: selectedDate || undefined,
+      endDate: selectedEndDate || undefined,
+    }).then((records) => {
+      if (!cancelled) setAuthoritativeRecords(records);
+    }).catch((error) => {
+      // The migration may not be deployed yet; legacy weekly timesheets remain usable.
+      console.warn('Authoritative time records are unavailable:', error);
+    }).finally(() => {
+      if (!cancelled) setAuthoritativeLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [companyData?.id, selectedDate, selectedEmployeeId, selectedEndDate]);
 
   const handleApprove = (ts: WeeklyTimesheet) => {
     if (onUpdate) {
@@ -223,15 +290,28 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
   const selectedLocation = locations.find((location) => location.id === selectedLocationId) || locations[0];
 
   const handleExportTimesheets = () => {
+    if (authoritativeRecords.length > 0) {
+      const headers = ['Employee Name', 'Employee Email', 'Work Date', 'Start', 'End', 'Break Minutes', 'Regular Hours', 'Overtime Hours', 'Holiday Hours', 'Total Hours', 'Source', 'Lifecycle Status', 'Edited', 'Revision Count', 'Payroll Reference'];
+      const rows = authoritativeRecords.map((record) => {
+        const employee = employees.find((item) => item.id === record.employeeId);
+        return [
+          employee ? `${employee.firstName} ${employee.lastName}`.trim() : '', employee?.email || '', record.workDate,
+          record.startAt || '', record.endAt || '', record.breakMinutes,
+          (record.regularMinutes / 60).toFixed(2), (record.overtimeMinutes / 60).toFixed(2), (record.holidayMinutes / 60).toFixed(2), (record.workedMinutes / 60).toFixed(2),
+          record.source, record.approvalStatus, record.revisionCount > 0 ? 'Yes' : 'No', record.revisionCount, record.payRunId || '',
+        ].map(toCsvCell).join(',');
+      });
+      downloadFile(`Timesheet_Management_Report_${selectedDate || currentWeekStart}${selectedEndDate ? `_to_${selectedEndDate}` : ''}.csv`, `${headers.map(toCsvCell).join(',')}\n${rows.join('\n')}\n`, 'text/csv');
+      toast.success(`Exported ${authoritativeRecords.length} authoritative time record${authoritativeRecords.length === 1 ? '' : 's'}.`);
+      return;
+    }
     if (filteredSheets.length === 0) {
       toast.error('There are no timesheets in the current view to export.');
       return;
     }
 
-    // This is deliberately a weekly-summary layout so exported data can be
-    // imported again. The importer resolves employee identity in this order:
-    // TRN, email, employee ID, then name; include all four to make a round-trip
-    // safe even for older employee records that do not yet have a TRN.
+    // Legacy weekly report fallback. The report is never an import contract;
+    // new imports use the separate versioned daily-template download.
     const headers = [
       'Employee TRN',
       'Employee Email',
@@ -269,13 +349,17 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
 
   const handleDownloadImportTemplate = () => {
     const headers = [
-      'Employee TRN',
-      'Employee Email',
-      'Employee ID',
-      'Employee Name',
-      'Week Start Date',
-      'Regular Hours',
-      'Overtime Hours',
+      'employee_email',
+      'work_date',
+      'start_time',
+      'end_time',
+      'break_minutes',
+      'employee_id',
+      'source_reference',
+      'location',
+      'notes',
+      'rate_override_reason',
+      'holiday_code',
     ];
     downloadFile(
       'Payroll-Jam_Timesheet_Import_Template.csv',
@@ -446,6 +530,25 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
         // The persistence layer has already displayed the specific failure.
         return;
       }
+      if (companyData?.id) {
+        try {
+          const authoritative = await PayrollService.saveTimeRecord(companyData.id, {
+            employeeId: employee.id,
+            workDate: manualEntry.date,
+            startAt: `${manualEntry.date}T${manualEntry.startTime}:00`,
+            endAt: `${manualEntry.date}T${manualEntry.endTime}:00`,
+            breakMinutes: Number(manualEntry.breakDuration) || 0,
+            workedMinutes: Math.round(entryHours * 60),
+            source: 'ADMIN',
+          });
+          setAuthoritativeRecords((records) => [authoritative, ...records]);
+        } catch (error) {
+          // Keep the legacy weekly workflow operational while making the
+          // missing rate/configuration explicit; it must be corrected before
+          // this entry can be used by Timesheet-Based Payroll.
+          toast.warning(error instanceof Error ? error.message : 'The daily payroll record was not created.');
+        }
+      }
       setCurrentWeekStart(weekStartDate);
       setLogTimeModalOpen(false);
       setManualEntry((entry) => ({
@@ -501,6 +604,38 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
           </button>
         </div>
       </div>
+
+      <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="font-bold text-gray-900">Authoritative Time Review</h3>
+            <p className="mt-1 text-sm text-gray-500">Daily records used by Timesheet-Based Payroll. The weekly table below remains available for legacy review.</p>
+          </div>
+          <span className="rounded-full bg-gray-100 px-3 py-1 text-sm font-semibold text-gray-700">
+            {authoritativeLoading ? 'Loading…' : `${authoritativeRecords.length} records`}
+          </span>
+        </div>
+        {!authoritativeLoading && authoritativeRecords.length > 0 && (
+          <div className="mt-4 overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="border-b text-left text-xs uppercase text-gray-500"><tr><th className="pb-2 pr-4">Date</th><th className="pb-2 pr-4">Employee</th><th className="pb-2 pr-4">Hours</th><th className="pb-2 pr-4">Status</th><th className="pb-2 pr-4">Audit</th><th className="pb-2">Review</th></tr></thead>
+              <tbody>{authoritativeRecords.slice(0, 25).map((record) => {
+                const employee = employees.find((item) => item.id === record.employeeId);
+                return <tr key={record.id} className="border-b last:border-0"><td className="py-2 pr-4">{record.workDate}</td><td className="py-2 pr-4">{employee ? `${employee.firstName} ${employee.lastName}` : 'Employee'}</td><td className="py-2 pr-4">{(record.workedMinutes / 60).toFixed(2)}</td><td className="py-2 pr-4">{record.approvalStatus}</td><td className="py-2 pr-4"><button onClick={() => handleViewAudit(record)} className="text-xs font-semibold text-blue-700 hover:underline">{record.revisionCount > 0 ? `Edited (${record.revisionCount})` : 'Audit'}</button></td><td className="py-2">{record.approvalStatus === 'LOGGED' ? <span className="flex gap-2"><button onClick={() => handleAuthoritativeReview(record, 'APPROVE')} className="text-xs font-semibold text-emerald-700 hover:underline">Approve</button><button onClick={() => handleAuthoritativeReview(record, 'REJECT')} className="text-xs font-semibold text-red-700 hover:underline">Reject</button></span> : record.approvalStatus === 'LOCKED' ? <button onClick={() => handleCreateAdjustment(record)} className="text-xs font-semibold text-jam-orange hover:underline">Adjust</button> : '—'}</td></tr>;
+              })}</tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {auditRecord && (
+        <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[80vh] w-full max-w-xl overflow-auto rounded-xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4"><div><h3 className="text-lg font-bold text-gray-900">Time Record Audit</h3><p className="text-sm text-gray-500">{auditRecord.workDate} · {auditRecord.approvalStatus}</p></div><button onClick={() => setAuditRecord(null)} className="text-gray-500 hover:text-gray-900">Close</button></div>
+            <div className="mt-4 space-y-3">{auditLoading ? <p className="text-sm text-gray-500">Loading history…</p> : auditRevisions.length === 0 ? <p className="text-sm text-gray-500">No audit events were found.</p> : auditRevisions.map((revision) => <div key={revision.id} className="rounded-lg border border-gray-200 p-3 text-sm"><p className="font-semibold text-gray-900">{revision.eventType}</p><p className="mt-1 text-gray-600">Revision {revision.revisionNumber}{revision.actorRole ? ` · ${revision.actorRole}` : ''}{revision.createdAt ? ` · ${new Date(revision.createdAt).toLocaleString()}` : ''}</p>{revision.reason && <p className="mt-1 text-gray-600">Reason: {revision.reason}</p>}</div>)}</div>
+          </div>
+        </div>
+      )}
 
       {importWizardOpen && (
         <TimesheetImportWizard

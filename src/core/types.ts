@@ -324,6 +324,8 @@ export interface PayRun {
   totalNet: number;
   lineItems: PayRunLineItem[];
   payFrequency?: 'WEEKLY' | 'FORTNIGHTLY' | 'MONTHLY'; // Optional for backward compatibility
+  payrollMode?: 'REGULAR' | 'TIMESHEET';
+  timeRecordIds?: string[];
 }
 
 export interface PayrollYtdSummary {
@@ -456,6 +458,42 @@ export interface WeeklyTimesheet {
   locationId?: string;
   locationName?: string;
   clockInAt?: string;
+}
+
+export type TimeRecordStatus = 'LOGGED' | 'APPROVED' | 'REJECTED' | 'INCLUDED_IN_PAYROLL' | 'LOCKED';
+export type TimeRecordSource = 'EMPLOYEE' | 'ADMIN' | 'CSV' | 'API' | 'QR' | 'MANUAL' | 'LEGACY_MIGRATION';
+
+export interface TimeRecord {
+  id: string;
+  companyId: string;
+  employeeId: string;
+  workDate: string;
+  startAt?: string;
+  endAt?: string;
+  breakMinutes: number;
+  workedMinutes: number;
+  regularMinutes: number;
+  overtimeMinutes: number;
+  holidayMinutes: number;
+  source: TimeRecordSource;
+  approvalStatus: TimeRecordStatus;
+  revisionCount: number;
+  rateSnapshot: Record<string, unknown>;
+  payRunId?: string;
+  rejectionReason?: string;
+  adjustmentOfId?: string;
+  adjustmentDirection?: -1 | 1;
+}
+
+export interface TimeRecordRevision {
+  id: string;
+  timeRecordId: string;
+  revisionNumber: number;
+  eventType: string;
+  actorUserId?: string;
+  actorRole?: string;
+  reason?: string;
+  createdAt?: string;
 }
 
 // Accounting Integration Types

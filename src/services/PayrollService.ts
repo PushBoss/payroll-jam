@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { CustomDeduction, PayRun, PayrollYtdSummary, WeeklyTimesheet, DbPayRunRow, toPayFrequency } from '../core/types';
+import { CustomDeduction, PayRun, PayrollYtdSummary, WeeklyTimesheet, TimeRecord, TimeRecordRevision, DbPayRunRow, toPayFrequency } from '../core/types';
 import { generateUUID, isValidUUID } from '../utils/uuid';
 
 const isYearMonth = (value: string) => /^\d{4}-\d{2}$/.test(value);
@@ -79,6 +79,24 @@ export interface AttendanceBadge {
   codeVersion?: number;
 }
 
+export interface TimeRecordFilters {
+  employeeId?: string;
+  startDate?: string;
+  endDate?: string;
+  status?: string;
+}
+
+export interface TimesheetPayrollCandidate {
+  employeeId: string;
+  timeRecordIds: string[];
+  regularMinutes: number;
+  overtimeMinutes: number;
+  holidayMinutes: number;
+  grossPay: number;
+}
+
+export interface TimesheetImportPreviewRow { rowNumber: number; result: string; errors: string[]; }
+
 export interface AttendanceClockPayload {
   companyId: string;
   employeeId: string;
@@ -135,7 +153,8 @@ export const PayrollService = {
       status: r.status as PayRun['status'],
       totalGross: r.total_gross,
       totalNet: r.total_net,
-      lineItems: r.line_items || []
+      lineItems: r.line_items || [],
+      payrollMode: (r as any).payroll_mode === 'TIMESHEET' ? 'TIMESHEET' : 'REGULAR',
     }));
   },
 
@@ -162,6 +181,8 @@ export const PayrollService = {
           total_net: run.totalNet,
           employee_count: run.lineItems?.length || 0,
           line_items: run.lineItems,
+          payroll_mode: run.payrollMode || 'REGULAR',
+          timeRecordIds: run.timeRecordIds || [],
         },
       },
     });
@@ -252,6 +273,64 @@ export const PayrollService = {
     }
 
     return mapTimesheetRow(result.timesheet);
+  },
+
+  getTimeRecords: async (companyId: string, filters: TimeRecordFilters = {}): Promise<TimeRecord[]> => {
+    const result = await invokeAdminHandler<{ records?: Record<string, any>[] }>({
+      action: 'get-time-records-for-company',
+      payload: { companyId, ...filters },
+    });
+    return (result.records || []).map((row) => ({
+      id: String(row.id), companyId: String(row.company_id), employeeId: String(row.employee_id),
+      workDate: String(row.work_date), startAt: row.start_at || undefined, endAt: row.end_at || undefined,
+      breakMinutes: Number(row.break_minutes || 0), workedMinutes: Number(row.worked_minutes || 0),
+      regularMinutes: Number(row.regular_minutes || 0), overtimeMinutes: Number(row.overtime_minutes || 0),
+      holidayMinutes: Number(row.holiday_minutes || 0), source: row.source, approvalStatus: row.approval_status,
+      revisionCount: Number(row.revision_count || 0), rateSnapshot: row.rate_snapshot || {}, payRunId: row.pay_run_id || undefined,
+      rejectionReason: row.rejection_reason || undefined,
+    } as TimeRecord));
+  },
+
+  getTimesheetPayrollCandidates: async (companyId: string, periodStart: string, periodEnd: string): Promise<TimesheetPayrollCandidate[]> => {
+    const result = await invokeAdminHandler<{ candidates?: TimesheetPayrollCandidate[] }>({
+      action: 'get-timesheet-payroll-candidates',
+      payload: { companyId, periodStart, periodEnd },
+    });
+    return result.candidates || [];
+  },
+
+  reviewTimeRecord: async (companyId: string, recordId: string, decision: 'APPROVE' | 'REJECT', reason?: string): Promise<TimeRecord> => {
+    const result = await invokeAdminHandler<{ record: Record<string, any> }>({
+      action: 'review-time-record', payload: { companyId, recordId, decision, reason },
+    });
+    const row = result.record;
+    return { id: String(row.id), companyId: String(row.company_id), employeeId: String(row.employee_id), workDate: String(row.work_date), breakMinutes: Number(row.break_minutes || 0), workedMinutes: Number(row.worked_minutes || 0), regularMinutes: Number(row.regular_minutes || 0), overtimeMinutes: Number(row.overtime_minutes || 0), holidayMinutes: Number(row.holiday_minutes || 0), source: row.source, approvalStatus: row.approval_status, revisionCount: Number(row.revision_count || 0), rateSnapshot: row.rate_snapshot || {} } as TimeRecord;
+  },
+
+  saveTimeRecord: async (companyId: string, record: Partial<TimeRecord>): Promise<TimeRecord> => {
+    const result = await invokeAdminHandler<{ record: Record<string, any> }>({ action: 'save-time-record', payload: { companyId, record } });
+    const row = result.record;
+    return { id: String(row.id), companyId: String(row.company_id), employeeId: String(row.employee_id), workDate: String(row.work_date), startAt: row.start_at || undefined, endAt: row.end_at || undefined, breakMinutes: Number(row.break_minutes || 0), workedMinutes: Number(row.worked_minutes || 0), regularMinutes: Number(row.regular_minutes || 0), overtimeMinutes: Number(row.overtime_minutes || 0), holidayMinutes: Number(row.holiday_minutes || 0), source: row.source, approvalStatus: row.approval_status, revisionCount: Number(row.revision_count || 0), rateSnapshot: row.rate_snapshot || {} } as TimeRecord;
+  },
+
+  getTimeRecordAudit: async (companyId: string, recordId: string): Promise<TimeRecordRevision[]> => {
+    const result = await invokeAdminHandler<{ revisions?: Record<string, any>[] }>({ action: 'get-time-record-audit', payload: { companyId, recordId } });
+    return (result.revisions || []).map((row) => ({ id: String(row.id), timeRecordId: String(row.time_record_id), revisionNumber: Number(row.revision_number), eventType: String(row.event_type), actorUserId: row.actor_user_id || undefined, actorRole: row.actor_role || undefined, reason: row.reason || undefined, createdAt: row.created_at || undefined }));
+  },
+
+  createTimesheetAdjustment: async (companyId: string, originalRecordId: string, workDate: string, workedMinutes: number, direction: -1 | 1, reason: string): Promise<TimeRecord> => {
+    const result = await invokeAdminHandler<{ record: Record<string, any> }>({ action: 'create-timesheet-adjustment', payload: { companyId, originalRecordId, workDate, workedMinutes, direction, reason } });
+    const row = result.record;
+    return { id: String(row.id), companyId: String(row.company_id), employeeId: String(row.employee_id), workDate: String(row.work_date), breakMinutes: Number(row.break_minutes || 0), workedMinutes: Number(row.worked_minutes || 0), regularMinutes: Number(row.regular_minutes || 0), overtimeMinutes: Number(row.overtime_minutes || 0), holidayMinutes: Number(row.holiday_minutes || 0), source: row.source, approvalStatus: row.approval_status, revisionCount: Number(row.revision_count || 0), rateSnapshot: row.rate_snapshot || {}, adjustmentOfId: row.adjustment_of_id || undefined, adjustmentDirection: Number(row.adjustment_direction) === -1 ? -1 : 1 } as TimeRecord;
+  },
+
+  previewTimesheetImport: async (companyId: string, originalFilename: string, rows: Record<string, unknown>[]): Promise<{ batchId: string; rows: TimesheetImportPreviewRow[]; acceptedCount: number }> => {
+    return invokeAdminHandler({ action: 'preview-timesheet-import', payload: { companyId, originalFilename, rows } });
+  },
+
+  commitTimesheetImport: async (companyId: string, batchId: string): Promise<TimeRecord[]> => {
+    const result = await invokeAdminHandler<{ records?: Record<string, any>[] }>({ action: 'commit-timesheet-import', payload: { companyId, batchId } });
+    return (result.records || []).map((row) => ({ id: String(row.id), companyId: String(row.company_id), employeeId: String(row.employee_id), workDate: String(row.work_date), breakMinutes: Number(row.break_minutes || 0), workedMinutes: Number(row.worked_minutes || 0), regularMinutes: Number(row.regular_minutes || 0), overtimeMinutes: Number(row.overtime_minutes || 0), holidayMinutes: Number(row.holiday_minutes || 0), source: row.source, approvalStatus: row.approval_status, revisionCount: Number(row.revision_count || 0), rateSnapshot: row.rate_snapshot || {} } as TimeRecord));
   },
 
   getAttendanceBadge: async (companyId: string, locationId: string): Promise<AttendanceBadge> => {

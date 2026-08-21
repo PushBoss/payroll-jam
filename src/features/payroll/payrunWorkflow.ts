@@ -11,6 +11,8 @@ interface BuildPayRunRecordParams {
   totalNet: number;
   lineItems: PayRunLineItem[];
   payDate?: string;
+  payrollMode?: PayRun['payrollMode'];
+  timeRecordIds?: string[];
 }
 
 export const buildPayRunRecord = ({
@@ -23,7 +25,9 @@ export const buildPayRunRecord = ({
   totalGross,
   totalNet,
   lineItems,
-  payDate = new Date().toISOString().split('T')[0]
+  payDate = new Date().toISOString().split('T')[0],
+  payrollMode = 'REGULAR',
+  timeRecordIds = []
 }: BuildPayRunRecordParams): PayRun => ({
   id,
   periodStart: periodStart || payPeriod,
@@ -33,7 +37,9 @@ export const buildPayRunRecord = ({
   status,
   totalGross,
   totalNet,
-  lineItems
+  lineItems,
+  payrollMode,
+  timeRecordIds
 });
 
 export const getPayFrequencyForCycle = (payCycle: PayRunCycleFilter): PayFrequency => {

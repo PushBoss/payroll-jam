@@ -4,6 +4,7 @@ import { Employee, TimeEntry, WeeklyTimesheet } from '../../core/types';
 import { Icons } from '../../components/Icons';
 import { generateUUID } from '../../utils/uuid';
 import { calculateEntryHours, getWeekBoundsFromDateString, summarizeTimeEntries } from '../../utils/attendance';
+import { PayrollService } from '../../services/PayrollService';
 
 interface TimesheetImportWizardProps {
   isOpen: boolean;
@@ -173,7 +174,7 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
         let match = parsedHeaders.find((h) => h.trim().toLowerCase() === field.label.toLowerCase() || h.trim().toLowerCase() === field.key.toLowerCase());
         if (!match) {
           match = parsedHeaders.find((h) => {
-            const cleaned = h.trim().toLowerCase();
+            const cleaned = h.trim().toLowerCase().replace(/[_-]+/g, ' ');
             return field.aliases.some((alias) => cleaned === alias || cleaned.includes(alias));
           });
         }
@@ -384,17 +385,49 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
 
   const duplicateCount = drafts.filter((d) => d.isDuplicate).length;
   const toImportCount = drafts.filter((d) => !(d.isDuplicate && d.duplicateAction === 'skip')).length;
+  const hasAuthoritativeImports = importedDrafts.some((draft) => draft.shape === 'daily');
 
   const handleImport = async () => {
-    if (isImporting || !onSaveTimesheet) return;
+    if (isImporting || !companyId) return;
     setIsImporting(true);
 
     const succeeded: ImportDraft[] = [];
     let failed = 0;
 
     try {
+      const dailyDrafts = drafts.filter((draft) => draft.shape === 'daily' && !(draft.isDuplicate && draft.duplicateAction === 'skip'));
+      if (dailyDrafts.length > 0) {
+        const rows = dailyDrafts.flatMap((draft) => {
+          const employee = employees.find((item) => item.id === draft.employeeId);
+          return draft.entries.map((entry) => ({
+            employee_email: employee?.email || '', employee_id: draft.employeeId, work_date: entry.date,
+            start_time: entry.startTime, end_time: entry.endTime, break_minutes: Number(entry.breakDuration || 0),
+            source_reference: `csv:${draft.key}:${entry.id}`,
+          }));
+        });
+        const preview = await PayrollService.previewTimesheetImport(companyId, file?.name || 'timesheet-import.csv', rows);
+        if (preview.acceptedCount !== rows.length) {
+          const issueCount = rows.length - preview.acceptedCount;
+          throw new Error(`${issueCount} import row(s) need correction. Missing employees are staged as exceptions and were not created.`);
+        }
+        await PayrollService.commitTimesheetImport(companyId, preview.batchId);
+        succeeded.push(...dailyDrafts.map((draft) => ({ ...draft, key: `csv-${draft.key}` })));
+      }
+
       for (const draft of drafts) {
         if (draft.isDuplicate && draft.duplicateAction === 'skip') continue;
+
+        if (draft.shape === 'daily') {
+          continue;
+        }
+
+        // Legacy weekly-summary files remain readable for backwards
+        // compatibility, but they cannot be payroll-authoritative because a
+        // daily interval and rate snapshot are required.
+        if (!onSaveTimesheet) {
+          failed += 1;
+          continue;
+        }
 
         const timesheet: WeeklyTimesheet = {
           id: draft.isDuplicate && draft.duplicateAction === 'overwrite' && draft.existingId ? draft.existingId : generateUUID(),
@@ -426,6 +459,9 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
       setImportedDrafts(succeeded);
       setImportFailedCount(failed);
       setStep(4);
+    } catch (error) {
+      console.error('Timesheet import batch failed:', error);
+      setErrorRows((rows) => [...rows, { originalIndex: 0, message: error instanceof Error ? error.message : 'The import could not be staged.' }]);
     } finally {
       setIsImporting(false);
     }
@@ -467,7 +503,7 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
         <div className="bg-gradient-to-r from-jam-black to-gray-900 p-6 text-white flex justify-between items-center shrink-0">
           <div>
             <h3 className="text-xl font-bold tracking-tight">Import Timesheets</h3>
-            <p className="text-gray-400 text-xs mt-1">Map your own file's columns - no fixed template required.</p>
+          <p className="text-gray-400 text-xs mt-1">Template v1 imports daily records as Logged; company-admin approval is required before payroll.</p>
           </div>
           <button onClick={resetAndClose} className="text-gray-400 hover:text-white transition-colors p-1.5 hover:bg-white/10 rounded-full">
             <Icons.Close className="w-5 h-5" />
@@ -713,12 +749,12 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
               <div>
                 <h4 className="text-xl font-bold text-gray-900">Import Complete!</h4>
                 <p className="text-gray-500 text-sm mt-2">
-                  {importedDrafts.length} timesheet{importedDrafts.length === 1 ? '' : 's'} imported as Submitted, awaiting approval.
+                  {importedDrafts.length} timesheet{importedDrafts.length === 1 ? '' : 's'} imported{hasAuthoritativeImports ? ' as Logged daily records, awaiting company-admin approval.' : ' as Submitted, awaiting approval.'}
                   {importFailedCount > 0 && ` ${importFailedCount} row(s) failed to save - try re-importing those.`}
                 </p>
               </div>
 
-              {importedDrafts.length > 0 && !approvedAll && (
+              {importedDrafts.length > 0 && !hasAuthoritativeImports && !approvedAll && (
                 <button
                   onClick={handleApproveAllImported}
                   disabled={isApprovingAll}
@@ -731,6 +767,9 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
                 <p className="text-sm text-green-700 font-semibold flex items-center space-x-1.5">
                   <Icons.CheckMark className="w-4 h-4" /><span>All imported timesheets approved.</span>
                 </p>
+              )}
+              {hasAuthoritativeImports && (
+                <p className="text-sm text-amber-800 font-medium">Review and approve the imported daily records from the Timesheets management view before they can be used in payroll.</p>
               )}
 
               <button onClick={resetAndClose} className="w-full bg-jam-black text-white hover:bg-gray-800 py-3 rounded-lg font-bold transition-all shadow-md">

@@ -3475,6 +3475,9 @@ serve(async (req: Request) => {
                 await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'RESELLER', 'SUPER_ADMIN']);
 
                 const runRecord = payRun as Record<string, any>;
+                const payrollMode = (runRecord.payrollMode || runRecord.payroll_mode) === 'TIMESHEET' ? 'TIMESHEET' : 'REGULAR';
+                const timeRecordIds = Array.isArray(runRecord.timeRecordIds) ? runRecord.timeRecordIds.filter(Boolean) : [];
+
                 const payRunPayload = {
                     id: runRecord.id,
                     company_id: companyId,
@@ -3486,8 +3489,53 @@ serve(async (req: Request) => {
                     total_gross: runRecord.total_gross ?? runRecord.totalGross ?? 0,
                     total_net: runRecord.total_net ?? runRecord.totalNet ?? 0,
                     employee_count: runRecord.employee_count ?? runRecord.employeeCount ?? runRecord.line_items?.length ?? runRecord.lineItems?.length ?? 0,
-                    line_items: runRecord.line_items ?? runRecord.lineItems ?? []
+                    line_items: runRecord.line_items ?? runRecord.lineItems ?? [],
+                    payroll_mode: payrollMode,
                 };
+
+                if (payrollMode === 'TIMESHEET') {
+                    const { data: existingRun, error: existingRunError } = await adminClient.from('pay_runs')
+                        .select('id, status').eq('id', payRunPayload.id).eq('company_id', companyId).maybeSingle();
+                    if (existingRunError) throw existingRunError;
+                    if (existingRun) {
+                        if (runRecord.status === 'FINALIZED' && existingRun.status !== 'FINALIZED') {
+                            const { error: finalizeError } = await adminClient.rpc('finalize_timesheet_pay_run', {
+                                p_company_id: companyId, p_pay_run_id: existingRun.id, p_actor_id: authUser.id,
+                            });
+                            if (finalizeError) throw finalizeError;
+                        } else if (existingRun.status === 'FINALIZED' && runRecord.status !== 'FINALIZED') {
+                            throw new Error('A finalized Timesheet-Based Payroll run cannot be edited');
+                        } else if (runRecord.status !== 'FINALIZED') {
+                            const { error: updateError } = await adminClient.from('pay_runs').update({
+                                period_start: payRunPayload.period_start, period_end: payRunPayload.period_end,
+                                pay_date: payRunPayload.pay_date, pay_frequency: payRunPayload.pay_frequency,
+                                total_gross: payRunPayload.total_gross, total_net: payRunPayload.total_net,
+                                employee_count: payRunPayload.employee_count, line_items: payRunPayload.line_items,
+                            }).eq('id', existingRun.id).eq('company_id', companyId);
+                            if (updateError) throw updateError;
+                        }
+                        const { data: savedPayRun, error: readError } = await adminClient.from('pay_runs').select('*').eq('id', existingRun.id).maybeSingle();
+                        if (readError) throw readError;
+                        return new Response(JSON.stringify({ success: true, payRun: savedPayRun }), {
+                            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                        });
+                    }
+                    if (timeRecordIds.length === 0) {
+                        throw new Error('A Timesheet-Based Payroll run requires approved time records');
+                    }
+                    const { data: savedRunId, error: transactionError } = await adminClient.rpc('create_timesheet_pay_run', {
+                        p_company_id: companyId,
+                        p_pay_run: payRunPayload,
+                        p_record_ids: timeRecordIds,
+                        p_actor_id: authUser.id,
+                    });
+                    if (transactionError) throw transactionError;
+                    const { data: savedPayRun, error: readError } = await adminClient.from('pay_runs').select('*').eq('id', savedRunId).maybeSingle();
+                    if (readError) throw readError;
+                    return new Response(JSON.stringify({ success: true, payRun: savedPayRun }), {
+                        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                    });
+                }
 
                 const { data: savedPayRun, error: saveError } = await adminClient
                     .from('pay_runs')
@@ -3500,6 +3548,318 @@ serve(async (req: Request) => {
                 return new Response(JSON.stringify({ success: true, payRun: savedPayRun }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });
+            }
+
+            case 'save-time-record': {
+                const { companyId, record, reason } = payload || {};
+                if (!companyId || !record) throw new Error('companyId and record are required');
+                const caller = await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'MANAGER', 'RESELLER', 'SUPER_ADMIN', 'EMPLOYEE']);
+                const isEmployee = normalizeRole(caller.role) === 'EMPLOYEE';
+                const employeeId = String(record.employeeId || '');
+                const { data: employee, error: employeeError } = await adminClient.from('employees')
+                    .select('id, auth_user_id, email, hourly_rate, pay_type, pay_data').eq('id', employeeId).eq('company_id', companyId).maybeSingle();
+                if (employeeError) throw employeeError;
+                if (!employee) throw new Error('Employee does not belong to this company');
+                if (isEmployee && employee.auth_user_id !== authUser.id) throw new Error('Unauthorized');
+
+                const id = record.id || crypto.randomUUID();
+                const { data: existing, error: existingError } = await adminClient.from('time_records').select('*').eq('id', id).maybeSingle();
+                if (existingError) throw existingError;
+                if (existing && ['INCLUDED_IN_PAYROLL', 'LOCKED'].includes(existing.approval_status)) throw new Error('This time record is locked by payroll and cannot be edited');
+                if (existing && existing.company_id !== companyId) throw new Error('Unauthorized');
+
+                const workedMinutes = Number(record.workedMinutes);
+                const breakMinutes = Math.max(0, Number(record.breakMinutes) || 0);
+                const overtimeMinutes = Math.max(0, Number(record.overtimeMinutes) || 0);
+                let holidayMinutes = Math.max(0, Number(record.holidayMinutes) || 0);
+                let regularMinutes = record.regularMinutes === undefined || record.regularMinutes === null
+                    ? workedMinutes - overtimeMinutes - holidayMinutes
+                    : Math.max(0, Number(record.regularMinutes) || 0);
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(String(record.workDate || '')) || !Number.isInteger(workedMinutes) || workedMinutes <= 0 || !Number.isInteger(breakMinutes) || !Number.isInteger(regularMinutes) || !Number.isInteger(overtimeMinutes) || !Number.isInteger(holidayMinutes) || regularMinutes + overtimeMinutes + holidayMinutes > workedMinutes) {
+                    throw new Error('A valid work date and positive worked minutes are required');
+                }
+                // Rates and eligibility are server-resolved. Never accept a
+                // browser-provided snapshot, since it would let a client
+                // manufacture a higher payroll rate.
+                let rateSnapshot = existing?.rate_snapshot;
+                if (!rateSnapshot || Object.keys(rateSnapshot).length === 0) {
+                    const { data: company, error: companyError } = await adminClient.from('companies').select('settings').eq('id', companyId).maybeSingle();
+                    if (companyError) throw companyError;
+                    const overtimePolicy = company?.settings?.timesheetOvertime || {};
+                    const overtimeEnabled = overtimePolicy.enabled !== false;
+                    const overtimeMultiplier = Math.max(1, Number(overtimePolicy.multiplier || 1.5));
+                    const { data: rate, error: rateError } = await adminClient.from('employee_compensation_rates')
+                        .select('*').eq('company_id', companyId).eq('employee_id', employeeId)
+                        .lte('effective_from', record.workDate)
+                        .or(`effective_to.is.null,effective_to.gte.${record.workDate}`)
+                        .order('effective_from', { ascending: false }).limit(1).maybeSingle();
+                    if (rateError) throw rateError;
+                    const fallbackRate = Number(employee.hourly_rate ?? employee.pay_data?.hourlyRate ?? 0);
+                    if (rate) {
+                        rateSnapshot = { rateType: rate.rate_type, amount: Number(rate.amount), currency: rate.currency, effectiveFrom: rate.effective_from, overtimeEligible: Boolean(rate.overtime_eligible) && overtimeEnabled, overtimeMultiplier, weeklyOvertimeThreshold: Number(rate.weekly_overtime_threshold), holidayEligible: rate.holiday_eligible, holidayMultiplier: Number(rate.holiday_multiplier), source: 'employee_compensation_rates' };
+                    } else if (fallbackRate > 0) {
+                        rateSnapshot = { rateType: 'HOURLY', amount: fallbackRate, currency: 'JMD', effectiveFrom: record.workDate, overtimeEligible: overtimeEnabled, overtimeMultiplier, weeklyOvertimeThreshold: 40, holidayEligible: false, holidayMultiplier: 2, source: 'employee_hourly_rate_fallback' };
+                    } else {
+                        throw new Error('This employee needs an effective hourly rate before time can be approved for payroll');
+                    }
+                }
+                if (holidayMinutes === 0 && rateSnapshot.holidayEligible) {
+                    const { data: holiday, error: holidayError } = await adminClient.from('company_holidays')
+                        .select('id, name, multiplier').eq('company_id', companyId).eq('holiday_date', record.workDate).eq('active', true).limit(1).maybeSingle();
+                    if (holidayError) throw holidayError;
+                    if (holiday) {
+                        holidayMinutes = workedMinutes;
+                        regularMinutes = 0;
+                        rateSnapshot = { ...rateSnapshot, holidayCode: holiday.name, holidayMultiplier: Number(holiday.multiplier || rateSnapshot.holidayMultiplier || 2) };
+                    }
+                }
+                const nextStatus = existing
+                    ? (isEmployee && existing.approval_status === 'APPROVED' ? 'LOGGED' : existing.approval_status)
+                    : 'LOGGED';
+                const source = existing?.source || (isEmployee ? 'EMPLOYEE' : (['CSV', 'API', 'QR', 'ADMIN', 'MANUAL'].includes(String(record.source || '').toUpperCase()) ? String(record.source).toUpperCase() : 'ADMIN'));
+                const next = {
+                    id, company_id: companyId, employee_id: employeeId, work_date: record.workDate,
+                    start_at: record.startAt || null, end_at: record.endAt || null, break_minutes: breakMinutes,
+                    worked_minutes: workedMinutes, regular_minutes: regularMinutes,
+                    overtime_minutes: overtimeMinutes, holiday_minutes: holidayMinutes,
+                    holiday_code: rateSnapshot.holidayCode || null,
+                    source, approval_status: nextStatus,
+                    rate_snapshot: rateSnapshot, revision_count: Number(existing?.revision_count || 0) + (existing ? 1 : 0), updated_at: new Date().toISOString(),
+                };
+                const { data: saved, error: saveError } = await adminClient.from('time_records').upsert(next).select('*').single();
+                if (saveError) throw saveError;
+                await adminClient.from('time_record_revisions').insert({ time_record_id: id, company_id: companyId, revision_number: next.revision_count, event_type: existing ? 'EDIT' : 'CREATE', before_value: existing || null, after_value: saved, actor_user_id: authUser.id, actor_role: caller.role, actor_source: 'WEB', reason: reason || null });
+                return new Response(JSON.stringify({ success: true, record: saved }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+            }
+
+            case 'release-timesheet-pay-run-draft': {
+                const { companyId, payRunId, reason } = payload || {};
+                if (!companyId || !payRunId || !String(reason || '').trim()) throw new Error('Company, draft pay run and release reason are required');
+                await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'RESELLER', 'SUPER_ADMIN']);
+                const { error } = await adminClient.rpc('release_timesheet_pay_run_draft', { p_company_id: companyId, p_pay_run_id: payRunId, p_actor_id: authUser.id, p_reason: String(reason).trim() });
+                if (error) throw error;
+                return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+            }
+
+            case 'finalize-timesheet-pay-run': {
+                const { companyId, payRunId } = payload || {};
+                if (!companyId || !payRunId) throw new Error('Company and pay run are required');
+                await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'RESELLER', 'SUPER_ADMIN']);
+                const { error } = await adminClient.rpc('finalize_timesheet_pay_run', { p_company_id: companyId, p_pay_run_id: payRunId, p_actor_id: authUser.id });
+                if (error) throw error;
+                return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+            }
+
+            case 'review-time-record': {
+                const { companyId, recordId, decision, reason } = payload || {};
+                if (!companyId || !recordId || !['APPROVE', 'REJECT'].includes(decision)) throw new Error('Valid company, record and decision are required');
+                const caller = await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'MANAGER', 'RESELLER', 'SUPER_ADMIN']);
+                const { data: existing, error } = await adminClient.from('time_records').select('*').eq('id', recordId).eq('company_id', companyId).maybeSingle();
+                if (error) throw error;
+                if (!existing) throw new Error('Time record not found');
+                if (['INCLUDED_IN_PAYROLL', 'LOCKED'].includes(existing.approval_status)) throw new Error('This time record is locked by payroll');
+                if (decision === 'REJECT' && !String(reason || '').trim()) throw new Error('A rejection reason is required');
+                const status = decision === 'APPROVE' ? 'APPROVED' : 'REJECTED';
+                const revisionCount = Number(existing.revision_count || 0) + 1;
+                const { data: saved, error: updateError } = await adminClient.from('time_records').update({ approval_status: status, approved_at: decision === 'APPROVE' ? new Date().toISOString() : null, approved_by: decision === 'APPROVE' ? authUser.id : null, rejected_at: decision === 'REJECT' ? new Date().toISOString() : null, rejected_by: decision === 'REJECT' ? authUser.id : null, rejection_reason: decision === 'REJECT' ? String(reason).trim() : null, revision_count: revisionCount, updated_at: new Date().toISOString() }).eq('id', recordId).select('*').single();
+                if (updateError) throw updateError;
+                await adminClient.from('time_record_revisions').insert({ time_record_id: recordId, company_id: companyId, revision_number: revisionCount, event_type: decision === 'APPROVE' ? 'APPROVE' : 'REJECT', before_value: existing, after_value: saved, actor_user_id: authUser.id, actor_role: caller.role, actor_source: 'WEB', reason: reason || null });
+                return new Response(JSON.stringify({ success: true, record: saved }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+            }
+
+            case 'create-timesheet-adjustment': {
+                const { companyId, originalRecordId, workDate, workedMinutes, direction, reason } = payload || {};
+                if (!companyId || !originalRecordId || !/^\d{4}-\d{2}-\d{2}$/.test(String(workDate || '')) || !Number.isInteger(Number(workedMinutes)) || Number(workedMinutes) <= 0 || !String(reason || '').trim()) {
+                    throw new Error('Original record, later work date, positive hours and adjustment reason are required');
+                }
+                const caller = await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'RESELLER', 'SUPER_ADMIN']);
+                const { data: original, error: originalError } = await adminClient.from('time_records').select('*')
+                    .eq('id', originalRecordId).eq('company_id', companyId).maybeSingle();
+                if (originalError) throw originalError;
+                if (!original || original.approval_status !== 'LOCKED') throw new Error('Only a finalized, locked record can be adjusted');
+                if (String(workDate) <= String(original.work_date)) throw new Error('An adjustment must use a later work date/payroll period');
+                const adjustmentDirection = Number(direction) === -1 ? -1 : 1;
+                const { data: adjustment, error: adjustmentError } = await adminClient.from('time_records').insert({
+                    company_id: companyId, employee_id: original.employee_id, work_date: workDate,
+                    break_minutes: 0, worked_minutes: Number(workedMinutes), regular_minutes: Number(workedMinutes), overtime_minutes: 0, holiday_minutes: 0,
+                    source: 'ADMIN', approval_status: 'LOGGED', rate_snapshot: original.rate_snapshot,
+                    adjustment_of_id: original.id, adjustment_direction: adjustmentDirection,
+                }).select('*').single();
+                if (adjustmentError) throw adjustmentError;
+                await adminClient.from('time_record_revisions').insert({ time_record_id: adjustment.id, company_id: companyId, revision_number: 0, event_type: 'ADJUSTMENT', before_value: null, after_value: adjustment, actor_user_id: authUser.id, actor_role: caller.role, actor_source: 'WEB', reason: String(reason).trim() });
+                return new Response(JSON.stringify({ success: true, record: adjustment }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+            }
+
+            case 'preview-timesheet-import': {
+                const { companyId, originalFilename, rows } = payload || {};
+                if (!companyId || !String(originalFilename || '').trim() || !Array.isArray(rows) || rows.length === 0) {
+                    throw new Error('Company, file name, and at least one CSV row are required');
+                }
+                const caller = await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'MANAGER', 'RESELLER', 'SUPER_ADMIN']);
+                const normalizedRows = rows.map((raw: any, index: number) => ({ raw, rowNumber: index + 2, email: String(raw.employeeEmail || raw.employee_email || '').trim().toLowerCase() }));
+                const emails = Array.from(new Set(normalizedRows.map((row: any) => row.email).filter(Boolean)));
+                const { data: employees, error: employeesError } = await adminClient.from('employees').select('id, email, hourly_rate, pay_type, pay_data')
+                    .eq('company_id', companyId).in('email', emails);
+                if (employeesError) throw employeesError;
+                const employeeByEmail = new Map((employees || []).map((employee: any) => [String(employee.email || '').trim().toLowerCase(), employee]));
+                const { data: batch, error: batchError } = await adminClient.from('timesheet_import_batches').insert({
+                    company_id: companyId, original_filename: String(originalFilename).trim(), uploader_id: authUser.id, mapping_version: 'v1', status: 'PREVIEW',
+                }).select('*').single();
+                if (batchError) throw batchError;
+                const previewRows = normalizedRows.map((row: any) => {
+                    const raw = row.raw || {};
+                    const workDate = String(raw.workDate || raw.work_date || '');
+                    const startTime = String(raw.startTime || raw.start_time || '');
+                    const endTime = String(raw.endTime || raw.end_time || '');
+                    const breakMinutes = Number(raw.breakMinutes ?? raw.break_minutes ?? 0);
+                    const errors: string[] = [];
+                    if (!row.email) errors.push('employee_email is required');
+                    if (!employeeByEmail.has(row.email)) errors.push('No employee under this company matches employee_email');
+                    const employee = employeeByEmail.get(row.email);
+                    if (employee && !['TIMESHEET', 'HOURLY'].includes(String(employee.pay_type || '').toUpperCase())) errors.push('Employee must use Timesheet or Hourly pay type');
+                    if (employee && !(Number(employee.hourly_rate ?? employee.pay_data?.hourlyRate ?? 0) > 0)) errors.push('Employee needs an hourly rate before import');
+                    if (!/^\d{4}-\d{2}-\d{2}$/.test(workDate)) errors.push('work_date must use YYYY-MM-DD');
+                    if (!/^\d{2}:\d{2}$/.test(startTime) || !/^\d{2}:\d{2}$/.test(endTime)) errors.push('start_time and end_time must use HH:MM');
+                    if (!Number.isInteger(breakMinutes) || breakMinutes < 0) errors.push('break_minutes must be a non-negative integer');
+                    const start = Date.parse(`${workDate}T${startTime}:00Z`);
+                    const end = Date.parse(`${workDate}T${endTime}:00Z`);
+                    if (!Number.isFinite(start) || !Number.isFinite(end) || end - start - (breakMinutes * 60000) <= 0) errors.push('The interval must have a positive duration after the break');
+                    const result = errors.length ? (employeeByEmail.has(row.email) ? 'INVALID' : 'MISSING_EMPLOYEE') : 'ACCEPTED';
+                    return { batch_id: batch.id, row_number: row.rowNumber, raw_row: raw, result, validation_errors: errors };
+                });
+                const { error: rowsError } = await adminClient.from('timesheet_import_rows').insert(previewRows);
+                if (rowsError) throw rowsError;
+                return new Response(JSON.stringify({ success: true, batchId: batch.id, rows: previewRows.map((row: any) => ({ rowNumber: row.row_number, result: row.result, errors: row.validation_errors })), acceptedCount: previewRows.filter((row: any) => row.result === 'ACCEPTED').length, actorRole: caller.role }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+            }
+
+            case 'commit-timesheet-import': {
+                const { companyId, batchId } = payload || {};
+                if (!companyId || !batchId) throw new Error('Company and import batch are required');
+                const caller = await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'MANAGER', 'RESELLER', 'SUPER_ADMIN']);
+                const { data: batch, error: batchError } = await adminClient.from('timesheet_import_batches').select('*').eq('id', batchId).eq('company_id', companyId).maybeSingle();
+                if (batchError) throw batchError;
+                if (!batch) throw new Error('Import batch was not found');
+                if (batch.status !== 'PREVIEW') throw new Error('This import batch has already been committed or failed');
+                const { data: importRows, error: importRowsError } = await adminClient.from('timesheet_import_rows').select('*').eq('batch_id', batchId).order('row_number');
+                if (importRowsError) throw importRowsError;
+                if (!(importRows || []).length || (importRows || []).some((row: any) => row.result !== 'ACCEPTED')) throw new Error('Resolve every import exception before committing this batch');
+                const emails = Array.from(new Set((importRows || []).map((row: any) => String(row.raw_row?.employeeEmail || row.raw_row?.employee_email || '').trim().toLowerCase())));
+                const { data: employees, error: employeesError } = await adminClient.from('employees').select('id, email, hourly_rate, pay_type, pay_data').eq('company_id', companyId).in('email', emails);
+                if (employeesError) throw employeesError;
+                const employeeByEmail = new Map((employees || []).map((employee: any) => [String(employee.email || '').trim().toLowerCase(), employee]));
+                if (employeeByEmail.size !== emails.length) throw new Error('An imported employee is no longer available; re-preview the batch');
+                const sourceEventIds = (importRows || []).map((row: any) => String(row.raw_row?.sourceReference || row.raw_row?.source_reference || `${batchId}:${row.row_number}`));
+                const { data: duplicateEvents, error: duplicateEventsError } = await adminClient.from('time_records').select('source_event_id').eq('company_id', companyId).eq('source', 'CSV').in('source_event_id', sourceEventIds);
+                if (duplicateEventsError) throw duplicateEventsError;
+                if ((duplicateEvents || []).length > 0) throw new Error('One or more CSV rows were previously imported; create a fresh preview and resolve duplicates');
+                const missingRate = Array.from(employeeByEmail.values()).find((employee: any) => !(Number(employee.hourly_rate ?? employee.pay_data?.hourlyRate ?? 0) > 0));
+                if (missingRate) throw new Error(`Employee ${missingRate.email} needs an hourly rate before import can be committed`);
+                const created: any[] = [];
+                for (const importRow of importRows || []) {
+                    const raw = importRow.raw_row || {};
+                    const email = String(raw.employeeEmail || raw.employee_email || '').trim().toLowerCase();
+                    const employee = employeeByEmail.get(email);
+                    const workDate = String(raw.workDate || raw.work_date);
+                    const startTime = String(raw.startTime || raw.start_time);
+                    const endTime = String(raw.endTime || raw.end_time);
+                    const breakMinutes = Number(raw.breakMinutes ?? raw.break_minutes ?? 0);
+                    const workedMinutes = Math.round((Date.parse(`${workDate}T${endTime}:00Z`) - Date.parse(`${workDate}T${startTime}:00Z`)) / 60000) - breakMinutes;
+                    const fallbackRate = Number(employee.hourly_rate ?? employee.pay_data?.hourlyRate ?? 0);
+                    if (!(fallbackRate > 0)) throw new Error(`Employee ${email} needs an hourly rate before import can be committed`);
+                    const { data: record, error: recordError } = await adminClient.from('time_records').insert({
+                        company_id: companyId, employee_id: employee.id, work_date: workDate, start_at: `${workDate}T${startTime}:00Z`, end_at: `${workDate}T${endTime}:00Z`,
+                        break_minutes: breakMinutes, worked_minutes: workedMinutes, regular_minutes: workedMinutes, source: 'CSV', approval_status: 'LOGGED',
+                        source_event_id: raw.sourceReference || raw.source_reference || `${batchId}:${importRow.row_number}`,
+                        rate_snapshot: { rateType: 'HOURLY', amount: fallbackRate, currency: 'JMD', effectiveFrom: workDate, overtimeEligible: true, overtimeMultiplier: 1.5, weeklyOvertimeThreshold: 40, holidayEligible: false, holidayMultiplier: 2, source: 'csv_import' },
+                    }).select('*').single();
+                    if (recordError) throw recordError;
+                    const { error: auditError } = await adminClient.from('time_record_revisions').insert({ time_record_id: record.id, company_id: companyId, revision_number: 0, event_type: 'IMPORT', before_value: null, after_value: record, actor_user_id: authUser.id, actor_role: caller.role, actor_source: 'CSV', reason: `Imported from ${batch.original_filename}` });
+                    if (auditError) throw auditError;
+                    created.push(record);
+                    const { error: rowUpdateError } = await adminClient.from('timesheet_import_rows').update({ result: 'COMMITTED', time_record_id: record.id }).eq('id', importRow.id);
+                    if (rowUpdateError) throw rowUpdateError;
+                }
+                const { error: completeError } = await adminClient.from('timesheet_import_batches').update({ status: 'COMMITTED', committed_at: new Date().toISOString() }).eq('id', batchId);
+                if (completeError) throw completeError;
+                return new Response(JSON.stringify({ success: true, records: created }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+            }
+
+            case 'get-time-records-for-company': {
+                const { companyId, employeeId, startDate, endDate, status } = payload || {};
+                if (!companyId) throw new Error('companyId required');
+                const caller = await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'MANAGER', 'RESELLER', 'SUPER_ADMIN', 'EMPLOYEE']);
+                let query = adminClient.from('time_records')
+                    .select('*, employees:employee_id(id, first_name, last_name, email)')
+                    .eq('company_id', companyId)
+                    .order('work_date', { ascending: false });
+                if (employeeId) query = query.eq('employee_id', employeeId);
+                if (startDate) query = query.gte('work_date', startDate);
+                if (endDate) query = query.lte('work_date', endDate);
+                if (status) query = query.eq('approval_status', status);
+                if (normalizeRole(caller.role) === 'EMPLOYEE') {
+                    const { data: employee } = await adminClient.from('employees').select('id').eq('company_id', companyId).eq('auth_user_id', authUser.id).maybeSingle();
+                    if (!employee) return new Response(JSON.stringify({ success: true, records: [] }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+                    query = query.eq('employee_id', employee.id);
+                }
+                const { data: records, error } = await query;
+                if (error) throw error;
+                return new Response(JSON.stringify({ success: true, records: records || [] }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+            }
+
+            case 'get-time-record-audit': {
+                const { companyId, recordId } = payload || {};
+                if (!companyId || !recordId) throw new Error('companyId and recordId required');
+                await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'MANAGER', 'RESELLER', 'SUPER_ADMIN']);
+                const { data, error } = await adminClient.from('time_record_revisions').select('*').eq('company_id', companyId).eq('time_record_id', recordId).order('revision_number');
+                if (error) throw error;
+                return new Response(JSON.stringify({ success: true, revisions: data || [] }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+            }
+
+            case 'get-timesheet-payroll-candidates': {
+                const { companyId, periodStart, periodEnd } = payload || {};
+                if (!companyId || !/^\d{4}-\d{2}-\d{2}$/.test(String(periodStart || '')) || !/^\d{4}-\d{2}-\d{2}$/.test(String(periodEnd || '')) || periodStart > periodEnd) {
+                    throw new Error('A valid inclusive payroll period is required');
+                }
+                await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'RESELLER', 'SUPER_ADMIN']);
+                const { data: records, error } = await adminClient.from('time_records')
+                    .select('*, employees:employee_id(id, first_name, last_name, email, hourly_rate, pay_type, pay_data)')
+                    .eq('company_id', companyId).eq('approval_status', 'APPROVED')
+                    .gte('work_date', periodStart).lte('work_date', periodEnd)
+                    .order('work_date', { ascending: true });
+                if (error) throw error;
+                const approvedUnlocked = (records || []).filter((record: any) => !record.pay_run_id);
+                const eligible = approvedUnlocked.filter((record: any) => ['TIMESHEET', 'HOURLY'].includes(String(record.employees?.pay_type || '').toUpperCase()));
+                const candidates = new Map<string, any>();
+                const weeklyMinutes = new Map<string, number>();
+                for (const record of eligible) {
+                    const snapshot = record.rate_snapshot || {};
+                    const rate = Number(snapshot.amount || record.employees?.hourly_rate || record.employees?.pay_data?.hourlyRate || 0);
+                    if (!(rate > 0)) continue;
+                    const weekDate = new Date(`${record.work_date}T12:00:00Z`);
+                    const mondayOffset = (weekDate.getUTCDay() + 6) % 7;
+                    weekDate.setUTCDate(weekDate.getUTCDate() - mondayOffset);
+                    const weekKey = `${record.employee_id}:${weekDate.toISOString().slice(0, 10)}`;
+                    const nonHolidayMinutes = Math.max(0, Number(record.worked_minutes || 0) - Number(record.holiday_minutes || 0));
+                    const priorMinutes = weeklyMinutes.get(weekKey) || 0;
+                    const overtimeEligible = snapshot.overtimeEligible !== false;
+                    const thresholdMinutes = Math.max(0, Number(snapshot.weeklyOvertimeThreshold || 40) * 60);
+                    const regularMinutes = overtimeEligible ? Math.max(0, Math.min(nonHolidayMinutes, thresholdMinutes - priorMinutes)) : nonHolidayMinutes;
+                    const overtimeMinutes = overtimeEligible ? Math.max(0, nonHolidayMinutes - regularMinutes) : 0;
+                    weeklyMinutes.set(weekKey, priorMinutes + nonHolidayMinutes);
+                    const overtimeMultiplier = snapshot.overtimeEligible === false ? 1 : Math.max(1, Number(snapshot.overtimeMultiplier || 1.5));
+                    const holidayMultiplier = snapshot.holidayEligible ? Math.max(1, Number(snapshot.holidayMultiplier || 2)) : 1;
+                    const gross = (((regularMinutes / 60) * rate)
+                      + ((overtimeMinutes / 60) * rate * overtimeMultiplier)
+                      + ((Number(record.holiday_minutes || 0) / 60) * rate * holidayMultiplier)) * (Number(record.adjustment_direction || 1) === -1 ? -1 : 1);
+                    const current = candidates.get(record.employee_id) || { employeeId: record.employee_id, employee: record.employees, timeRecordIds: [], regularMinutes: 0, overtimeMinutes: 0, holidayMinutes: 0, grossPay: 0, missingRateRecordIds: [] };
+                    current.timeRecordIds.push(record.id);
+                    current.regularMinutes += regularMinutes;
+                    current.overtimeMinutes += overtimeMinutes;
+                    current.holidayMinutes += Number(record.holiday_minutes || 0);
+                    current.grossPay += gross;
+                    candidates.set(record.employee_id, current);
+                }
+                return new Response(JSON.stringify({ success: true, records: eligible, candidates: Array.from(candidates.values()), excludedUnsupportedPayType: approvedUnlocked.filter((record: any) => !['TIMESHEET', 'HOURLY'].includes(String(record.employees?.pay_type || '').toUpperCase())).map((record: any) => record.id), excludedMissingRate: eligible.filter((record: any) => !(Number(record.rate_snapshot?.amount || record.employees?.hourly_rate || record.employees?.pay_data?.hourlyRate || 0) > 0)).map((record: any) => record.id) }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
             }
 
             case 'get-compliance-reports': {

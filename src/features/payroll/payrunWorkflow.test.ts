@@ -71,6 +71,18 @@ describe('payrunWorkflow', () => {
     expect(run.status).toBe('DRAFT');
   });
 
+  it('preserves the authoritative time-record association for a Timesheet-Based Payroll run', () => {
+    const run = buildPayRunRecord({
+      id: 'run-timesheet', payPeriod: '2026-08', periodStart: '2026-08-01', periodEnd: '2026-08-15',
+      payFrequency: PayFrequency.FORTNIGHTLY, status: 'DRAFT', totalGross: 12000, totalNet: 9000, lineItems: [],
+      payrollMode: 'TIMESHEET', timeRecordIds: ['record-a', 'record-b'],
+    });
+
+    expect(run.payrollMode).toBe('TIMESHEET');
+    expect(run.timeRecordIds).toEqual(['record-a', 'record-b']);
+    expect(run.periodStart).toBe('2026-08-01');
+  });
+
   it('builds pay period options around the reference month', () => {
     const options = buildPayPeriodOptions(new Date('2026-04-01'));
     expect(options).toHaveLength(10);

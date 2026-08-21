@@ -17,6 +17,8 @@ interface PayRunSetupStepProps {
   setPeriodEndDate: (value: string | null) => void;
   isSuspended: boolean;
   isCalculating: boolean;
+  payrollMode: 'REGULAR' | 'TIMESHEET';
+  setPayrollMode: (value: 'REGULAR' | 'TIMESHEET') => void;
   handleInitializeSystem: () => void;
 }
 
@@ -34,6 +36,8 @@ export const PayRunSetupStep: React.FC<PayRunSetupStepProps> = ({
   setPeriodEndDate,
   isSuspended,
   isCalculating,
+  payrollMode,
+  setPayrollMode,
   handleInitializeSystem
 }) => {
   return (
@@ -49,6 +53,13 @@ export const PayRunSetupStep: React.FC<PayRunSetupStepProps> = ({
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left mb-8">
+          <div className="md:col-span-2">
+            <label className="block text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">Payroll type</label>
+            <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-100 p-1">
+              {(['REGULAR', 'TIMESHEET'] as const).map((mode) => <button key={mode} type="button" onClick={() => setPayrollMode(mode)} className={`rounded-md px-3 py-2 text-sm font-semibold ${payrollMode === mode ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>{mode === 'REGULAR' ? 'Regular Payroll' : 'Timesheet-Based Payroll'}</button>)}
+            </div>
+            {payrollMode === 'TIMESHEET' && <p className="mt-2 text-xs text-gray-500">Only approved, unlocked daily time records inside this period will be included.</p>}
+          </div>
           <div>
             <label className="block text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">Pay Period</label>
             <select
