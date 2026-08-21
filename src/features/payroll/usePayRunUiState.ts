@@ -71,15 +71,19 @@ export const usePayRunUiState = ({
 
     const submitAdHocItem = (event: React.FormEvent) => {
         event.preventDefault();
-        if (!newItemName || !newItemAmount) return;
+        const amount = Math.abs(parseFloat(newItemAmount));
+        if (!newItemName.trim() || !Number.isFinite(amount) || amount <= 0) {
+            toast.error('Enter a positive amount for this item. The payroll type determines whether it is added or deducted.');
+            return;
+        }
 
         addAdHocItem(
             adHocModal.employeeId,
             adHocModal.type,
             {
                 id: `adhoc-${Date.now()}`,
-                name: newItemName,
-                amount: parseFloat(newItemAmount),
+                name: newItemName.trim(),
+                amount,
                 isTaxable: true
             },
             payPeriod

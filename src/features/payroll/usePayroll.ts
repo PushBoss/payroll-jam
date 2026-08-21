@@ -143,7 +143,7 @@ export const usePayroll = (
             let deds = item.deductionsBreakdown || [];
 
             if (type === 'ADDITIONS') adds = [...adds, detail];
-            else deds = [...deds, detail];
+            else deds = [...deds, { ...detail, amount: Math.abs(Number(detail.amount) || 0) }];
 
             return recalculateDraftLineItem({
                 item: {

@@ -165,7 +165,10 @@ export const calculateComputedAmounts = ({
     .filter(item => item.isTaxable === false)
     .reduce((sum, item) => sum + toFiniteNumber(item.amount), 0);
   const allAdditions = taxableAdditions + nonTaxableAdditions;
-  const customDeductions = deductionsBreakdown.reduce((sum, item) => sum + toFiniteNumber(item.amount), 0);
+  // Deductions are withholding amounts. Older drafts may contain a negative
+  // value from a user entering "-500"; normalize it so it cannot reduce total
+  // deductions or increase net pay.
+  const customDeductions = deductionsBreakdown.reduce((sum, item) => sum + Math.abs(toFiniteNumber(item.amount)), 0);
 
   const currentGross = Math.max(0, safeGrossPay + taxableAdditions);
   const taxOverrides = getEmployeeTaxOverrides(context.companyData, employee);
@@ -265,7 +268,7 @@ export const calculatePayRunLineItem = ({
   employee.customDeductions
     ?.filter(isCustomDeductionActive)
     .forEach(deduction => {
-      let amount = toFiniteNumber(deduction.amount);
+      let amount = Math.abs(toFiniteNumber(deduction.amount));
       if (deduction.periodType === 'TARGET_BALANCE' && deduction.targetBalance !== undefined) {
         const remainingBalance = Math.max(0, toFiniteNumber(deduction.targetBalance) - toFiniteNumber(deduction.currentBalance));
         amount = Math.min(amount, remainingBalance || amount);
@@ -283,7 +286,7 @@ export const calculatePayRunLineItem = ({
   employee.deductions?.forEach(deduction => deductionsBreakdown.push({
     id: `other-${deduction.id}`,
     name: deduction.name,
-    amount: toFiniteNumber(deduction.amount)
+    amount: Math.abs(toFiniteNumber(deduction.amount))
   }));
 
   const unpaidLeaves = context.leaveRequests.filter(request =>
@@ -441,7 +444,7 @@ export const recalculateDraftLineItem = ({
   }));
   const deductionsBreakdown = (item.deductionsBreakdown || []).map(detail => ({
     ...detail,
-    amount: toFiniteNumber(detail.amount)
+    amount: Math.abs(toFiniteNumber(detail.amount))
   }));
   const taxableAdditions = additionsBreakdown
     .filter(detail => detail.isTaxable !== false)
@@ -450,7 +453,7 @@ export const recalculateDraftLineItem = ({
     .filter(detail => detail.isTaxable === false)
     .reduce((sum, detail) => sum + toFiniteNumber(detail.amount), 0);
   const allAdditions = taxableAdditions + nonTaxableAdditions;
-  const deductionTotal = deductionsBreakdown.reduce((sum, detail) => sum + toFiniteNumber(detail.amount), 0);
+  const deductionTotal = deductionsBreakdown.reduce((sum, detail) => sum + Math.abs(toFiniteNumber(detail.amount)), 0);
   const safeGrossPay = toFiniteNumber(item.grossPay);
   const computed = calculateComputedAmounts({
     employee,

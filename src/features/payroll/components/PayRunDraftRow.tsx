@@ -28,7 +28,7 @@ export const PayRunDraftRow: React.FC<PayRunDraftRowProps> = ({
   removeAdHocItem
 }) => {
   const hasAdditions = item.additions > 0;
-  const hasDeductions = item.deductions > 0;
+  const hasDeductions = (item.deductionsBreakdown?.length ?? 0) > 0;
   const isManualTax = item.isTaxOverridden === true;
   const isManualEmployerTax = item.isEmployerTaxOverridden === true;
   const isPieceRate = employee?.payType === PayType.PIECE_RATE || item.pieceRateAmount !== undefined || item.pieceCount !== undefined;
@@ -137,7 +137,7 @@ export const PayRunDraftRow: React.FC<PayRunDraftRowProps> = ({
           {hasDeductions ? (
             <div className="flex flex-col items-center relative">
               <button onClick={() => setShowDeductionsMenu(!showDeductionsMenu)} className="text-red-600 font-bold text-sm mb-1 hover:text-red-700 cursor-pointer">
-                -${item.deductions.toLocaleString()}
+                -${Math.abs(item.deductions).toLocaleString()}
               </button>
               {showDeductionsMenu && (
                 <div className="absolute top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl p-3 z-[100] min-w-[250px] left-1/2 transform -translate-x-1/2">
@@ -154,7 +154,7 @@ export const PayRunDraftRow: React.FC<PayRunDraftRowProps> = ({
                           <div className="font-medium text-gray-900">{ded.name}</div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="text-red-600 font-bold">${ded.amount.toLocaleString()}</span>
+                          <span className="text-red-600 font-bold">${Math.abs(ded.amount).toLocaleString()}</span>
                           <button
                             onClick={() => {
                               removeAdHocItem(item.employeeId, ded.id, payPeriod);

@@ -688,7 +688,8 @@ export const PayRun: React.FC<PayRunProps> = ({
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Amount</label>
-                                    <input required type="number" className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-jam-orange" value={newItemAmount} onChange={e => setNewItemAmount(e.target.value)} />
+                                    <input required type="number" min="0.01" step="0.01" className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-jam-orange" value={newItemAmount} onChange={e => setNewItemAmount(e.target.value)} />
+                                    <p className="mt-1 text-[11px] text-gray-500">Enter a positive amount. This form applies it as a {adHocModal.type === 'ADDITIONS' ? 'pay addition' : 'deduction'}.</p>
                                 </div>
                                 <button type="submit" className="w-full bg-jam-black text-white py-2 rounded-lg font-bold hover:bg-gray-800">Add Item</button>
                             </form>

@@ -484,6 +484,29 @@ describe('payrollEngine', () => {
     expect(lineItem.netPay).toBe(0);
   });
 
+  it('normalizes legacy negative deduction values as positive withholding', () => {
+    const employeeWithNegativeDeduction: Employee = {
+      ...defaultEmployee,
+      grossSalary: 90000,
+      deductions: [{ id: 'legacy-deduction', name: 'Loan repayment', amount: -40000 }],
+    };
+
+    const lineItem = calculatePayRunLineItem({
+      employee: employeeWithNegativeDeduction,
+      period: '2026-01',
+      context: {
+        timesheets: [],
+        leaveRequests: [],
+        payRunHistory: [],
+        companyData: defaultCompanyData,
+      },
+    });
+
+    expect(lineItem.deductions).toBe(40000);
+    expect(lineItem.deductionsBreakdown).toContainEqual({ id: 'other-legacy-deduction', name: 'Loan repayment', amount: 40000 });
+    expect(lineItem.netPay).toBeLessThan(lineItem.grossPay);
+  });
+
   it('excludes exhausted custom deductions and caps target-balance deductions', () => {
     const employeeWithCompletedDeductions: Employee = {
       ...defaultEmployee,
