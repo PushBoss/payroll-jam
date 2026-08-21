@@ -3573,7 +3573,7 @@ serve(async (req: Request) => {
                 const isEmployee = normalizeRole(caller.role) === 'EMPLOYEE';
                 const employeeId = String(record.employeeId || '');
                 const { data: employee, error: employeeError } = await adminClient.from('employees')
-                    .select('id, auth_user_id, email, hourly_rate, pay_type, pay_data').eq('id', employeeId).eq('company_id', companyId).maybeSingle();
+                    .select('id, auth_user_id, email, pay_data').eq('id', employeeId).eq('company_id', companyId).maybeSingle();
                 if (employeeError) throw employeeError;
                 if (!employee) throw new Error('Employee does not belong to this company');
                 if (isEmployee && employee.auth_user_id !== authUser.id) throw new Error('Unauthorized');
@@ -3610,7 +3610,7 @@ serve(async (req: Request) => {
                         .or(`effective_to.is.null,effective_to.gte.${record.workDate}`)
                         .order('effective_from', { ascending: false }).limit(1).maybeSingle();
                     if (rateError) throw rateError;
-                    const fallbackRate = Number(employee.hourly_rate ?? employee.pay_data?.hourlyRate ?? 0);
+                    const fallbackRate = Number(employee.pay_data?.hourlyRate ?? 0);
                     if (rate) {
                         rateSnapshot = { rateType: rate.rate_type, amount: Number(rate.amount), currency: rate.currency, effectiveFrom: rate.effective_from, overtimeEligible: Boolean(rate.overtime_eligible) && overtimeEnabled, overtimeMultiplier, weeklyOvertimeThreshold: Number(rate.weekly_overtime_threshold), holidayEligible: rate.holiday_eligible, holidayMultiplier: Number(rate.holiday_multiplier), source: 'employee_compensation_rates' };
                     } else if (fallbackRate > 0) {
@@ -3714,7 +3714,7 @@ serve(async (req: Request) => {
                 const caller = await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'MANAGER', 'RESELLER', 'SUPER_ADMIN']);
                 const normalizedRows = rows.map((raw: any, index: number) => ({ raw, rowNumber: index + 2, email: String(raw.employeeEmail || raw.employee_email || '').trim().toLowerCase() }));
                 const emails = Array.from(new Set(normalizedRows.map((row: any) => row.email).filter(Boolean)));
-                const { data: employees, error: employeesError } = await adminClient.from('employees').select('id, email, hourly_rate, pay_type, pay_data')
+                const { data: employees, error: employeesError } = await adminClient.from('employees').select('id, email, pay_data')
                     .eq('company_id', companyId).in('email', emails);
                 if (employeesError) throw employeesError;
                 const employeeByEmail = new Map((employees || []).map((employee: any) => [String(employee.email || '').trim().toLowerCase(), employee]));
@@ -3732,8 +3732,8 @@ serve(async (req: Request) => {
                     if (!row.email) errors.push('employee_email is required');
                     if (!employeeByEmail.has(row.email)) errors.push('No employee under this company matches employee_email');
                     const employee = employeeByEmail.get(row.email);
-                    if (employee && !['TIMESHEET', 'HOURLY'].includes(String(employee.pay_type || '').toUpperCase())) errors.push('Employee must use Timesheet or Hourly pay type');
-                    if (employee && !(Number(employee.hourly_rate ?? employee.pay_data?.hourlyRate ?? 0) > 0)) errors.push('Employee needs an hourly rate before import');
+                    if (employee && !['TIMESHEET', 'HOURLY'].includes(String(employee.pay_data?.payType || '').toUpperCase())) errors.push('Employee must use Timesheet or Hourly pay type');
+                    if (employee && !(Number(employee.pay_data?.hourlyRate ?? 0) > 0)) errors.push('Employee needs an hourly rate before import');
                     if (!/^\d{4}-\d{2}-\d{2}$/.test(workDate)) errors.push('work_date must use YYYY-MM-DD');
                     if (!/^\d{2}:\d{2}$/.test(startTime) || !/^\d{2}:\d{2}$/.test(endTime)) errors.push('start_time and end_time must use HH:MM');
                     if (!Number.isInteger(breakMinutes) || breakMinutes < 0) errors.push('break_minutes must be a non-negative integer');
@@ -3760,7 +3760,7 @@ serve(async (req: Request) => {
                 if (importRowsError) throw importRowsError;
                 if (!(importRows || []).length || (importRows || []).some((row: any) => row.result !== 'ACCEPTED')) throw new Error('Resolve every import exception before committing this batch');
                 const emails = Array.from(new Set((importRows || []).map((row: any) => String(row.raw_row?.employeeEmail || row.raw_row?.employee_email || '').trim().toLowerCase())));
-                const { data: employees, error: employeesError } = await adminClient.from('employees').select('id, email, hourly_rate, pay_type, pay_data').eq('company_id', companyId).in('email', emails);
+                const { data: employees, error: employeesError } = await adminClient.from('employees').select('id, email, pay_data').eq('company_id', companyId).in('email', emails);
                 if (employeesError) throw employeesError;
                 const employeeByEmail = new Map((employees || []).map((employee: any) => [String(employee.email || '').trim().toLowerCase(), employee]));
                 if (employeeByEmail.size !== emails.length) throw new Error('An imported employee is no longer available; re-preview the batch');
@@ -3768,7 +3768,7 @@ serve(async (req: Request) => {
                 const { data: duplicateEvents, error: duplicateEventsError } = await adminClient.from('time_records').select('source_event_id').eq('company_id', companyId).eq('source', 'CSV').in('source_event_id', sourceEventIds);
                 if (duplicateEventsError) throw duplicateEventsError;
                 if ((duplicateEvents || []).length > 0) throw new Error('One or more CSV rows were previously imported; create a fresh preview and resolve duplicates');
-                const missingRate = Array.from(employeeByEmail.values()).find((employee: any) => !(Number(employee.hourly_rate ?? employee.pay_data?.hourlyRate ?? 0) > 0));
+                const missingRate = Array.from(employeeByEmail.values()).find((employee: any) => !(Number(employee.pay_data?.hourlyRate ?? 0) > 0));
                 if (missingRate) throw new Error(`Employee ${missingRate.email} needs an hourly rate before import can be committed`);
                 const created: any[] = [];
                 for (const importRow of importRows || []) {
@@ -3780,7 +3780,7 @@ serve(async (req: Request) => {
                     const endTime = String(raw.endTime || raw.end_time);
                     const breakMinutes = Number(raw.breakMinutes ?? raw.break_minutes ?? 0);
                     const workedMinutes = Math.round((Date.parse(`${workDate}T${endTime}:00Z`) - Date.parse(`${workDate}T${startTime}:00Z`)) / 60000) - breakMinutes;
-                    const fallbackRate = Number(employee.hourly_rate ?? employee.pay_data?.hourlyRate ?? 0);
+                    const fallbackRate = Number(employee.pay_data?.hourlyRate ?? 0);
                     if (!(fallbackRate > 0)) throw new Error(`Employee ${email} needs an hourly rate before import can be committed`);
                     const { data: record, error: recordError } = await adminClient.from('time_records').insert({
                         company_id: companyId, employee_id: employee.id, work_date: workDate, start_at: `${workDate}T${startTime}:00Z`, end_at: `${workDate}T${endTime}:00Z`,
@@ -3847,7 +3847,7 @@ serve(async (req: Request) => {
                 const employeeIds = [...new Set(approvedUnlocked.map((record: any) => record.employee_id).filter(Boolean))];
                 const { data: employees, error: employeesError } = employeeIds.length > 0
                     ? await adminClient.from('employees')
-                        .select('id, first_name, last_name, email, hourly_rate, pay_type, pay_data')
+                        .select('id, first_name, last_name, email, pay_data')
                         .eq('company_id', companyId)
                         .in('id', employeeIds)
                     : { data: [], error: null };
@@ -3857,12 +3857,12 @@ serve(async (req: Request) => {
                     ...record,
                     employees: employeesById.get(record.employee_id) || null,
                 }));
-                const eligible = hydratedRecords.filter((record: any) => ['TIMESHEET', 'HOURLY'].includes(String(record.employees?.pay_type || '').toUpperCase()));
+                const eligible = hydratedRecords.filter((record: any) => ['TIMESHEET', 'HOURLY'].includes(String(record.employees?.pay_data?.payType || '').toUpperCase()));
                 const candidates = new Map<string, any>();
                 const weeklyMinutes = new Map<string, number>();
                 for (const record of eligible) {
                     const snapshot = record.rate_snapshot || {};
-                    const rate = Number(snapshot.amount || record.employees?.hourly_rate || record.employees?.pay_data?.hourlyRate || 0);
+                    const rate = Number(snapshot.amount || record.employees?.pay_data?.hourlyRate || 0);
                     if (!(rate > 0)) continue;
                     const weekDate = new Date(`${record.work_date}T12:00:00Z`);
                     const mondayOffset = (weekDate.getUTCDay() + 6) % 7;
@@ -3888,7 +3888,7 @@ serve(async (req: Request) => {
                     current.grossPay += gross;
                     candidates.set(record.employee_id, current);
                 }
-                return new Response(JSON.stringify({ success: true, records: eligible, candidates: Array.from(candidates.values()), excludedUnsupportedPayType: hydratedRecords.filter((record: any) => !['TIMESHEET', 'HOURLY'].includes(String(record.employees?.pay_type || '').toUpperCase())).map((record: any) => record.id), excludedMissingRate: eligible.filter((record: any) => !(Number(record.rate_snapshot?.amount || record.employees?.hourly_rate || record.employees?.pay_data?.hourlyRate || 0) > 0)).map((record: any) => record.id) }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+                return new Response(JSON.stringify({ success: true, records: eligible, candidates: Array.from(candidates.values()), excludedUnsupportedPayType: hydratedRecords.filter((record: any) => !['TIMESHEET', 'HOURLY'].includes(String(record.employees?.pay_data?.payType || '').toUpperCase())).map((record: any) => record.id), excludedMissingRate: eligible.filter((record: any) => !(Number(record.rate_snapshot?.amount || record.employees?.pay_data?.hourlyRate || 0) > 0)).map((record: any) => record.id) }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
             }
 
             case 'get-compliance-reports': {
