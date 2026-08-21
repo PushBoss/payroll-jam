@@ -132,6 +132,7 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
   const [mappings, setMappings] = useState<Record<string, string>>({});
   const [isPayrollJamTemplate, setIsPayrollJamTemplate] = useState(false);
   const [mappingMode, setMappingMode] = useState<MappingMode>('DAILY');
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const [drafts, setDrafts] = useState<ImportDraft[]>([]);
   const [unmatchedRows, setUnmatchedRows] = useState<RowIssue[]>([]);
@@ -155,6 +156,7 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
     setMappings({});
     setIsPayrollJamTemplate(false);
     setMappingMode('DAILY');
+    setUploadError(null);
     setDrafts([]);
     setUnmatchedRows([]);
     setErrorRows([]);
@@ -168,6 +170,7 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
     const selectedFile = event.target.files?.[0];
     if (!selectedFile) return;
 
+    setUploadError(null);
     setIsParsing(true);
     try {
       const { headers: parsedHeaders, rows } = await parseImportFile(selectedFile);
@@ -202,7 +205,7 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
       setMappingMode(detectedDaily ? 'DAILY' : detectedSummary ? 'SUMMARY' : 'MIXED');
       setStep(2);
     } catch (err: any) {
-      alert(err?.message || 'Failed to read file.');
+      setUploadError(err?.message || 'We could not read that file.');
     } finally {
       setIsParsing(false);
       if (event.target) event.target.value = '';
@@ -213,6 +216,7 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
   const hasSummarizedShape = Boolean(mappings.weekStartDate && (mappings.regularHours || mappings.overtimeHours));
   const dailyReady = Boolean(mappings.employeeIdentifier && hasDailyShape);
   const summaryReady = Boolean(mappings.employeeIdentifier && hasSummarizedShape);
+  const isExampleOnlyUpload = uploadError?.includes('Replace the example row') ?? false;
   const isHeaderUsedByAnotherMapping = (header: string, fieldKey: string) => Object.entries(mappings)
     .some(([mappedFieldKey, mappedHeader]) => mappedFieldKey !== fieldKey && mappedHeader === header);
 
@@ -837,6 +841,29 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
           )}
         </div>
       </div>
+
+      {uploadError && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-jam-black/45 p-4">
+          <div role="alertdialog" aria-modal="true" aria-labelledby="timesheet-upload-error-title" className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-lg font-extrabold text-amber-700">!</div>
+              <div>
+                <h4 id="timesheet-upload-error-title" className="text-lg font-bold text-gray-900">{isExampleOnlyUpload ? 'Template needs a real time entry' : 'We could not read that file'}</h4>
+                <p className="mt-2 text-sm leading-6 text-gray-600">{uploadError}</p>
+              </div>
+            </div>
+            <div className="mt-5 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs leading-5 text-gray-600">
+              {isExampleOnlyUpload
+                ? 'The example row shows the required format but is never imported. Replace it with at least one real employee row, save the file, then upload it again.'
+                : 'Use a CSV or Excel file with a header row and at least one time-entry row, then try again.'}
+            </div>
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button type="button" onClick={() => setUploadError(null)} className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-gray-50">Close</button>
+              <button type="button" onClick={() => { setUploadError(null); fileInputRef.current?.click(); }} className="rounded-lg bg-jam-black px-4 py-2.5 text-sm font-bold text-white hover:bg-gray-800">Choose another file</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
