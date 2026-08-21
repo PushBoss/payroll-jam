@@ -605,7 +605,7 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
         </div>
       </div>
 
-      <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+      <section className="hidden" aria-hidden="true">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h3 className="font-bold text-gray-900">Authoritative Time Review</h3>
@@ -1133,7 +1133,7 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between space-y-4 sm:space-y-0">
           <div className="flex items-center space-x-4">
-            <h3 className="font-bold text-gray-900">Weekly Timesheets</h3>
+            <h3 className="font-bold text-gray-900">Timesheet Entries</h3>
             <div className="flex items-center space-x-2 bg-gray-100 px-3 py-1.5 rounded-lg">
               <button 
                 onClick={() => navigateWeek('prev')}
@@ -1277,6 +1277,32 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
           </table>
         </div>
       </div>
+
+      <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="font-bold text-gray-900">Daily Payroll Time Records</h3>
+            <p className="mt-1 text-sm text-gray-500">Approved daily records feed Timesheet-Based Payroll. The table above is the period-based entry view.</p>
+          </div>
+          <span className="rounded-full bg-gray-100 px-3 py-1 text-sm font-semibold text-gray-700">
+            {authoritativeLoading ? 'Loading…' : `${authoritativeRecords.length} records`}
+          </span>
+        </div>
+        {!authoritativeLoading && authoritativeRecords.length === 0 && (
+          <p className="mt-4 text-sm text-gray-500">No daily payroll records match the current filters.</p>
+        )}
+        {!authoritativeLoading && authoritativeRecords.length > 0 && (
+          <div className="mt-4 overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="border-b text-left text-xs uppercase text-gray-500"><tr><th className="pb-2 pr-4">Date</th><th className="pb-2 pr-4">Employee</th><th className="pb-2 pr-4">Hours</th><th className="pb-2 pr-4">Status</th><th className="pb-2 pr-4">Audit</th><th className="pb-2">Review</th></tr></thead>
+              <tbody>{authoritativeRecords.slice(0, 25).map((record) => {
+                const employee = employees.find((item) => item.id === record.employeeId);
+                return <tr key={record.id} className="border-b last:border-0"><td className="py-2 pr-4">{record.workDate}</td><td className="py-2 pr-4">{employee ? `${employee.firstName} ${employee.lastName}` : 'Employee'}</td><td className="py-2 pr-4">{(record.workedMinutes / 60).toFixed(2)}</td><td className="py-2 pr-4">{record.approvalStatus}</td><td className="py-2 pr-4"><button onClick={() => handleViewAudit(record)} className="text-xs font-semibold text-blue-700 hover:underline">{record.revisionCount > 0 ? `Edited (${record.revisionCount})` : 'Audit'}</button></td><td className="py-2">{record.approvalStatus === 'LOGGED' ? <span className="flex gap-2"><button onClick={() => handleAuthoritativeReview(record, 'APPROVE')} className="text-xs font-semibold text-emerald-700 hover:underline">Approve</button><button onClick={() => handleAuthoritativeReview(record, 'REJECT')} className="text-xs font-semibold text-red-700 hover:underline">Reject</button></span> : record.approvalStatus === 'LOCKED' ? <button onClick={() => handleCreateAdjustment(record)} className="text-xs font-semibold text-jam-orange hover:underline">Adjust</button> : '—'}</td></tr>;
+              })}</tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   );
 };
