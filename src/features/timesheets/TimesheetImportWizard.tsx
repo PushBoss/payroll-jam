@@ -128,6 +128,7 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
   const [headers, setHeaders] = useState<string[]>([]);
   const [rawRows, setRawRows] = useState<Record<string, string>[]>([]);
   const [mappings, setMappings] = useState<Record<string, string>>({});
+  const [isPayrollJamTemplate, setIsPayrollJamTemplate] = useState(false);
 
   const [drafts, setDrafts] = useState<ImportDraft[]>([]);
   const [unmatchedRows, setUnmatchedRows] = useState<RowIssue[]>([]);
@@ -149,6 +150,7 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
     setHeaders([]);
     setRawRows([]);
     setMappings({});
+    setIsPayrollJamTemplate(false);
     setDrafts([]);
     setUnmatchedRows([]);
     setErrorRows([]);
@@ -165,9 +167,19 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
     setIsParsing(true);
     try {
       const { headers: parsedHeaders, rows } = await parseImportFile(selectedFile);
+      const normalizedHeaders = parsedHeaders.map((header) => header.trim().toLowerCase());
+      const isOfficialTemplate = ['employee_email', 'work_date', 'start_time', 'end_time', 'break_minutes']
+        .every((header) => normalizedHeaders.includes(header));
+      const usableRows = rows.filter((row) =>
+        String(row.source_reference || '').trim().toUpperCase() !== 'EXAMPLE-001'
+      );
+      if (usableRows.length === 0) {
+        throw new Error('Replace the example row with at least one real employee time entry before importing.');
+      }
       setFile(selectedFile);
       setHeaders(parsedHeaders);
-      setRawRows(rows);
+      setRawRows(usableRows);
+      setIsPayrollJamTemplate(isOfficialTemplate);
 
       const initialMappings: Record<string, string> = {};
       ALL_FIELDS.forEach((field) => {
@@ -569,7 +581,14 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
                 </div>
               </div>
 
-              <div>
+              {isPayrollJamTemplate && (
+                <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-900">
+                  <p className="font-bold">PayrollJam template detected</p>
+                  <p className="mt-1">Columns were mapped automatically and the example row was ignored. Click <strong>Review Data</strong> to check your real entries.</p>
+                </div>
+              )}
+
+              <div className={isPayrollJamTemplate ? 'hidden' : undefined}>
                 <h4 className="text-md font-bold text-gray-900 mb-1 flex items-center">
                   {EMPLOYEE_FIELD.label} <span className="text-red-500 ml-1">*</span>
                 </h4>
@@ -583,7 +602,7 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
                 </select>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className={isPayrollJamTemplate ? 'hidden' : 'grid grid-cols-1 md:grid-cols-2 gap-6'}>
                 <div className={`rounded-xl border p-4 ${hasDailyShape ? 'border-green-300 bg-green-50/30' : 'border-gray-200 bg-white'}`}>
                   <h5 className="text-sm font-bold text-gray-900 mb-1">Option A: Daily Punches</h5>
                   <p className="text-xs text-gray-500 mb-3">One row per employee per day. Hours are computed from start/end time.</p>
@@ -625,14 +644,12 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
                 </div>
               </div>
 
-              <p className="text-xs text-gray-500">Map at least one full option (A or B) in addition to Employee. If your file mixes both shapes across different rows, that's fine - each row is matched to whichever option it has complete data for.</p>
-
               <div className="flex justify-between items-center pt-4 border-t border-gray-100">
                 <button onClick={() => setStep(1)} className="px-5 py-2.5 border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold rounded-lg text-sm flex items-center space-x-2">
                   <Icons.Back className="w-4 h-4" /><span>Back</span>
                 </button>
                 <button onClick={handleProceedToValidation} className="px-6 py-2.5 bg-jam-black text-white hover:bg-gray-800 font-bold rounded-lg text-sm shadow-md">
-                  Review Data
+                  {isPayrollJamTemplate ? 'Review Data' : 'Review Mapped Data'}
                 </button>
               </div>
             </div>
