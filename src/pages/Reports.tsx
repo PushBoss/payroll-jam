@@ -54,6 +54,8 @@ export const Reports: React.FC<ReportsProps> = ({
   const [isEmailing, setIsEmailing] = useState(false);
   const [archivedComplianceReports, setArchivedComplianceReports] = useState<ComplianceReportArchiveItem[]>([]);
   const [isImportWizardOpen, setIsImportWizardOpen] = useState(false);
+  const [pendingDeletion, setPendingDeletion] = useState<PayRun | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     const loadAuditLogs = async () => {
@@ -140,25 +142,33 @@ export const Reports: React.FC<ReportsProps> = ({
     }
   }, [displayHistory, selectedRun]);
 
-  // Handle delete with confirmation
-  const handleDelete = async (run: PayRun) => {
+  const requestDelete = (run: PayRun) => {
     if (run.status !== 'DRAFT') {
       toast.error('Only draft pay runs can be deleted');
       return;
     }
+    setPendingDeletion(run);
+  };
 
-    if (window.confirm(`Are you sure you want to delete this ${run.status} pay run for ${run.periodStart}? This action cannot be undone.`)) {
-      if (onDeletePayRun) {
-        try {
-          await onDeletePayRun(run.id);
-          toast.success('Pay run deleted successfully');
-        } catch (error) {
-          console.error('❌ Failed to delete pay run:', error);
-          toast.error('Failed to delete pay run from database.');
-        }
-      } else {
-        toast.error('Delete function not available');
-      }
+  const confirmDelete = async () => {
+    if (!pendingDeletion) return;
+    if (!onDeletePayRun) {
+      toast.error('Delete function not available');
+      setPendingDeletion(null);
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      await onDeletePayRun(pendingDeletion.id);
+      if (selectedRun?.id === pendingDeletion.id) setSelectedRun(null);
+      toast.success('Draft pay run deleted');
+      setPendingDeletion(null);
+    } catch (error) {
+      console.error('Failed to delete pay run:', error);
+      toast.error('Failed to delete the draft pay run from the database.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -699,7 +709,7 @@ export const Reports: React.FC<ReportsProps> = ({
                               )}
                               {onDeletePayRun && (
                                 <button
-                                  onClick={() => handleDelete(run)}
+                                  onClick={() => requestDelete(run)}
                                   className="text-red-600 hover:text-red-800 text-sm font-medium px-2 py-1 rounded hover:bg-red-50 transition-colors"
                                   title="Delete pay run"
                                 >
@@ -1014,6 +1024,27 @@ export const Reports: React.FC<ReportsProps> = ({
           onSavePayRun={onUpdatePayRun}
           onImported={handleImported}
         />
+      )}
+
+      {pendingDeletion && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-jam-black/55 p-4 backdrop-blur-sm">
+          <div role="alertdialog" aria-modal="true" aria-labelledby="delete-payrun-title" className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl animate-scale-in">
+            <div className="flex items-start gap-3 border-b border-gray-100 p-6">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100 text-lg font-extrabold text-red-700">!</div>
+              <div>
+                <h3 id="delete-payrun-title" className="text-lg font-bold text-gray-900">Delete draft pay run?</h3>
+                <p className="mt-1 text-sm leading-6 text-gray-600">You are deleting the draft for <strong>{pendingDeletion.periodStart}</strong>. This cannot be undone.</p>
+              </div>
+            </div>
+            <div className="mx-6 mt-5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+              Only unfinalized drafts can be deleted. Finalized payroll records remain protected.
+            </div>
+            <div className="mt-6 flex flex-col-reverse gap-2 border-t border-gray-100 bg-gray-50 p-4 sm:flex-row sm:justify-end">
+              <button type="button" disabled={isDeleting} onClick={() => setPendingDeletion(null)} className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-60">Keep draft</button>
+              <button type="button" disabled={isDeleting} onClick={() => void confirmDelete()} className="rounded-lg bg-red-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-60">{isDeleting ? 'Deleting...' : 'Delete draft'}</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
