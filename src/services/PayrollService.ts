@@ -58,7 +58,20 @@ const invokeAdminHandler = async <T,>(payload: { action: string; payload: Record
   });
 
   if (error) {
-    throw error;
+    // Supabase wraps non-2xx Edge Function responses in a generic
+    // FunctionsHttpError. Preserve the server's validation message so payroll
+    // operators can act on it instead of seeing only "status 400".
+    let message = error.message || 'Payroll request failed';
+    try {
+      const response = error.context;
+      const body = response && typeof response.clone === 'function'
+        ? await response.clone().json()
+        : null;
+      message = body?.error || body?.message || message;
+    } catch {
+      // Keep the SDK message if the response cannot be decoded.
+    }
+    throw new Error(message);
   }
 
   return data as T;

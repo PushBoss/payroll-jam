@@ -3838,13 +3838,26 @@ serve(async (req: Request) => {
                 }
                 await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'RESELLER', 'SUPER_ADMIN']);
                 const { data: records, error } = await adminClient.from('time_records')
-                    .select('*, employees:employee_id(id, first_name, last_name, email, hourly_rate, pay_type, pay_data)')
+                    .select('*')
                     .eq('company_id', companyId).eq('approval_status', 'APPROVED')
                     .gte('work_date', periodStart).lte('work_date', periodEnd)
                     .order('work_date', { ascending: true });
                 if (error) throw error;
                 const approvedUnlocked = (records || []).filter((record: any) => !record.pay_run_id);
-                const eligible = approvedUnlocked.filter((record: any) => ['TIMESHEET', 'HOURLY'].includes(String(record.employees?.pay_type || '').toUpperCase()));
+                const employeeIds = [...new Set(approvedUnlocked.map((record: any) => record.employee_id).filter(Boolean))];
+                const { data: employees, error: employeesError } = employeeIds.length > 0
+                    ? await adminClient.from('employees')
+                        .select('id, first_name, last_name, email, hourly_rate, pay_type, pay_data')
+                        .eq('company_id', companyId)
+                        .in('id', employeeIds)
+                    : { data: [], error: null };
+                if (employeesError) throw employeesError;
+                const employeesById = new Map((employees || []).map((employee: any) => [employee.id, employee]));
+                const hydratedRecords = approvedUnlocked.map((record: any) => ({
+                    ...record,
+                    employees: employeesById.get(record.employee_id) || null,
+                }));
+                const eligible = hydratedRecords.filter((record: any) => ['TIMESHEET', 'HOURLY'].includes(String(record.employees?.pay_type || '').toUpperCase()));
                 const candidates = new Map<string, any>();
                 const weeklyMinutes = new Map<string, number>();
                 for (const record of eligible) {
@@ -3875,7 +3888,7 @@ serve(async (req: Request) => {
                     current.grossPay += gross;
                     candidates.set(record.employee_id, current);
                 }
-                return new Response(JSON.stringify({ success: true, records: eligible, candidates: Array.from(candidates.values()), excludedUnsupportedPayType: approvedUnlocked.filter((record: any) => !['TIMESHEET', 'HOURLY'].includes(String(record.employees?.pay_type || '').toUpperCase())).map((record: any) => record.id), excludedMissingRate: eligible.filter((record: any) => !(Number(record.rate_snapshot?.amount || record.employees?.hourly_rate || record.employees?.pay_data?.hourlyRate || 0) > 0)).map((record: any) => record.id) }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+                return new Response(JSON.stringify({ success: true, records: eligible, candidates: Array.from(candidates.values()), excludedUnsupportedPayType: hydratedRecords.filter((record: any) => !['TIMESHEET', 'HOURLY'].includes(String(record.employees?.pay_type || '').toUpperCase())).map((record: any) => record.id), excludedMissingRate: eligible.filter((record: any) => !(Number(record.rate_snapshot?.amount || record.employees?.hourly_rate || record.employees?.pay_data?.hourlyRate || 0) > 0)).map((record: any) => record.id) }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
             }
 
             case 'get-compliance-reports': {
