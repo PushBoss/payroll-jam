@@ -227,14 +227,18 @@ export const PayrollService = {
       },
     });
 
-    return (result.summaries || []).map((row) => ({
-      employeeId: String(row.employee_id || row.employeeId || ''),
-      ytdGross: Number(row.ytd_gross ?? row.ytdGross ?? 0),
-      ytdNIS: Number(row.ytd_nis ?? row.ytdNIS ?? 0),
-      ytdTaxPaid: Number(row.ytd_tax_paid ?? row.ytdTaxPaid ?? 0),
-      ytdPension: Number(row.ytd_pension ?? row.ytdPension ?? 0),
-      ytdStatutoryIncome: Number(row.ytd_statutory_income ?? row.ytdStatutoryIncome ?? 0),
-    })).filter((summary) => summary.employeeId);
+    return (result.summaries || []).map((row) => {
+      const rawYtdPeriods = row.ytd_periods ?? row.ytdPeriods;
+      return {
+        employeeId: String(row.employee_id || row.employeeId || ''),
+        ytdGross: Number(row.ytd_gross ?? row.ytdGross ?? 0),
+        ytdNIS: Number(row.ytd_nis ?? row.ytdNIS ?? 0),
+        ytdTaxPaid: Number(row.ytd_tax_paid ?? row.ytdTaxPaid ?? 0),
+        ytdPension: Number(row.ytd_pension ?? row.ytdPension ?? 0),
+        ytdStatutoryIncome: Number(row.ytd_statutory_income ?? row.ytdStatutoryIncome ?? 0),
+        ...(rawYtdPeriods === undefined || rawYtdPeriods === null ? {} : { ytdPeriods: Number(rawYtdPeriods) }),
+      };
+    }).filter((summary) => summary.employeeId);
   },
 
   deletePayRun: async (runId: string, companyId: string) => {

@@ -188,6 +188,7 @@ describe('payroll write hardening', () => {
             ytd_tax_paid: '75000',
             ytd_pension: '0',
             ytd_statutory_income: '485000',
+            ytd_periods: '5',
           },
         ],
       },
@@ -204,6 +205,7 @@ describe('payroll write hardening', () => {
         ytdTaxPaid: 75000,
         ytdPension: 0,
         ytdStatutoryIncome: 485000,
+        ytdPeriods: 5,
       },
     ]);
     expect(invoke).toHaveBeenCalledWith('admin-handler', {

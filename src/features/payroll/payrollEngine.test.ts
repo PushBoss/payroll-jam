@@ -420,6 +420,70 @@ describe('payrollEngine', () => {
     expect(recalculated.totalDeductions).toBe(february.totalDeductions);
   });
 
+  it('uses the server YTD period count when calculating cumulative PAYE', () => {
+    const lowerPaidEmployee: Employee = {
+      ...defaultEmployee,
+      grossSalary: 54000,
+    };
+
+    const lineItem = calculatePayRunLineItem({
+      employee: lowerPaidEmployee,
+      period: '2026-08',
+      context: {
+        timesheets: [],
+        leaveRequests: [],
+        payRunHistory: [],
+        companyData: defaultCompanyData,
+        ytdSummaries: {
+          [lowerPaidEmployee.id]: {
+            employeeId: lowerPaidEmployee.id,
+            ytdGross: 378000,
+            ytdNIS: 11340,
+            ytdTaxPaid: 0,
+            ytdPension: 0,
+            ytdStatutoryIncome: 366660,
+            ytdPeriods: 7,
+          },
+        },
+      },
+    });
+
+    expect(lineItem.paye).toBe(0);
+    expect(lineItem.netPay).toBeGreaterThan(0);
+  });
+
+  it('does not collect calculated PAYE from a zero-pay period', () => {
+    const noPayEmployee: Employee = {
+      ...defaultEmployee,
+      grossSalary: 0,
+    };
+
+    const lineItem = calculatePayRunLineItem({
+      employee: noPayEmployee,
+      period: '2026-08',
+      context: {
+        timesheets: [],
+        leaveRequests: [],
+        payRunHistory: [],
+        companyData: defaultCompanyData,
+        ytdSummaries: {
+          [noPayEmployee.id]: {
+            employeeId: noPayEmployee.id,
+            ytdGross: 1800000,
+            ytdNIS: 54000,
+            ytdTaxPaid: 0,
+            ytdPension: 0,
+            ytdStatutoryIncome: 1746000,
+            ytdPeriods: 7,
+          },
+        },
+      },
+    });
+
+    expect(lineItem.paye).toBe(0);
+    expect(lineItem.netPay).toBe(0);
+  });
+
   it('excludes exhausted custom deductions and caps target-balance deductions', () => {
     const employeeWithCompletedDeductions: Employee = {
       ...defaultEmployee,

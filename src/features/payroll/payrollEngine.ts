@@ -172,9 +172,9 @@ export const calculateComputedAmounts = ({
   const standardTaxes = calculateTaxes(currentGross, employee.payFrequency, taxOverrides);
   const isContractor = employee.employeeType === EmployeeType.CONTRACTOR;
   const ytdData = context.ytdSummaries?.[employee.id] || getEmployeeYTD(context.payRunHistory || [], employee.id, period.year);
-  // Period number must reflect periods actually run/imported this year. The RPC
-  // YTD summary doesn't carry a period count, so fall back to deriving it from
-  // finalized pay-run history in that case.
+  // The server summary includes both YTD totals and their finalized-period
+  // count. Keeping those two values together prevents old YTD earnings from
+  // being annualized as though they were earned in a single period.
   const ytdPeriods = ytdData.ytdPeriods
     ?? getEmployeeYTD(context.payRunHistory || [], employee.id, period.year).ytdPeriods;
   const periodNumber = calculatePeriodNumber(ytdPeriods);
@@ -189,11 +189,16 @@ export const calculateComputedAmounts = ({
     taxOverrides
   );
 
-  const finalPAYE = isContractor ? 0 : Math.max(0, cumulativePAYE);
   const nis = isContractor ? 0 : standardTaxes.nis;
   const nht = isContractor ? 0 : standardTaxes.nht;
   const edTax = isContractor ? 0 : standardTaxes.edTax;
-  const totalDeductions = nis + nht + edTax + standardTaxes.pension + finalPAYE + customDeductions;
+  const statutoryDeductionsBeforePaye = nis + nht + edTax + standardTaxes.pension;
+  // A normal payroll must never create a negative take-home amount solely from
+  // a calculated PAYE catch-up. Tax arrears need an explicit adjustment, not an
+  // automatic deduction from a zero/insufficient-pay period.
+  const payeCapacity = Math.max(0, safeGrossPay + allAdditions - statutoryDeductionsBeforePaye);
+  const finalPAYE = isContractor ? 0 : Math.min(Math.max(0, cumulativePAYE), payeCapacity);
+  const totalDeductions = statutoryDeductionsBeforePaye + finalPAYE + customDeductions;
   const netPay = safeGrossPay + allAdditions - totalDeductions;
   const employerContributions = isContractor
     ? {
