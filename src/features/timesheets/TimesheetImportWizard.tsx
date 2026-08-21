@@ -65,6 +65,8 @@ interface RowIssue {
   message: string;
 }
 
+type MappingMode = 'DAILY' | 'SUMMARY' | 'MIXED';
+
 const parseImportFile = async (file: File): Promise<{ headers: string[]; rows: Record<string, string>[] }> => {
   const extension = file.name.split('.').pop()?.toLowerCase();
 
@@ -129,6 +131,7 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
   const [rawRows, setRawRows] = useState<Record<string, string>[]>([]);
   const [mappings, setMappings] = useState<Record<string, string>>({});
   const [isPayrollJamTemplate, setIsPayrollJamTemplate] = useState(false);
+  const [mappingMode, setMappingMode] = useState<MappingMode>('DAILY');
 
   const [drafts, setDrafts] = useState<ImportDraft[]>([]);
   const [unmatchedRows, setUnmatchedRows] = useState<RowIssue[]>([]);
@@ -151,6 +154,7 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
     setRawRows([]);
     setMappings({});
     setIsPayrollJamTemplate(false);
+    setMappingMode('DAILY');
     setDrafts([]);
     setUnmatchedRows([]);
     setErrorRows([]);
@@ -193,6 +197,9 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
         initialMappings[field.key] = match || '';
       });
       setMappings(initialMappings);
+      const detectedDaily = Boolean(initialMappings.date && initialMappings.startTime && initialMappings.endTime);
+      const detectedSummary = Boolean(initialMappings.weekStartDate && (initialMappings.regularHours || initialMappings.overtimeHours));
+      setMappingMode(detectedDaily ? 'DAILY' : detectedSummary ? 'SUMMARY' : 'MIXED');
       setStep(2);
     } catch (err: any) {
       alert(err?.message || 'Failed to read file.');
@@ -204,14 +211,22 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
 
   const hasDailyShape = Boolean(mappings.date && mappings.startTime && mappings.endTime);
   const hasSummarizedShape = Boolean(mappings.weekStartDate && (mappings.regularHours || mappings.overtimeHours));
+  const dailyReady = Boolean(mappings.employeeIdentifier && hasDailyShape);
+  const summaryReady = Boolean(mappings.employeeIdentifier && hasSummarizedShape);
+  const isHeaderUsedByAnotherMapping = (header: string, fieldKey: string) => Object.entries(mappings)
+    .some(([mappedFieldKey, mappedHeader]) => mappedFieldKey !== fieldKey && mappedHeader === header);
 
   const handleProceedToValidation = () => {
     if (!mappings.employeeIdentifier) {
       alert('Map the Employee field before continuing.');
       return;
     }
-    if (!hasDailyShape && !hasSummarizedShape) {
-      alert('Map either Date + Start Time + End Time, or Week Start Date + Regular/Overtime Hours.');
+    if ((mappingMode === 'DAILY' && !hasDailyShape) || (mappingMode === 'SUMMARY' && !hasSummarizedShape) || (mappingMode === 'MIXED' && !hasDailyShape && !hasSummarizedShape)) {
+      alert(mappingMode === 'DAILY'
+        ? 'Map Date, Start Time, and End Time before continuing.'
+        : mappingMode === 'SUMMARY'
+          ? 'Map Week Start Date and at least one hours column before continuing.'
+          : 'Map either Date + Start Time + End Time, or Week Start Date + Regular/Overtime Hours.');
       return;
     }
 
@@ -272,8 +287,8 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
       let directOvertime = 0;
       let rowShape: 'daily' | 'summarized' | null = null;
 
-      const dailyRowComplete = hasDailyShape && row[mappings.date] && row[mappings.startTime] && row[mappings.endTime];
-      const summarizedRowComplete = hasSummarizedShape && row[mappings.weekStartDate] && (row[mappings.regularHours] || row[mappings.overtimeHours]);
+      const dailyRowComplete = mappingMode !== 'SUMMARY' && hasDailyShape && row[mappings.date] && row[mappings.startTime] && row[mappings.endTime];
+      const summarizedRowComplete = mappingMode !== 'DAILY' && hasSummarizedShape && row[mappings.weekStartDate] && (row[mappings.regularHours] || row[mappings.overtimeHours]);
 
       if (dailyRowComplete) {
         const dateVal = row[mappings.date].trim();
@@ -588,6 +603,32 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
                 </div>
               )}
 
+              {!isPayrollJamTemplate && (
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-4">
+                  <p className="text-sm font-bold text-gray-900">What type of time file is this?</p>
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    {([
+                      ['DAILY', 'Daily punches', 'One row per employee per day'],
+                      ['SUMMARY', 'Weekly totals', 'One row per employee per week'],
+                      ['MIXED', 'Advanced / mixed', 'Keep both formats visible'],
+                    ] as const).map(([mode, label, description]) => (
+                      <button key={mode} type="button" onClick={() => setMappingMode(mode)} className={`rounded-lg border p-3 text-left transition-colors ${mappingMode === mode ? 'border-jam-black bg-white shadow-sm' : 'border-gray-200 bg-white hover:border-gray-400'}`}>
+                        <span className="block text-sm font-bold text-gray-900">{label}</span>
+                        <span className="mt-1 block text-xs text-gray-500">{description}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-xs text-gray-600">{mappingMode === 'DAILY' ? (dailyReady ? 'Ready: employee, date, start time and end time are mapped.' : 'Required: employee, date, start time and end time.') : mappingMode === 'SUMMARY' ? (summaryReady ? 'Ready: employee, week start date and hours are mapped.' : 'Required: employee, week start date and at least one hours column.') : 'Use this only when your file contains both daily punches and weekly totals.'}</p>
+                  <div className="border-t border-gray-200 pt-3">
+                    <p className="text-xs font-semibold text-gray-700">Detected column headers</p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {headers.map((header) => <span key={header} className="rounded bg-white px-2 py-1 text-[11px] text-gray-600 border border-gray-200">{header}</span>)}
+                    </div>
+                    <p className="mt-2 text-xs text-gray-500">Each source column can be assigned once. Leave optional fields unmapped if they are not in your file.</p>
+                  </div>
+                </div>
+              )}
+
               <div className={isPayrollJamTemplate ? 'hidden' : undefined}>
                 <h4 className="text-md font-bold text-gray-900 mb-1 flex items-center">
                   {EMPLOYEE_FIELD.label} <span className="text-red-500 ml-1">*</span>
@@ -598,13 +639,13 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
                   className={`w-full border rounded-lg p-2.5 text-sm bg-white ${!mappings.employeeIdentifier ? 'border-red-300' : 'border-gray-300'}`}
                 >
                   <option value="">-- Do Not Map --</option>
-                  {headers.map((h) => <option key={h} value={h}>{h}</option>)}
+                  {headers.map((h) => <option key={h} value={h} disabled={isHeaderUsedByAnotherMapping(h, EMPLOYEE_FIELD.key)}>{h}</option>)}
                 </select>
               </div>
 
-              <div className={isPayrollJamTemplate ? 'hidden' : 'grid grid-cols-1 md:grid-cols-2 gap-6'}>
-                <div className={`rounded-xl border p-4 ${hasDailyShape ? 'border-green-300 bg-green-50/30' : 'border-gray-200 bg-white'}`}>
-                  <h5 className="text-sm font-bold text-gray-900 mb-1">Option A: Daily Punches</h5>
+              <div className={isPayrollJamTemplate ? 'hidden' : mappingMode === 'MIXED' ? 'grid grid-cols-1 md:grid-cols-2 gap-6' : 'grid grid-cols-1 gap-6'}>
+                {mappingMode !== 'SUMMARY' && <div className={`rounded-xl border p-4 ${hasDailyShape ? 'border-green-300 bg-green-50/30' : 'border-gray-200 bg-white'}`}>
+                  <h5 className="text-sm font-bold text-gray-900 mb-1">Daily punches</h5>
                   <p className="text-xs text-gray-500 mb-3">One row per employee per day. Hours are computed from start/end time.</p>
                   <div className="space-y-3">
                     {DAILY_SHAPE_FIELDS.map((field) => (
@@ -616,32 +657,32 @@ export const TimesheetImportWizard: React.FC<TimesheetImportWizardProps> = ({
                           className="w-full border border-gray-300 rounded-lg p-2 text-sm bg-white mt-1"
                         >
                           <option value="">-- Do Not Map --</option>
-                          {headers.map((h) => <option key={h} value={h}>{h}</option>)}
+                          {headers.map((h) => <option key={h} value={h} disabled={isHeaderUsedByAnotherMapping(h, field.key)}>{h}</option>)}
                         </select>
                       </div>
                     ))}
                   </div>
-                </div>
+                </div>}
 
-                <div className={`rounded-xl border p-4 ${hasSummarizedShape ? 'border-green-300 bg-green-50/30' : 'border-gray-200 bg-white'}`}>
-                  <h5 className="text-sm font-bold text-gray-900 mb-1">Option B: Weekly Totals</h5>
+                {mappingMode !== 'DAILY' && <div className={`rounded-xl border p-4 ${hasSummarizedShape ? 'border-green-300 bg-green-50/30' : 'border-gray-200 bg-white'}`}>
+                  <h5 className="text-sm font-bold text-gray-900 mb-1">Weekly totals</h5>
                   <p className="text-xs text-gray-500 mb-3">One row per employee per week, with hours already totaled.</p>
                   <div className="space-y-3">
                     {SUMMARIZED_SHAPE_FIELDS.map((field) => (
                       <div key={field.key}>
-                        <label className="text-xs font-semibold text-gray-700">{field.label}</label>
+                        <label className="text-xs font-semibold text-gray-700">{field.label}{field.key === 'weekStartDate' && <span className="text-red-500 ml-1">*</span>}{field.key !== 'weekStartDate' && <span className="ml-1 text-gray-400 font-normal">(map at least one)</span>}</label>
                         <select
                           value={mappings[field.key] || ''}
                           onChange={(e) => setMappings((prev) => ({ ...prev, [field.key]: e.target.value }))}
                           className="w-full border border-gray-300 rounded-lg p-2 text-sm bg-white mt-1"
                         >
                           <option value="">-- Do Not Map --</option>
-                          {headers.map((h) => <option key={h} value={h}>{h}</option>)}
+                          {headers.map((h) => <option key={h} value={h} disabled={isHeaderUsedByAnotherMapping(h, field.key)}>{h}</option>)}
                         </select>
                       </div>
                     ))}
                   </div>
-                </div>
+                </div>}
               </div>
 
               <div className="flex justify-between items-center pt-4 border-t border-gray-100">
