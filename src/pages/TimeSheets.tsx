@@ -361,12 +361,25 @@ export const TimeSheets: React.FC<TimeSheetsProps> = ({
       'rate_override_reason',
       'holiday_code',
     ];
+    const exampleRow = [
+      'example.employee@your-company.com',
+      '2026-08-18',
+      '09:00',
+      '17:00',
+      '60',
+      '',
+      'EXAMPLE-001',
+      'Main Office',
+      'Replace this example row with an employee from your company before importing.',
+      '',
+      '',
+    ];
     downloadFile(
       'Payroll-Jam_Timesheet_Import_Template.csv',
-      `${headers.map(toCsvCell).join(',')}\n`,
+      `${headers.map(toCsvCell).join(',')}\n${exampleRow.map(toCsvCell).join(',')}\n`,
       'text/csv',
     );
-    toast.success('Timesheet import template downloaded.');
+    toast.success('Template downloaded. Replace or delete the clearly marked example row before importing.');
   };
 
   useEffect(() => {
