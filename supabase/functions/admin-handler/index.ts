@@ -432,12 +432,12 @@ const getAcceptedEmployeeMemberships = async (adminClient: any, authUser: any, e
     const [{ data: byUser, error: byUserError }, { data: byEmail, error: byEmailError }] = await Promise.all([
         adminClient
             .from('account_members')
-            .select('account_id, role, accepted_at, companies:account_id (id, name, plan)')
+            .select('account_id, role, accepted_at')
             .eq('user_id', authUser.id)
             .eq('status', 'accepted'),
         adminClient
             .from('account_members')
-            .select('account_id, role, accepted_at, companies:account_id (id, name, plan)')
+            .select('account_id, role, accepted_at')
             .ilike('email', email)
             .eq('status', 'accepted'),
     ]);
@@ -445,10 +445,26 @@ const getAcceptedEmployeeMemberships = async (adminClient: any, authUser: any, e
     if (byUserError) throw byUserError;
     if (byEmailError) throw byEmailError;
 
+    const acceptedEmployeeRows = [...(byUser || []), ...(byEmail || [])]
+        .filter((membership: any) =>
+            normalizeMemberRole(membership.role) === 'EMPLOYEE' && Boolean(membership.account_id)
+        );
+    const companyIds = [...new Set(acceptedEmployeeRows.map((membership: any) => membership.account_id))];
+    if (companyIds.length === 0) return [];
+
+    // Do not embed companies through PostgREST relationship metadata here.
+    // Older deployments have different account_members FK names, causing a
+    // harmless employee portal lookup to fail with HTTP 400 on login.
+    const { data: companies, error: companiesError } = await adminClient
+        .from('companies')
+        .select('id, name, plan')
+        .in('id', companyIds);
+    if (companiesError) throw companiesError;
+
+    const companiesById = new Map((companies || []).map((company: any) => [company.id, company]));
     const memberships = new Map<string, any>();
-    [...(byUser || []), ...(byEmail || [])].forEach((membership: any) => {
-        if (normalizeMemberRole(membership.role) !== 'EMPLOYEE' || !membership.account_id) return;
-        const company = Array.isArray(membership.companies) ? membership.companies[0] : membership.companies;
+    acceptedEmployeeRows.forEach((membership: any) => {
+        const company = companiesById.get(membership.account_id);
         if (!company?.id) return;
         memberships.set(company.id, {
             companyId: company.id,
