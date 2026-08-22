@@ -17,6 +17,7 @@ interface PayRunSetupStepProps {
   setPeriodEndDate: (value: string | null) => void;
   isSuspended: boolean;
   isCalculating: boolean;
+  isYtdSummaryLoading: boolean;
   payrollMode: 'REGULAR' | 'TIMESHEET';
   setPayrollMode: (value: 'REGULAR' | 'TIMESHEET') => void;
   handleInitializeSystem: () => void;
@@ -36,6 +37,7 @@ export const PayRunSetupStep: React.FC<PayRunSetupStepProps> = ({
   setPeriodEndDate,
   isSuspended,
   isCalculating,
+  isYtdSummaryLoading,
   payrollMode,
   setPayrollMode,
   handleInitializeSystem
@@ -115,15 +117,15 @@ export const PayRunSetupStep: React.FC<PayRunSetupStepProps> = ({
 
         <button
           onClick={handleInitializeSystem}
-          disabled={isSuspended || isCalculating}
+          disabled={isSuspended || isCalculating || isYtdSummaryLoading}
           className={`w-full py-4 rounded-lg font-bold transition-all shadow-md flex justify-center items-center text-base ${
-            isSuspended || isCalculating
+            isSuspended || isCalculating || isYtdSummaryLoading
               ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
               : 'bg-jam-black text-white hover:bg-gray-900 hover:shadow-lg transform hover:-translate-y-0.5'
           }`}
         >
-          {isCalculating ? (
-            <span className="flex items-center"><Icons.Refresh className="w-5 h-5 mr-2 animate-spin" /> Calculating...</span>
+          {isCalculating || isYtdSummaryLoading ? (
+            <span className="flex items-center"><Icons.Refresh className="w-5 h-5 mr-2 animate-spin" /> {isCalculating ? 'Calculating...' : 'Loading payroll history...'}</span>
           ) : (
             <span className="flex items-center"><Icons.Zap className="w-5 h-5 mr-2 text-jam-yellow" /> Start Pay Run</span>
           )}

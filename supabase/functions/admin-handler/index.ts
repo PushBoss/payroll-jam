@@ -4274,7 +4274,45 @@ serve(async (req: Request) => {
 
                 if (summaryError) throw summaryError;
 
-                return new Response(JSON.stringify({ success: true, summaries: summaries || [] }), {
+                // The payroll engine needs the actual number of prior finalized
+                // pay periods for each employee when applying cumulative PAYE.
+                // Keep that count authoritative at this boundary rather than
+                // relying solely on an RPC response shape, which can lag after a
+                // database function migration. This is deliberately calculated
+                // from the same finalized pay-run records that feed the YTD RPC.
+                const yearStart = `${taxYear}-01-01`;
+                const nextYearStart = `${taxYear + 1}-01-01`;
+                const { data: finalizedRuns, error: finalizedRunsError } = await adminClient
+                    .from('pay_runs')
+                    .select('id, line_items')
+                    .eq('company_id', companyId)
+                    .eq('status', 'FINALIZED')
+                    .gte('period_start', yearStart)
+                    .lt('period_start', nextYearStart);
+
+                if (finalizedRunsError) throw finalizedRunsError;
+
+                const periodsByEmployee = new Map<string, Set<string>>();
+                for (const run of finalizedRuns || []) {
+                    const lineItems = Array.isArray(run.line_items) ? run.line_items : [];
+                    for (const lineItem of lineItems) {
+                        const employeeId = typeof lineItem?.employeeId === 'string' ? lineItem.employeeId : '';
+                        if (!employeeId) continue;
+                        const periods = periodsByEmployee.get(employeeId) || new Set<string>();
+                        periods.add(String(run.id));
+                        periodsByEmployee.set(employeeId, periods);
+                    }
+                }
+
+                const normalizedSummaries = (summaries || []).map((summary: Record<string, unknown>) => {
+                    const employeeId = String(summary.employee_id || summary.employeeId || '');
+                    return {
+                        ...summary,
+                        ytd_periods: periodsByEmployee.get(employeeId)?.size || 0,
+                    };
+                });
+
+                return new Response(JSON.stringify({ success: true, summaries: normalizedSummaries }), {
                     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
                 });
             }

@@ -114,18 +114,21 @@ export const PayRun: React.FC<PayRunProps> = ({
     const [printingPayslipRun, setPrintingPayslipRun] = useState<PayRunType | null>(null);
     const [isPayRunConfirmed, setIsPayRunConfirmed] = useState(false);
     const [ytdSummaries, setYtdSummaries] = useState<Record<string, PayrollYtdSummary>>({});
+    const [isYtdSummaryLoading, setIsYtdSummaryLoading] = useState(true);
     const [payRunDialog, setPayRunDialog] = useState<PayRunDialogState | null>(null);
     const showPayRunDialog = (title: string, message: string, details?: string[]) => setPayRunDialog({ title, message, details });
 
     useEffect(() => {
-        const targetCompanyId = currentUser?.companyId || companyData.id;
+        const targetCompanyId = companyData.id || currentUser?.companyId;
         const taxYear = Number(payPeriod.slice(0, 4));
         if (!targetCompanyId || !Number.isInteger(taxYear)) {
             setYtdSummaries({});
+            setIsYtdSummaryLoading(false);
             return;
         }
 
         let isCancelled = false;
+        setIsYtdSummaryLoading(true);
         PayrollService.getPayrollYtdSummary(targetCompanyId, taxYear)
             .then((summaries) => {
                 if (isCancelled) return;
@@ -135,6 +138,9 @@ export const PayRun: React.FC<PayRunProps> = ({
                 if (isCancelled) return;
                 console.warn('Payroll YTD summary unavailable; falling back to loaded pay run history.', error);
                 setYtdSummaries({});
+            })
+            .finally(() => {
+                if (!isCancelled) setIsYtdSummaryLoading(false);
             });
 
         return () => {
@@ -285,6 +291,10 @@ export const PayRun: React.FC<PayRunProps> = ({
     }, [draftItems, employees]);
 
     const handleInitializeSystem = async () => {
+        if (isYtdSummaryLoading) {
+            showPayRunDialog('Payroll data is still loading', 'Please wait a moment for the finalized payroll history to load before calculating this pay run.');
+            return;
+        }
         setIsCalculating(true);
         try {
             if (payrollMode === 'TIMESHEET') {
@@ -658,6 +668,7 @@ export const PayRun: React.FC<PayRunProps> = ({
                     setPeriodEndDate={setPeriodEndDate}
                     isSuspended={isSuspended}
                     isCalculating={isCalculating}
+                    isYtdSummaryLoading={isYtdSummaryLoading}
                     payrollMode={payrollMode}
                     setPayrollMode={setPayrollMode}
                     handleInitializeSystem={handleInitializeSystem}
