@@ -348,7 +348,7 @@ export const dimePayService = {
     createCardRequest: async (params: {
         companyId: string;
         userId?: string;
-        flow?: 'signup' | 'card_update' | 'subscription_update';
+        flow?: 'signup' | 'card_update' | 'subscription_update' | 'subscription_activation';
         localSubscriptionId?: string;
         subscriptionId?: string;
         planName?: string;

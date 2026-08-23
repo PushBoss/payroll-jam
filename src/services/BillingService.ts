@@ -76,7 +76,15 @@ export const BillingService = {
       method: 'POST',
       headers: await getAuthenticatedApiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
-        flow: subscription?.dimepaySubscriptionId ? 'subscription_update' : 'card_update',
+        // A paid legacy subscription without a DimePay ID has no schedule to
+        // renew. Its first verified primary card therefore starts a dedicated
+        // activation flow; the signed payment webhook remains the only way it
+        // becomes paid/active locally.
+        flow: subscription?.dimepaySubscriptionId
+          ? 'subscription_update'
+          : (subscription?.planName && subscription.planName !== 'Free'
+            ? 'subscription_activation'
+            : 'card_update'),
         user_id: userId,
         company_id: companyId,
         local_subscription_id: subscription?.id,

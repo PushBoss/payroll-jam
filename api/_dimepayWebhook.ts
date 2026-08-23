@@ -176,6 +176,60 @@ const getPlanPriceFloor = async (planName: string | undefined): Promise<number |
   return plan.priceConfig?.monthly ?? plan.priceConfig?.baseFee ?? 0;
 };
 
+// Legacy subscriptions were backfilled without an amount because their prior
+// gateway terms were unknown. A recurring DimePay schedule must never be
+// created at zero (or with a browser-supplied amount), so derive a standard
+// current price on the server when a valid local amount is unavailable.
+const resolveRecurringChargeAmount = async (
+  companyId: string,
+  planName: string | undefined,
+  billingFrequency: string | undefined,
+  existingAmount: unknown
+) => {
+  const configuredAmount = Number(existingAmount);
+  if (Number.isFinite(configuredAmount) && configuredAmount > 0) return configuredAmount;
+  if (!planName || sameBillingPlan(planName, 'Free')) {
+    throw new Error('A paid plan is required before recurring billing can be activated.');
+  }
+
+  const [{ data: configRow }, { count: employeeCount }, { count: resellerClientCount }] = await Promise.all([
+    supabase.from('global_config').select('config').eq('id', 'platform').maybeSingle(),
+    supabase.from('employees').select('id', { count: 'exact', head: true }).eq('company_id', companyId).eq('status', 'ACTIVE'),
+    supabase.from('reseller_clients').select('client_company_id', { count: 'exact', head: true }).eq('reseller_id', companyId).eq('status', 'ACTIVE')
+  ]);
+
+  const plans = (configRow?.config as any)?.pricingPlans as Array<{ name: string; priceConfig: any }> | undefined;
+  const plan = plans?.find((candidate) => sameBillingPlan(candidate.name, planName));
+  if (!plan || plan.priceConfig?.type === 'free') {
+    throw new Error('No current paid pricing is configured for this subscription plan.');
+  }
+
+  const price = plan.priceConfig || {};
+  const employeeUnits = Math.max(1, Number(employeeCount) || 0);
+  const companyUnits = Math.max(1, (Number(resellerClientCount) || 0) + 1);
+  const baseAmount = Number(price.monthly ?? price.baseFee ?? 0);
+  const perEmployeeAmount = Number(price.perUserFee ?? 0);
+  let monthlyAmount = 0;
+
+  if (price.type === 'per_emp') {
+    monthlyAmount = baseAmount * employeeUnits;
+  } else if (price.type === 'base') {
+    // Enterprise is the reseller billing tier. Its company component is based
+    // on managed client companies, while ordinary base plans have one company.
+    const companyMultiplier = sameBillingPlan(planName, 'Enterprise') ? companyUnits : 1;
+    monthlyAmount = (baseAmount * companyMultiplier) + (perEmployeeAmount * employeeUnits);
+  } else {
+    monthlyAmount = baseAmount;
+  }
+
+  if (!Number.isFinite(monthlyAmount) || monthlyAmount <= 0) {
+    throw new Error('A valid recurring price could not be resolved for this subscription.');
+  }
+
+  const isAnnual = String(billingFrequency || '').toLowerCase() === 'annual' || String(billingFrequency || '').toLowerCase() === 'yearly';
+  return isAnnual ? monthlyAmount * 12 * 0.9 : monthlyAmount;
+};
+
 // Grants plan access only once a confirmed DimePay charge (verified amount, signed webhook
 // payload) meets the plan's floor price. This is the server-side source of truth for
 // companies.plan - it must never be set by the browser off a client-side SDK callback alone.
@@ -302,7 +356,7 @@ const applySubscriptionCreated = async (data: any) => {
     retry_count: 0
   };
 
-  const storedSubscriptionId = await saveSubscription(companyId, compact({
+  await saveSubscription(companyId, compact({
     dime_subscription_id: subscriptionId,
     dimepay_subscription_id: subscriptionId,
     dime_customer_id: data.customer_id || data.dime_customer_id,
@@ -310,12 +364,14 @@ const applySubscriptionCreated = async (data: any) => {
     dime_card_token: chargedCardToken || existing?.dime_card_token || existing?.metadata?.dime_card_token,
     plan_name: canonicalBillingPlanName(data.metadata?.plan_name || existing?.plan_name || 'Unknown Plan'),
     plan_type: data.metadata?.plan_type || existing?.plan_type || 'subscription',
-    status: 'active',
+    // Creating a schedule is not a payment confirmation. Keep a new schedule
+    // pending until DimePay sends invoice.payment_succeeded.
+    status: existing?.status || 'pending',
     billing_frequency: (data.recurring_frequency || data.frequency || existing?.billing_frequency || 'monthly').toLowerCase(),
     amount: data.amount || existing?.amount || 0,
     currency: data.currency || existing?.currency || 'JMD',
     next_billing_date: accessUntil,
-    access_until: accessUntil,
+    access_until: existing?.access_until || null,
     start_date: existing?.start_date || new Date().toISOString(),
     auto_renew: true,
     payment_method_last4: data.card_last4 || data.last_four_digits || existing?.payment_method_last4,
@@ -326,42 +382,11 @@ const applySubscriptionCreated = async (data: any) => {
     updated_at: new Date().toISOString()
   }), existing?.id);
 
-  const transactionId = data.transaction_id || data.invoice_id || data.order_id;
-  if (transactionId) {
-    const { data: existingPayment } = await supabase
-      .from('payment_history')
-      .select('id')
-      .eq('transaction_id', transactionId)
-      .maybeSingle();
-
-    if (!existingPayment) {
-      await supabase.from('payment_history').insert({
-        company_id: companyId,
-        subscription_id: storedSubscriptionId,
-        amount: data.amount || 0,
-        currency: data.currency || 'JMD',
-        status: 'completed',
-        payment_method: 'card',
-        transaction_id: transactionId,
-        invoice_number: data.invoice_number || `INV-${Date.now()}`,
-        description: `${data.metadata?.plan_name || 'Subscription'} - Initial Payment`,
-        payment_date: new Date().toISOString(),
-        metadata: { subscription_id: subscriptionId }
-      });
-    }
-  }
-
-  await updateCompanyBillingState(companyId, 'ACTIVE', 'card');
-  await grantPlanIfChargeConfirmed(companyId, data.metadata?.plan_name, data.amount, {
-    endpoint: '/api/dimepay-webhook',
-    eventType: 'subscription.created'
-  });
-
   if (billingIntentId) {
     await supabase
       .from('dimepay_billing_intents')
       .update({
-        status: 'succeeded',
+        status: 'pending',
         dime_subscription_id: subscriptionId || null,
         dime_customer_id: data.customer_id || data.dime_customer_id || null,
         dime_card_token: chargedCardToken || null,
@@ -375,6 +400,7 @@ const applySubscriptionCreated = async (data: any) => {
 const applyPaymentSucceeded = async (data: any) => {
   const subscription = await findSubscription(data);
   if (!subscription) return;
+  const billingIntentId = data.metadata?.billing_intent_id;
 
   const transactionId = data.invoice_id || data.transaction_id;
   if (transactionId) {
@@ -439,6 +465,14 @@ const applyPaymentSucceeded = async (data: any) => {
     endpoint: '/api/dimepay-webhook',
     eventType: 'invoice.payment_succeeded'
   });
+
+  if (billingIntentId) {
+    await supabase
+      .from('dimepay_billing_intents')
+      .update({ status: 'succeeded', updated_at: new Date().toISOString() })
+      .eq('id', billingIntentId)
+      .eq('company_id', subscription.company_id);
+  }
 };
 
 const applyPaymentFailed = async (data: any) => {
@@ -503,9 +537,8 @@ const applyCardRequestSucceeded = async (data: any, req: VercelRequest) => {
   const customerId = data.customer_id || data.dime_customer_id;
   const cardRequestToken = data.card_request_token || data.request_token;
 
-  // Record the card in the vault first. Only the company's first saved card becomes
-  // primary - a 2nd+ card must not rebind the live DimePay subscription or overwrite
-  // subscriptions' card fields, since that would silently hijack active billing.
+  // Record the card in the vault first. Only a primary card may be used to
+  // activate or rebind recurring billing; secondary cards are only stored.
   const upsertResult = await upsertCardOnFile({
     companyId,
     dimeCardToken: cardToken,
@@ -525,7 +558,7 @@ const applyCardRequestSucceeded = async (data: any, req: VercelRequest) => {
     return;
   }
 
-  if (!upsertResult.isNewPrimary) {
+  if (!upsertResult.method.is_primary) {
     // Saved as a secondary card - active billing/subscription state is unaffected.
     if (intentId) {
       await supabase
@@ -554,22 +587,32 @@ const applyCardRequestSucceeded = async (data: any, req: VercelRequest) => {
 
   let remoteSubscriptionId = existing?.dime_subscription_id || existing?.dimepay_subscription_id || intent?.dime_subscription_id;
   let accessUntil = existing?.access_until || existing?.next_billing_date || monthFromNow();
+  let resolvedAmount = Number(intent?.amount || existing?.amount || data.amount || 0);
+  const isInitialActivation = flow === 'signup' || flow === 'subscription_activation';
 
-  if (flow === 'signup') {
+  if (isInitialActivation && !remoteSubscriptionId) {
     const environment = resolveDimePayEnvironment(undefined, req);
+    const billingFrequency = intent?.metadata?.billing_frequency || existing?.billing_frequency || 'monthly';
+    const recurringAmount = await resolveRecurringChargeAmount(
+      companyId,
+      intent?.plan_name || data.metadata?.plan_name || existing?.plan_name,
+      billingFrequency,
+      intent?.amount || existing?.amount || data.amount
+    );
+    resolvedAmount = recurringAmount;
     const remoteCreate = await createDimePayRecurringSubscription({
       environment,
       companyId,
       planName: intent?.plan_name || data.metadata?.plan_name || existing?.plan_name || 'Subscription',
       planType: intent?.plan_type || data.metadata?.plan_type || existing?.plan_type || 'subscription',
-      amount: Number(intent?.amount || existing?.amount || data.amount || 0),
+      amount: recurringAmount,
       currency: intent?.currency || existing?.currency || data.currency || 'JMD',
       customerId,
       cardToken,
-      billingFrequency: existing?.billing_frequency || 'monthly',
+      billingFrequency,
       webhookUrl: buildAbsoluteUrl(req, '/api/dimepay-webhook'),
       metadata: {
-        source: 'card_request_signup',
+        source: flow === 'signup' ? 'card_request_signup' : 'legacy_subscription_activation',
         billing_intent_id: intentId
       }
     });
@@ -601,9 +644,13 @@ const applyCardRequestSucceeded = async (data: any, req: VercelRequest) => {
   await saveSubscription(companyId, compact({
     plan_name: intent?.plan_name || existing?.plan_name || data.metadata?.plan_name || 'Subscription',
     plan_type: intent?.plan_type || existing?.plan_type || data.metadata?.plan_type || 'subscription',
-    status: flow === 'signup' ? 'active' : (existing?.status || 'active'),
-    billing_frequency: existing?.billing_frequency || 'monthly',
-    amount: Number(intent?.amount || existing?.amount || data.amount || 0),
+    // A verified card and a newly-created schedule are both required, but paid
+    // access waits for the signed invoice.payment_succeeded webhook.
+    status: isInitialActivation
+      ? (existing?.status === 'active' && existing?.access_until && new Date(existing.access_until) > new Date() ? 'active' : 'pending')
+      : (existing?.status || 'pending'),
+    billing_frequency: intent?.metadata?.billing_frequency || existing?.billing_frequency || 'monthly',
+    amount: resolvedAmount || undefined,
     currency: intent?.currency || existing?.currency || data.currency || 'JMD',
     dime_customer_id: customerId || existing?.dime_customer_id,
     dimepay_customer_id: customerId || existing?.dimepay_customer_id,
@@ -615,7 +662,7 @@ const applyCardRequestSucceeded = async (data: any, req: VercelRequest) => {
     card_brand: cardBrand,
     payment_method_brand: cardBrand,
     next_billing_date: accessUntil,
-    access_until: accessUntil,
+    access_until: isInitialActivation ? (existing?.access_until || null) : accessUntil,
     auto_renew: true,
     metadata,
     updated_at: new Date().toISOString()
@@ -625,7 +672,7 @@ const applyCardRequestSucceeded = async (data: any, req: VercelRequest) => {
     await supabase
       .from('dimepay_billing_intents')
       .update({
-        status: 'succeeded',
+        status: isInitialActivation ? 'pending' : 'succeeded',
         card_request_token: cardRequestToken || intent?.card_request_token,
         dime_card_token: cardToken,
         dime_customer_id: customerId || null,
@@ -635,7 +682,16 @@ const applyCardRequestSucceeded = async (data: any, req: VercelRequest) => {
       .eq('id', intentId);
   }
 
-  await updateCompanyBillingState(companyId, 'ACTIVE', 'card');
+  // A legacy account whose locally granted period has ended must not keep paid
+  // access merely because its card is now verified. It stays past due until
+  // DimePay confirms the first invoice; an existing unexpired manual period is
+  // preserved until its normal end date.
+  if (flow === 'subscription_activation' && (!existing?.access_until || new Date(existing.access_until) <= new Date())) {
+    await updateCompanyBillingState(companyId, 'PAST_DUE', 'card');
+  }
+
+  // Do not change plan or access here. The card-request event proves a card
+  // was verified, not that its first subscription invoice was paid.
 };
 
 export default async function dimePayWebhookHandler(req: VercelRequest, res: VercelResponse) {

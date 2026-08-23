@@ -177,7 +177,7 @@ export const buildCardReferenceId = (params: {
 export const parseCardReferenceId = (referenceId?: string) => {
   if (!referenceId) return null;
   const parts = referenceId.split('__');
-  const hasFlowPrefix = ['signup', 'card_update', 'subscription_update'].includes(parts[0]);
+  const hasFlowPrefix = ['signup', 'card_update', 'subscription_update', 'subscription_activation'].includes(parts[0]);
   const [flow, companyId, localSubscriptionId, dimepaySubscriptionId, intentId] = hasFlowPrefix
     ? parts
     : ['card_update', parts[0], parts[1], parts[2], undefined];

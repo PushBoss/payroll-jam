@@ -340,13 +340,19 @@ const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({ currentUser, cu
         );
     }
 
+    const needsRecurringActivation = Boolean(
+        currentSubscription?.planName &&
+        currentSubscription.planName !== 'Free' &&
+        !currentSubscription?.dimepaySubscriptionId
+    );
+
     return (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh] animate-scale-in">
                 <div className="bg-jam-black text-white p-6 flex justify-between items-center shrink-0">
                     <div>
                         <h3 className="text-xl font-bold">Add payment method</h3>
-                        <p className="text-xs text-gray-400">Your first saved card becomes primary. Later cards are saved until you explicitly make one primary.</p>
+                        <p className="text-xs text-gray-400">{needsRecurringActivation ? 'Your verified primary card will start recurring billing. Paid access is confirmed only after DimePay confirms the first payment.' : 'Your first saved card becomes primary. Later cards are saved until you explicitly make one primary.'}</p>
                     </div>
                     <button onClick={onClose}><Icons.Close className="w-6 h-6 text-gray-400 hover:text-white" /></button>
                 </div>
@@ -369,7 +375,7 @@ const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({ currentUser, cu
                             });
                         }}
                         onSuccess={onSuccess}
-                        successToast="Payment method saved successfully."
+                        successToast={needsRecurringActivation ? 'Card verified. Setting up recurring billing; access will update when DimePay confirms the first payment.' : 'Payment method saved successfully.'}
                     />
                 </div>
             </div>

@@ -11,10 +11,10 @@ import {
 } from './_dimepay.js';
 import { redact } from './_redact.js';
 
-type BillingFlow = 'signup' | 'card_update' | 'subscription_update';
+type BillingFlow = 'signup' | 'card_update' | 'subscription_update' | 'subscription_activation';
 
 const normalizeFlow = (flow?: string, subscriptionId?: string): BillingFlow => {
-  if (flow === 'signup' || flow === 'card_update' || flow === 'subscription_update') return flow;
+  if (flow === 'signup' || flow === 'card_update' || flow === 'subscription_update' || flow === 'subscription_activation') return flow;
   return subscriptionId ? 'subscription_update' : 'card_update';
 };
 

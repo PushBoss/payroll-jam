@@ -95,7 +95,9 @@ async function handler(req: VercelRequest, res: VercelResponse) {
       await supabaseAdmin
         .from('dimepay_billing_intents')
         .update({
-          status: 'succeeded',
+          // A legacy activation token only proves the card was verified. The
+          // first successful invoice is what completes this billing intent.
+          status: latestIntent?.flow === 'subscription_activation' ? 'pending' : 'succeeded',
           dime_card_token: card_token,
           updated_at: new Date().toISOString()
         })
@@ -172,7 +174,6 @@ async function handler(req: VercelRequest, res: VercelResponse) {
         dime_subscription_id: resolvedSubscriptionId || null,
         dimepay_subscription_id: resolvedSubscriptionId || null,
         metadata,
-        status: remoteUpdate.ok || !resolvedSubscriptionId ? 'active' : subscription?.status,
         updated_at: new Date().toISOString()
       }))
       .eq('company_id', company_id)
@@ -196,10 +197,6 @@ async function handler(req: VercelRequest, res: VercelResponse) {
       }
     };
 
-    if (remoteUpdate.ok || !resolvedSubscriptionId) {
-      companyUpdate.status = 'ACTIVE';
-    }
-
     await supabaseAdmin
       .from('companies')
       .update(companyUpdate)
@@ -210,8 +207,8 @@ async function handler(req: VercelRequest, res: VercelResponse) {
       remoteUpdate,
       paymentMethod: upsertResult.method,
       message: remoteUpdate.ok
-        ? 'Subscription payment method updated successfully'
-        : 'Card saved locally for legacy billing catch-up.'
+        ? 'Subscription payment method updated successfully.'
+        : 'Card verified. Recurring billing will activate only after DimePay confirms the first payment.'
     });
   } catch (error: any) {
     console.error('❌ Error updating subscription payment method:', error);
