@@ -538,7 +538,19 @@ export const EmployeeService = {
       .select('*')
       .eq('company_id', companyId);
     if (error) return [];
-    return (data || []) as LeaveRequest[];
+    return (data || []).map((request: Record<string, unknown>) => ({
+      id: String(request.id),
+      employeeId: String(request.employee_id ?? request.employeeId ?? ''),
+      employeeName: String(request.employee_name ?? request.employeeName ?? ''),
+      type: request.type as LeaveRequest['type'],
+      startDate: String(request.start_date ?? request.startDate ?? ''),
+      endDate: String(request.end_date ?? request.endDate ?? ''),
+      days: Number(request.days ?? 0),
+      status: String(request.status ?? 'PENDING').toUpperCase() as LeaveRequest['status'],
+      reason: String(request.reason ?? ''),
+      requestedDates: (request.requested_dates ?? request.requestedDates ?? []) as string[],
+      approvedDates: (request.approved_dates ?? request.approvedDates ?? []) as string[],
+    }));
   },
 
   saveLeaveRequest: async (req: LeaveRequest, companyId: string) => {

@@ -4605,16 +4605,57 @@ serve(async (req: Request) => {
             case 'save-leave-request': {
                 const { companyId, leaveRequest } = payload || {};
                 if (!companyId) throw new Error('companyId is required');
-                if (!leaveRequest) throw new Error('leaveRequest payload is required');
+                if (!leaveRequest || typeof leaveRequest !== 'object') throw new Error('leaveRequest payload is required');
 
-                // Verify the caller has access to this company
-                if (authUser) {
-                    await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'MANAGER', 'RESELLER', 'SUPER_ADMIN', 'EMPLOYEE']);
+                const requestRecord = leaveRequest as Record<string, any>;
+                const requestId = String(requestRecord.id || '');
+                const employeeId = String(requestRecord.employeeId || requestRecord.employee_id || '');
+                const status = String(requestRecord.status || 'PENDING').toUpperCase();
+                if (!requestId || !employeeId) throw new Error('Leave request id and employee are required');
+                if (!['PENDING', 'APPROVED', 'REJECTED'].includes(status)) throw new Error('Invalid leave request status');
+
+                const callerProfile = await getCallerProfile(adminClient, authUser);
+                const callerRole = normalizeRole(callerProfile.role);
+                const { data: employee, error: employeeError } = await adminClient
+                    .from('employees')
+                    .select('id, company_id, auth_user_id, email, first_name, last_name')
+                    .eq('id', employeeId)
+                    .eq('company_id', companyId)
+                    .maybeSingle();
+                if (employeeError) throw employeeError;
+                if (!employee) throw new Error('Employee not found for this company');
+
+                if (callerRole === 'EMPLOYEE') {
+                    // Employee company selection may be newer than the legacy app_users.company_id.
+                    // Ownership is therefore proven against the selected company's employee row.
+                    const callerEmail = String(authUser?.email || callerProfile.email || '').trim().toLowerCase();
+                    const employeeEmail = String(employee.email || '').trim().toLowerCase();
+                    const authMatches = Boolean(employee.auth_user_id && employee.auth_user_id === authUser?.id);
+                    const legacyEmailMatches = !employee.auth_user_id && Boolean(employeeEmail && employeeEmail === callerEmail);
+                    if (!authMatches && !legacyEmailMatches) throw new Error('Unauthorized');
+                    if (status !== 'PENDING') throw new Error('Employees can only submit pending leave requests');
+                } else {
+                    await assertCompanyAccess(adminClient, authUser, companyId, ['OWNER', 'ADMIN', 'MANAGER', 'RESELLER', 'SUPER_ADMIN']);
                 }
+
+                const leaveRequestPayload = {
+                    id: requestId,
+                    company_id: companyId,
+                    employee_id: employeeId,
+                    employee_name: String(requestRecord.employeeName || requestRecord.employee_name || `${employee.first_name || ''} ${employee.last_name || ''}`.trim()),
+                    type: String(requestRecord.type || ''),
+                    start_date: String(requestRecord.startDate || requestRecord.start_date || ''),
+                    end_date: String(requestRecord.endDate || requestRecord.end_date || ''),
+                    days: Number(requestRecord.days || 0),
+                    status,
+                    reason: String(requestRecord.reason || ''),
+                    requested_dates: Array.isArray(requestRecord.requestedDates) ? requestRecord.requestedDates : (Array.isArray(requestRecord.requested_dates) ? requestRecord.requested_dates : []),
+                    approved_dates: Array.isArray(requestRecord.approvedDates) ? requestRecord.approvedDates : (Array.isArray(requestRecord.approved_dates) ? requestRecord.approved_dates : []),
+                };
 
                 const { error } = await adminClient
                     .from('leave_requests')
-                    .upsert({ ...leaveRequest, company_id: companyId });
+                    .upsert(leaveRequestPayload);
 
                 if (error) throw error;
 

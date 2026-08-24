@@ -17,7 +17,7 @@ interface PortalProps {
     employee?: Employee;
     view?: 'home' | 'documents' | 'profile' | 'leave' | 'timesheets' | 'clock-in';
     leaveRequests: LeaveRequest[];
-    onRequestLeave: (req: LeaveRequest) => void;
+    onRequestLeave: (req: LeaveRequest) => void | Promise<void>;
     payRunHistory?: PayRun[];
     timesheets?: WeeklyTimesheet[];
     templates?: DocumentTemplate[];
@@ -213,7 +213,7 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
         request.status === 'PENDING'
     );
 
-    const handleLeaveSubmit = (e: React.FormEvent) => {
+    const handleLeaveSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         
         if (selectedDates.length === 0) {
@@ -228,7 +228,7 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
         const days = sortedDates.length;
 
         const req: LeaveRequest = {
-            id: `LR-${Date.now()}`,
+            id: generateUUID(),
             employeeId: employee?.id || 'EMP-001', // Fallback for demo
             employeeName: employee ? `${employee.firstName} ${employee.lastName}` : user.name,
             type: leaveType,
@@ -240,11 +240,15 @@ export const EmployeePortal: React.FC<PortalProps> = ({ user, employee, view = '
             reason: leaveReason
         };
 
-        onRequestLeave(req);
-        setLeaveSubmitted(true);
-        setTimeout(() => setLeaveSubmitted(false), 3000); 
-        setLeaveReason('');
-        setSelectedDates([]);
+        try {
+            await onRequestLeave(req);
+            setLeaveSubmitted(true);
+            setTimeout(() => setLeaveSubmitted(false), 3000);
+            setLeaveReason('');
+            setSelectedDates([]);
+        } catch (error: any) {
+            toast.error(error?.message || 'Your time-off request could not be submitted. Please try again.');
+        }
     };
 
     const handleAttendance = (method: 'QR' | 'PASS_CODE', qrPayload?: string | null, locationId?: string) => {

@@ -4,13 +4,14 @@ import { LeaveRequest, LeaveType, Employee, Role } from '../core/types';
 import { MultiDateCalendar } from '../components/MultiDateCalendar';
 import { auditService } from '../core/auditService';
 import { useAuth } from '../context/AuthContext';
+import { generateUUID } from '../utils/uuid';
 
 interface LeaveProps {
     // currentUser removed
     requests: LeaveRequest[];
     employees: Employee[];
     onStatusChange: (id: string, status: 'APPROVED' | 'REJECTED', approvedDates?: string[]) => void;
-    onAddRequest: (request: LeaveRequest) => void;
+    onAddRequest: (request: LeaveRequest) => void | Promise<void>;
     onUpdateEmployee: (emp: Employee) => void;
 }
 
@@ -83,7 +84,7 @@ export const Leave: React.FC<LeaveProps> = ({ requests, employees, onStatusChang
       }
   }, [isEmployeeUser, newReq.employeeId, selectableLeaveEmployees]);
 
-  const handleRequestSubmit = (e: React.FormEvent) => {
+  const handleRequestSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
       const selectedEmployeeId = isEmployeeUser ? currentEmployee?.id : newReq.employeeId;
       const emp = employees.find(e => e.id === selectedEmployeeId);
@@ -100,7 +101,7 @@ export const Leave: React.FC<LeaveProps> = ({ requests, employees, onStatusChang
       const days = sortedDates.length;
       
       const request: LeaveRequest = {
-          id: `LR-${Date.now()}`,
+          id: generateUUID(),
           employeeId: emp.id,
           employeeName: `${emp.firstName} ${emp.lastName}`,
           type: newReq.type,
@@ -112,10 +113,14 @@ export const Leave: React.FC<LeaveProps> = ({ requests, employees, onStatusChang
           reason: newReq.reason
       };
 
-      onAddRequest(request);
-      auditService.log(currentUser, 'CREATE', 'LeaveRequest', `Logged manual leave for ${emp.firstName} ${emp.lastName} (${days} days)`);
-      setIsModalOpen(false);
-      setNewReq({ employeeId: isEmployeeUser ? emp.id : '', type: LeaveType.VACATION, dates: [], reason: '' });
+      try {
+          await onAddRequest(request);
+          auditService.log(currentUser, 'CREATE', 'LeaveRequest', `Logged manual leave for ${emp.firstName} ${emp.lastName} (${days} days)`);
+          setIsModalOpen(false);
+          setNewReq({ employeeId: isEmployeeUser ? emp.id : '', type: LeaveType.VACATION, dates: [], reason: '' });
+      } catch (error: any) {
+          alert(error?.message || 'The leave request could not be saved. Please try again.');
+      }
   };
 
   const handleBalanceClick = (emp: Employee) => {
