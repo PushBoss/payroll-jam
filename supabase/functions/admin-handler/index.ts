@@ -4646,7 +4646,7 @@ serve(async (req: Request) => {
                     type: String(requestRecord.type || ''),
                     start_date: String(requestRecord.startDate || requestRecord.start_date || ''),
                     end_date: String(requestRecord.endDate || requestRecord.end_date || ''),
-                    days: Number(requestRecord.days || 0),
+                    total_days: Number(requestRecord.days ?? requestRecord.total_days ?? 0),
                     status,
                     reason: String(requestRecord.reason || ''),
                     requested_dates: Array.isArray(requestRecord.requestedDates) ? requestRecord.requestedDates : (Array.isArray(requestRecord.requested_dates) ? requestRecord.requested_dates : []),

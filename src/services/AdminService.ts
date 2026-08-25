@@ -122,7 +122,7 @@ export const AdminService = {
           type: request.type as LeaveRequest['type'],
           startDate: String(request.start_date ?? request.startDate ?? ''),
           endDate: String(request.end_date ?? request.endDate ?? ''),
-          days: Number(request.days ?? 0),
+          days: Number(request.total_days ?? request.days ?? 0),
           status: String(request.status ?? 'PENDING').toUpperCase() as LeaveRequest['status'],
           reason: String(request.reason ?? ''),
           requestedDates: (request.requested_dates ?? request.requestedDates ?? []) as string[],
